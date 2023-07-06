@@ -29,7 +29,7 @@ jobs:
         id: deploy
         uses: decentraland/dcl-deploy-action@main
         with:
-          dockerImage: "quay.io/decentraland/dapps-substreams-server:${{ inputs.tag }}"
-          serviceName: "dapps-substreams-server"
+          dockerImage: "quay.io/decentraland/marketplace-server:${{ inputs.tag }}"
+          serviceName: "marketplace-server"
           env: ${{ inputs.deployment-environment }}
           token: ${{ secrets.GITHUB_TOKEN }}
