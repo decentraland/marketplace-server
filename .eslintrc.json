@@ -1,0 +1,28 @@
+{
+  "extends": ["@dcl/eslint-config/dapps"],
+  "parserOptions": {
+    "project": ["tsconfig.json", "test/tsconfig.json"]
+  },
+  "rules": {
+    "@typescript-eslint/no-non-null-assertion": "error"
+  },
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "rules": {
+        "@typescript-eslint/naming-convention": [
+          "error",
+          { "selector": "enumMember", "format": ["UPPER_CASE"] },
+          {
+            "selector": "objectLiteralProperty",
+            "format": ["snake_case", "camelCase", "UPPER_CASE"],
+            "filter": {
+              "regex": "^.+-.+$",
+              "match": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
