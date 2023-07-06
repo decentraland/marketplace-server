@@ -1,6 +1,6 @@
 import { Item, Network, getChainName } from "@dcl/schemas"
 import { AppComponents } from "../../types"
-import { getCollectionsChainId, getMarketplaceChainId } from "../chainIds"
+import { getPolygonChainId, getEthereumChainId } from "../chainIds"
 import { getCatalogQuery, getItemIdsBySearchTextQuery, getLatestChainSchema } from "./queries"
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from "./types"
 import { fromCollectionsItemDbResultToCatalogItem } from "./utils"
@@ -11,8 +11,8 @@ export async function createCatalogComponent(components: Pick<AppComponents, "da
 
   async function fetch(filters: CatalogOptions) {
     const { network, creator } = filters
-    const marketplaceChainId = getMarketplaceChainId()
-    const collectionsChainId = getCollectionsChainId()
+    const marketplaceChainId = getEthereumChainId()
+    const collectionsChainId = getPolygonChainId()
     let catalogItems: Item[] = []
     let total = 0
     const client = await database.getPool().connect()
@@ -59,12 +59,12 @@ export async function createCatalogComponent(components: Pick<AppComponents, "da
 
       // @TODO: add favorites enhancement logic
       // if (isFavoritesEnabled) {
-      //   const picksStats = await favoritesComponent.getPicksStatsOfItems(
-      //     catalogItems.map(({ id }) => id),
-      //     filters.pickedBy
-      //   )
+      // const picksStats = await favoritesComponent.getPicksStatsOfItems(
+      //   catalogItems.map(({ id }) => id),
+      //   filters.pickedBy
+      // )
 
-      //   catalogItems = enhanceItemsWithPicksStats(catalogItems, picksStats)
+      // catalogItems = enhanceItemsWithPicksStats(catalogItems, picksStats)
       // }
     } catch (e) {
       console.error(e)

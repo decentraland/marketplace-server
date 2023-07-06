@@ -1,5 +1,5 @@
 import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory } from "@dcl/schemas"
-import { getMarketplaceChainId, getCollectionsChainId } from "../chainIds"
+import { getPolygonChainId, getEthereumChainId } from "../chainIds"
 import { CollectionsItemDBResult } from "./types"
 
 export enum FragmentItemType {
@@ -67,7 +67,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     creator: dbItem.creator,
     data,
     network: itemNetwork,
-    chainId: itemNetwork === Network.ETHEREUM ? getMarketplaceChainId() : getCollectionsChainId(),
+    chainId: itemNetwork === Network.ETHEREUM ? getEthereumChainId() : getPolygonChainId(),
     price: dbItem.price,
     createdAt: Number(dbItem.created_at),
     updatedAt: Number(dbItem.updated_at),

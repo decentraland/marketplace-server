@@ -1,7 +1,7 @@
 import { ChainId } from "@dcl/schemas"
 
-export const getCollectionsChainId = () =>
-  parseInt(process.env.COLLECTIONS_CHAIN_ID || ChainId.ETHEREUM_MAINNET.toString()) as ChainId
+export const getPolygonChainId = () =>
+  parseInt(process.env.POLYGON_CHAIN_ID || ChainId.MATIC_MAINNET.toString()) as ChainId
 
-export const getMarketplaceChainId = () =>
-  parseInt(process.env.MARKETPLACE_CHAIN_ID || ChainId.ETHEREUM_MAINNET.toString()) as ChainId
+export const getEthereumChainId = () =>
+  parseInt(process.env.ETHEREUM_CHAIN_ID || ChainId.ETHEREUM_MAINNET.toString()) as ChainId
