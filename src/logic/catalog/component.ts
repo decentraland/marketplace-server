@@ -1,12 +1,12 @@
-import { Item, Network, getChainName } from "@dcl/schemas"
-import { AppComponents } from "../../types"
-import { getPolygonChainId, getEthereumChainId } from "../chainIds"
-import { getCatalogQuery, getItemIdsBySearchTextQuery, getLatestChainSchema } from "./queries"
-import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from "./types"
-import { fromCollectionsItemDbResultToCatalogItem } from "./utils"
-import { HttpError } from "../http/response"
+import { Item, Network, getChainName } from '@dcl/schemas'
+import { AppComponents } from '../../types'
+import { getPolygonChainId, getEthereumChainId } from '../chainIds'
+import { HttpError } from '../http/response'
+import { getCatalogQuery, getItemIdsBySearchTextQuery, getLatestChainSchema } from './queries'
+import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
+import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
-export async function createCatalogComponent(components: Pick<AppComponents, "database">): Promise<ICatalogComponent> {
+export async function createCatalogComponent(components: Pick<AppComponents, 'database'>): Promise<ICatalogComponent> {
   const { database } = components
 
   async function fetch(filters: CatalogOptions) {
@@ -17,35 +17,27 @@ export async function createCatalogComponent(components: Pick<AppComponents, "da
     let total = 0
     const client = await database.getPool().connect()
     try {
-      const sources = (network ? [network] : creator ? [Network.MATIC] : [Network.ETHEREUM, Network.MATIC]).reduce(
-        (acc, curr) => {
-          acc[curr] = getChainName(curr === Network.ETHEREUM ? marketplaceChainId : collectionsChainId) || ""
-          return acc
-        },
-        {} as Record<string, string>
-      )
-      console.log("sources: ", sources)
+      const sources = (network ? [network] : creator ? [Network.MATIC] : [Network.ETHEREUM, Network.MATIC]).reduce((acc, curr) => {
+        acc[curr] = getChainName(curr === Network.ETHEREUM ? marketplaceChainId : collectionsChainId) || ''
+        return acc
+      }, {} as Record<string, string>)
 
-      const latestSchemasPromises: Promise<Record<string, string>>[] = Object.entries(sources).map(
-        async ([network, chainName]) => {
-          const query = getLatestChainSchema(chainName)
-          const schemaName = await client.query<{
-            entity_schema: string
-          }>(query)
-          return {
-            [network]: schemaName.rows[0].entity_schema,
-          }
+      const latestSchemasPromises: Promise<Record<string, string>>[] = Object.entries(sources).map(async ([network, chainName]) => {
+        const query = getLatestChainSchema(chainName)
+        const schemaName = await client.query<{
+          entity_schema: string
+        }>(query)
+        return {
+          [network]: schemaName.rows[0].entity_schema
         }
-      )
+      })
 
       const schemas = await Promise.all(latestSchemasPromises)
       const reducedSchemas = schemas.reduce((acc, curr) => ({ ...acc, ...curr }), {})
 
       if (filters.search) {
         for (const schema of Object.values(reducedSchemas)) {
-          const filteredItemsById = await client.query<CollectionsItemDBResult>(
-            getItemIdsBySearchTextQuery(schema, filters.search)
-          )
+          const filteredItemsById = await client.query<CollectionsItemDBResult>(getItemIdsBySearchTextQuery(schema, filters.search))
           if (filteredItemsById.rowCount === 0) {
             // if no items matched the search text, return empty result
             return { data: [], total: 0 }
@@ -54,7 +46,7 @@ export async function createCatalogComponent(components: Pick<AppComponents, "da
         }
       }
       const results = await client.query<CollectionsItemDBResult>(getCatalogQuery(reducedSchemas, filters))
-      catalogItems = results.rows.map((res) => fromCollectionsItemDbResultToCatalogItem(res, network))
+      catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
 
       // @TODO: add favorites enhancement logic
@@ -77,6 +69,6 @@ export async function createCatalogComponent(components: Pick<AppComponents, "da
   }
 
   return {
-    fetch,
+    fetch
   }
 }

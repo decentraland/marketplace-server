@@ -22,19 +22,19 @@ export async function asJSON(
       body: result,
       headers: {
         ...headers,
-        ...(extraHeaders ? extraHeaders(result) : {}),
-      },
+        ...(extraHeaders ? extraHeaders(result) : {})
+      }
     }
   } catch (error: any) {
     if (error instanceof HttpError) {
       return {
         status: error.code,
-        body: error.message,
+        body: error.message
       }
     } else {
       return {
         status: 500,
-        body: error.message,
+        body: error.message
       }
     }
   }

@@ -1,5 +1,5 @@
-import SQL, { SQLStatement } from "sql-template-strings"
-import { IPgComponent } from "@well-known-components/pg-component"
+import { IPgComponent } from '@well-known-components/pg-component'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import {
   CatalogFilters,
   CatalogSortBy,
@@ -9,19 +9,15 @@ import {
   GenderFilterOption,
   NFTCategory,
   Network,
-  WearableCategory,
-} from "@dcl/schemas"
-import { CatalogQueryFilters } from "./types"
-import { FragmentItemType } from "./utils"
+  WearableCategory
+} from '@dcl/schemas'
+import { CatalogQueryFilters } from './types'
+import { FragmentItemType } from './utils'
 
-const SCHEMA_PREFIX = "dcl"
+const SCHEMA_PREFIX = 'dcl'
 const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
 
-const WEARABLE_ITEM_TYPES = [
-  FragmentItemType.WEARABLE_V1,
-  FragmentItemType.WEARABLE_V2,
-  FragmentItemType.SMART_WEARABLE_V1,
-]
+const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]
 
 export function getLatestChainSchema(chainId: string) {
   return SQL`
@@ -46,21 +42,21 @@ export async function getLatestSchema(database: IPgComponent) {
         desc LIMIT 1
       `
     const getLatestSchemaResult = await client.query<{ schema_name: string }>(query)
-    console.log("query: ", query.text)
+    console.log('query: ', query.text)
     schema = getLatestSchemaResult.rows[0]?.schema_name
   } catch (error) {
-    console.log("error:", error)
+    console.log('error:', error)
   } finally {
     await client.release()
   }
   return schema
 }
 
-export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: CatalogQueryFilters["search"]) => {
+export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: CatalogQueryFilters['search']) => {
   const query = SQL`SELECT items.id`
-    .append(` FROM `)
+    .append(' FROM ')
     .append(schemaVersion)
-    .append(`.item AS items WHERE `)
+    .append('.item AS items WHERE ')
     .append(getSearchWhere({ search }))
 
   return query
@@ -73,25 +69,25 @@ export function getOrderBy(filters: CatalogFilters) {
 
   // When seeing "Not for sale", the only sort available is the Newest one
   if (isOnSale === false && sortByParam !== CatalogSortBy.NEWEST) {
-    return ""
+    return ''
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
   switch (sortByParam) {
     case CatalogSortBy.NEWEST:
-      sortByQuery = `ORDER BY first_listed_at desc NULLS last \n`
+      sortByQuery = 'ORDER BY first_listed_at desc NULLS last \n'
       break
     case CatalogSortBy.MOST_EXPENSIVE:
-      sortByQuery = `ORDER BY max_price desc \n`
+      sortByQuery = 'ORDER BY max_price desc \n'
       break
     case CatalogSortBy.RECENTLY_LISTED:
-      sortByQuery = `ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n`
+      sortByQuery = 'ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n'
       break
     case CatalogSortBy.RECENTLY_SOLD:
-      sortByQuery = `ORDER BY sold_at desc \n`
+      sortByQuery = 'ORDER BY sold_at desc \n'
       break
     case CatalogSortBy.CHEAPEST:
-      sortByQuery = `ORDER BY min_price asc, first_listed_at desc \n`
+      sortByQuery = 'ORDER BY min_price asc, first_listed_at desc \n'
       break
   }
 
@@ -117,7 +113,7 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
   const queries = Object.entries(schemas).map(([network, schema]) =>
     getCollectionsItemsCatalogQuery(schema, {
       ...restOfFilters,
-      network: network as Network,
+      network: network as Network
     })
   )
 
@@ -134,8 +130,8 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
   }
-  console.log("unionQuery: ", unionQuery.text)
-  console.log("unionQuery: ", unionQuery.values)
+  console.log('unionQuery: ', unionQuery.text)
+  console.log('unionQuery: ', unionQuery.values)
   return unionQuery
 }
 
@@ -147,7 +143,7 @@ export const getCategoryWhere = (filters: CatalogFilters) => {
       : SQL`items.item_type IN `.append(
           SQL`
               (`
-            .append(WEARABLE_ITEM_TYPES.map((itemType) => `'${itemType}'`).join(", "))
+            .append(WEARABLE_ITEM_TYPES.map(itemType => `'${itemType}'`).join(', '))
             .append(SQL`)`)
         )
     : category === NFTCategory.EMOTE
@@ -201,18 +197,16 @@ export const getWearableGenderWhere = (filters: CatalogFilters) => {
   const { wearableGenders: genders } = filters
   const parsedGenders = []
   if (genders?.includes(GenderFilterOption.FEMALE)) {
-    parsedGenders.push("BaseFemale")
+    parsedGenders.push('BaseFemale')
   }
   if (genders?.includes(GenderFilterOption.MALE)) {
-    parsedGenders.push("BaseMale")
+    parsedGenders.push('BaseMale')
   }
   return parsedGenders.length ? SQL`items.search_wearable_body_shapes @> (${parsedGenders})` : undefined
 }
 
 export const getCreatorWhere = (filters: CatalogFilters) => {
-  return Array.isArray(filters.creator)
-    ? SQL`items.creator = ANY(${filters.creator})`
-    : SQL`items.creator = ${filters.creator}`
+  return Array.isArray(filters.creator) ? SQL`items.creator = ANY(${filters.creator})` : SQL`items.creator = ${filters.creator}`
 }
 
 export const getRaritiesWhere = (filters: CatalogFilters) => {
@@ -272,14 +266,11 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
     filters.onlyListing ? getOnlyListingsWhere() : undefined,
     filters.onlyMinting ? getOnlyMintingWhere() : undefined,
-    filters.ids?.length ? getIdsWhere(filters) : undefined,
+    filters.ids?.length ? getIdsWhere(filters) : undefined
   ].filter(Boolean)
 
-  const result = SQL`WHERE (
-	item_set_minter_event.value = true
-	OR
-    collection_minters.value = true
-) `
+  const result =
+    filters.network !== Network.ETHEREUM ? SQL`WHERE (item_set_minter_event.value = true OR collection_minters.value = true) ` : SQL``
   if (!conditions.length) {
     return result
   } else {
@@ -294,7 +285,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     }
   })
 
-  return result.append(` `)
+  return result.append(' ')
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
@@ -321,13 +312,11 @@ const getOwnersJoin = (schemaVersion: string) => {
   return SQL` LEFT JOIN (
             SELECT item, COUNT(distinct owner) as owners_count FROM `
     .append(schemaVersion)
-    .append(`.nfts as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id `)
+    .append('.nfts as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id ')
 }
 
 const getCollectionsJoin = (schemaVersion: string) => {
-  return SQL`LEFT JOIN `
-    .append(schemaVersion)
-    .append(SQL`.collections as collections ON collections.id = items.collection `)
+  return SQL`LEFT JOIN `.append(schemaVersion).append(SQL`.collections as collections ON collections.id = items.collection `)
 }
 
 const getNFTsJoin = () => {
@@ -413,7 +402,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
               FROM `
         )
         .append(schemaVersion)
-        .append(`.items AS items `)
+        .append('.items AS items ')
         .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
         .append(getCollectionsJoin(schemaVersion))
         .append(getNFTsJoin())

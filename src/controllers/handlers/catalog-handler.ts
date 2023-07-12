@@ -1,27 +1,26 @@
-import { CatalogSortBy, CatalogSortDirection } from "@dcl/schemas"
-import { IHttpServerComponent } from "@well-known-components/interfaces"
-import { AppComponents, AuthenticatedContext, HandlerContextWithPath, StatusCode } from "../../types"
-import { Params } from "../../logic/http/params"
-import { asJSON } from "../../logic/http/response"
-import { getItemsParams } from "./utils"
+import { IHttpServerComponent } from '@well-known-components/interfaces'
+import { CatalogSortBy, CatalogSortDirection } from '@dcl/schemas'
+import { Params } from '../../logic/http/params'
+import { asJSON } from '../../logic/http/response'
+import { AppComponents, AuthenticatedContext } from '../../types'
+import { getItemsParams } from './utils'
 
 const DEFAULT_PAGE_SIZE = 20
 
 export function createCatalogHandler(
-  components: Pick<AppComponents, "catalog">
-): IHttpServerComponent.IRequestHandler<AuthenticatedContext<"/catalog">> {
+  components: Pick<AppComponents, 'catalog'>
+): IHttpServerComponent.IRequestHandler<AuthenticatedContext<'/catalog'>> {
   const { catalog } = components
 
-  return async (context) => {
+  return async context => {
     const params = new Params(context.url.searchParams)
-    const onlyListing = params.getBoolean("onlyListing")
-    const onlyMinting = params.getBoolean("onlyMinting")
-    const sortBy = params.getValue<CatalogSortBy>("sortBy", CatalogSortBy) || CatalogSortBy.CHEAPEST
-    const sortDirection =
-      params.getValue<CatalogSortDirection>("sortDirection", CatalogSortDirection) || CatalogSortDirection.ASC
+    const onlyListing = params.getBoolean('onlyListing')
+    const onlyMinting = params.getBoolean('onlyMinting')
+    const sortBy = params.getValue<CatalogSortBy>('sortBy', CatalogSortBy) || CatalogSortBy.CHEAPEST
+    const sortDirection = params.getValue<CatalogSortDirection>('sortDirection', CatalogSortDirection) || CatalogSortDirection.ASC
 
-    const limit = params.getNumber("first", DEFAULT_PAGE_SIZE)
-    const offset = params.getNumber("skip", 0)
+    const limit = params.getNumber('first', DEFAULT_PAGE_SIZE)
+    const offset = params.getNumber('skip', 0)
     // @TODO: add favorites logic
     // const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
 
@@ -34,7 +33,7 @@ export function createCatalogHandler(
         onlyListing,
         onlyMinting,
         // pickedBy,
-        ...getItemsParams(params),
+        ...getItemsParams(params)
       })
     })
   }
