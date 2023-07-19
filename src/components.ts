@@ -1,12 +1,12 @@
-import { createDotEnvConfigComponent } from "@well-known-components/env-config-provider"
-import { createServerComponent, createStatusCheckComponent } from "@well-known-components/http-server"
-import { createPgComponent } from "@well-known-components/pg-component"
-import { createLogComponent } from "@well-known-components/logger"
-import { createFetchComponent } from "./adapters/fetch"
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from "@well-known-components/metrics"
-import { createCatalogComponent } from "./logic/catalog/component"
-import { AppComponents, GlobalContext } from "./types"
-import { metricDeclarations } from "./metrics"
+import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
+import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
+import { createLogComponent } from '@well-known-components/logger'
+import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
+import { createPgComponent } from '@well-known-components/pg-component'
+import { createFetchComponent } from './adapters/fetch'
+import { createCatalogComponent } from './logic/catalog/component'
+import { metricDeclarations } from './metrics'
+import { AppComponents, GlobalContext } from './types'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -29,6 +29,6 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
     database,
-    catalog,
+    catalog
   }
 }
