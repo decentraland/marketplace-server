@@ -32,7 +32,6 @@ export function getLatestChainSchema(chainId: string) {
 
 export async function getLatestSchema(database: IPgComponent) {
   let schema: string | undefined
-  const client = await database.getPool().connect()
   try {
     const query = SQL`
         SELECT information.schema_name
@@ -41,14 +40,12 @@ export async function getLatestSchema(database: IPgComponent) {
         ORDER BY CAST(SUBSTRING(information.schema_name FROM 'dcl([0-9]+)') AS INTEGER) 
         desc LIMIT 1
       `
-    const getLatestSchemaResult = await client.query<{ schema_name: string }>(query)
-    console.log('query: ', query.text)
+    const getLatestSchemaResult = await database.query<{ schema_name: string }>(query)
     schema = getLatestSchemaResult.rows[0]?.schema_name
   } catch (error) {
     console.log('error:', error)
-  } finally {
-    await client.release()
   }
+  console.log('schema: ', schema);
   return schema
 }
 

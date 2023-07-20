@@ -1,15 +1,15 @@
+import { IPgComponent } from '@well-known-components/pg-component'
+import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { ICatalogComponent } from './ports/catalog/types'
 import type { IFetchComponent } from '@well-known-components/http-server'
 import type {
   IConfigComponent,
   ILoggerComponent,
   IHttpServerComponent,
   IBaseComponent,
-  IMetricsComponent,
-} from "@well-known-components/interfaces"
-import { IPgComponent } from "@well-known-components/pg-component"
-import type * as authorizationMiddleware from "decentraland-crypto-middleware"
-import { ICatalogComponent } from "./logic/catalog/types"
+  IMetricsComponent
+} from '@well-known-components/interfaces'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -55,8 +55,7 @@ export enum StatusCode {
   NOT_FOUND = 404,
   LOCKED = 423,
   CONFLICT = 409,
-  ERROR = 500,
+  ERROR = 500
 }
 
-export type AuthenticatedContext<Path extends string = any> = Context<Path> &
-  authorizationMiddleware.DecentralandSignatureContext
+export type AuthenticatedContext<Path extends string = any> = Context<Path> & authorizationMiddleware.DecentralandSignatureContext

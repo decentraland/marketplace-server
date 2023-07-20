@@ -1,18 +1,18 @@
-import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory } from "@dcl/schemas"
-import { getPolygonChainId, getEthereumChainId } from "../chainIds"
-import { CollectionsItemDBResult } from "./types"
+import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory } from '@dcl/schemas'
+import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
+import { CollectionsItemDBResult } from './types'
 
 export enum FragmentItemType {
-  WEARABLE_V1 = "wearable_v1",
-  WEARABLE_V2 = "wearable_v2",
-  SMART_WEARABLE_V1 = "smart_wearable_v1",
-  EMOTE_V1 = "emote_v1",
+  WEARABLE_V1 = 'wearable_v1',
+  WEARABLE_V2 = 'wearable_v2',
+  SMART_WEARABLE_V1 = 'smart_wearable_v1',
+  EMOTE_V1 = 'emote_v1'
 }
 
 export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItemDBResult, network?: Network): Item {
   let name: string
   let category: NFTCategory
-  let data: Item["data"]
+  let data: Item['data']
 
   switch (dbItem.item_type) {
     case FragmentItemType.WEARABLE_V1:
@@ -27,8 +27,8 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           category: wearableCategory as WearableCategory,
           bodyShapes: body_shapes as BodyShape[],
           rarity: rarity as Rarity,
-          isSmart: dbItem.item_type === FragmentItemType.SMART_WEARABLE_V1,
-        },
+          isSmart: dbItem.item_type === FragmentItemType.SMART_WEARABLE_V1
+        }
       }
       break
     }
@@ -41,8 +41,8 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           category: emoteCategory as EmoteCategory,
           bodyShapes: body_shapes as BodyShape[],
           rarity: rarity as Rarity,
-          loop: !!loop,
-        },
+          loop: !!loop
+        }
       }
       break
     }
@@ -79,6 +79,6 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     maxListingPrice: dbItem.max_listing_price,
     minListingPrice: dbItem.min_listing_price,
     listings: Number(dbItem.listings_count),
-    owners: Number(dbItem.owners_count),
+    owners: Number(dbItem.owners_count)
   }
 }

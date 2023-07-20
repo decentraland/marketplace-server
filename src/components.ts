@@ -4,8 +4,8 @@ import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
 import { createPgComponent } from '@well-known-components/pg-component'
 import { createFetchComponent } from './adapters/fetch'
-import { createCatalogComponent } from './logic/catalog/component'
 import { metricDeclarations } from './metrics'
+import { createCatalogComponent } from './ports/catalog/component'
 import { AppComponents, GlobalContext } from './types'
 
 // Initialize all the components of the app
