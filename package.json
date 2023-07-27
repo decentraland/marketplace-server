@@ -17,13 +17,17 @@
     "@well-known-components/test-helpers": "^1.5.0",
     "nodemon": "^2.0.22",
     "ts-node": "^10.9.1",
-    "typescript": "^4.8.3"
+    "typescript": "^4.9.5"
   },
   "dependencies": {
+    "@dcl/schemas": "^7.5.0",
     "@well-known-components/env-config-provider": "^1.1.1",
-    "@well-known-components/http-server": "^1.1.6-20220927190058.commit-2dfb235",
-    "@well-known-components/interfaces": "^1.4.1",
+    "@well-known-components/http-server": "^1.1.6",
+    "@well-known-components/interfaces": "^1.2.0",
     "@well-known-components/logger": "^3.1.2",
-    "@well-known-components/metrics": "^2.0.1-20220909150423.commit-8f7e5bc"
+    "@well-known-components/metrics": "^2.0.1-20220909150423.commit-8f7e5bc",
+    "@well-known-components/pg-component": "^0.2.1",
+    "decentraland-crypto-middleware": "^1.1.0",
+    "ethers": "^6.6.2"
   }
 }

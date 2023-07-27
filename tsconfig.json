@@ -5,6 +5,14 @@
     "target": "es2020",
     "module": "commonjs",
     "moduleResolution": "node",
+    "lib": ["es2017", "dom"],
+    "plugins": [{ "name": "tslint-language-service" }],
+    "isolatedModules": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "noUnusedParameters": false,
+    "noUnusedLocals": false,
     "sourceMap": true,
     "experimentalDecorators": true,
     "pretty": true,
@@ -12,9 +20,8 @@
     "noImplicitReturns": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

@@ -2,8 +2,10 @@ import { createDotEnvConfigComponent } from '@well-known-components/env-config-p
 import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
+import { createPgComponent } from '@well-known-components/pg-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
+import { createCatalogComponent } from './ports/catalog/component'
 import { AppComponents, GlobalContext } from './types'
 
 // Initialize all the components of the app
@@ -14,6 +16,8 @@ export async function initComponents(): Promise<AppComponents> {
   const server = await createServerComponent<GlobalContext>({ config, logs }, {})
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
+  const database = await createPgComponent({ config, logs, metrics })
+  const catalog = await createCatalogComponent({ database })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
@@ -23,6 +27,8 @@ export async function initComponents(): Promise<AppComponents> {
     server,
     statusChecks,
     fetch,
-    metrics
+    metrics,
+    database,
+    catalog
   }
 }
