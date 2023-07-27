@@ -45,7 +45,6 @@ export async function getLatestSchema(database: IPgComponent) {
   } catch (error) {
     console.log('error:', error)
   }
-  console.log('schema: ', schema);
   return schema
 }
 

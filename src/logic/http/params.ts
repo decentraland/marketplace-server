@@ -1,7 +1,7 @@
-import { URLSearchParams } from "url"
-import { isAddress } from "../address"
+import { URLSearchParams } from 'url'
+import { isAddress } from '../address'
 
-type Values = { [key: string]: string | Function | object }
+type Values = { [key: string]: string | object }
 
 export class Params {
   constructor(public params: URLSearchParams) {}
@@ -16,7 +16,7 @@ export class Params {
     const extraList = this.params.getAll(`${key}[]`) as T[] // adds support for arrays sent as &key[]=...
     const fullList = list.concat(extraList)
     const validValues = this.getValidValues(values)
-    return validValues.length > 0 ? fullList.filter((value) => validValues.includes(value)) : fullList
+    return validValues.length > 0 ? fullList.filter(value => validValues.includes(value)) : fullList
   }
 
   getNumber(key: string, defaultValue?: number) {
@@ -49,18 +49,18 @@ export class Params {
   getAddress(key: string, lowercase = true, defaultValue?: string) {
     const value = this.params.get(key)
     if (isAddress(value)) {
-      return lowercase ? value!.toLowerCase() : value!
+      return lowercase && value ? value.toLowerCase() : value
     }
     return defaultValue
   }
 
   getAddressList(key: string, lowercase = true) {
     const list = this.params.getAll(key).filter(isAddress)
-    return lowercase ? list.map((address) => address.toLowerCase()) : list
+    return lowercase ? list.map(address => address.toLowerCase()) : list
   }
 
   private getValidValues<T extends string>(values: Values = {}) {
-    const validValues = Object.values(values).filter((value) => typeof value === "string") as T[]
+    const validValues = Object.values(values).filter(value => typeof value === 'string') as T[]
     return validValues
   }
 }
