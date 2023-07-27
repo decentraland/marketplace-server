@@ -1,4 +1,4 @@
-import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item, Network } from "@dcl/schemas"
+import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item, Network } from '@dcl/schemas'
 
 export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
@@ -37,7 +37,7 @@ export type CollectionsItemDBResult = {
   }
 }
 
-export type CatalogQueryFilters = Omit<CatalogFilters, "sortBy" | "sortDirection" | "limit" | "offset"> & {
+export type CatalogQueryFilters = Omit<CatalogFilters, 'sortBy' | 'sortDirection' | 'limit' | 'offset'> & {
   sortBy?: CatalogSortBy
   sortDirection?: CatalogSortDirection
   limit?: number
