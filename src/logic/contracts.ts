@@ -1,4 +1,5 @@
 import { ChainId, Contract, Network, NFTCategory } from '@dcl/schemas'
+import { getPolygonChainId } from './chainIds'
 
 export function getMarketplaceContracts(chainId: ChainId): Contract[] {
   switch (chainId) {
@@ -353,7 +354,51 @@ export function getMarketplaceContracts(chainId: ChainId): Contract[] {
         }
       ]
     }
+    case ChainId.ETHEREUM_SEPOLIA: {
+      return [
+        {
+          name: 'LAND',
+          address: '0x42f4ba48791e2de32f5fbf553441c2672864bb33',
+          category: NFTCategory.PARCEL,
+          network: Network.ETHEREUM,
+          chainId: ChainId.ETHEREUM_GOERLI
+        },
+        {
+          name: 'Estates',
+          address: '0x369a7fbe718c870c79f99fb423882e8dd8b20486',
+          category: NFTCategory.ESTATE,
+          network: Network.ETHEREUM,
+          chainId: ChainId.ETHEREUM_GOERLI
+        },
+        {
+          name: 'Names',
+          address: '0x7518456ae93eb98f3e64571b689c626616bb7f30',
+          category: NFTCategory.ENS,
+          network: Network.ETHEREUM,
+          chainId: ChainId.ETHEREUM_GOERLI
+        },
+        {
+          name: 'Exclusive Masks',
+          address: '0x11a970e744ff69db8f461c2d0fc91d4293914301',
+          network: Network.ETHEREUM,
+          chainId: ChainId.ETHEREUM_GOERLI,
+          category: NFTCategory.WEARABLE
+        }
+      ]
+    }
     default:
       return []
+  }
+}
+
+export const getCollectionStoreAddress = () => {
+  const chainId = getPolygonChainId()
+  switch (chainId) {
+    case ChainId.MATIC_MAINNET:
+      return '0x214ffC0f0103735728dc66b61A22e4F163e275ae'
+    case ChainId.MATIC_MUMBAI:
+      return '0x6ddF1b1924DAD850AdBc1C02026535464Be06B0c'
+    default:
+      return ''
   }
 }

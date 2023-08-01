@@ -59,6 +59,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     name,
     thumbnail: dbItem.image,
     url: `/contracts/${dbItem.collection}/items/${dbItem.blockchain_id}`,
+    urn: dbItem.urn,
     category,
     contractAddress: dbItem.collection,
     rarity: dbItem.rarity as Rarity,
