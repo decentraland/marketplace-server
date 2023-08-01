@@ -4,7 +4,6 @@ import {
   CatalogFilters,
   CatalogSortBy,
   CatalogSortDirection,
-  ChainId,
   EmoteCategory,
   EmotePlayMode,
   GenderFilterOption,
@@ -12,9 +11,9 @@ import {
   Network,
   WearableCategory
 } from '@dcl/schemas'
+import { getCollectionStoreAddress } from '../../logic/contracts'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
-import { getCollectionStoreAddress } from '../../logic/contracts'
 
 const SCHEMA_PREFIX = 'dcl'
 const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
