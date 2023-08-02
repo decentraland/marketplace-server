@@ -18,7 +18,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     case FragmentItemType.WEARABLE_V1:
     case FragmentItemType.WEARABLE_V2:
     case FragmentItemType.SMART_WEARABLE_V1: {
-      const { name: wearableName, body_shapes, description, rarity, category: wearableCategory } = dbItem.metadata
+      const { name: wearableName, body_shapes, description, rarity, category: wearableCategory } = dbItem.metadata || {}
       name = wearableName
       category = NFTCategory.WEARABLE
       data = {

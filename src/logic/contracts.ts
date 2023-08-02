@@ -395,9 +395,9 @@ export const getCollectionStoreAddress = () => {
   const chainId = getPolygonChainId()
   switch (chainId) {
     case ChainId.MATIC_MAINNET:
-      return '0x214ffC0f0103735728dc66b61A22e4F163e275ae'
+      return '0x214ffc0f0103735728dc66b61a22e4f163e275ae'
     case ChainId.MATIC_MUMBAI:
-      return '0x6ddF1b1924DAD850AdBc1C02026535464Be06B0c'
+      return '0x6ddf1b1924dad850adbc1c02026535464be06b0c'
     default:
       return ''
   }
