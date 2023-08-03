@@ -177,32 +177,33 @@ export const getIsSoldOutWhere = () => {
 }
 
 export const getIsOnSaleJoin = (schemaVersion: string, _filters: CatalogFilters) => {
-  return SQL` LEFT JOIN (
-    SELECT collection_id,
-      value,
-      timestamp,
-      ROW_NUMBER() OVER (PARTITION BY collection_id ORDER BY timestamp DESC) AS row_num
-    FROM `.append(schemaVersion).append(SQL`.collection_set_global_minter_events
-    WHERE search_is_store_minter = true
-    AND minter = ${getCollectionStoreAddress()}
-  ) AS collection_minters ON collections.id = collection_minters.collection_id AND collection_minters.row_num = 1   
+  return SQL` 
+        LEFT JOIN (
+          SELECT collection_id,
+            value,
+            timestamp,
+            ROW_NUMBER() OVER (PARTITION BY collection_id ORDER BY timestamp DESC) AS row_num
+          FROM `.append(schemaVersion).append(SQL`.collection_set_global_minter_events
+          WHERE search_is_store_minter = true
+          AND minter = ${getCollectionStoreAddress()}
+        ) AS collection_minters ON items.collection = collection_minters.collection_id AND collection_minters.row_num = 1   
   `)
 }
 
 export const getIsCollectionApprovedJoin = (schemaVersion: string) => {
   return SQL`
-  JOIN (
-    SELECT
-      collection_id,
-      value,
-      timestamp,
-      ROW_NUMBER() OVER (
-        PARTITION BY collection_id
-        ORDER BY timestamp DESC
-      ) AS row_num
-    FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
-    WHERE value = true
-  ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1`)
+        JOIN (
+          SELECT
+            collection_id,
+            value,
+            timestamp,
+            ROW_NUMBER() OVER (
+              PARTITION BY collection_id
+              ORDER BY timestamp DESC
+            ) AS row_num
+          FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
+          WHERE value = true
+        ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1`)
 }
 
 export const getisWearableHeadAccessoryWhere = () => {
@@ -310,23 +311,23 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
-  return SQL`CASE
-                  WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
+  return SQL`
+          CASE
+            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
                   `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice}` : SQL``)
-    .append(` THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
-                                  ELSE nfts_with_orders.min_price 
-                                END AS min_price
-                              `)
+    .append(`THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
+             ELSE nfts_with_orders.min_price 
+          END AS min_price`)
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
-  return SQL`CASE
-                  WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
+  return SQL`
+          CASE
+            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
                   `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice}` : SQL``)
-    .append(` THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
+    .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
             ELSE nfts_with_orders.max_price 
-            END AS max_price
-            `)
+          END AS max_price`)
 }
 
 const getOwnersJoin = (schemaVersion: string) => {
@@ -336,215 +337,220 @@ const getOwnersJoin = (schemaVersion: string) => {
     .append('.nfts as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id ')
 }
 
-const getCollectionsJoin = (schemaVersion: string) => {
-  return SQL`LEFT JOIN `.append(schemaVersion).append(SQL`.collections as collections ON collections.id = items.collection `)
-}
-
 const getNFTsJoin = () => {
-  return SQL`LEFT JOIN nfts ON nfts.item = items.id `
+  return SQL`
+        LEFT JOIN nfts ON nfts.item = items.id `
 }
 
 const getLatestMetadataJoin = () => {
-  return SQL`LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
+  return SQL`
+        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
 }
 
 const getEventsTableJoins = (schemaVersion: string) => {
   return SQL`
-    LEFT JOIN (
-        SELECT item_id, value, timestamp,
-          ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY timestamp DESC) AS row_num
-        FROM `
+        LEFT JOIN (
+          SELECT item_id, value, timestamp,
+            ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY timestamp DESC) AS row_num
+          FROM `
     .append(schemaVersion)
     .append(
       SQL`.item_minters
-        WHERE minter = ${getCollectionStoreAddress()}
-      ) AS item_set_minter_event ON items.id = item_set_minter_event.item_id AND item_set_minter_event.row_num = 1
-    
+          WHERE minter = ${getCollectionStoreAddress()}
+        ) AS item_set_minter_event ON items.id = item_set_minter_event.item_id AND item_set_minter_event.row_num = 1  
     `
     )
 }
 
+const ordersJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  return SQL`
+        LEFT JOIN (
+          SELECT 
+              nfts_with_orders.item, 
+              COUNT(nfts_with_orders.id) AS listings_count,
+              MIN(nfts_with_orders.price) AS min_price,
+              MAX(nfts_with_orders.price) AS max_price,
+              MAX(nfts_with_orders.created_at) AS max_order_created_at
+          FROM (
+              SELECT  orders.item,
+                      orders.id,
+                      orders.price,
+                      orders.created_at
+              FROM `
+
+    .append(schemaVersion)
+    .append(
+      SQL`    .orders AS orders
+                WHERE orders.status = 'open' AND orders.expires_at BETWEEN (EXTRACT(EPOCH FROM now()) * 1000)::bigint AND ${MAX_ORDER_TIMESTAMP}::numeric AND expires_at > EXTRACT(EPOCH FROM now()) * 1000
+    `
+    )
+    .append(getOrderRangePriceWhere(filters))
+    .append(
+      SQL`
+              ) as nfts_with_orders
+              GROUP BY nfts_with_orders.item
+        ) as nfts_with_orders ON nfts_with_orders.item = items.id`
+    )
+}
+
 const getLatestPriceJoin = () => {
-  return SQL` LEFT JOIN (
-    SELECT item_id, price, timestamp, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY timestamp DESC) AS row_num
-    FROM latest_prices
-  ) AS latest_prices ON latest_prices.item_id = items.id AND latest_prices.row_num = 1 `
+  return SQL` 
+        LEFT JOIN (
+          SELECT item_id, price, timestamp, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY timestamp DESC) AS row_num
+          FROM latest_prices
+        ) AS latest_prices ON latest_prices.item_id = items.id AND latest_prices.row_num = 1 
+  `
+}
+
+const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  const wearablesJoin = SQL`
+        LEFT JOIN (
+          SELECT 
+          metadata.id, 
+          wearable.description, 
+          wearable.category, 
+          wearable.body_shapes, 
+          wearable.name
+        FROM `
+    .append(schemaVersion)
+    .append('.wearable AS wearable JOIN ')
+    .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.wearable = wearable.id
+        ) AS metadata_wearable ON metadata_wearable.id = latest_metadata.id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
+  `)
+
+  const emoteJoin = SQL` 
+        LEFT JOIN (
+          SELECT 
+            metadata.id, 
+            emote.description, 
+            emote.category, 
+            emote.body_shapes, 
+            emote.name, 
+            emote.loop
+          FROM `
+    .append(schemaVersion)
+    .append('.emote AS emote JOIN ')
+    .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.emote = emote.id
+        ) AS metadata_emote ON metadata_emote.id = latest_metadata.id AND items.item_type = 'emote_v1' 
+  `)
+
+  switch (filters.category) {
+    case NFTCategory.WEARABLE:
+      return wearablesJoin
+    case NFTCategory.EMOTE:
+      return emoteJoin
+    default:
+      return wearablesJoin.append(emoteJoin)
+  }
+}
+
+// CTEs
+const getNFTsCTE = (schemaVersion: string) => {
+  return SQL`nfts AS (SELECT item, COUNT(*) AS nfts_count FROM `.append(schemaVersion).append(SQL`.nfts GROUP BY item)
+  `)
+}
+
+const getLatestPricesCTE = (schemaVersion: string) => {
+  return SQL`latest_prices AS (SELECT DISTINCT ON (item_id) item_id, price, timestamp FROM `.append(schemaVersion)
+    .append(SQL`.update_item_data_events ORDER BY item_id, timestamp DESC)
+    `)
+}
+
+const getLatestMetadataCTE = (schemaVersion: string) => {
+  return SQL`latest_metadata AS (SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp FROM `.append(
+    schemaVersion
+  ).append(SQL`.metadata ORDER BY item_id, timestamp DESC)
+    `)
+}
+
+const getCTEs = (schemaVersion: string) => {
+  return SQL`WITH `
+    .append(getNFTsCTE(schemaVersion))
+    .append(SQL`,`)
+    .append(getLatestPricesCTE(schemaVersion))
+    .append(SQL`,`)
+    .append(getLatestMetadataCTE(schemaVersion))
+}
+
+const getMetadataSelect = (filters: CatalogQueryFilters) => {
+  switch (filters.category) {
+    case NFTCategory.WEARABLE:
+      return SQL`to_json(metadata_wearable) as metadata,`
+    case NFTCategory.EMOTE:
+      return SQL`to_json(metadata_emote) as metadata,`
+    default:
+      return SQL`
+        to_json(
+          CASE 
+            WHEN latest_metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1') THEN metadata_wearable 
+            WHEN latest_metadata.item_type = 'emote_v1' THEN metadata_emote 
+            ELSE null
+          END
+        ) as metadata,
+      `
+  }
 }
 
 export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const query = SQL`
-            WITH nfts AS (
-                SELECT item, COUNT(*) AS nfts_count
-                FROM `
-    .append(schemaVersion)
-    .append(
-      SQL`.nfts
-                GROUP BY item
-            ), latest_prices AS (
-              SELECT DISTINCT ON (item_id)
-                item_id,
-                price,
-                timestamp
-              FROM `
-        .append(schemaVersion)
-        .append(
-          SQL`.update_item_data_events
-              ORDER BY item_id, timestamp DESC
-            ),
-            latest_metadata AS (
-              SELECT DISTINCT ON (item_id)
-                item_id,
-                id,
-                item_type,
-                wearable,
-                emote,
-                timestamp
-              FROM `
-            .append(schemaVersion)
-            .append(
-              SQL`.metadata
-              ORDER BY item_id, timestamp DESC
-            )
-            SELECT
-                COUNT(*) OVER() as total_rows,
-                items.id,
-                items.blockchain_id,
-                to_json(
-                  CASE 
-                    WHEN latest_metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1') THEN metadata_wearable 
-                    WHEN latest_metadata.item_type = 'emote_v1' THEN metadata_emote 
-                    ELSE null
-                  END
-                ) as metadata,
-                items.image,
-                items.collection,
-                items.rarity,
-                items.item_type::text,
-                COALESCE(latest_prices.price, items.price) AS price,
-                (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) AS available,
-                items.creator,
-                items.beneficiary,
-                items.created_at,
-                items.updated_at,
-                items.reviewed_at,
-                items.sold_at,
-                ${filters.network} as network,
-                CASE
-                  WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.value = true THEN collection_minters.timestamp
-                  ELSE item_set_minter_event.timestamp
-                END AS first_listed_at,
-                nfts_with_orders.min_price AS min_listing_price,
-                nfts_with_orders.max_price AS max_listing_price, 
-                COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
-                .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
-                .append(
-                  `
-                nfts_with_orders.max_order_created_at as max_order_created_at,
-                `
-                )
-                .append(getMinPriceCase(filters))
-                .append(
-                  `,
-                `
-                )
-                .append(getMaxPriceCase(filters))
-                .append(
-                  `
-              FROM `
-                )
-                .append(schemaVersion)
-                .append('.items AS items ')
-                .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
-                .append(getCollectionsJoin(schemaVersion))
-                .append(getNFTsJoin())
-                .append(getLatestMetadataJoin())
-                .append(
-                  `
-              LEFT JOIN (
-                SELECT 
-                    nfts_with_orders.item, 
-                    COUNT(nfts_with_orders.id) AS listings_count,
-                    MIN(nfts_with_orders.price) AS min_price,
-                    MAX(nfts_with_orders.price) AS max_price,
-                    MAX(nfts_with_orders.created_at) AS max_order_created_at
-                FROM (
-                    SELECT  orders.item,
-                            orders.id,
-                            orders.price,
-                            orders.created_at,
-                            ROW_NUMBER() OVER (PARTITION BY orders.item ORDER BY orders.created_at DESC) AS row_num
-                    FROM `
-                )
-                .append(schemaVersion)
-                .append(
-                  SQL`.orders AS orders
-          WHERE 
-          orders.status = 'open' 
-          AND orders.expires_at < `
-                )
-                .append(MAX_ORDER_TIMESTAMP)
-                .append(
-                  ` 
-          AND to_timestamp(orders.expires_at / 1000.0) > now()
+  const query = getCTEs(schemaVersion).append(
+    SQL`
+      SELECT
+          COUNT(*) OVER() as total_rows,
+          items.id,
+          items.blockchain_id,
           `
-                )
-                .append(getOrderRangePriceWhere(filters))
-                .append(
-                  SQL`
-        ) as nfts_with_orders
-        WHERE nfts_with_orders.row_num = 1 
-        GROUP BY nfts_with_orders.item
-        ) as nfts_with_orders ON nfts_with_orders.item = items.id`
-                )
-                .append(
-                  `
-                LEFT JOIN (
-                  SELECT 
-                  metadata.item_id, 
-                  wearable.description, 
-                  wearable.category, 
-                  wearable.body_shapes, 
-                  wearable.name
-                FROM `
-                )
-                .append(schemaVersion)
-                .append(
-                  `.wearable AS wearable
-              JOIN `
-                )
-                .append(schemaVersion)
-                .append(
-                  `.metadata AS metadata ON metadata.wearable = wearable.id
-        ) AS metadata_wearable ON metadata_wearable.item_id = items.id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1')
-              LEFT JOIN (
-                SELECT 
-                  metadata.id, 
-                  emote.description, 
-                  emote.category, 
-                  emote.body_shapes, 
-                  emote.name, 
-                  emote.loop
-                FROM `
-                )
-                .append(schemaVersion)
-                .append(
-                  `.emote AS emote
-              JOIN `
-                )
-                .append(schemaVersion)
-                .append(
-                  `.metadata AS metadata ON metadata.emote = emote.id
-              ) AS metadata_emote ON metadata_emote.id = items.metadata AND items.item_type = 'emote_v1' `
-                )
-                .append(getLatestPriceJoin())
-                .append(getIsCollectionApprovedJoin(schemaVersion))
-                .append(getIsOnSaleJoin(schemaVersion, filters))
-                .append(getEventsTableJoins(schemaVersion))
-                .append(getCollectionsQueryWhere(filters))
-            )
-        )
-    )
-
+      .append(getMetadataSelect(filters))
+      .append(
+        SQL`
+          items.image,
+          items.collection,
+          items.rarity,
+          items.item_type::text,
+          COALESCE(latest_prices.price, items.price) AS price,
+          (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) AS available,
+          items.creator,
+          items.beneficiary,
+          items.created_at,
+          items.updated_at,
+          items.reviewed_at,
+          items.sold_at,
+          ${filters.network} as network,
+          CASE
+            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.value = true THEN collection_minters.timestamp
+            ELSE item_set_minter_event.timestamp
+          END AS first_listed_at,
+          nfts_with_orders.min_price AS min_listing_price,
+          nfts_with_orders.max_price AS max_listing_price, 
+          COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+          .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
+          .append(
+            `
+          nfts_with_orders.max_order_created_at as max_order_created_at,`
+          )
+          .append(getMinPriceCase(filters))
+          .append(',')
+          .append(getMaxPriceCase(filters))
+          .append(
+            `
+        FROM `
+          )
+          .append(schemaVersion)
+          .append(
+            `.items AS items 
+          `
+          )
+          .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
+          .append(getNFTsJoin())
+          .append(getLatestMetadataJoin())
+          .append(ordersJoin(schemaVersion, filters))
+          .append(addMetadataJoins(schemaVersion, filters))
+          .append(getLatestPriceJoin())
+          .append(getIsCollectionApprovedJoin(schemaVersion))
+          .append(getIsOnSaleJoin(schemaVersion, filters))
+          .append(getEventsTableJoins(schemaVersion))
+          .append(getCollectionsQueryWhere(filters))
+      )
+  )
   addQuerySort(query, filters)
   addQueryPagination(query, filters)
   return query

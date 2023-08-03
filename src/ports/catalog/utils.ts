@@ -33,7 +33,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, rarity, loop, category: emoteCategory } = dbItem.metadata
+      const { name: emoteName, body_shapes, description, rarity, loop, category: emoteCategory } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
