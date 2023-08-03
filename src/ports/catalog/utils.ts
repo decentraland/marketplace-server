@@ -18,7 +18,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     case FragmentItemType.WEARABLE_V1:
     case FragmentItemType.WEARABLE_V2:
     case FragmentItemType.SMART_WEARABLE_V1: {
-      const { name: wearableName, body_shapes, description, rarity, category: wearableCategory } = dbItem.metadata
+      const { name: wearableName, body_shapes, description, rarity, category: wearableCategory } = dbItem.metadata || {}
       name = wearableName
       category = NFTCategory.WEARABLE
       data = {
@@ -33,7 +33,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, rarity, loop, category: emoteCategory } = dbItem.metadata
+      const { name: emoteName, body_shapes, description, rarity, loop, category: emoteCategory } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
@@ -59,6 +59,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     name,
     thumbnail: dbItem.image,
     url: `/contracts/${dbItem.collection}/items/${dbItem.blockchain_id}`,
+    urn: dbItem.urn,
     category,
     contractAddress: dbItem.collection,
     rarity: dbItem.rarity as Rarity,

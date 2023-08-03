@@ -4,6 +4,7 @@ export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
   total_rows: number
   id: string
+  urn: string
   image: string
   collection: string
   blockchain_id: string

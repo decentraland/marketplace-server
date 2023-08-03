@@ -17,7 +17,8 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
     let total = 0
     const client = await database.getPool().connect()
     try {
-      const sources = (network ? [network] : creator ? [Network.MATIC] : [Network.ETHEREUM, Network.MATIC]).reduce((acc, curr) => {
+      const networks = network ? [network] : creator && creator.length ? [Network.MATIC] : [Network.ETHEREUM, Network.MATIC]
+      const sources = networks.reduce((acc, curr) => {
         acc[curr] = getChainName(curr === Network.ETHEREUM ? marketplaceChainId : collectionsChainId) || ''
         return acc
       }, {} as Record<string, string>)
@@ -45,7 +46,8 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
           filters.ids = [...(filters.ids ?? []), ...filteredItemsById.rows.map(({ id }) => id)]
         }
       }
-      const results = await client.query<CollectionsItemDBResult>(getCatalogQuery(reducedSchemas, filters))
+      const query = getCatalogQuery(reducedSchemas, filters)
+      const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
 

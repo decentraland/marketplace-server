@@ -20,7 +20,7 @@
     "typescript": "^4.9.5"
   },
   "dependencies": {
-    "@dcl/schemas": "^7.5.0",
+    "@dcl/schemas": "^8.2.2",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
     "@well-known-components/interfaces": "^1.2.0",
