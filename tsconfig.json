@@ -2,17 +2,16 @@
   "compilerOptions": {
     "strict": true,
     "outDir": "dist",
-    "target": "es2020",
+    "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
-    "lib": ["es2017", "dom"],
-    "plugins": [{ "name": "tslint-language-service" }],
-    "isolatedModules": false,
+    "lib": ["ES2022", "dom"],
+    "isolatedModules": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "noUnusedParameters": false,
-    "noUnusedLocals": false,
+    "noUnusedParameters": true,
+    "noUnusedLocals": true,
     "sourceMap": true,
     "experimentalDecorators": true,
     "pretty": true,
@@ -23,5 +22,5 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "test", "jest.setup.ts"]
 }
