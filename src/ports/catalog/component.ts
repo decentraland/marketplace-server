@@ -25,6 +25,8 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
 
       const latestSchemasPromises: Promise<Record<string, string>>[] = Object.entries(sources).map(async ([network, chainName]) => {
         const query = getLatestChainSchema(chainName)
+        console.log('query.text: ', query.text)
+        console.log('query.values: ', query.values)
         const schemaName = await client.query<{
           entity_schema: string
         }>(query)
@@ -47,6 +49,8 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
         }
       }
       const query = getCatalogQuery(reducedSchemas, filters)
+      console.log('query: ', query.text)
+      console.log('query values: ', query.values)
       const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
