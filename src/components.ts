@@ -11,9 +11,13 @@ import { AppComponents, GlobalContext } from './types'
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const cors = {
+    origin: await config.requireString('CORS_ORIGIN'),
+    methods: await config.requireString('CORS_METHODS')
+  }
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const logs = await createLogComponent({ metrics })
-  const server = await createServerComponent<GlobalContext>({ config, logs }, {})
+  const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
   const database = await createPgComponent({ config, logs, metrics })
