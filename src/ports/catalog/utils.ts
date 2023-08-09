@@ -9,6 +9,29 @@ export enum FragmentItemType {
   EMOTE_V1 = 'emote_v1'
 }
 
+// The thumbnail urls indexed are wrong, so we need to fix them by appending the blockchainId to the URN in the middle
+function fixThumbnail(thumbnail: string, blockchainId: string) {
+  let fixedUrl = thumbnail.replace('polygon', 'matic').replace('mainnet', 'ethereum')
+
+  if (fixedUrl.includes('ethereum')) {
+    return fixedUrl
+  }
+
+  const urlParts = fixedUrl.split(':')
+
+  // Check if the part to fix is not prefixed with '0x'
+  if (!urlParts[5].startsWith('0x')) {
+    // Add the '0x' prefix if it's not there
+    urlParts[5] = '0x' + urlParts[5]
+    urlParts[5] = urlParts[5].replace('/thumbnail', `:${blockchainId}/thumbnail`)
+  }
+
+  // Join the parts back together
+  fixedUrl = urlParts.join(':')
+
+  return fixedUrl
+}
+
 export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItemDBResult, network?: Network): Item {
   let name: string
   let category: NFTCategory
@@ -18,7 +41,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     case FragmentItemType.WEARABLE_V1:
     case FragmentItemType.WEARABLE_V2:
     case FragmentItemType.SMART_WEARABLE_V1: {
-      const { name: wearableName, body_shapes, description, rarity, category: wearableCategory } = dbItem.metadata || {}
+      const { name: wearableName, body_shapes, description, category: wearableCategory } = dbItem.metadata || {}
       name = wearableName
       category = NFTCategory.WEARABLE
       data = {
@@ -26,21 +49,21 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           description,
           category: wearableCategory as WearableCategory,
           bodyShapes: body_shapes as BodyShape[],
-          rarity: rarity as Rarity,
+          rarity: dbItem.rarity as Rarity,
           isSmart: dbItem.item_type === FragmentItemType.SMART_WEARABLE_V1
         }
       }
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, rarity, loop, category: emoteCategory } = dbItem.metadata || {}
+      const { name: emoteName, body_shapes, description, loop, category: emoteCategory } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
           description,
-          category: emoteCategory as EmoteCategory,
+          category: emoteCategory.toLocaleLowerCase() as EmoteCategory, // toLocaleLowerCase used since they were indexed in uppercase.
           bodyShapes: body_shapes as BodyShape[],
-          rarity: rarity as Rarity,
+          rarity: dbItem.rarity as Rarity,
           loop: !!loop
         }
       }
@@ -57,7 +80,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     beneficiary: dbItem.beneficiary,
     itemId: dbItem.blockchain_id,
     name,
-    thumbnail: dbItem.image,
+    thumbnail: fixThumbnail(dbItem.image, dbItem.blockchain_id),
     url: `/contracts/${dbItem.collection}/items/${dbItem.blockchain_id}`,
     urn: dbItem.urn,
     category,
