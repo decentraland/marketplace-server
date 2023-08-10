@@ -169,9 +169,9 @@ export const getWearableCategoryWhere = (filters: CatalogFilters) => {
   if (filters.isWearableAccessory) {
     return SQL`metadata_wearable.category IN `.append(
       SQL`
-          (`
-        .append(WEARABLE_ACCESORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', '))
-        .append(SQL`)`)
+          (`.append(WEARABLE_ACCESORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', ')).append(SQL`
+          )
+          `)
     )
   } else if (filters.isWearableHead) {
     return SQL`metadata_wearable.category IN `.append(
