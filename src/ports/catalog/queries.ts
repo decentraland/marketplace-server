@@ -282,11 +282,11 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 }
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(min_price >= ${filters.minPrice} OR (items.price >= ${filters.minPrice} AND (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
+  return SQL`(min_price >= ${filters.minPrice} OR (items.price >= ${filters.minPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(max_price <= ${filters.maxPrice} OR (items.price <= ${filters.maxPrice} AND (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
+  return SQL`(max_price <= ${filters.maxPrice} OR (items.price <= ${filters.maxPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -298,12 +298,12 @@ export const getOnlyListingsWhere = (filters: CatalogFilters) => {
     ? SQL`listings_count > 0 `
     : SQL`(
                 COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) is false
-                OR ((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) = 0)
+                OR ((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) = 0)
               ) AND listings_count > 0`
 }
 
 export const getOnlyMintingWhere = () => {
-  return SQL`(item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0`
+  return SQL`(item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
@@ -313,7 +313,7 @@ export const getIdsWhere = (filters: CatalogFilters) => {
 export const getIsOnSale = (filters: CatalogFilters) => {
   return filters.isOnSale
     ? filters.network === Network.MATIC
-      ? SQL`(((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0) OR listings_count IS NOT NULL)`
+      ? SQL`(((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0) OR listings_count IS NOT NULL)`
       : SQL`listings_count IS NOT NULL`
     : filters.network === Network.ETHEREUM
     ? SQL`listings_count IS NULL`
@@ -363,11 +363,12 @@ const getMinPriceCase = (filters: CatalogQueryFilters) => {
     ? SQL`nfts_with_orders.min_price::numeric as min_price `
     : SQL`
           CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price)::numeric >= ${filters.minPrice} ` : SQL` `)
-        .append(`THEN LEAST(COALESCE(latest_prices.price, items.price)::numeric, nfts_with_orders.min_price) 
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+                  `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} ` : SQL` `)
+        .append(`THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
              ELSE nfts_with_orders.min_price 
-          END AS min_price `)
+          END AS min_price 
+        `)
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
@@ -375,11 +376,12 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
     ? SQL`nfts_with_orders.max_price::numeric as max_price `
     : SQL`
           CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price)::numeric <= ${filters.maxPrice} ` : SQL` `)
-        .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price)::numeric, nfts_with_orders.max_price)
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+                  `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} ` : SQL` `)
+        .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
             ELSE nfts_with_orders.max_price 
-          END AS max_price `)
+          END AS max_price 
+          `)
 }
 
 const getOwnersJoin = (schemaVersion: string) => {
@@ -513,11 +515,11 @@ const getMetadataSelect = (filters: CatalogQueryFilters) => {
 
 const getFirstListedAtField = (filters: CatalogFilters) => {
   if (filters.network === Network.ETHEREUM) {
-    return SQL`items.created_at::text as first_listed_at,`
+    return SQL`items.created_at as first_listed_at,`
   }
   return SQL`
           CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true THEN collection_minters.timestamp
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true THEN collection_minters.timestamp
             ELSE item_set_minter_event.timestamp
           END AS first_listed_at,`
 }
@@ -544,7 +546,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           items.rarity,
           items.item_type::text,
           COALESCE(latest_prices.price, items.price) AS price,
-          (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) AS available,
+          (items.max_supply - COALESCE(nfts.nfts_count, 0)) AS available,
           `
       )
       .append(getIsSearchStoreMinter(filters))
@@ -567,7 +569,8 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
               .append(filters.isOnSale === false ? SQL`nfts_with_owners_count.owners_count,` : SQL``)
               .append(
                 `
-          nfts_with_orders.max_order_created_at as max_order_created_at,`
+          nfts_with_orders.max_order_created_at as max_order_created_at,
+          `
               )
               .append(getMinPriceCase(filters))
               .append(',')
