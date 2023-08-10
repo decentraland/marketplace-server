@@ -1,4 +1,4 @@
-import { Item, Network, getChainName } from '@dcl/schemas'
+import { Item, NFTCategory, Network, getChainName } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
@@ -10,14 +10,18 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
   const { database } = components
 
   async function fetch(filters: CatalogOptions) {
-    const { network, creator } = filters
+    const { network, creator, category } = filters
     const marketplaceChainId = getEthereumChainId()
     const collectionsChainId = getPolygonChainId()
     let catalogItems: Item[] = []
     let total = 0
     const client = await database.getPool().connect()
     try {
-      const networks = network ? [network] : creator && creator.length ? [Network.MATIC] : [Network.ETHEREUM, Network.MATIC]
+      const networks = network
+        ? [network]
+        : (creator && creator.length) || (category && category === NFTCategory.EMOTE)
+        ? [Network.MATIC]
+        : [Network.ETHEREUM, Network.MATIC]
       const sources = networks.reduce((acc, curr) => {
         acc[curr] = getChainName(curr === Network.ETHEREUM ? marketplaceChainId : collectionsChainId) || ''
         return acc

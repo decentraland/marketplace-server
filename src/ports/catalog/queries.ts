@@ -147,7 +147,40 @@ export const getCategoryWhere = (filters: CatalogFilters) => {
     : undefined
 }
 
+const WEARABLE_ACCESORIES_CATEGORIES = [
+  WearableCategory.EARRING,
+  WearableCategory.EYEWEAR,
+  WearableCategory.HAT,
+  WearableCategory.HELMET,
+  WearableCategory.MASK,
+  WearableCategory.TIARA,
+  WearableCategory.TOP_HEAD
+]
+
+const WEARABLE_HEAD_CATEGORIES = [
+  WearableCategory.EYEBROWS,
+  WearableCategory.EYES,
+  WearableCategory.FACIAL_HAIR,
+  WearableCategory.HAIR,
+  WearableCategory.MOUTH
+]
+
 export const getWearableCategoryWhere = (filters: CatalogFilters) => {
+  if (filters.isWearableAccessory) {
+    return SQL`metadata_wearable.category IN `.append(
+      SQL`
+          (`
+        .append(WEARABLE_ACCESORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', '))
+        .append(SQL`)`)
+    )
+  } else if (filters.isWearableHead) {
+    return SQL`metadata_wearable.category IN `.append(
+      SQL`
+          (`
+        .append(WEARABLE_HEAD_CATEGORIES.map(itemType => `'${itemType}'`).join(', '))
+        .append(SQL`)`)
+    )
+  }
   return WearableCategory.validate(filters.wearableCategory)
     ? SQL`metadata_wearable.category = '`.append(filters.wearableCategory).append(SQL`'`)
     : undefined
@@ -155,7 +188,7 @@ export const getWearableCategoryWhere = (filters: CatalogFilters) => {
 
 export const getEmoteCategoryWhere = (filters: CatalogFilters) => {
   return EmoteCategory.validate(filters.emoteCategory)
-    ? SQL`metadata_emote.category = '`.append(filters.emoteCategory).append(SQL`'`)
+    ? SQL`metadata_emote.category ILIKE '`.append(filters.emoteCategory).append(SQL`'`)
     : undefined
 }
 
@@ -175,16 +208,26 @@ export const getIsSoldOutWhere = () => {
   return SQL`items.available = 0`
 }
 
-export const getIsOnSaleJoin = (schemaVersion: string, _filters: CatalogFilters) => {
-  return SQL`JOIN `
+export const getIsOnSaleJoin = (schemaVersion: string, filters: CatalogFilters) => {
+  console.log('filters.isOnSale: ', filters.isOnSale)
+  if (filters.network === Network.ETHEREUM) {
+    return SQL` `
+  }
+
+  const join = SQL`
+          LEFT JOIN `
+
+  return join
     .append(schemaVersion)
     .append(
       SQL`.collection_minters_view AS collection_minters ON items.collection = collection_minters.collection_id AND collection_minters.is_store_minter = true `
     )
 }
 
-export const getIsCollectionApprovedJoin = (schemaVersion: string) => {
-  return SQL`
+export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: CatalogFilters) => {
+  return filters.network === Network.ETHEREUM
+    ? SQL` `
+    : SQL`
         JOIN (
           SELECT
             collection_id,
@@ -196,7 +239,7 @@ export const getIsCollectionApprovedJoin = (schemaVersion: string) => {
             ) AS row_num
           FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
           WHERE value = true
-        ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1`)
+        ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1 `)
 }
 
 export const getisWearableHeadAccessoryWhere = () => {
@@ -239,27 +282,42 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 }
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(min_price >= ${filters.minPrice} OR (items.price >= ${filters.minPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(max_price <= ${filters.maxPrice} OR (items.price <= ${filters.maxPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
   return SQL`items.collection = ANY(${filters.contractAddresses})`
 }
 
-export const getOnlyListingsWhere = () => {
-  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
+export const getOnlyListingsWhere = (filters: CatalogFilters) => {
+  return filters.network === Network.ETHEREUM
+    ? SQL`listings_count > 0 `
+    : SQL`(
+                COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) is false
+                OR ((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) = 0)
+              ) AND listings_count > 0`
 }
 
 export const getOnlyMintingWhere = () => {
-  return SQL`items.search_is_store_minter = true AND available > 0`
+  return SQL`(item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
   return SQL`items.id = ANY(${filters.ids})`
+}
+
+export const getIsOnSale = (filters: CatalogFilters) => {
+  return filters.isOnSale
+    ? filters.network === Network.MATIC
+      ? SQL`(((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0) OR listings_count IS NOT NULL)`
+      : SQL`listings_count IS NOT NULL`
+    : filters.network === Network.ETHEREUM
+    ? SQL`listings_count IS NULL`
+    : SQL`listings_count IS NULL AND COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) is false`
 }
 
 export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
@@ -268,66 +326,68 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
     filters.creator?.length ? getCreatorWhere(filters) : undefined,
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
-    filters.isWearableHead ? getisWearableHeadAccessoryWhere() : undefined,
-    filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
-    filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
+    filters.isOnSale !== undefined ? getIsOnSale(filters) : undefined,
+    filters.wearableCategory || filters.isWearableAccessory || filters.isWearableHead ? getWearableCategoryWhere(filters) : undefined,
     filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
     filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
     filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
-    filters.onlyListing ? getOnlyListingsWhere() : undefined,
-    filters.onlyMinting ? getOnlyMintingWhere() : undefined,
+    filters.onlyListing ? getOnlyListingsWhere(filters) : undefined,
+    filters.onlyMinting && filters.network !== Network.ETHEREUM ? getOnlyMintingWhere() : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined
   ].filter(Boolean)
 
-  const result =
-    filters.network !== Network.ETHEREUM && filters.isOnSale
-      ? SQL`WHERE (item_set_minter_event.value = true OR collection_minters.is_store_minter = true) `
-      : SQL``
+  const where = SQL`WHERE `
+
   if (!conditions.length) {
-    return result
-  } else {
-    result.append(SQL` AND `)
+    return SQL` `
   }
+
   conditions.forEach((condition, index) => {
     if (condition) {
-      result.append(condition)
+      where.append(condition)
       if (conditions[index + 1]) {
-        result.append(SQL` AND `)
+        where.append(SQL` AND `)
       }
     }
   })
 
-  return result.append(' ')
+  return where.append(`
+  `)
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
-  return SQL`
+  return filters.network === Network.ETHEREUM
+    ? SQL`nfts_with_orders.min_price::numeric as min_price `
+    : SQL`
           CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
-                  `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice}` : SQL``)
-    .append(`THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+                  `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} ` : SQL` `)
+        .append(`THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
              ELSE nfts_with_orders.min_price 
-          END AS min_price`)
+          END AS min_price 
+        `)
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
-  return SQL`
+  return filters.network === Network.ETHEREUM
+    ? SQL`nfts_with_orders.max_price::numeric as max_price `
+    : SQL`
           CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND item_set_minter_event.value = true
-                  `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice}` : SQL``)
-    .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+                  `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} ` : SQL` `)
+        .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
             ELSE nfts_with_orders.max_price 
-          END AS max_price`)
+          END AS max_price 
+          `)
 }
 
 const getOwnersJoin = (schemaVersion: string) => {
-  return SQL` LEFT JOIN (
-            SELECT item, COUNT(distinct owner) as owners_count FROM `
+  return SQL` LEFT JOIN `
     .append(schemaVersion)
-    .append('.nfts as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id ')
+    .append('.nfts_owners_view AS nfts_with_owners_count ON nfts_with_owners_count.item = items.id ')
 }
 
 const getNFTsJoin = (schemaVersion: string) => {
@@ -337,8 +397,11 @@ const getNFTsJoin = (schemaVersion: string) => {
     .append(SQL`.nfts_view as nfts ON nfts.item = items.id `)
 }
 
-const getLatestMetadataJoin = () => {
-  return SQL`
+const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
+  return filters.network === Network.ETHEREUM
+    ? SQL`
+        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.metadata ` // TODO: This will be fix during next indexation, is a workaround for the current one
+    : SQL`
         LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
 }
 
@@ -357,10 +420,18 @@ const getEventsTableJoins = (schemaVersion: string) => {
     )
 }
 
-const ordersJoin = (schemaVersion: string, _filters: CatalogQueryFilters) => {
-  return SQL`
-    LEFT JOIN `.append(schemaVersion).append(SQL`.nfts_with_orders_view AS nfts_with_orders ON nfts_with_orders.item = items.id
-  `)
+const getOrdersJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  const join = SQL`
+        LEFT JOIN `
+    .append(schemaVersion)
+    .append(SQL`.nfts_with_orders_view AS nfts_with_orders ON nfts_with_orders.item = items.id `)
+  if (filters.minPrice) {
+    join.append(SQL`AND nfts_with_orders.min_price >= ${filters.minPrice} `)
+  }
+  if (filters.maxPrice) {
+    join.append(SQL`AND nfts_with_orders.max_price <= ${filters.maxPrice} `)
+  }
+  return join
 }
 
 const getLatestPriceJoin = (schemaVersion: string) => {
@@ -442,6 +513,23 @@ const getMetadataSelect = (filters: CatalogQueryFilters) => {
   }
 }
 
+const getFirstListedAtField = (filters: CatalogFilters) => {
+  if (filters.network === Network.ETHEREUM) {
+    return SQL`items.created_at as first_listed_at,`
+  }
+  return SQL`
+          CASE
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true THEN collection_minters.timestamp
+            ELSE item_set_minter_event.timestamp
+          END AS first_listed_at,`
+}
+
+const getIsSearchStoreMinter = (filters: CatalogFilters) => {
+  return filters.network === Network.ETHEREUM
+    ? SQL`false as search_is_store_minter,`
+    : SQL`COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) as search_is_store_minter,`
+}
+
 export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
   const query = getCTEs(schemaVersion).append(
     SQL`
@@ -458,7 +546,12 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           items.rarity,
           items.item_type::text,
           COALESCE(latest_prices.price, items.price) AS price,
-          (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) AS available,
+          (items.max_supply - COALESCE(nfts.nfts_count, 0)) AS available,
+          `
+      )
+      .append(getIsSearchStoreMinter(filters))
+      .append(
+        SQL`
           items.creator,
           items.beneficiary,
           items.created_at,
@@ -466,40 +559,42 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           items.reviewed_at,
           items.sold_at,
           ${filters.network} as network,
-          CASE
-            WHEN (items.max_supply::numeric - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true THEN collection_minters.timestamp
-            ELSE item_set_minter_event.timestamp
-          END AS first_listed_at,
-          nfts_with_orders.min_price AS min_listing_price,
-          nfts_with_orders.max_price AS max_listing_price, 
-          COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
-          .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
-          .append(
-            `
-          nfts_with_orders.max_order_created_at as max_order_created_at,`
-          )
-          .append(getMinPriceCase(filters))
-          .append(',')
-          .append(getMaxPriceCase(filters))
-          .append(
-            `
-        FROM `
-          )
-          .append(schemaVersion)
-          .append(
-            `.items AS items 
           `
+          .append(getFirstListedAtField(filters))
+          .append(
+            SQL`
+          nfts_with_orders.min_price::numeric AS min_listing_price,
+          nfts_with_orders.max_price::numeric AS max_listing_price, 
+          COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+              .append(filters.isOnSale === false ? SQL`nfts_with_owners_count.owners_count,` : SQL``)
+              .append(
+                `
+          nfts_with_orders.max_order_created_at as max_order_created_at,
+          `
+              )
+              .append(getMinPriceCase(filters))
+              .append(',')
+              .append(getMaxPriceCase(filters))
+              .append(
+                `
+        FROM `
+              )
+              .append(schemaVersion)
+              .append(
+                `.items AS items 
+          `
+              )
+              .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
+              .append(getNFTsJoin(schemaVersion))
+              .append(getLatestMetadataJoin(filters))
+              .append(getOrdersJoin(schemaVersion, filters))
+              .append(addMetadataJoins(schemaVersion, filters))
+              .append(getLatestPriceJoin(schemaVersion))
+              .append(getIsCollectionApprovedJoin(schemaVersion, filters))
+              .append(getIsOnSaleJoin(schemaVersion, filters))
+              .append(getEventsTableJoins(schemaVersion))
+              .append(getCollectionsQueryWhere(filters))
           )
-          .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
-          .append(getNFTsJoin(schemaVersion))
-          .append(getLatestMetadataJoin())
-          .append(ordersJoin(schemaVersion, filters))
-          .append(addMetadataJoins(schemaVersion, filters))
-          .append(getLatestPriceJoin(schemaVersion))
-          .append(getIsCollectionApprovedJoin(schemaVersion))
-          .append(getIsOnSaleJoin(schemaVersion, filters))
-          .append(getEventsTableJoins(schemaVersion))
-          .append(getCollectionsQueryWhere(filters))
       )
   )
   addQuerySort(query, filters)
