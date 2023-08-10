@@ -223,17 +223,17 @@ export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: Cata
   return filters.network === Network.ETHEREUM
     ? SQL` `
     : SQL`
-        JOIN (
-          SELECT
-            collection_id,
-            value,
-            timestamp,
-            ROW_NUMBER() OVER (
-              PARTITION BY collection_id
-              ORDER BY timestamp DESC
-            ) AS row_num
-          FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
-          WHERE value = true
+          JOIN (
+            SELECT
+              collection_id,
+              value,
+              timestamp,
+              ROW_NUMBER() OVER (
+                PARTITION BY collection_id
+                ORDER BY timestamp DESC
+              ) AS row_num
+            FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
+            WHERE value = true
         ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1 `)
 }
 
