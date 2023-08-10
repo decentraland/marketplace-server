@@ -208,12 +208,7 @@ export const getIsSoldOutWhere = () => {
   return SQL`items.available = 0`
 }
 
-export const getIsOnSaleJoin = (schemaVersion: string, filters: CatalogFilters) => {
-  console.log('filters.isOnSale: ', filters.isOnSale)
-  if (filters.network === Network.ETHEREUM) {
-    return SQL` `
-  }
-
+export const getIsOnSaleJoin = (schemaVersion: string) => {
   const join = SQL`
           LEFT JOIN `
 
@@ -349,7 +344,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
     filters.onlyListing ? getOnlyListingsWhere(filters) : undefined,
-    filters.onlyMinting && filters.network !== Network.ETHEREUM ? getOnlyMintingWhere() : undefined,
+    filters.onlyMinting ? getOnlyMintingWhere() : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined
   ].filter(Boolean)
 
@@ -615,7 +610,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
               .append(getLatestMetadataJoin(filters))
               .append(addMetadataJoins(schemaVersion, filters))
               .append(getIsCollectionApprovedJoin(schemaVersion, filters))
-              .append(getIsOnSaleJoin(schemaVersion, filters))
+              .append(getIsOnSaleJoin(schemaVersion))
               .append(getEventsTableJoins(schemaVersion))
               .append(getCollectionsQueryWhere(filters))
           )
