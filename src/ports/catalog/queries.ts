@@ -52,7 +52,7 @@ export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: Catal
   const query = SQL`SELECT items.id`
     .append(' FROM ')
     .append(schemaVersion)
-    .append('.item AS items WHERE ')
+    .append('.items AS items WHERE ')
     .append(getSearchWhere({ search }))
 
   return query
@@ -201,7 +201,7 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
 }
 
 export const getSearchWhere = (filters: CatalogFilters) => {
-  return SQL`items.search_text ILIKE '%' || ${filters.search} || '%'`
+  return SQL`items.raw_metadata ILIKE '%' || ${filters.search} || '%'`
 }
 
 export const getIsSoldOutWhere = () => {

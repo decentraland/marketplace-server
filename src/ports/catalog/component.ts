@@ -43,14 +43,17 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
       const reducedSchemas = schemas.reduce((acc, curr) => ({ ...acc, ...curr }), {})
 
       if (filters.search) {
+        let searchResullts: CollectionsItemDBResult[] = []
         for (const schema of Object.values(reducedSchemas)) {
-          const filteredItemsById = await client.query<CollectionsItemDBResult>(getItemIdsBySearchTextQuery(schema, filters.search))
-          if (filteredItemsById.rowCount === 0) {
-            // if no items matched the search text, return empty result
-            return { data: [], total: 0 }
-          }
-          filters.ids = [...(filters.ids ?? []), ...filteredItemsById.rows.map(({ id }) => id)]
+          const searchQuery = getItemIdsBySearchTextQuery(schema, filters.search)
+          const filteredItemsById = await client.query<CollectionsItemDBResult>(searchQuery)
+          searchResullts = [...searchResullts, ...filteredItemsById.rows]
         }
+        if (!searchResullts.length) {
+          // if no items matched the search text, return empty result
+          return { data: [], total: 0 }
+        }
+        filters.ids = [...(filters.ids ?? []), ...searchResullts.map(({ id }) => id)]
       }
       const query = getCatalogQuery(reducedSchemas, filters)
       console.log('query: ', query.text)
