@@ -48,8 +48,6 @@ export async function getLatestSchema(database: IPgComponent) {
   return schema
 }
 
-const priceStatement = SQL`COALESCE(latest_prices.price, items.price)`
-
 export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: CatalogQueryFilters['search']) => {
   const query = SQL`SELECT items.id`
     .append(' FROM ')
@@ -285,24 +283,24 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
   return filters.network === Network.ETHEREUM
-    ? priceStatement.append(SQL` >= ${filters.minPrice} `)
+    ? SQL`min_price >= ${filters.minPrice} `
     : SQL`(min_price >= ${filters.minPrice} 
-            OR (`.append(priceStatement).append(SQL` >= ${filters.minPrice} 
+            OR (COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} 
               AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
               AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
             )
-          ) `)
+          ) `
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
   return filters.network === Network.ETHEREUM
     ? SQL`max_price <= ${filters.maxPrice} `
     : SQL`(max_price <= ${filters.maxPrice} 
-            OR (`.append(priceStatement).append(SQL` <= ${filters.maxPrice} 
+            OR (COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} 
                 AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
                 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
               )
-          ) `)
+          ) `
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -375,20 +373,20 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
+  console.log('filters.minPrice: ', filters.minPrice)
   return filters.network === Network.ETHEREUM
     ? SQL`nfts_with_orders.min_price::numeric as min_price `
     : SQL`
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
                   `
+        .append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} ` : SQL` `)
         .append(
-          filters.minPrice ? SQL`AND COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`) >= ${filters.minPrice} `) : SQL` `
-        )
-        .append(
-          SQL`THEN LEAST(COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`), nfts_with_orders.min_price) 
-             ELSE nfts_with_orders.min_price 
+          SQL`
+              THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
+              ELSE nfts_with_orders.min_price 
           END AS min_price 
-        `)
+        `
         )
 }
 
@@ -399,14 +397,13 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
                   `
+        .append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} ` : SQL` `)
         .append(
-          filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`) <= ${filters.maxPrice} `) : SQL` `
-        )
-        .append(
-          SQL`THEN GREATEST(COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`), nfts_with_orders.max_price)
-            ELSE nfts_with_orders.max_price 
+          SQL`
+              THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
+              ELSE nfts_with_orders.max_price 
           END AS max_price 
-          `)
+          `
         )
 }
 
@@ -545,8 +542,9 @@ const getFirstListedAtField = (filters: CatalogFilters) => {
   }
   return SQL`
           CASE
-            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true THEN collection_minters.timestamp
-            ELSE item_set_minter_event.timestamp
+            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true 
+              THEN collection_minters.timestamp
+              ELSE item_set_minter_event.timestamp
           END AS first_listed_at,`
 }
 
