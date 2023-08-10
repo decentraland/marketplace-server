@@ -37,8 +37,8 @@ export async function getLatestSchema(database: IPgComponent) {
         SELECT information.schema_name
         FROM information_schema.schemata as information
         WHERE schema_name LIKE ${SCHEMA_PREFIX} || '%'
-        ORDER BY CAST(SUBSTRING(information.schema_name FROM 'dcl([0-9]+)') AS INTEGER) 
-        desc LIMIT 1
+        ORDER BY CAST(SUBSTRING(information.schema_name FROM 'dcl([0-9]+)') AS INTEGER) desc 
+        LIMIT 1
       `
     const getLatestSchemaResult = await database.query<{ schema_name: string }>(query)
     schema = getLatestSchemaResult.rows[0]?.schema_name
