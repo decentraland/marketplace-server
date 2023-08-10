@@ -48,6 +48,8 @@ export async function getLatestSchema(database: IPgComponent) {
   return schema
 }
 
+const priceStatement = SQL`COALESCE(latest_prices.price, items.price)`
+
 export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: CatalogQueryFilters['search']) => {
   const query = SQL`SELECT items.id`
     .append(' FROM ')
@@ -259,7 +261,7 @@ export const getWearableGenderWhere = (filters: CatalogFilters) => {
   if (genders?.includes(GenderFilterOption.MALE)) {
     parsedGenders.push('BaseMale')
   }
-  return parsedGenders.length ? SQL`items.search_wearable_body_shapes @> (${parsedGenders})` : undefined
+  return parsedGenders.length ? SQL`metadata_wearable.body_shapes @> (${parsedGenders})` : undefined
 }
 
 export const getCreatorWhere = (filters: CatalogFilters) => {
@@ -282,11 +284,25 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 }
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(min_price >= ${filters.minPrice} OR (items.price >= ${filters.minPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
+  return filters.network === Network.ETHEREUM
+    ? priceStatement.append(SQL` >= ${filters.minPrice} `)
+    : SQL`(min_price >= ${filters.minPrice} 
+            OR (`.append(priceStatement).append(SQL` >= ${filters.minPrice} 
+              AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
+              AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+            )
+          ) `)
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
-  return SQL`(max_price <= ${filters.maxPrice} OR (items.price <= ${filters.maxPrice} AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true))) `
+  return filters.network === Network.ETHEREUM
+    ? SQL`max_price <= ${filters.maxPrice} `
+    : SQL`(max_price <= ${filters.maxPrice} 
+            OR (`.append(priceStatement).append(SQL` <= ${filters.maxPrice} 
+                AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
+                AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
+              )
+          ) `)
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -364,11 +380,16 @@ const getMinPriceCase = (filters: CatalogQueryFilters) => {
     : SQL`
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `.append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} ` : SQL` `)
-        .append(`THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
+                  `
+        .append(
+          filters.minPrice ? SQL`AND COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`) >= ${filters.minPrice} `) : SQL` `
+        )
+        .append(
+          SQL`THEN LEAST(COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`), nfts_with_orders.min_price) 
              ELSE nfts_with_orders.min_price 
           END AS min_price 
         `)
+        )
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
@@ -377,20 +398,25 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
     : SQL`
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `.append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} ` : SQL` `)
-        .append(`THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
+                  `
+        .append(
+          filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`) <= ${filters.maxPrice} `) : SQL` `
+        )
+        .append(
+          SQL`THEN GREATEST(COALESCE(latest_prices.price, `.append(priceStatement).append(SQL`), nfts_with_orders.max_price)
             ELSE nfts_with_orders.max_price 
           END AS max_price 
           `)
+        )
 }
 
-const getOwnersJoin = (schemaVersion: string) => {
-  return SQL` LEFT JOIN `
+const getOwnersViewJoin = (schemaVersion: string) => {
+  return SQL`LEFT JOIN `
     .append(schemaVersion)
     .append('.nfts_owners_view AS nfts_with_owners_count ON nfts_with_owners_count.item = items.id ')
 }
 
-const getNFTsJoin = (schemaVersion: string) => {
+const getNFTsViewJoin = (schemaVersion: string) => {
   return SQL`
             LEFT JOIN `
     .append(schemaVersion)
@@ -420,7 +446,7 @@ const getEventsTableJoins = (schemaVersion: string) => {
     )
 }
 
-const getOrdersJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
+const getOrdersViewJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
   const join = SQL`
         LEFT JOIN `
     .append(schemaVersion)
@@ -434,7 +460,7 @@ const getOrdersJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
   return join
 }
 
-const getLatestPriceJoin = (schemaVersion: string) => {
+const getLatestPriceViewJoin = (schemaVersion: string) => {
   return SQL` 
             LEFT JOIN `
     .append(schemaVersion)
@@ -584,12 +610,12 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
                 `.items AS items 
           `
               )
-              .append(filters.isOnSale === false ? getOwnersJoin(schemaVersion) : SQL``)
-              .append(getNFTsJoin(schemaVersion))
+              .append(filters.isOnSale === false ? getOwnersViewJoin(schemaVersion) : SQL``)
+              .append(getNFTsViewJoin(schemaVersion))
+              .append(getOrdersViewJoin(schemaVersion, filters))
+              .append(getLatestPriceViewJoin(schemaVersion))
               .append(getLatestMetadataJoin(filters))
-              .append(getOrdersJoin(schemaVersion, filters))
               .append(addMetadataJoins(schemaVersion, filters))
-              .append(getLatestPriceJoin(schemaVersion))
               .append(getIsCollectionApprovedJoin(schemaVersion, filters))
               .append(getIsOnSaleJoin(schemaVersion, filters))
               .append(getEventsTableJoins(schemaVersion))
