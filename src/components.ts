@@ -6,6 +6,7 @@ import { createPgComponent } from '@well-known-components/pg-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createCatalogComponent } from './ports/catalog/component'
+import { createFavoritesComponent } from './ports/favorites/components'
 import { AppComponents, GlobalContext } from './types'
 
 // Initialize all the components of the app
@@ -21,7 +22,11 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
   const database = await createPgComponent({ config, logs, metrics })
-  const catalog = await createCatalogComponent({ database })
+
+  const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
+  const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
+
+  const catalog = await createCatalogComponent({ database, favoritesComponent })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
@@ -33,6 +38,7 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
     database,
-    catalog
+    catalog,
+    favoritesComponent
   }
 }

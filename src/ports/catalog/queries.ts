@@ -585,7 +585,12 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           nfts_with_orders.min_price::numeric AS min_listing_price,
           nfts_with_orders.max_price::numeric AS max_listing_price, 
           COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
-              .append(filters.isOnSale === false ? SQL`nfts_with_owners_count.owners_count,` : SQL``)
+              .append(
+                filters.isOnSale === false
+                  ? SQL`
+          nfts_with_owners_count.owners_count,`
+                  : SQL``
+              )
               .append(
                 `
           nfts_with_orders.max_order_created_at as max_order_created_at,
