@@ -1,13 +1,16 @@
 import { Item, NFTCategory, Network, getChainName } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
+import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
 import { getCatalogQuery, getItemIdsBySearchTextQuery, getLatestChainSchema } from './queries'
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
-export async function createCatalogComponent(components: Pick<AppComponents, 'database'>): Promise<ICatalogComponent> {
-  const { database } = components
+export async function createCatalogComponent(
+  components: Pick<AppComponents, 'database' | 'favoritesComponent'>
+): Promise<ICatalogComponent> {
+  const { database, favoritesComponent } = components
 
   async function fetch(filters: CatalogOptions) {
     const { network, creator, category } = filters
@@ -63,14 +66,12 @@ export async function createCatalogComponent(components: Pick<AppComponents, 'da
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
 
       // @TODO: add favorites enhancement logic
-      // if (isFavoritesEnabled) {
-      // const picksStats = await favoritesComponent.getPicksStatsOfItems(
-      //   catalogItems.map(({ id }) => id),
-      //   filters.pickedBy
-      // )
+      const picksStats = await favoritesComponent.getPicksStatsOfItems(
+        catalogItems.map(({ id }) => id),
+        filters.pickedBy
+      )
 
-      // catalogItems = enhanceItemsWithPicksStats(catalogItems, picksStats)
-      // }
+      catalogItems = enhanceItemsWithPicksStats(catalogItems, picksStats)
     } catch (e) {
       console.error(e)
       throw new HttpError("Couldn't fetch the catalog with the filters provided", 400)

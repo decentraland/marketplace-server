@@ -2,6 +2,7 @@ import { IPgComponent } from '@well-known-components/pg-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { ICatalogComponent } from './ports/catalog/types'
+import { IFavoritesComponent } from './ports/favorites/types'
 import type { IFetchComponent } from '@well-known-components/http-server'
 import type {
   IConfigComponent,
@@ -24,6 +25,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   database: IPgComponent
   catalog: ICatalogComponent
+  favoritesComponent: IFavoritesComponent
 }
 
 // components used in runtime
@@ -59,3 +61,29 @@ export enum StatusCode {
 }
 
 export type AuthenticatedContext<Path extends string = any> = Context<Path> & authorizationMiddleware.DecentralandSignatureContext
+
+export type PaginatedResponse<T> = {
+  results: T[]
+  total: number
+  page: number
+  pages: number
+  limit: number
+}
+
+export type HTTPErrorResponseBody<T> = {
+  ok: false
+  message: string
+  data?: T
+}
+
+export type HTTPSuccessResponseBody<T> = {
+  ok: true
+  data: T
+}
+
+export type HTTPResponseBody<T> = HTTPErrorResponseBody<T> | HTTPSuccessResponseBody<T>
+
+export type HTTPResponse<T> = {
+  status: StatusCode
+  body: HTTPResponseBody<T>
+}
