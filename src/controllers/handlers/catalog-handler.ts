@@ -22,7 +22,7 @@ export function createCatalogHandler(
     const limit = params.getNumber('first', DEFAULT_PAGE_SIZE)
     const offset = params.getNumber('skip', 0)
     // @TODO: add favorites logic
-    // const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
+    const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
 
     return asJSON(async () => {
       return await catalog.fetch({
@@ -32,7 +32,7 @@ export function createCatalogHandler(
         sortDirection,
         onlyListing,
         onlyMinting,
-        // pickedBy,
+        pickedBy,
         ...getItemsParams(params)
       })
     })
