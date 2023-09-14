@@ -1,8 +1,3 @@
-import { IPgComponent } from '@well-known-components/pg-component'
-import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
-import { metricDeclarations } from './metrics'
-import { ICatalogComponent } from './ports/catalog/types'
-import { IFavoritesComponent } from './ports/favorites/types'
 import type { IFetchComponent } from '@well-known-components/http-server'
 import type {
   IConfigComponent,
@@ -11,6 +6,11 @@ import type {
   IBaseComponent,
   IMetricsComponent
 } from '@well-known-components/interfaces'
+import { IPgComponent } from '@well-known-components/pg-component'
+import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { metricDeclarations } from './metrics'
+import { ICatalogComponent } from './ports/catalog/types'
+import { IFavoritesComponent } from './ports/favorites/types'
 
 export type GlobalContext = {
   components: BaseComponents

@@ -12,7 +12,7 @@
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose"
   },
   "devDependencies": {
-    "@dcl/eslint-config": "^1.1.7",
+    "@dcl/eslint-config": "^1.1.12",
     "@types/node": "^20.2.5",
     "@well-known-components/test-helpers": "^1.5.0",
     "nodemon": "^2.0.22",
