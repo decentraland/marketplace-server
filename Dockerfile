@@ -19,7 +19,7 @@ RUN npm run build
 RUN npm run test
 
 # remove devDependencies, keep only used dependencies
-RUN npm ci --only=production --ignore-scripts
+RUN npm install --only=production --ignore-scripts
 
 ########################## END OF BUILD STAGE ##########################
 
