@@ -214,27 +214,17 @@ export const getIsOnSaleJoin = (schemaVersion: string) => {
 
   return join
     .append(schemaVersion)
-    .append(
-      SQL`.collection_minters_view AS collection_minters ON items.collection = collection_minters.collection_id AND collection_minters.is_store_minter = true `
-    )
+    .append(SQL`.collection_minters_view AS collection_minters ON items.collection = collection_minters.collection_id `)
 }
 
 export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: CatalogFilters) => {
   return filters.network === Network.ETHEREUM
     ? SQL` `
-    : SQL`
-          JOIN (
-            SELECT
-              collection_id,
-              value,
-              timestamp,
-              ROW_NUMBER() OVER (
-                PARTITION BY collection_id
-                ORDER BY timestamp DESC
-              ) AS row_num
-            FROM `.append(schemaVersion).append(SQL`.collection_set_approved_events
-            WHERE value = true
-        ) AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.row_num = 1 `)
+    : SQL`JOIN `
+        .append(schemaVersion)
+        .append(
+          SQL`.collection_set_approved_events_view AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id `
+        )
 }
 
 export const getisWearableHeadAccessoryWhere = () => {
@@ -410,7 +400,7 @@ const getOwnersViewJoin = (schemaVersion: string) => {
 
 const getNFTsViewJoin = (schemaVersion: string) => {
   return SQL`
-            LEFT JOIN `
+          LEFT JOIN `
     .append(schemaVersion)
     .append(SQL`.nfts_view as nfts ON nfts.item = items.id `)
 }
@@ -424,18 +414,9 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 }
 
 const getEventsTableJoins = (schemaVersion: string) => {
-  return SQL`
-        LEFT JOIN (
-          SELECT item_id, value, timestamp,
-            ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY timestamp DESC) AS row_num
-          FROM `
+  return SQL`LEFT JOIN `
     .append(schemaVersion)
-    .append(
-      SQL`.item_minters
-          WHERE minter = ${getCollectionStoreAddress()}
-        ) AS item_set_minter_event ON items.id = item_set_minter_event.item_id AND item_set_minter_event.row_num = 1  
-    `
-    )
+    .append(SQL`.item_set_minter_event_view AS item_set_minter_event ON items.id = item_set_minter_event.item_id `)
 }
 
 const getOrdersViewJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
@@ -454,7 +435,7 @@ const getOrdersViewJoin = (schemaVersion: string, filters: CatalogQueryFilters) 
 
 const getLatestPriceViewJoin = (schemaVersion: string) => {
   return SQL` 
-            LEFT JOIN `
+        LEFT JOIN `
     .append(schemaVersion)
     .append(SQL`.latest_prices_view as latest_prices ON latest_prices.item_id = items.id`)
 }
@@ -539,7 +520,7 @@ const getFirstListedAtField = (filters: CatalogFilters) => {
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true 
               THEN collection_minters.timestamp
-              ELSE item_set_minter_event.timestamp
+              ELSE collection_minters.first_listed_at
           END AS first_listed_at,`
 }
 
@@ -612,10 +593,10 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
               .append(getNFTsViewJoin(schemaVersion))
               .append(getOrdersViewJoin(schemaVersion, filters))
               .append(getLatestPriceViewJoin(schemaVersion))
+              .append(getIsOnSaleJoin(schemaVersion))
               .append(getLatestMetadataJoin(filters))
               .append(addMetadataJoins(schemaVersion, filters))
               .append(getIsCollectionApprovedJoin(schemaVersion, filters))
-              .append(getIsOnSaleJoin(schemaVersion))
               .append(getEventsTableJoins(schemaVersion))
               .append(getCollectionsQueryWhere(filters))
           )
@@ -623,6 +604,8 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
   )
   addQuerySort(query, filters)
   addQueryPagination(query, filters)
+  console.log('query: ', query.text)
+  console.log('query: ', query.values)
   return query
 }
 
