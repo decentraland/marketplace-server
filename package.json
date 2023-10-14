@@ -28,7 +28,7 @@
     "@well-known-components/metrics": "^2.0.1-20220909150423.commit-8f7e5bc",
     "@well-known-components/pg-component": "^0.2.1",
     "decentraland-crypto-middleware": "^1.1.0",
-    "ethers": "^6.6.2",
+    "ethers": "^6.7.1",
     "p-limit": "^3.1.0"
   }
 }
