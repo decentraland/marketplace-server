@@ -11,7 +11,6 @@ import {
   Network,
   WearableCategory
 } from '@dcl/schemas'
-import { getCollectionStoreAddress } from '../../logic/contracts'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
@@ -48,18 +47,41 @@ export async function getLatestSchema(database: IPgComponent) {
   return schema
 }
 
-export const getItemIdsBySearchTextQuery = (schemaVersion: string, search: CatalogQueryFilters['search']) => {
-  const query = SQL`SELECT items.id`
-    .append(' FROM ')
-    .append(schemaVersion)
-    .append('.items AS items WHERE ')
-    .append(getSearchWhere({ search }))
+const getWhereWordsJoin = (category: CatalogQueryFilters['category']) => {
+  if (category === NFTCategory.EMOTE) {
+    return SQL`JOIN LATERAL unnest(string_to_array(metadata_emote.name, ' ')) AS word ON TRUE `
+  } else if (category === NFTCategory.WEARABLE) {
+    return SQL`JOIN LATERAL unnest(string_to_array(metadata_wearable.name, ' ')) AS word ON TRUE `
+  }
+  return SQL` LEFT JOIN LATERAL unnest(string_to_array(metadata_wearable.name, ' ')) AS word_wearable ON TRUE 
+              LEFT JOIN LATERAL unnest(string_to_array(metadata_emote.name, ' ')) AS word_emote ON TRUE 
+  `
+}
+
+export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  const { category, search } = filters
+  const query = getCTEs(schemaVersion).append(
+    SQL`SELECT items.id`
+      .append(' FROM ')
+      .append(schemaVersion)
+      .append('.items AS items ')
+      .append(getLatestMetadataJoin(filters))
+      .append(addMetadataJoins(schemaVersion, { category }))
+      .append(getWhereWordsJoin(category))
+      .append('WHERE ')
+      .append(getSearchWhere(filters))
+      .append(
+        category
+          ? SQL` ORDER BY GREATEST(similarity(word, ${search})) DESC;`
+          : SQL` ORDER BY GREATEST(similarity(word_wearable, ${search}), similarity(word_emote, ${search})) DESC;`
+      )
+  )
 
   return query
 }
 
 export function getOrderBy(filters: CatalogFilters) {
-  const { sortBy, sortDirection, isOnSale } = filters
+  const { sortBy, sortDirection, isOnSale, search, ids } = filters
   const sortByParam = sortBy ?? CatalogSortBy.NEWEST
   const sortDirectionParam = sortDirection ?? CatalogSortDirection.DESC
 
@@ -68,10 +90,16 @@ export function getOrderBy(filters: CatalogFilters) {
     return ''
   }
 
+  if (search && !sortBy && ids?.length) {
+    // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
+    // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
+    return SQL`ORDER BY array_position(${filters.ids}::text[], id) `
+  }
+
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
   switch (sortByParam) {
     case CatalogSortBy.NEWEST:
-      sortByQuery = 'ORDER BY first_listed_at desc NULLS last, id \n'
+      sortByQuery = 'ORDER BY first_listed_at desc NULLS last, id desc \n'
       break
     case CatalogSortBy.MOST_EXPENSIVE:
       sortByQuery = 'ORDER BY max_price desc \n'
@@ -201,7 +229,10 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
 }
 
 export const getSearchWhere = (filters: CatalogFilters) => {
-  return SQL`items.raw_metadata ILIKE '%' || ${filters.search} || '%'`
+  if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
+    return SQL`word % ${filters.search}`
+  }
+  return SQL`word_wearable % ${filters.search} OR word_emote % ${filters.search}`
 }
 
 export const getIsSoldOutWhere = () => {
@@ -223,7 +254,7 @@ export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: Cata
     : SQL`JOIN `
         .append(schemaVersion)
         .append(
-          SQL`.collection_set_approved_events_view AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id `
+          SQL`.collection_set_approved_events_view AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.value = true `
         )
 }
 
@@ -400,7 +431,7 @@ const getOwnersViewJoin = (schemaVersion: string) => {
 
 const getNFTsViewJoin = (schemaVersion: string) => {
   return SQL`
-          LEFT JOIN `
+        LEFT JOIN `
     .append(schemaVersion)
     .append(SQL`.nfts_view as nfts ON nfts.item = items.id `)
 }
@@ -414,7 +445,8 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 }
 
 const getEventsTableJoins = (schemaVersion: string) => {
-  return SQL`LEFT JOIN `
+  return SQL`
+        LEFT JOIN `
     .append(schemaVersion)
     .append(SQL`.item_set_minter_event_view AS item_set_minter_event ON items.id = item_set_minter_event.item_id `)
 }
@@ -519,7 +551,7 @@ const getFirstListedAtField = (filters: CatalogFilters) => {
   return SQL`
           CASE
             WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true 
-              THEN collection_minters.timestamp
+              THEN collection_minters.first_listed_at
               ELSE collection_minters.first_listed_at
           END AS first_listed_at,`
 }
