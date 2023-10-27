@@ -154,8 +154,6 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
   }
-  console.log('unionQuery: ', unionQuery.text)
-  console.log('unionQuery: ', unionQuery.values)
   return unionQuery
 }
 
@@ -389,7 +387,6 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
-  console.log('filters.minPrice: ', filters.minPrice)
   return filters.network === Network.ETHEREUM
     ? SQL`nfts_with_orders.min_price::numeric as min_price `
     : SQL`
@@ -636,8 +633,6 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
   )
   addQuerySort(query, filters)
   addQueryPagination(query, filters)
-  console.log('query: ', query.text)
-  console.log('query: ', query.values)
   return query
 }
 
