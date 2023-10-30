@@ -545,12 +545,7 @@ const getFirstListedAtField = (filters: CatalogFilters) => {
   if (filters.network === Network.ETHEREUM) {
     return SQL`items.created_at as first_listed_at,`
   }
-  return SQL`
-          CASE
-            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND collection_minters.is_store_minter = true 
-              THEN collection_minters.first_listed_at
-              ELSE collection_minters.first_listed_at
-          END AS first_listed_at,`
+  return SQL`collection_minters.first_listed_at first_listed_at,`
 }
 
 const getIsSearchStoreMinter = (filters: CatalogFilters) => {
