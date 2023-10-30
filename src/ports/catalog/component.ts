@@ -25,6 +25,10 @@ export async function createCatalogComponent(
         : (creator && creator.length) || (category && category === NFTCategory.EMOTE)
         ? [Network.MATIC]
         : [Network.ETHEREUM, Network.MATIC]
+
+      if (networks.length === 1) {
+        filters.network = networks[0] // sets the network to the only one in the array so the query can be made for that network
+      }
       const sources = networks.reduce((acc, curr) => {
         acc[curr] = getChainName(curr === Network.ETHEREUM ? marketplaceChainId : collectionsChainId) || ''
         return acc
@@ -46,17 +50,21 @@ export async function createCatalogComponent(
       const reducedSchemas = schemas.reduce((acc, curr) => ({ ...acc, ...curr }), {})
 
       if (filters.search) {
-        let searchResullts: CollectionsItemDBResult[] = []
-        for (const schema of Object.values(reducedSchemas)) {
-          const searchQuery = getItemIdsBySearchTextQuery(schema, filters.search)
-          const filteredItemsById = await client.query<CollectionsItemDBResult>(searchQuery)
-          searchResullts = [...searchResullts, ...filteredItemsById.rows]
+        const filteredItems = []
+        for (const [network, schema] of Object.entries(reducedSchemas)) {
+          const filteredItemsById = await client.query<{
+            id: string
+            similarity: number
+          }>(getItemIdsBySearchTextQuery(schema, { ...filters, network: network as Network }))
+          filteredItems.push(...filteredItemsById.rows)
         }
-        if (!searchResullts.length) {
+        filteredItems?.sort((a, b) => b.similarity - a.similarity)
+        filters.ids = [...(filters.ids ?? []), ...filteredItems.map(({ id }) => id)]
+
+        if (filters.ids?.length === 0) {
           // if no items matched the search text, return empty result
           return { data: [], total: 0 }
         }
-        filters.ids = [...(filters.ids ?? []), ...searchResullts.map(({ id }) => id)]
       }
       const query = getCatalogQuery(reducedSchemas, filters)
       console.log('query: ', query.text)
