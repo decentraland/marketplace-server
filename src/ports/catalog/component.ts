@@ -41,7 +41,6 @@ export async function createCatalogComponent(
         const schemaName = await client.query<{
           entity_schema: string
         }>(query)
-        console.log('schemaName.rows[0]: ', schemaName.rows[0])
         return {
           [network]: schemaName.rows[0].entity_schema
         }
