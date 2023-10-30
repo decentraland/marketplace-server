@@ -1,3 +1,5 @@
+// Since we can't use triggers during the indexing time to avoid throtteling the database, we had to do it after the indexing was done.
+// This is a script that receives the orders that were wrong and the orders that were right and outputs a file with the queries to fix the wrong orders.
 const fs = require('fs')
 const readline = require('readline')
 
@@ -36,8 +38,10 @@ async function main(rightOrdersFileName, wrongOrdersFileName, schema, outputFile
   const queries = []
   Object.entries(wrongOrders).forEach(([id, status]) => {
     const rightEntry = rightOrders[id]
-    if (status !== rightEntry) {
+    if (rightEntry && status !== rightEntry) {
       queries.push(`UPDATE "${schema}"."orders" SET "status" = E'${rightEntry.replace(/"/g, '')}' WHERE "id" = E'${id.replace(/"/g, '')}';`)
+    } else if (!rightEntry) {
+      console.log('id not found in right entries: ', id)
     }
   })
 
@@ -45,8 +49,7 @@ async function main(rightOrdersFileName, wrongOrdersFileName, schema, outputFile
   const queriesString = queries.join('\n')
   fs.writeFileSync(outputFileName, queriesString)
 
-  console.log('length:', queries.length)
   console.log('finished')
 }
 
-main('right_orders_eth.csv', 'wrong_orders_eth.csv', 'dcl19', 'output_queries_eth.sql')
+main('right_orders_dcl32.csv', 'wrong_orders_dcl32.csv', 'dcl32', 'output_queries_dcl32.sql')
