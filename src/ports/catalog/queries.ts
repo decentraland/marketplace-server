@@ -108,7 +108,7 @@ export function getOrderBy(filters: CatalogFilters) {
       sortByQuery = 'ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n'
       break
     case CatalogSortBy.RECENTLY_SOLD:
-      sortByQuery = 'ORDER BY sold_at desc \n'
+      sortByQuery = 'ORDER BY sold_at desc nulls last \n'
       break
     case CatalogSortBy.CHEAPEST:
       sortByQuery = 'ORDER BY min_price asc, first_listed_at desc \n'
@@ -511,6 +511,10 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
   }
 }
 
+const getItemSoldAtJoin = (schemaVersion: string) => {
+  return SQL`LEFT JOIN `.append(schemaVersion).append(SQL`.item_sold_at_view AS item_sold_at_view ON item_sold_at_view.item = items.id `)
+}
+
 const getLatestMetadataCTE = (schemaVersion: string) => {
   return SQL`latest_metadata AS (SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp FROM `.append(
     schemaVersion
@@ -581,7 +585,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           items.created_at,
           items.updated_at,
           items.reviewed_at,
-          items.sold_at,
+          item_sold_at_view.max as sold_at,
           ${filters.network} as network,
           `
           .append(getFirstListedAtField(filters))
@@ -620,6 +624,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
               .append(getIsOnSaleJoin(schemaVersion))
               .append(getLatestMetadataJoin(filters))
               .append(addMetadataJoins(schemaVersion, filters))
+              .append(getItemSoldAtJoin(schemaVersion))
               .append(getIsCollectionApprovedJoin(schemaVersion, filters))
               .append(getEventsTableJoins(schemaVersion))
               .append(getCollectionsQueryWhere(filters))
