@@ -42,7 +42,7 @@ export async function getLatestSchema(database: IPgComponent) {
     const getLatestSchemaResult = await database.query<{ schema_name: string }>(query)
     schema = getLatestSchemaResult.rows[0]?.schema_name
   } catch (error) {
-    console.log('error:', error)
+    console.error('error:', error)
   }
   return schema
 }
@@ -104,9 +104,19 @@ export function getOrderBy(filters: CatalogFilters) {
     case CatalogSortBy.MOST_EXPENSIVE:
       sortByQuery = 'ORDER BY max_price desc \n'
       break
-    case CatalogSortBy.RECENTLY_LISTED:
-      sortByQuery = 'ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n'
+    case CatalogSortBy.RECENTLY_LISTED: {
+      // for ETHEREUM, sort by the items.created_at as the first_listed_at field
+      // for MATIC use collection_minters.first_listed_at
+      //  if NO network is specified, it's asking for the SORT of the multi-network query, so use the first_listed_at that will be defined in each of the networks query
+      const firstListedAtColumn =
+        filters.network === Network.ETHEREUM
+          ? 'items.created_at as first_listed_at'
+          : filters.network === Network.MATIC
+          ? 'collection_minters.first_listed_at'
+          : 'first_listed_at'
+      sortByQuery = SQL`ORDER BY GREATEST(max_order_created_at, `.append(firstListedAtColumn).append(') desc \n')
       break
+    }
     case CatalogSortBy.RECENTLY_SOLD:
       sortByQuery = 'ORDER BY sold_at desc nulls last \n'
       break
