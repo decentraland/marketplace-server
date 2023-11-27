@@ -5,6 +5,7 @@ import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-k
 import { createPgComponent } from '@well-known-components/pg-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
+import { createBalanceComponent } from './ports/balance/component'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createFavoritesComponent } from './ports/favorites/components'
 import { AppComponents, GlobalContext } from './types'
@@ -27,6 +28,8 @@ export async function initComponents(): Promise<AppComponents> {
   const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
 
   const catalog = await createCatalogComponent({ database, favoritesComponent })
+  const COVALENT_API_KEY = await config.requireString('COVALENT_API_KEY')
+  const balances = await createBalanceComponent({ apiKey: COVALENT_API_KEY })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
@@ -39,6 +42,7 @@ export async function initComponents(): Promise<AppComponents> {
     metrics,
     database,
     catalog,
-    favoritesComponent
+    favoritesComponent,
+    balances
   }
 }

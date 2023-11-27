@@ -1,6 +1,7 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { GlobalContext } from '../types'
+import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { pingHandler } from './handlers/ping-handler'
 
@@ -20,6 +21,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     createCatalogHandler(components)
   )
+  router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler(components))
 
   return router
 }
