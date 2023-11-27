@@ -9,6 +9,7 @@ import type {
 import { IPgComponent } from '@well-known-components/pg-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IFavoritesComponent } from './ports/favorites/types'
 
@@ -25,6 +26,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   database: IPgComponent
   catalog: ICatalogComponent
+  balances: IBalanceComponent
   favoritesComponent: IFavoritesComponent
 }
 
