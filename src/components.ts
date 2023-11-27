@@ -28,8 +28,8 @@ export async function initComponents(): Promise<AppComponents> {
   const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
 
   const catalog = await createCatalogComponent({ database, favoritesComponent })
-  const COVALENT_API_KEY = await config.requireString('COVALENT_API_KEY')
-  const balances = await createBalanceComponent({ apiKey: COVALENT_API_KEY })
+  const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
+  const balances = await createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 

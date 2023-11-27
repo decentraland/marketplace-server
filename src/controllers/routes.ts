@@ -21,7 +21,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     createCatalogHandler(components)
   )
-  router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler(components))
+  router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)
 
   return router
 }

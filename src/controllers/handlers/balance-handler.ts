@@ -1,17 +1,38 @@
-import { IHttpServerComponent } from '@well-known-components/interfaces'
-import { asJSON } from '../../logic/http/response'
-import { AppComponents, Context } from '../../types'
+import { HttpError } from '../../logic/http/response'
+import { Balance } from '../../ports/balance/types'
+import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
-export function createBalanceHandler(
-  components: Pick<AppComponents, 'balances'>
-): IHttpServerComponent.IRequestHandler<Context<'/v1/:chainId/address/:wallet/balance'>> {
-  const { balances } = components
+export async function createBalanceHandler(
+  context: Pick<HandlerContextWithPath<'balances', '/v1/:chainId/address/:wallet/balance'>, 'params' | 'components'>
+): Promise<HTTPResponse<Balance[]>> {
+  const {
+    params,
+    components: { balances }
+  } = context
 
-  return async context => {
-    const { wallet, chainId } = context.params
+  try {
+    const { wallet, chainId } = params
 
-    return asJSON(async () => {
-      return await balances.getAddressChainBalance(chainId, wallet)
-    })
+    const response = await balances.getAddressChainBalance(chainId, wallet)
+
+    return {
+      status: StatusCode.OK,
+      body: {
+        ok: true,
+        data: response
+      }
+    }
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return {
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: error.message
+        }
+      }
+    }
+
+    throw error
   }
 }
