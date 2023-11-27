@@ -10,6 +10,12 @@
     {
       "files": ["*.ts"],
       "rules": {
+        "import/no-unresolved": [
+          "error",
+          {
+            "ignore": ["^@covalenthq/client-sdk"]
+          }
+        ],
         "@typescript-eslint/naming-convention": [
           "error",
           { "selector": "enumMember", "format": ["UPPER_CASE"] },
