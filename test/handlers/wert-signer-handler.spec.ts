@@ -24,6 +24,7 @@ describe('when getting the wert singer handler', () => {
         json: jest.fn().mockResolvedValueOnce({
           address: 'userAddress'
         })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any
     })
     it('should return an unauthorized response', async () => {
@@ -55,6 +56,7 @@ describe('when getting the wert singer handler', () => {
         json: jest.fn().mockResolvedValueOnce({
           address: address1
         })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any
       verification = {
         auth: address2,
@@ -89,6 +91,7 @@ describe('when getting the wert singer handler', () => {
         json: jest.fn().mockResolvedValueOnce({
           address: address1
         })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any
       verification = {
         auth: address1,

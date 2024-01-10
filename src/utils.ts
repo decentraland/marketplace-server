@@ -7,7 +7,7 @@ export const MAX_CONCURRENT_REQUEST = 5
 export const MAX_URL_LENGTH = 2048
 
 export async function processRequestError(action: string, response: Response) {
-  let parsedErrorResult: HTTPErrorResponseBody<any> | undefined
+  let parsedErrorResult: HTTPErrorResponseBody<unknown> | undefined
 
   try {
     parsedErrorResult = await response.json()

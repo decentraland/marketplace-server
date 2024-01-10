@@ -65,6 +65,7 @@ export enum StatusCode {
   ERROR = 500
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AuthenticatedContext<Path extends string = any> = Context<Path> & authorizationMiddleware.DecentralandSignatureContext
 
 export type PaginatedResponse<T> = {
