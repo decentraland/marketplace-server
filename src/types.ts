@@ -12,6 +12,7 @@ import { metricDeclarations } from './metrics'
 import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IFavoritesComponent } from './ports/favorites/types'
+import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -27,6 +28,7 @@ export type BaseComponents = {
   database: IPgComponent
   catalog: ICatalogComponent
   balances: IBalanceComponent
+  wertSigner: IWertSignerComponent
   favoritesComponent: IFavoritesComponent
 }
 
@@ -45,7 +47,8 @@ export type TestComponents = BaseComponents & {
 export type HandlerContextWithPath<ComponentNames extends keyof AppComponents, Path extends string> = IHttpServerComponent.PathAwareContext<
   IHttpServerComponent.DefaultContext<{
     components: Pick<AppComponents, ComponentNames>
-  }>,
+  }> &
+    authorizationMiddleware.DecentralandSignatureContext,
   Path
 >
 
