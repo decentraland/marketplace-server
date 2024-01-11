@@ -27,7 +27,7 @@ export function createENS(): IENSComponent {
     const nameYPosition = height / 2 + 20 // Adjust as needed
     ctx.fillText(name, width / 2, nameYPosition)
 
-    ctx.font = '700 18px Inter' // This sets the font weight to 600 and the font size to 40px
+    ctx.font = '700 18px Inter' // This sets the font weight to700 and the font size to 18px
     ctx.fillStyle = '#FCFCFCCC'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
