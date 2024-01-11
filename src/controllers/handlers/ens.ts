@@ -24,11 +24,22 @@ export async function createENSImageGeratorHandler(
     }
   }
 
-  return {
-    status: 200,
-    headers: {
-      'content-type': 'image/png'
-    },
-    body: await ens.generateImage(ensName, width, height)
+  try {
+    return {
+      status: 200,
+      headers: {
+        'content-type': 'image/png'
+      },
+      body: await ens.generateImage(ensName, width, height)
+    }
+  } catch (error) {
+    console.log('error: ', error)
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        message: 'Something went wrong generating the image'
+      }
+    }
   }
 }
