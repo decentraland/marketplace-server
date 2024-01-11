@@ -83,7 +83,7 @@ describe('when getting the wert singer handler', () => {
   })
   describe('and the user address is present in the verification and is the same one from the request body', () => {
     let address1: string
-    let signature
+    let signature: string
     beforeEach(() => {
       address1 = 'address1'
       signature = 'aSignature'
