@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:18-alpine as builderenv
+FROM node:18.18-alpine as builderenv
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN npm install --only=production --ignore-scripts
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:18-alpine
+FROM node:18.18-alpine
 
 RUN apk update
 RUN apk add --no-cache tini libpng jpeg cairo pango giflib
