@@ -11,6 +11,7 @@ import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
+import { IENSComponent } from './ports/ens/types'
 import { IFavoritesComponent } from './ports/favorites/types'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
@@ -29,6 +30,7 @@ export type BaseComponents = {
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
+  ens: IENSComponent
   favoritesComponent: IFavoritesComponent
 }
 
