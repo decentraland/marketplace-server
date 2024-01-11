@@ -105,6 +105,7 @@ describe('when getting the picks stats of some items', () => {
         json: jest.fn().mockResolvedValueOnce({
           ok: false,
           message: error
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }) as any
       } as Response
       fetchMock.mockResolvedValueOnce(fetchResponse)

@@ -11,8 +11,10 @@ export class HttpError extends Error {
 }
 
 export async function asJSON(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handle: () => Promise<any>,
   headers?: HeadersInit,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extraHeaders?: (data: any) => HeadersInit
 ): Promise<IHttpServerComponent.IResponse> {
   try {
@@ -25,6 +27,7 @@ export async function asJSON(
         ...(extraHeaders ? extraHeaders(result) : {})
       }
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     if (error instanceof HttpError) {
       return {

@@ -3,7 +3,9 @@ import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
+import { createENSImageGeratorHandler } from './handlers/ens'
 import { pingHandler } from './handlers/ping-handler'
+import { createWertSignerHandler } from './handlers/wert-signer-handler'
 
 const FIVE_MINUTES = 5 * 60 * 1000
 
@@ -21,6 +23,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     createCatalogHandler(components)
   )
+  router.post(
+    '/v1/wert/sign',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      expiration: FIVE_MINUTES
+    }),
+    createWertSignerHandler
+  )
+  router.get('/v1/ens/generate', createENSImageGeratorHandler)
   router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)
 
   return router

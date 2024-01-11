@@ -7,7 +7,9 @@ import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createBalanceComponent } from './ports/balance/component'
 import { createCatalogComponent } from './ports/catalog/component'
+import { createENS } from './ports/ens/component'
 import { createFavoritesComponent } from './ports/favorites/components'
+import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
 
 // Initialize all the components of the app
@@ -30,6 +32,9 @@ export async function initComponents(): Promise<AppComponents> {
   const catalog = await createCatalogComponent({ database, favoritesComponent })
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const balances = await createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
+  const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
+  const wertSigner = await createWertSigner({ privateKey: WERT_PRIVATE_KEY })
+  const ens = await createENS()
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
@@ -43,6 +48,8 @@ export async function initComponents(): Promise<AppComponents> {
     database,
     catalog,
     favoritesComponent,
-    balances
+    balances,
+    wertSigner,
+    ens
   }
 }
