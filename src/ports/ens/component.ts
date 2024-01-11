@@ -36,7 +36,7 @@ export function createENS(): IENSComponent {
     ctx.fillText('DCL.ETH', width / 2, dclEthYPosition)
 
     // Load and draw the logo
-    const logo = await loadImage(`${__dirname}/../../images/logo_dcl.svg`)
+    const logo = await loadImage('src/images/logo_dcl.svg')
     const logoWidth = 53.602 // LOGO WIDTH
     const logoHeight = 54 // LOGO HEIGHT
     const logoXPosition = width / 2 - logoWidth / 2 // Center the logo
