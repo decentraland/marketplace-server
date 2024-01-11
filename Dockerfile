@@ -6,7 +6,7 @@ WORKDIR /app
 
 # some packages require a build step
 RUN apk update
-RUN apk add --no-cache py3-setuptools python3-dev build-base
+RUN apk add --no-cache py3-setuptools python3-dev build-base pango-dev
 
 # install dependencies
 COPY package.json /app/package.json
