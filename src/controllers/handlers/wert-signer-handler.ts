@@ -12,7 +12,7 @@ export async function createWertSignerHandler(
   const userAddress: string | undefined = verification?.auth.toLowerCase()
   const body: WertMessage = await request.json()
 
-  if (!userAddress || (!!userAddress && userAddress !== body.address)) {
+  if (!userAddress || (!!userAddress && userAddress !== body.address.toLocaleLowerCase())) {
     return {
       status: StatusCode.UNAUTHORIZED,
       body: {
