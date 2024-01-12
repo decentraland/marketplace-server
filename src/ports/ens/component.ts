@@ -10,6 +10,23 @@ export function createENS(): IENSComponent {
     const canvas = createCanvas(width, height)
     const ctx = canvas.getContext('2d')
 
+    const borderRadius = 8
+    // Create a rounded rectangle path
+    ctx.beginPath()
+    ctx.moveTo(borderRadius, 0)
+    ctx.lineTo(width - borderRadius, 0)
+    ctx.quadraticCurveTo(width, 0, width, borderRadius)
+    ctx.lineTo(width, height - borderRadius)
+    ctx.quadraticCurveTo(width, height, width - borderRadius, height)
+    ctx.lineTo(borderRadius, height)
+    ctx.quadraticCurveTo(0, height, 0, height - borderRadius)
+    ctx.lineTo(0, borderRadius)
+    ctx.quadraticCurveTo(0, 0, borderRadius, 0)
+    ctx.closePath()
+
+    // Clip the path so everything drawn afterwards will be within rounded corners
+    ctx.clip()
+
     // Generate gradient based on the name length
     const colors = getGradientColors(name.length)
 
