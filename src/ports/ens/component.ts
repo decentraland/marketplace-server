@@ -19,7 +19,6 @@ export function createENS(): IENSComponent {
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, width, height)
 
-    // Set the font style for the name using the 'Inter' font
     ctx.font = '600 40px Inter' // This sets the font weight to 600 and the font size to 40px
     ctx.fillStyle = '#FCFCFC'
     ctx.textAlign = 'center'
