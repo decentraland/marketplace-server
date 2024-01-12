@@ -6,7 +6,7 @@ WORKDIR /app
 
 # some packages require a build step
 RUN apk update
-RUN apk add --no-cache py3-setuptools python3-dev build-base g++ make py3-pip libpng-dev jpeg-dev pango-dev cairo-dev giflib-dev
+RUN apk add --no-cache py3-setuptools python3-dev build-base g++ make py3-pip libpng-dev jpeg-dev pango-dev cairo-dev giflib-dev librsvg-dev
 
 # install dependencies
 COPY package.json /app/package.json
@@ -26,7 +26,7 @@ RUN npm install --only=production --ignore-scripts
 FROM node:18.18-alpine
 
 RUN apk update
-RUN apk add --no-cache tini libpng jpeg cairo pango giflib
+RUN apk add --no-cache tini libpng jpeg cairo pango giflib librsvg-dev
 
 # NODE_ENV is used to configure some runtime options, like JSON logger
 ENV NODE_ENV production
