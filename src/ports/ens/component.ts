@@ -1,9 +1,11 @@
-import { PNGStream, createCanvas, loadImage } from 'canvas'
+import { PNGStream, createCanvas, loadImage, registerFont } from 'canvas'
 import { IENSComponent } from './types'
 import { getGradientColors } from './utils'
 
 export function createENS(): IENSComponent {
   async function generateImage(name: string, width: number, height: number): Promise<PNGStream> {
+    // register the font first
+    registerFont('src/fonts/Inter/Inter-SemiBold.ttf', { family: 'Inter', weight: '600' })
     // Create a canvas and get the context
     const canvas = createCanvas(width, height)
     const ctx = canvas.getContext('2d')
