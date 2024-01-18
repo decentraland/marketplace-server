@@ -3,7 +3,7 @@ import { IENSComponent } from './types'
 import { getGradientColors } from './utils'
 
 export function createENS(): IENSComponent {
-  async function generateImage(name: string, width: number, height: number): Promise<PNGStream> {
+  async function generateImage(name: string, width: number, height: number, onlyLogo?: boolean): Promise<PNGStream> {
     // register the font first
     registerFont('src/fonts/Inter/Inter-SemiBold.ttf', { family: 'Inter', weight: '600' })
     // Create a canvas and get the context
@@ -11,6 +11,7 @@ export function createENS(): IENSComponent {
     const ctx = canvas.getContext('2d')
 
     const borderRadius = 8
+    let nameYPosition = 0
     // Create a rounded rectangle path
     ctx.beginPath()
     ctx.moveTo(borderRadius, 0)
@@ -36,29 +37,30 @@ export function createENS(): IENSComponent {
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, width, height)
 
-    ctx.font = '600 40px Inter' // This sets the font weight to 600 and the font size to 40px
-    ctx.fillStyle = '#FCFCFC'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
+    if (!onlyLogo) {
+      ctx.font = '600 40px Inter' // This sets the font weight to 600 and the font size to 40px
+      ctx.fillStyle = '#FCFCFC'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
 
-    // Calculate the vertical center for the name
-    const nameYPosition = height / 2 + 20 // Adjust as needed
-    ctx.fillText(name, width / 2, nameYPosition)
+      // Calculate the vertical center for the name
+      nameYPosition = height / 2 + 20 // Adjust as needed
+      ctx.fillText(name, width / 2, nameYPosition)
 
-    ctx.font = '700 18px Inter' // This sets the font weight to700 and the font size to 18px
-    ctx.fillStyle = '#FCFCFCCC'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-
-    const dclEthYPosition = nameYPosition + 45 // Position "DCL.ETH" below the name
-    ctx.fillText('DCL.ETH', width / 2, dclEthYPosition)
+      ctx.font = '700 18px Inter' // This sets the font weight to700 and the font size to 18px
+      ctx.fillStyle = '#FCFCFCCC'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      const dclEthYPosition = nameYPosition + 45 // Position "DCL.ETH" below the name
+      ctx.fillText('DCL.ETH', width / 2, dclEthYPosition)
+    }
 
     // Load and draw the logo
     const logo = await loadImage('src/images/logo_dcl.svg')
-    const logoWidth = 53.602 // LOGO WIDTH
-    const logoHeight = 54 // LOGO HEIGHT
+    const logoWidth = onlyLogo ? width * 0.8 : 53.602 // LOGO WIDTH
+    const logoHeight = onlyLogo ? height * 0.8 : 54 // LOGO HEIGHT
     const logoXPosition = width / 2 - logoWidth / 2 // Center the logo
-    const logoYPosition = nameYPosition - logoHeight - 30 // Adjust space above the name
+    const logoYPosition = onlyLogo ? height / 2 - logoHeight / 2 : nameYPosition - logoHeight - 30 // Adjust space above the name
     ctx.drawImage(logo, logoXPosition, logoYPosition, logoWidth, logoHeight)
 
     return canvas.createPNGStream()

@@ -13,6 +13,7 @@ export async function createENSImageGeratorHandler(
   const ensName = params.getValue<string>('ens')
   const width = params.getNumber('width')
   const height = params.getNumber('height')
+  const onlyLogo = params.getBoolean('onlyLogo')
 
   if (!ensName || !width || !height) {
     return {
@@ -30,7 +31,7 @@ export async function createENSImageGeratorHandler(
       headers: {
         'content-type': 'image/png'
       },
-      body: await ens.generateImage(ensName, width, height)
+      body: await ens.generateImage(ensName, width, height, onlyLogo)
     }
   } catch (error) {
     console.log('error: ', error)
