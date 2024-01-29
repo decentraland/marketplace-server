@@ -38,29 +38,29 @@ export function createENS(): IENSComponent {
     ctx.fillRect(0, 0, width, height)
 
     if (!onlyLogo) {
-      ctx.font = '600 40px Inter' // This sets the font weight to 600 and the font size to 40px
+      ctx.font = '600 24px Inter' // This sets the font weight to 600 and the font size to 40px
       ctx.fillStyle = '#FCFCFC'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
 
       // Calculate the vertical center for the name
-      nameYPosition = height / 2 + 20 // Adjust as needed
+      nameYPosition = height / 2 + 10 // Adjust as needed
       ctx.fillText(name, width / 2, nameYPosition)
 
-      ctx.font = '700 18px Inter' // This sets the font weight to700 and the font size to 18px
+      ctx.font = '700 16px Inter' // This sets the font weight to700 and the font size to 18px
       ctx.fillStyle = '#FCFCFCCC'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      const dclEthYPosition = nameYPosition + 45 // Position "DCL.ETH" below the name
+      const dclEthYPosition = nameYPosition + 30 // Position "DCL.ETH" below the name
       ctx.fillText('DCL.ETH', width / 2, dclEthYPosition)
     }
 
     // Load and draw the logo
     const logo = await loadImage('src/images/logo_dcl.svg')
-    const logoWidth = onlyLogo ? width * 0.8 : 53.602 // LOGO WIDTH
-    const logoHeight = onlyLogo ? height * 0.8 : 54 // LOGO HEIGHT
+    const logoWidth = onlyLogo ? width * 0.8 : 40 // LOGO WIDTH
+    const logoHeight = onlyLogo ? height * 0.8 : 40 // LOGO HEIGHT
     const logoXPosition = width / 2 - logoWidth / 2 // Center the logo
-    const logoYPosition = onlyLogo ? height / 2 - logoHeight / 2 : nameYPosition - logoHeight - 30 // Adjust space above the name
+    const logoYPosition = onlyLogo ? height / 2 - logoHeight / 2 : nameYPosition - logoHeight - 25 // Adjust space above the name
     ctx.drawImage(logo, logoXPosition, logoYPosition, logoWidth, logoHeight)
 
     return canvas.createPNGStream()
