@@ -65,6 +65,8 @@ export async function createCatalogComponent(
         }
       }
       const query = getCatalogQuery(reducedSchemas, filters)
+      console.log('query: ', query.text)
+      console.log('query: ', query.values)
       const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
