@@ -56,7 +56,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, loop, category: emoteCategory } = dbItem.metadata || {}
+      const { name: emoteName, body_shapes, description, loop, category: emoteCategory, hasGeometry, hasSound } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
@@ -64,7 +64,9 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           category: emoteCategory.toLocaleLowerCase() as EmoteCategory, // toLocaleLowerCase used since they were indexed in uppercase.
           bodyShapes: body_shapes as BodyShape[],
           rarity: dbItem.rarity as Rarity,
-          loop: !!loop
+          loop: !!loop,
+          hasGeometry: !!hasGeometry,
+          hasSound: !!hasSound
         }
       }
       break
