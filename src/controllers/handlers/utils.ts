@@ -20,6 +20,8 @@ export const getItemsParams = (params: Params) => {
     emoteCategory: params.getValue<EmoteCategory>('emoteCategory', EmoteCategory),
     emoteGenders: params.getList<GenderFilterOption>('emoteGender', GenderFilterOption),
     emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
+    emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
+    emoteHasSound: params.getBoolean('emoteHasSound'),
     contractAddresses: params.getList('contractAddress'),
     itemId: params.getString('itemId'),
     network: params.getValue<Network>('network', Network),
