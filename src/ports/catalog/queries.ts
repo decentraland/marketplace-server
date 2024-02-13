@@ -236,6 +236,14 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
     : SQL`metadata_emote.loop = ${filters.emotePlayMode === EmotePlayMode.LOOP}`
 }
 
+export const getEmoteHasGeometryWhere = () => {
+  return SQL`metadata_emote.has_geometry = true`
+}
+
+export const getEmoteHasSoundWhere = () => {
+  return SQL`metadata_emote.has_sound = true`
+}
+
 export const getSearchWhere = (filters: CatalogFilters) => {
   if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
     return SQL`word % ${filters.search}`
@@ -369,6 +377,8 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
     filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
     filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
+    filters.emoteHasGeometry ? getEmoteHasGeometryWhere() : undefined,
+    filters.emoteHasSound ? getEmoteHasSoundWhere() : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
@@ -503,7 +513,9 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
             emote.category, 
             emote.body_shapes, 
             emote.name, 
-            emote.loop
+            emote.loop,
+            emote.has_geometry,
+            emote.has_sound
           FROM `
     .append(schemaVersion)
     .append('.emote AS emote JOIN ')
