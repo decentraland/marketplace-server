@@ -1,4 +1,4 @@
-import { WertMessage } from '../../ports/wert-signer/types'
+import { Target, WertMessage } from '../../ports/wert-signer/types'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
 export async function createWertSignerHandler(
@@ -10,9 +10,9 @@ export async function createWertSignerHandler(
     components: { wertSigner }
   } = context
   const userAddress: string | undefined = verification?.auth.toLowerCase()
-  const body: WertMessage = await request.json()
+  const { target, ...wertMessage }: WertMessage & { target?: Target } = await request.json()
 
-  if (!userAddress || (!!userAddress && userAddress !== body.address.toLocaleLowerCase())) {
+  if (!userAddress || (!!userAddress && userAddress !== wertMessage.address.toLocaleLowerCase())) {
     return {
       status: StatusCode.UNAUTHORIZED,
       body: {
@@ -22,7 +22,17 @@ export async function createWertSignerHandler(
     }
   }
 
-  const signature = wertSigner.signMessage(body)
+  if (target && !Object.values(Target).includes(target)) {
+    return {
+      status: StatusCode.BAD_REQUEST,
+      body: {
+        ok: false,
+        message: 'Invalid target'
+      }
+    }
+  }
+
+  const signature = wertSigner.signMessage(wertMessage, target)
   return {
     status: StatusCode.OK,
     body: {

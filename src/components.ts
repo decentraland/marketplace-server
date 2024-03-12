@@ -31,10 +31,11 @@ export async function initComponents(): Promise<AppComponents> {
 
   const catalog = await createCatalogComponent({ database, favoritesComponent })
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
-  const balances = await createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
+  const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
-  const wertSigner = await createWertSigner({ privateKey: WERT_PRIVATE_KEY })
-  const ens = await createENS()
+  const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
+  const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
+  const ens = createENS()
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
