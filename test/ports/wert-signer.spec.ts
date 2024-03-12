@@ -1,6 +1,6 @@
 import { signSmartContractData } from '@wert-io/widget-sc-signer'
 import { createWertSigner } from '../../src/ports/wert-signer/component'
-import { WertMessage } from '../../src/ports/wert-signer/types'
+import { Target, WertMessage } from '../../src/ports/wert-signer/types'
 
 jest.mock('@wert-io/widget-sc-signer')
 
@@ -24,11 +24,32 @@ describe('createWertSigner', () => {
       ;(expectedSignature = 'mySignature'),
         ((signSmartContractData as jest.Mock) = jest.fn().mockReturnValue({ signature: expectedSignature }))
     })
-    it('should sign the message using the private key', () => {
-      const signature = wertSigner.signMessage(wertMessage)
 
-      expect(signSmartContractData).toHaveBeenCalledWith(wertMessage, privateKey)
-      expect(signature).toBe(expectedSignature)
+    describe('when the target is undefined', () => {
+      it('should sign the message using the private key', () => {
+        const signature = wertSigner.signMessage(wertMessage)
+
+        expect(signSmartContractData).toHaveBeenCalledWith(wertMessage, privateKey)
+        expect(signature).toBe(expectedSignature)
+      })
+    })
+
+    describe('when the target is default', () => {
+      it('should sign the message using the private key', () => {
+        const signature = wertSigner.signMessage(wertMessage, Target.DEFAULT)
+
+        expect(signSmartContractData).toHaveBeenCalledWith(wertMessage, privateKey)
+        expect(signature).toBe(expectedSignature)
+      })
+    })
+
+    describe('when the target is publicationFees', () => {
+      it('should sign the message using the publication fees private key', () => {
+        const signature = wertSigner.signMessage(wertMessage, Target.PUBLICATION_FEES)
+
+        expect(signSmartContractData).toHaveBeenCalledWith(wertMessage, publicationFeesPrivateKey)
+        expect(signature).toBe(expectedSignature)
+      })
     })
   })
 })
