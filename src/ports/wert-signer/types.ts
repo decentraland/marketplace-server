@@ -7,6 +7,11 @@ export type WertMessage = {
   sc_input_data: string
 }
 
+export enum Target {
+  DEFAULT = 'default',
+  PUBLICATION_FEES = 'publicationFees'
+}
+
 export type IWertSignerComponent = {
-  signMessage(message: WertMessage): string
+  signMessage(message: WertMessage, target?: Target): string
 }

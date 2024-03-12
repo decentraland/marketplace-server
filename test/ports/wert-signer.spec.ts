@@ -6,7 +6,8 @@ jest.mock('@wert-io/widget-sc-signer')
 
 describe('createWertSigner', () => {
   const privateKey = 'myPrivateKey'
-  const wertSigner = createWertSigner({ privateKey })
+  const publicationFeesPrivateKey = 'myPublicationFeesPrivateKey'
+  const wertSigner = createWertSigner({ privateKey, publicationFeesPrivateKey })
 
   describe('signMessage', () => {
     let wertMessage: WertMessage
