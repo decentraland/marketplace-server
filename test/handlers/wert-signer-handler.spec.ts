@@ -1,7 +1,7 @@
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createWertSignerHandler } from '../../src/controllers/handlers/wert-signer-handler'
-import { AppComponents, HandlerContextWithPath, StatusCode } from '../../src/types'
 import { Target } from '../../src/ports/wert-signer/types'
+import { AppComponents, HandlerContextWithPath, StatusCode } from '../../src/types'
 
 describe('when getting the wert singer handler', () => {
   const wertSignerMock = {
