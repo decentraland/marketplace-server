@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
-    "@dcl/schemas": "^10.2.0",
+    "@dcl/schemas": "^11.4.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
     "@well-known-components/interfaces": "^1.2.0",
