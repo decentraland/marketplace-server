@@ -92,7 +92,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     isOnSale: dbItem.search_is_store_minter && +dbItem.available > 0,
     creator: dbItem.creator,
     data,
-    network: itemNetwork,
+    network: itemNetwork as Network.MATIC | Network.ETHEREUM,
     chainId: itemNetwork === Network.ETHEREUM ? getEthereumChainId() : getPolygonChainId(),
     price: dbItem.price,
     createdAt: Number(dbItem.created_at),
