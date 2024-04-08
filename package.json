@@ -3,6 +3,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
+    "migrate": "node-pg-migrate --database-url-var PG_COMPONENT_PSQL_CONNECTION_STRING --envPath .env -j ts --tsconfig tsconfig.json -m ./src/migrations",
     "lint": "eslint -c .eslintrc.json {src/**/*.ts,test/**/*.ts}",
     "start:watch": "nodemon src/index.ts",
     "check:code": "eslint -c .eslintrc.json {src,test}",
@@ -14,6 +15,7 @@
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.12",
     "@types/node": "^20.2.5",
+    "@types/uuid": "^9.0.8",
     "@well-known-components/test-helpers": "^1.5.0",
     "nodemon": "^2.0.22",
     "ts-node": "^10.9.1",
@@ -22,6 +24,7 @@
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
     "@dcl/schemas": "^10.2.0",
+    "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
     "@well-known-components/interfaces": "^1.2.0",
@@ -32,6 +35,7 @@
     "canvas": "^2.11.2",
     "decentraland-crypto-middleware": "^1.1.0",
     "ethers": "^6.6.2",
-    "p-limit": "^3.1.0"
+    "p-limit": "^3.1.0",
+    "uuid": "^9.0.1"
   }
 }
