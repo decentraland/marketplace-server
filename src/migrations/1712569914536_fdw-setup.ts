@@ -16,7 +16,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
             FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (host '${builderServerDBHost}', port '${builderServerDBPort}', dbname 'builder');
     `)
-  pgm.sql(`CREATE USER MAPPING FOR rootuser 
+  pgm.sql(`CREATE USER MAPPING FOR dappssubstreamsuser
             SERVER builder_server
             OPTIONS (user '${builderServerDBUser}', password '${builderServerDBPassword}');`)
 
