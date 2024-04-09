@@ -5,6 +5,7 @@ export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const marketplaceServerDBUser = await config.requireString('PG_COMPONENT_PSQL_USER')
   const builderServerDBHost = await config.requireString('PG_COMPONENT_PSQL_HOST')
   const builderServerDBPort = await config.requireString('PG_COMPONENT_PSQL_PORT')
   const builderServerDBUser = await config.requireString('BUILDER_SERVER_DB_USER')
@@ -16,7 +17,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
             FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (host '${builderServerDBHost}', port '${builderServerDBPort}', dbname 'builder');
     `)
-  pgm.sql(`CREATE USER MAPPING FOR dappssubstreamsuser
+  pgm.sql(`CREATE USER MAPPING FOR ${marketplaceServerDBUser}
             SERVER builder_server
             OPTIONS (user '${builderServerDBUser}', password '${builderServerDBPassword}');`)
 
