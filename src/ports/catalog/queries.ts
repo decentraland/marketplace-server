@@ -53,13 +53,13 @@ const getWhereWordsJoin = () => {
       (
         SELECT unnest(string_to_array(metadata.name, ' ')) AS text
       UNION 
-        SELECT tag AS text FROM builder_items_gloves WHERE builder_items_gloves.item_id = items.id::text
+        SELECT tag AS text FROM builder_server_items WHERE builder_server_items.item_id = items.id::text
       ) AS word ON TRUE 
   `
 }
 
 const getBuilderServerTagsJoin = () => {
-  return SQL`LEFT JOIN builder_items_gloves ON builder_items_gloves.item_id = items.id::text `
+  return SQL`LEFT JOIN builder_server_items ON builder_server_items.item_id = items.id::text `
 }
 
 export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
@@ -68,7 +68,7 @@ export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: Cata
     SQL`SELECT 
         items.id, 
         items.raw_metadata,
-        builder_items_gloves.item_id,
+        builder_server_items.item_id,
         word.text AS word,
         similarity(word.text, ${search}) AS word_similarity
       `
@@ -588,7 +588,7 @@ const getCTEs = (schemaVersion: string) => {
 
 const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
   return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion)).append(
-    SQL`, builder_items_gloves AS (
+    SQL`, builder_server_items AS (
       SELECT 
         builder_server_collections.contract_address || '-' || builder_server_items.blockchain_item_id AS item_id,
         builder_server_items.data as data,
