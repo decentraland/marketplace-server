@@ -24,6 +24,19 @@ export async function initComponents(): Promise<AppComponents> {
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
+
+  const dbData = [
+    config.getString('PG_COMPONENT_PSQL_CONNECTION_STRING'),
+    config.getNumber('PG_COMPONENT_PSQL_PORT'),
+    config.getString('PG_COMPONENT_PSQL_HOST'),
+    config.getString('PG_COMPONENT_PSQL_DATABASE'),
+    config.getString('PG_COMPONENT_PSQL_USER'),
+    config.getString('PG_COMPONENT_PSQL_PASSWORD'),
+    config.getNumber('PG_COMPONENT_IDLE_TIMEOUT'),
+    config.getNumber('PG_COMPONENT_QUERY_TIMEOUT'),
+    config.getNumber('BUILDER_SERVER_DB_HOST')
+  ]
+  console.log('dbData: ', dbData)
   const database = await createPgComponent({ config, logs, metrics })
 
   const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
