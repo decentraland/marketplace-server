@@ -1,5 +1,4 @@
 import { Analytics } from '@segment/analytics-node'
-import { v4 as uuidv4 } from 'uuid'
 import { Item, NFTCategory, Network, getChainName } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
@@ -65,11 +64,10 @@ export async function createCatalogComponent(
         }
         const trackingData = {
           event: 'Catalog Search',
-          anonymousId: uuidv4(),
+          anonymousId: anonId,
           properties: {
             search: filters.search,
             searchId,
-            anonId,
             results: filteredItems.map(match => ({
               item_id: match.id,
               match: match.word,
