@@ -15,7 +15,6 @@
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.12",
     "@types/node": "^20.2.5",
-    "@types/uuid": "^9.0.8",
     "@well-known-components/test-helpers": "^1.5.0",
     "nodemon": "^2.0.22",
     "ts-node": "^10.9.1",
@@ -35,7 +34,6 @@
     "canvas": "^2.11.2",
     "decentraland-crypto-middleware": "^1.1.0",
     "ethers": "^6.6.2",
-    "p-limit": "^3.1.0",
-    "uuid": "^9.0.1"
+    "p-limit": "^3.1.0"
   }
 }
