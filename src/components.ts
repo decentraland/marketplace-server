@@ -29,7 +29,8 @@ export async function initComponents(): Promise<AppComponents> {
   const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
   const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
 
-  const catalog = await createCatalogComponent({ database, favoritesComponent })
+  const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
+  const catalog = await createCatalogComponent({ database, favoritesComponent }, SEGMENT_WRITE_KEY)
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')

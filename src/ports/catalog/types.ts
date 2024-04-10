@@ -50,5 +50,5 @@ export type CatalogQueryFilters = Omit<CatalogFilters, 'sortBy' | 'sortDirection
 export type CatalogOptions = CatalogFilters & { pickedBy?: string }
 
 export interface ICatalogComponent {
-  fetch(filters: CatalogOptions): Promise<{ data: Item[]; total: number }>
+  fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }): Promise<{ data: Item[]; total: number }>
 }

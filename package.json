@@ -3,6 +3,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
+    "migrate": "node-pg-migrate --database-url-var PG_COMPONENT_PSQL_CONNECTION_STRING --envPath .env -j ts --tsconfig tsconfig.json -m ./src/migrations",
     "lint": "eslint -c .eslintrc.json {src/**/*.ts,test/**/*.ts}",
     "start:watch": "nodemon src/index.ts",
     "check:code": "eslint -c .eslintrc.json {src,test}",
@@ -22,6 +23,7 @@
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
     "@dcl/schemas": "^11.4.0",
+    "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
     "@well-known-components/interfaces": "^1.2.0",

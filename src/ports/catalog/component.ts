@@ -1,3 +1,4 @@
+import { Analytics } from '@segment/analytics-node'
 import { Item, NFTCategory, Network, getChainName } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
@@ -8,11 +9,12 @@ import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './ty
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
 export async function createCatalogComponent(
-  components: Pick<AppComponents, 'database' | 'favoritesComponent'>
+  components: Pick<AppComponents, 'database' | 'favoritesComponent'>,
+  segmentWriteKey: string
 ): Promise<ICatalogComponent> {
   const { database, favoritesComponent } = components
 
-  async function fetch(filters: CatalogOptions) {
+  async function fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }) {
     const { network, creator, category } = filters
     const marketplaceChainId = getEthereumChainId()
     const collectionsChainId = getPolygonChainId()
@@ -49,14 +51,32 @@ export async function createCatalogComponent(
 
       if (filters.search) {
         const filteredItems = []
+        const analytics = new Analytics({ writeKey: segmentWriteKey })
         for (const [network, schema] of Object.entries(reducedSchemas)) {
+          const searchQuery = getItemIdsBySearchTextQuery(schema, { ...filters, network: network as Network })
           const filteredItemsById = await client.query<{
             id: string
-            similarity: number
-          }>(getItemIdsBySearchTextQuery(schema, { ...filters, network: network as Network }))
+            item_id: string
+            word: string
+            word_similarity: number
+          }>(searchQuery)
           filteredItems.push(...filteredItemsById.rows)
         }
-        filteredItems?.sort((a, b) => b.similarity - a.similarity)
+        const trackingData = {
+          event: 'Catalog Search',
+          anonymousId: anonId,
+          properties: {
+            search: filters.search,
+            searchId,
+            results: filteredItems.map(match => ({
+              item_id: match.id,
+              match: match.word,
+              matchBy: match.item_id ? 'tag' : 'name',
+              similarity: match.word_similarity
+            }))
+          }
+        }
+        analytics.track(trackingData)
         filters.ids = [...(filters.ids ?? []), ...filteredItems.map(({ id }) => id)]
 
         if (filters.ids?.length === 0) {

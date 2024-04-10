@@ -14,6 +14,9 @@ export function createCatalogHandler(
 
   return async context => {
     const params = new Params(context.url.searchParams)
+    const annonId = context.request.headers.get('X-Anonymous-Id')
+    const searchId = context.request.headers.get('X-Search-Uuid')
+
     const onlyListing = params.getBoolean('onlyListing')
     const onlyMinting = params.getBoolean('onlyMinting')
     const sortBy = params.getValue<CatalogSortBy>('sortBy', CatalogSortBy) || CatalogSortBy.CHEAPEST
@@ -25,16 +28,19 @@ export function createCatalogHandler(
     const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
 
     return asJSON(async () => {
-      return await catalog.fetch({
-        limit,
-        offset,
-        sortBy,
-        sortDirection,
-        onlyListing,
-        onlyMinting,
-        pickedBy,
-        ...getItemsParams(params)
-      })
+      return await catalog.fetch(
+        {
+          limit,
+          offset,
+          sortBy,
+          sortDirection,
+          onlyListing,
+          onlyMinting,
+          pickedBy,
+          ...getItemsParams(params)
+        },
+        { searchId: searchId || '', anonId: annonId || '' }
+      )
     })
   }
 }

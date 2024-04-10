@@ -47,34 +47,65 @@ export async function getLatestSchema(database: IPgComponent) {
   return schema
 }
 
-const getWhereWordsJoin = (category: CatalogQueryFilters['category']) => {
-  if (category === NFTCategory.EMOTE) {
-    return SQL`JOIN LATERAL unnest(string_to_array(metadata_emote.name, ' ')) AS word ON TRUE `
-  } else if (category === NFTCategory.WEARABLE) {
-    return SQL`JOIN LATERAL unnest(string_to_array(metadata_wearable.name, ' ')) AS word ON TRUE `
-  }
-  return SQL` LEFT JOIN LATERAL unnest(string_to_array(metadata_wearable.name, ' ')) AS word_wearable ON TRUE 
-              LEFT JOIN LATERAL unnest(string_to_array(metadata_emote.name, ' ')) AS word_emote ON TRUE 
+const getWhereWordsJoin = () => {
+  return SQL`
+      JOIN LATERAL 
+      (
+        SELECT unnest(string_to_array(metadata.name, ' ')) AS text
+      UNION 
+        SELECT tag AS text FROM builder_server_items WHERE builder_server_items.item_id = items.id::text
+      ) AS word ON TRUE 
   `
 }
 
+const getBuilderServerTagsJoin = () => {
+  return SQL`LEFT JOIN builder_server_items ON builder_server_items.item_id = items.id::text `
+}
+
 export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const { category, search } = filters
-  const query = getCTEs(schemaVersion).append(
-    SQL`SELECT items.id`
+  const { search } = filters
+  const query = getSearchCTEs(schemaVersion, filters).append(
+    SQL`SELECT 
+        items.id, 
+        items.raw_metadata,
+        builder_server_items.item_id,
+        word.text AS word,
+        similarity(word.text, ${search}) AS word_similarity
+      `
       .append(' FROM ')
       .append(schemaVersion)
-      .append('.items AS items ')
+      .append(
+        `.items AS items 
+        `
+      )
       .append(getLatestMetadataJoin(filters))
-      .append(addMetadataJoins(schemaVersion, { category }))
-      .append(getWhereWordsJoin(category))
+      .append(
+        SQL`
+          LEFT JOIN (
+            SELECT 
+                metadata.id, 
+                COALESCE(wearable.name, emote.name) AS name
+            FROM 
+                `
+          .append(schemaVersion)
+          .append(
+            SQL`.metadata AS metadata 
+                LEFT JOIN `
+              .append(schemaVersion)
+              .append(
+                SQL`.wearable AS wearable ON metadata.wearable = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
+                LEFT JOIN `.append(schemaVersion)
+                  .append(SQL`.emote AS emote ON metadata.emote = emote.id AND metadata.item_type = 'emote_v1'
+        ) AS metadata ON metadata.id = latest_metadata.id
+      `)
+              )
+          )
+      )
+      .append(getWhereWordsJoin())
+      .append(getBuilderServerTagsJoin())
       .append('WHERE ')
       .append(getSearchWhere(filters))
-      .append(
-        category
-          ? SQL` ORDER BY GREATEST(similarity(word, ${search})) DESC;`
-          : SQL` ORDER BY GREATEST(similarity(word_wearable, ${search}), similarity(word_emote, ${search})) DESC;`
-      )
+      .append(' ORDER BY word_similarity DESC')
   )
 
   return query
@@ -245,10 +276,7 @@ export const getEmoteHasSoundWhere = (filters: CatalogFilters) => {
 }
 
 export const getSearchWhere = (filters: CatalogFilters) => {
-  if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
-    return SQL`word % ${filters.search}`
-  }
-  return SQL`word_wearable % ${filters.search} OR word_emote % ${filters.search}`
+  return SQL`word.text % ${filters.search}`
 }
 
 export const getIsSoldOutWhere = () => {
@@ -546,14 +574,34 @@ const getItemSoldAtJoin = (schemaVersion: string) => {
 }
 
 const getLatestMetadataCTE = (schemaVersion: string) => {
-  return SQL`latest_metadata AS (SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp FROM `.append(
-    schemaVersion
-  ).append(SQL`.metadata ORDER BY item_id, timestamp DESC)
+  return SQL`latest_metadata AS (
+        SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp 
+        FROM `.append(schemaVersion).append(SQL`.metadata 
+        ORDER BY item_id, timestamp DESC
+      )
     `)
 }
 
 const getCTEs = (schemaVersion: string) => {
   return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion))
+}
+
+const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion)).append(
+    SQL`, builder_server_items AS (
+      SELECT 
+        builder_server_collections.contract_address || '-' || builder_server_items.blockchain_item_id AS item_id,
+        builder_server_items.data as data,
+        tag
+      FROM 
+        builder_server_items
+      JOIN 
+        builder_server_collections ON builder_server_items.collection_id = builder_server_collections.id,
+      LATERAL jsonb_array_elements_text(builder_server_items.data::jsonb->'tags') AS tag
+        WHERE tag = ${filters.search}::text
+      )
+  `
+  )
 }
 
 const getMetadataSelect = (filters: CatalogQueryFilters) => {
