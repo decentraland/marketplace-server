@@ -38,9 +38,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
+  const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const marketplaceServerDBUser = await config.requireString('PG_COMPONENT_PSQL_USER')
   pgm.sql('DROP FOREIGN TABLE builder_server_items;')
   pgm.sql('DROP FOREIGN TABLE builder_server_collections;')
-  pgm.sql('DROP USER MAPPING FOR rootuser SERVER builder_server;')
+  pgm.sql(`DROP USER MAPPING FOR ${marketplaceServerDBUser} SERVER builder_server;`)
   pgm.sql('DROP SERVER builder_server CASCADE;')
   pgm.sql('DROP EXTENSION IF EXISTS postgres_fdw;')
 }
