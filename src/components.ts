@@ -1,3 +1,4 @@
+import path from 'path'
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
@@ -15,6 +16,7 @@ import { AppComponents, GlobalContext } from './types'
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  let databaseUrl: string | undefined = await config.getString('PG_COMPONENT_PSQL_CONNECTION_STRING')
   const cors = {
     origin: await config.requireString('CORS_ORIGIN'),
     methods: await config.requireString('CORS_METHODS')
@@ -25,19 +27,31 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
 
-  const dbData = await Promise.all([
-    config.getString('PG_COMPONENT_PSQL_CONNECTION_STRING'),
-    config.getNumber('PG_COMPONENT_PSQL_PORT'),
-    config.getString('PG_COMPONENT_PSQL_HOST'),
-    config.getString('PG_COMPONENT_PSQL_DATABASE'),
-    config.getString('PG_COMPONENT_PSQL_USER'),
-    config.getString('PG_COMPONENT_PSQL_PASSWORD'),
-    config.getNumber('PG_COMPONENT_IDLE_TIMEOUT'),
-    config.getNumber('PG_COMPONENT_QUERY_TIMEOUT'),
-    config.getString('BUILDER_SERVER_DB_HOST')
-  ])
-  console.log('dbData: ', dbData)
-  const database = await createPgComponent({ config, logs, metrics })
+  if (!databaseUrl) {
+    const dbUser = await config.requireString('PG_COMPONENT_PSQL_USER')
+    const dbDatabaseName = await config.requireString('PG_COMPONENT_PSQL_DATABASE')
+    const dbPort = await config.requireString('PG_COMPONENT_PSQL_PORT')
+    const dbHost = await config.requireString('PG_COMPONENT_PSQL_HOST')
+    const dbPassword = await config.requireString('PG_COMPONENT_PSQL_PASSWORD')
+
+    databaseUrl = `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
+  }
+
+  const schema = await config.requireString('PG_COMPONENT_PSQL_SCHEMA')
+
+  const database = await createPgComponent(
+    { config, logs, metrics },
+    {
+      migration: {
+        databaseUrl,
+        schema,
+        dir: path.resolve(__dirname, 'migrations'),
+        migrationsTable: 'pgmigrations',
+        ignorePattern: '.*\\.map',
+        direction: 'up'
+      }
+    }
+  )
 
   const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
   const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
