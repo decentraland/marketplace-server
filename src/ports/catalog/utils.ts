@@ -1,4 +1,4 @@
-import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory } from '@dcl/schemas'
+import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { CollectionsItemDBResult } from './types'
 
@@ -11,6 +11,13 @@ export enum FragmentItemType {
 
 // The thumbnail urls indexed are wrong, so we need to fix them by appending the blockchainId to the URN in the middle
 function fixThumbnail(thumbnail: string, blockchainId: string) {
+  // temporary fix on the thumbnail url to use the correct domain, this should be removed once the testnet thumbnail urls are fixed
+  const polygonChain = getPolygonChainId()
+  const ethereumChain = getEthereumChainId()
+  if (polygonChain === ChainId.MATIC_MUMBAI || ethereumChain === ChainId.ETHEREUM_SEPOLIA) {
+    thumbnail = thumbnail.replace('.org', '.zone')
+  }
+
   let fixedUrl = thumbnail.replace('polygon', 'matic').replace('mainnet', 'ethereum')
 
   if (fixedUrl.includes('ethereum')) {
