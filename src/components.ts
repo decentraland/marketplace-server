@@ -35,6 +35,7 @@ export async function initComponents(): Promise<AppComponents> {
     const dbPassword = await config.requireString('PG_COMPONENT_PSQL_PASSWORD')
 
     databaseUrl = `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
+    console.log('databaseUrl: ', databaseUrl)
   }
 
   const schema = await config.requireString('PG_COMPONENT_PSQL_SCHEMA')
