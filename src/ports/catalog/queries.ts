@@ -598,7 +598,7 @@ const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
       JOIN 
         builder_server_collections ON builder_server_items.collection_id = builder_server_collections.id,
       LATERAL jsonb_array_elements_text(builder_server_items.data::jsonb->'tags') AS tag
-        WHERE tag = ${filters.search}::text
+        WHERE LOWER(tag) = LOWER(${filters.search}::text)
       )
   `
   )
