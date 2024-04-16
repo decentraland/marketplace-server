@@ -13,15 +13,15 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
   pgm.sql('CREATE EXTENSION IF NOT EXISTS postgres_fdw;')
   pgm.sql(`
-            CREATE SERVER builder_server
+            CREATE SERVER IF NOT EXISTS builder_server
             FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (host '${builderServerDBHost}', port '${builderServerDBPort}', dbname 'builder');
     `)
-  pgm.sql(`CREATE USER MAPPING FOR ${marketplaceServerDBUser}
+  pgm.sql(`CREATE USER MAPPING IF NOT EXISTS FOR ${marketplaceServerDBUser}
             SERVER builder_server
             OPTIONS (user '${builderServerDBUser}', password '${builderServerDBPassword}');`)
 
-  pgm.sql(`CREATE FOREIGN TABLE builder_server_items (
+  pgm.sql(`CREATE FOREIGN TABLE IF NOT EXISTS builder_server_items (
                 collection_id uuid,
                 blockchain_item_id text,
                 data text
@@ -29,7 +29,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
             SERVER builder_server
             OPTIONS (schema_name 'public', table_name 'items');
             
-            CREATE FOREIGN TABLE builder_server_collections (
+            CREATE FOREIGN TABLE IF NOT EXISTS builder_server_collections (
                 id uuid,
                 contract_address text
             )
