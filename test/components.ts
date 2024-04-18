@@ -68,12 +68,11 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const ens = createENS()
-  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), 5 * 60 * 1000, {
-    startupDelay: 0
-  })
-
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(database, 'start').mockResolvedValue(undefined)
+  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), 5 * 60 * 1000, {
+    startupDelay: 30
+  })
 
   return {
     config,
