@@ -13,6 +13,7 @@ import { createBalanceComponent } from '../src/ports/balance/component'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createENS } from '../src/ports/ens/component'
 import { createFavoritesComponent } from '../src/ports/favorites/components'
+import { createJobComponent } from '../src/ports/job'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -67,6 +68,9 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const ens = createENS()
+  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), 5 * 60 * 1000, {
+    startupDelay: 0
+  })
 
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(database, 'start').mockResolvedValue(undefined)
@@ -83,7 +87,8 @@ async function initComponents(): Promise<TestComponents> {
     favoritesComponent,
     balances,
     wertSigner,
-    ens
+    ens,
+    updateBuilderServerItemsViewJob
   }
 }
 

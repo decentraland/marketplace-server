@@ -10,8 +10,12 @@ import { createBalanceComponent } from './ports/balance/component'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createENS } from './ports/ens/component'
 import { createFavoritesComponent } from './ports/favorites/components'
+import { createJobComponent } from './ports/job'
 import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
+
+const thirtySeconds = 30 * 1000
+const fiveMinutes = 5 * 60 * 1000
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -26,6 +30,9 @@ export async function initComponents(): Promise<AppComponents> {
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
+  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), fiveMinutes, {
+    startupDelay: thirtySeconds
+  })
 
   if (!databaseUrl) {
     const dbUser = await config.requireString('PG_COMPONENT_PSQL_USER')
@@ -82,6 +89,7 @@ export async function initComponents(): Promise<AppComponents> {
     favoritesComponent,
     balances,
     wertSigner,
-    ens
+    ens,
+    updateBuilderServerItemsViewJob
   }
 }

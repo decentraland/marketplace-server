@@ -51,4 +51,5 @@ export type CatalogOptions = CatalogFilters & { pickedBy?: string }
 
 export interface ICatalogComponent {
   fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }): Promise<{ data: Item[]; total: number }>
+  updateBuilderServerItemsView(): Promise<void>
 }

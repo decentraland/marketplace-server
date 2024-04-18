@@ -13,6 +13,7 @@ import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IENSComponent } from './ports/ens/types'
 import { IFavoritesComponent } from './ports/favorites/types'
+import { IJobComponent } from './ports/job'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -32,6 +33,7 @@ export type BaseComponents = {
   wertSigner: IWertSignerComponent
   ens: IENSComponent
   favoritesComponent: IFavoritesComponent
+  updateBuilderServerItemsViewJob: IJobComponent
 }
 
 // components used in runtime
