@@ -70,6 +70,7 @@ async function initComponents(): Promise<TestComponents> {
   const ens = createENS()
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(database, 'start').mockResolvedValue(undefined)
+  jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), 5 * 60 * 1000, {
     startupDelay: 30
   })
