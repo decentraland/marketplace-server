@@ -106,7 +106,22 @@ export async function createCatalogComponent(
     return { data: catalogItems, total: +total }
   }
 
+  async function updateBuilderServerItemsView() {
+    const client = await database.getPool().connect()
+    try {
+      const query = `
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_builder_server_items;
+      `
+      await client.query(query)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      client.release()
+    }
+  }
+
   return {
-    fetch
+    fetch,
+    updateBuilderServerItemsView
   }
 }

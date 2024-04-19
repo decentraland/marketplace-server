@@ -1,6 +1,9 @@
 import { test } from '../components'
 
 test('integration sanity tests using a real server backend', function ({ components, spyComponents }) {
+  beforeEach(() => {
+    jest.spyOn(components.catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
+  })
   it('responds /ping', async () => {
     const { localFetch } = components
 

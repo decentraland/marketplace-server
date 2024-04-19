@@ -590,16 +590,13 @@ const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
   return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion)).append(
     SQL`, builder_server_items AS (
       SELECT 
-        builder_server_collections.contract_address || '-' || builder_server_items.blockchain_item_id AS item_id,
-        builder_server_items.data as data,
-        tag
-      FROM 
-        builder_server_items
-      JOIN 
-        builder_server_collections ON builder_server_items.collection_id = builder_server_collections.id,
-      LATERAL jsonb_array_elements_text(builder_server_items.data::jsonb->'tags') AS tag
-        WHERE LOWER(tag) = LOWER(${filters.search}::text)
-      )
+      item_id,
+      tag
+    FROM 
+      mv_builder_server_items
+    WHERE 
+      LOWER(tag) = LOWER(${filters.search})
+    )
   `
   )
 }
