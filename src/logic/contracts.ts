@@ -398,6 +398,8 @@ export const getCollectionStoreAddress = () => {
       return '0x214ffc0f0103735728dc66b61a22e4f163e275ae'
     case ChainId.MATIC_MUMBAI:
       return '0x6ddf1b1924dad850adbc1c02026535464be06b0c'
+    case ChainId.MATIC_AMOY:
+      return '0xe36abc9ec616c83caaa386541380829106149d68'
     default:
       return ''
   }
