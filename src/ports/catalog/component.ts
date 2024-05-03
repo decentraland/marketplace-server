@@ -1,5 +1,6 @@
 import { Analytics } from '@segment/analytics-node'
 import { Item, NFTCategory, Network, getChainName } from '@dcl/schemas'
+import { fromDBPickStatsToPickStats } from '../../adapters/picks'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
@@ -9,10 +10,10 @@ import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './ty
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
 export async function createCatalogComponent(
-  components: Pick<AppComponents, 'database' | 'favoritesComponent'>,
+  components: Pick<AppComponents, 'substreamsDatabase' | 'picks'>,
   segmentWriteKey: string
 ): Promise<ICatalogComponent> {
-  const { database, favoritesComponent } = components
+  const { substreamsDatabase: database, picks } = components
 
   async function fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }) {
     const { network, creator, category } = filters
@@ -89,13 +90,14 @@ export async function createCatalogComponent(
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
 
-      // @TODO: add favorites enhancement logic
-      const picksStats = await favoritesComponent.getPicksStatsOfItems(
+      const pickStats = await picks.getPicksStats(
         catalogItems.map(({ id }) => id),
-        filters.pickedBy
+        {
+          userAddress: filters.pickedBy
+        }
       )
 
-      catalogItems = enhanceItemsWithPicksStats(catalogItems, picksStats)
+      catalogItems = enhanceItemsWithPicksStats(catalogItems, pickStats.map(fromDBPickStatsToPickStats))
     } catch (e) {
       console.error(e)
       throw new HttpError("Couldn't fetch the catalog with the filters provided", 400)

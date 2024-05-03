@@ -16,9 +16,12 @@
     "@dcl/eslint-config": "^1.1.12",
     "@types/node": "^20.2.5",
     "@well-known-components/test-helpers": "^1.5.0",
+    "@well-known-components/tracer-component": "^1.2.0",
+    "ajv": "^8.13.0",
+    "ajv-formats": "^3.0.1",
     "nodemon": "^2.0.22",
     "ts-node": "^10.9.1",
-    "typescript": "^4.9.5"
+    "typescript": "^5.1.6"
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
