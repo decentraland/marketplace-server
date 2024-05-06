@@ -5,8 +5,8 @@ import { HTTPResponse } from '../../src/types'
 import { test } from '../components'
 
 test('picks controller', function ({ components }) {
-  const { config, items } = components
   beforeAll(async () => {
+    const { config } = components
     const snapshotUrl = await config.requireString('SNAPSHOT_URL')
 
     nock(snapshotUrl)
@@ -15,6 +15,7 @@ test('picks controller', function ({ components }) {
   })
 
   beforeEach(async () => {
+    const { items } = components
     ;(items.validateItemExists as jest.Mock).mockImplementation(() => Promise.resolve(true))
     await components.favoritesDatabase.query('TRUNCATE TABLE favorites.picks')
   })
