@@ -21,6 +21,7 @@ export async function createPgComponent(
 
     databaseUrl = `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
   }
+  console.log('databaseUrl2: ', databaseUrl)
 
   const schema = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_SCHEMA`)
 
