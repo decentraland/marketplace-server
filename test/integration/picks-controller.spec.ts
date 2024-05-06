@@ -5,14 +5,9 @@ import { HTTPResponse } from '../../src/types'
 import { test } from '../components'
 
 test('picks controller', function ({ components }) {
+  const { config, items } = components
   beforeAll(async () => {
-    const { config } = components
-
     const snapshotUrl = await config.requireString('SNAPSHOT_URL')
-
-    // nock(collectionsSubgraphUrl)
-    //   .post(/.*/)
-    //   .reply(200, { ok: true, data: { items: [{}] } })
 
     nock(snapshotUrl)
       .post(/.*/)
@@ -20,6 +15,7 @@ test('picks controller', function ({ components }) {
   })
 
   beforeEach(async () => {
+    ;(items.validateItemExists as jest.Mock).mockImplementation(() => Promise.resolve(true))
     await components.favoritesDatabase.query('TRUNCATE TABLE favorites.picks')
   })
 
