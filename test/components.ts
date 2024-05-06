@@ -85,7 +85,6 @@ async function initComponents(): Promise<TestComponents> {
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
-  jest.spyOn(favoritesDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
