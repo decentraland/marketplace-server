@@ -2,9 +2,9 @@
 // Here we define the test components to be used in the testing environment
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createServerComponent } from '@well-known-components/http-server'
+import { ILoggerComponent, ITracerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent } from '@well-known-components/metrics'
-import { IPgComponent } from '@well-known-components/pg-component'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
@@ -12,12 +12,13 @@ import { metricDeclarations } from '../src/metrics'
 import { createBalanceComponent } from '../src/ports/balance/component'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
+import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
-import { createAccessComponent } from '../src/ports/favorites/access'
-import { createItemsComponent } from '../src/ports/favorites/items'
-import { createListsComponent } from '../src/ports/favorites/lists'
-import { createPicksComponent } from '../src/ports/favorites/picks'
-import { createSnapshotComponent } from '../src/ports/favorites/snapshot'
+import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
+import { IItemsComponent, createItemsComponent } from '../src/ports/favorites/items'
+import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
+import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/picks'
+import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
 import { createJobComponent } from '../src/ports/job'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
 import { createWertSigner } from '../src/ports/wert-signer/component'
@@ -113,13 +114,90 @@ async function initComponents(): Promise<TestComponents> {
   }
 }
 
-export function createTestDbComponent(
-  { query = jest.fn(), start = jest.fn(), streamQuery = jest.fn(), getPool = jest.fn(), stop = jest.fn() } = {
+export function createTestLogsComponent({ getLogger = jest.fn() } = { getLogger: jest.fn() }): ILoggerComponent {
+  return {
+    getLogger
+  }
+}
+
+export function createTestPicksComponent(
+  { getPicksStats = jest.fn(), getPicksByItemId = jest.fn(), pickAndUnpickInBulk = jest.fn() } = {
+    getPicksStats: jest.fn(),
+    getPicksByItemId: jest.fn(),
+    pickAndUnpickInBulk: jest.fn()
+  }
+): IPicksComponent {
+  return {
+    getPicksStats,
+    getPicksByItemId,
+    pickAndUnpickInBulk
+  }
+}
+
+export function createTestSnapshotComponent({ getScore = jest.fn() } = { getScore: jest.fn() }): ISnapshotComponent {
+  return {
+    getScore
+  }
+}
+
+export function createTestListsComponent(
+  {
+    getPicksByListId = jest.fn(),
+    addPickToList = jest.fn(),
+    deletePickInList = jest.fn(),
+    getLists = jest.fn(),
+    addList = jest.fn(),
+    deleteList = jest.fn(),
+    getList = jest.fn(),
+    updateList = jest.fn(),
+    checkNonEditableLists = jest.fn()
+  } = {
+    getPicksByListId: jest.fn(),
+    addPickToList: jest.fn(),
+    deletePickInList: jest.fn(),
+    getLists: jest.fn(),
+    addList: jest.fn(),
+    deleteList: jest.fn(),
+    updateList: jest.fn(),
+    getList: jest.fn()
+  }
+): IListsComponents {
+  return {
+    getPicksByListId,
+    addPickToList,
+    deletePickInList,
+    getLists,
+    addList,
+    deleteList,
+    getList,
+    updateList,
+    checkNonEditableLists
+  }
+}
+
+export function createTestAccessComponent(
+  { deleteAccess = jest.fn(), createAccess = jest.fn() } = { deleteAccess: jest.fn(), createAccess: jest.fn() }
+): IAccessComponent {
+  return {
+    createAccess,
+    deleteAccess
+  }
+}
+
+export function createTestItemsComponent({ validateItemExists = jest.fn() }): IItemsComponent {
+  return {
+    validateItemExists
+  }
+}
+
+export function createTestPgComponent(
+  { query = jest.fn(), start = jest.fn(), streamQuery = jest.fn(), getPool = jest.fn(), stop = jest.fn(), withTransaction = jest.fn() } = {
     query: jest.fn(),
     start: jest.fn(),
     streamQuery: jest.fn(),
     getPool: jest.fn(),
-    stop: jest.fn()
+    stop: jest.fn(),
+    withTransaction: jest.fn()
   }
 ): IPgComponent {
   return {
@@ -127,6 +205,55 @@ export function createTestDbComponent(
     streamQuery,
     query,
     getPool,
-    stop
+    stop,
+    withTransaction
+  }
+}
+
+export function createTestTracerComponent(
+  {
+    span = jest.fn(),
+    isInsideOfTraceSpan = jest.fn(),
+    getSpanId = jest.fn(),
+    getTrace = jest.fn(),
+    getTraceString = jest.fn(),
+    getTraceChild = jest.fn(),
+    getTraceChildString = jest.fn(),
+    getTraceState = jest.fn(),
+    getTraceStateString = jest.fn(),
+    getContextData = jest.fn(),
+    setContextData = jest.fn(),
+    setTraceStateProperty = jest.fn(),
+    deleteTraceStateProperty = jest.fn()
+  } = {
+    span: jest.fn(),
+    isInsideOfTraceSpan: jest.fn(),
+    getSpanId: jest.fn(),
+    getTrace: jest.fn(),
+    getTraceString: jest.fn(),
+    getTraceChild: jest.fn(),
+    getTraceChildString: jest.fn(),
+    getTraceState: jest.fn(),
+    getTraceStateString: jest.fn(),
+    getContextData: jest.fn(),
+    setContextData: jest.fn(),
+    setTraceStateProperty: jest.fn(),
+    deleteTraceStateProperty: jest.fn()
+  }
+): ITracerComponent {
+  return {
+    span,
+    isInsideOfTraceSpan,
+    getSpanId,
+    getTrace,
+    getTraceString,
+    getTraceChild,
+    getTraceChildString,
+    getTraceState,
+    getTraceStateString,
+    getContextData,
+    setContextData,
+    setTraceStateProperty,
+    deleteTraceStateProperty
   }
 }

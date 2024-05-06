@@ -29,7 +29,7 @@ export function createItemsComponent(components: Pick<AppComponents, 'substreams
     } catch (error) {
       if (error instanceof ItemNotFoundError) throw error
 
-      logger.error('Querying the collections subgraph failed.')
+      logger.error('Querying the substreams database failed.')
       throw new QueryFailure(isErrorWithMessage(error) ? error.message : 'Unknown')
     } finally {
       client.release()
