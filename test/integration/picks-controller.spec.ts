@@ -16,7 +16,7 @@ test('picks controller', function ({ components }) {
 
   beforeEach(async () => {
     const { items } = components
-    ;(items.validateItemExists as jest.Mock).mockImplementation(() => Promise.resolve(true))
+    jest.spyOn(items, 'validateItemExists').mockImplementation(() => Promise.resolve())
     await components.favoritesDatabase.query('TRUNCATE TABLE favorites.picks')
   })
 
