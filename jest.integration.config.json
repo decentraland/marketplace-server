@@ -1,0 +1,10 @@
+{
+  "moduleFileExtensions": ["ts", "js"],
+  "transform": {
+    "^.+\\.(ts|tsx)$": "ts-jest"
+  },
+  "testMatch": ["**/test/integration/*.spec.(ts)"],
+  "testEnvironment": "node",
+  "resetMocks": true,
+  "setupFilesAfterEnv": ["./jest.setup.ts"]
+}

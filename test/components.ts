@@ -91,7 +91,7 @@ async function initComponents(): Promise<TestComponents> {
   jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(favoritesDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
-  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => catalog.updateBuilderServerItemsView(), 5 * 60 * 1000, {
+  const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
   })
 
