@@ -37,7 +37,7 @@ export const test = createRunner<TestComponents>({
 })
 
 async function initComponents(): Promise<TestComponents> {
-  const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env.spec', '.env'] })
   const cors = {
     origin: await config.requireString('CORS_ORIGIN'),
     methods: await config.requireString('CORS_METHODS')
