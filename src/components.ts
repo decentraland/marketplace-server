@@ -10,7 +10,6 @@ import { createCatalogComponent } from './ports/catalog/component'
 import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
 import { createAccessComponent } from './ports/favorites/access'
-import { createFavoritesComponent } from './ports/favorites/components'
 import { createItemsComponent } from './ports/favorites/items'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
@@ -54,13 +53,11 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
-  const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
 
-  const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const ens = createENS()
@@ -94,7 +91,6 @@ export async function initComponents(): Promise<AppComponents> {
     substreamsDatabase,
     favoritesDatabase,
     catalog,
-    favoritesComponent,
     balances,
     wertSigner,
     ens,

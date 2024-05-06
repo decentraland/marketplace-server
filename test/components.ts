@@ -14,7 +14,6 @@ import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { createENS } from '../src/ports/ens/component'
 import { createAccessComponent } from '../src/ports/favorites/access'
-import { createFavoritesComponent } from '../src/ports/favorites/components'
 import { createItemsComponent } from '../src/ports/favorites/items'
 import { createListsComponent } from '../src/ports/favorites/lists'
 import { createPicksComponent } from '../src/ports/favorites/picks'
@@ -63,9 +62,6 @@ async function initComponents(): Promise<TestComponents> {
     }
   )
 
-  const MARKETPLACE_FAVORITES_SERVER_URL = await config.requireString('MARKETPLACE_FAVORITES_SERVER_URL')
-
-  const favoritesComponent = createFavoritesComponent({ fetch }, MARKETPLACE_FAVORITES_SERVER_URL)
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
@@ -105,7 +101,6 @@ async function initComponents(): Promise<TestComponents> {
     substreamsDatabase,
     favoritesDatabase,
     catalog,
-    favoritesComponent,
     balances,
     wertSigner,
     ens,

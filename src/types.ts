@@ -17,7 +17,6 @@ import { IItemsComponent } from './ports/favorites/items'
 import { IListsComponents } from './ports/favorites/lists'
 import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
-import { IFavoritesComponent } from './ports/favorites/types'
 import { IJobComponent } from './ports/job'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { IWertSignerComponent } from './ports/wert-signer/types'
@@ -39,7 +38,6 @@ export type BaseComponents = {
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
   ens: IENSComponent
-  favoritesComponent: IFavoritesComponent
   updateBuilderServerItemsViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent
   lists: IListsComponents
