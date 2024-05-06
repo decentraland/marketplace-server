@@ -1,4 +1,4 @@
-import { createConfigComponent, createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
+import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { IConfigComponent, IDatabase, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import { createTestMetricsComponent } from '@well-known-components/metrics'
 import * as BasePgComponent from '@well-known-components/pg-component'
