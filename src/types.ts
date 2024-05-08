@@ -11,7 +11,6 @@ import { metricDeclarations } from './metrics'
 import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IPgComponent } from './ports/db/types'
-import { IENSComponent } from './ports/ens/types'
 import { IAccessComponent } from './ports/favorites/access'
 import { IItemsComponent } from './ports/favorites/items'
 import { IListsComponents } from './ports/favorites/lists'
@@ -37,7 +36,6 @@ export type BaseComponents = {
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
-  ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent
   lists: IListsComponents

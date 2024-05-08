@@ -13,7 +13,6 @@ import { createBalanceComponent } from '../src/ports/balance/component'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
-import { createENS } from '../src/ports/ens/component'
 import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
 import { IItemsComponent, createItemsComponent } from '../src/ports/favorites/items'
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
@@ -68,7 +67,6 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
-  const ens = createENS()
 
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
@@ -103,7 +101,6 @@ async function initComponents(): Promise<TestComponents> {
     catalog,
     balances,
     wertSigner,
-    ens,
     updateBuilderServerItemsViewJob,
     access,
     lists,
