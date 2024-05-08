@@ -11,7 +11,6 @@ export async function createPgComponent(
   const { config, logs, metrics } = components
   const { dbPrefix } = options
   let databaseUrl: string | undefined = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_CONNECTION_STRING`)
-  console.log('databaseUrl: ', databaseUrl)
   if (!databaseUrl) {
     const dbUser = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_USER`)
     const dbDatabaseName = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_DATABASE`)
@@ -21,7 +20,6 @@ export async function createPgComponent(
 
     databaseUrl = `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
   }
-  console.log('databaseUrl2: ', databaseUrl)
 
   const schema = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_SCHEMA`)
 
