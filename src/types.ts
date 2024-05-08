@@ -6,14 +6,19 @@ import type {
   IBaseComponent,
   IMetricsComponent
 } from '@well-known-components/interfaces'
-import { IPgComponent } from '@well-known-components/pg-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IBalanceComponent } from './ports/balance/types'
 import { ICatalogComponent } from './ports/catalog/types'
+import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
-import { IFavoritesComponent } from './ports/favorites/types'
+import { IAccessComponent } from './ports/favorites/access'
+import { IItemsComponent } from './ports/favorites/items'
+import { IListsComponents } from './ports/favorites/lists'
+import { IPicksComponent } from './ports/favorites/picks'
+import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IJobComponent } from './ports/job'
+import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -27,13 +32,19 @@ export type BaseComponents = {
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
-  database: IPgComponent
+  substreamsDatabase: IPgComponent
+  favoritesDatabase: IPgComponent
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
   ens: IENSComponent
-  favoritesComponent: IFavoritesComponent
   updateBuilderServerItemsViewJob: IJobComponent
+  schemaValidator: ISchemaValidatorComponent
+  lists: IListsComponents
+  snapshot: ISnapshotComponent
+  picks: IPicksComponent
+  access: IAccessComponent
+  items: IItemsComponent
 }
 
 // components used in runtime
@@ -61,12 +72,15 @@ export type Context<Path extends string> = IHttpServerComponent.PathAwareContext
 export enum StatusCode {
   OK = 200,
   CREATED = 201,
+  UPDATED = 204,
   BAD_REQUEST = 400,
   UNAUTHORIZED = 401,
+  FORBIDDEN = 403,
   NOT_FOUND = 404,
   LOCKED = 423,
   CONFLICT = 409,
-  ERROR = 500
+  ERROR = 500,
+  UNPROCESSABLE_CONTENT = 422
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,5 +109,18 @@ export type HTTPResponseBody<T> = HTTPErrorResponseBody<T> | HTTPSuccessResponse
 
 export type HTTPResponse<T> = {
   status: StatusCode
-  body: HTTPResponseBody<T>
+  body:
+    | {
+        ok: false
+        message: string
+        data?: object
+      }
+    | {
+        ok: true
+        data?: PaginatedResponse<T>
+      }
+    | {
+        ok: true
+        data?: T
+      }
 }

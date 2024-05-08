@@ -10,19 +10,26 @@
     "check:prettier": "prettier -c '{src,test}/**/*.{js,ts,json,yml,md}'",
     "fix:code": "npm run check:code -- --fix",
     "fix:prettier": "npm run check:prettier -- --write",
-    "test": "jest --forceExit --detectOpenHandles --coverage --verbose"
+    "test": "jest --forceExit --detectOpenHandles --coverage --verbose -c jest.config.json",
+    "test:watch": "jest --watch --verbose -c jest.config.json",
+    "test:integration": "jest --forceExit --detectOpenHandles --verbose -c jest.integration.config.json --runInBand",
+    "test:integration:watch": "jest --watch --verbose -c jest.integration.config.json --runInBand"
   },
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.12",
     "@types/node": "^20.2.5",
     "@well-known-components/test-helpers": "^1.5.0",
+    "@well-known-components/tracer-component": "^1.2.0",
+    "ajv": "^8.13.0",
+    "ajv-formats": "^3.0.1",
     "nodemon": "^2.0.22",
+    "ts-jest": "^29.1.1",
     "ts-node": "^10.9.1",
-    "typescript": "^4.9.5"
+    "typescript": "^5.2.2"
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
-    "@dcl/schemas": "^11.4.0",
+    "@dcl/schemas": "^11.7.0",
     "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
@@ -34,6 +41,7 @@
     "canvas": "^2.11.2",
     "decentraland-crypto-middleware": "^1.1.0",
     "ethers": "^6.6.2",
+    "nock": "^13.5.4",
     "p-limit": "^3.1.0"
   }
 }
