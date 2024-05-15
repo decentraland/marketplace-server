@@ -62,13 +62,42 @@ const getBuilderServerTagsJoin = () => {
   return SQL`LEFT JOIN builder_server_items ON builder_server_items.item_id = items.id::text `
 }
 
-export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+const wrapQuery = (statement: SQLStatement, start: SQLStatement, end: SQLStatement) => start.append(statement).append(end)
+
+const getItemIdsByUtilityQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  const { search } = filters
+  const includesUtilityKeyword = search?.toLowerCase().includes('utility')
+  let where = SQL``
+  if (!includesUtilityKeyword) {
+    where = SQL`WHERE mv_builder_server_items_utility.utility % ${search}`
+  }
+
+  // Reduce the weight of the utility similarity so it doesn't overshadow the rest of the search
+  const similarityColumn = SQL`similarity(mv_builder_server_items_utility.utility, ${search}) * 0.5`
+
+  const query = SQL`SELECT mv_builder_server_items_utility.item_id as id, 'utility' as match_type, '' as word, `
+  // If the utility keyword is included in the search, we want to give it a higher weight to items with utility
+  if (includesUtilityKeyword) {
+    query.append(wrapQuery(similarityColumn, SQL`GREATEST(`, SQL`, 0.01)`))
+  } else {
+    query.append(similarityColumn)
+  }
+  query
+    .append(SQL` AS word_similarity FROM mv_builder_server_items_utility LEFT JOIN `)
+    .append(schemaVersion)
+    .append(SQL`.items AS items ON items.id = mv_builder_server_items_utility.item_id `)
+    .append(where)
+    .append(SQL` ORDER BY word_similarity DESC, items.first_listed_at DESC`)
+
+  return query
+}
+
+const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
   const { search } = filters
   const query = getSearchCTEs(schemaVersion, filters).append(
     SQL`SELECT 
-        items.id, 
-        items.raw_metadata,
-        builder_server_items.item_id,
+        items.id,
+        CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
         word.text AS word,
         similarity(word.text, ${search}) AS word_similarity
       `
@@ -111,6 +140,22 @@ export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: Cata
   return query
 }
 
+export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+  const utilityQuery = getItemIdsByUtilityQuery(schemaVersion, filters)
+  const tagOrNameQuery = getItemIdsByTagOrNameQuery(schemaVersion, filters)
+
+  return SQL`SELECT DISTINCT ON (id) id,
+      word_similarity,
+      match_type,
+      word
+      FROM ((`
+    .append(utilityQuery)
+    .append(SQL`) UNION (`)
+    .append(tagOrNameQuery).append(SQL`)) AS items_found
+      ORDER BY id DESC, word_similarity DESC
+    `)
+}
+
 export function getOrderBy(filters: CatalogFilters) {
   const { sortBy, sortDirection, isOnSale, search, ids } = filters
   const sortByParam = sortBy ?? CatalogSortBy.NEWEST
@@ -121,10 +166,10 @@ export function getOrderBy(filters: CatalogFilters) {
     return ''
   }
 
-  if (search && !sortBy && ids?.length) {
+  if (search && ids?.length) {
     // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
     // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${filters.ids}::text[], id) `
+    return SQL`ORDER BY array_position(${ids}::text[], id) `
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
@@ -185,12 +230,14 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
   // The following code wraps the UNION query in a subquery so we can get the total count of items before applying the limit and offset
   const unionQuery = SQL`SELECT *, COUNT(*) OVER() as total FROM (\n`
   queries.forEach((query, index) => {
+    unionQuery.append('(')
     unionQuery.append(query)
+    unionQuery.append(')')
     if (queries[index + 1]) {
-      unionQuery.append(SQL`\n UNION ALL ( \n`)
+      unionQuery.append(SQL`\n UNION ALL \n`)
     }
   })
-  unionQuery.append(SQL`\n)) as temp \n`)
+  unionQuery.append(SQL`\n) as temp \n`)
   addQuerySort(unionQuery, filters)
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
@@ -214,7 +261,7 @@ export const getCategoryWhere = (filters: CatalogFilters) => {
     : undefined
 }
 
-const WEARABLE_ACCESORIES_CATEGORIES = [
+const WEARABLE_ACCESSORIES_CATEGORIES = [
   WearableCategory.EARRING,
   WearableCategory.EYEWEAR,
   WearableCategory.HAT,
@@ -236,7 +283,7 @@ export const getWearableCategoryWhere = (filters: CatalogFilters) => {
   if (filters.isWearableAccessory) {
     return SQL`metadata_wearable.category IN `.append(
       SQL`
-          (`.append(WEARABLE_ACCESORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', ')).append(SQL`
+          (`.append(WEARABLE_ACCESSORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', ')).append(SQL`
           )
           `)
     )
@@ -302,7 +349,7 @@ export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: Cata
         )
 }
 
-export const getisWearableHeadAccessoryWhere = () => {
+export const getIsWearableHeadAccessoryWhere = () => {
   return SQL`items.search_is_wearable_head = true`
 }
 
@@ -537,7 +584,7 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
         LEFT JOIN (
           SELECT 
             metadata.id, 
-            emote.description, 
+            emote.description,
             emote.category, 
             emote.body_shapes, 
             emote.name, 
@@ -594,7 +641,7 @@ const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
       tag
     FROM 
       mv_builder_server_items
-    WHERE 
+    WHERE
       LOWER(tag) = LOWER(${filters.search})
     )
   `

@@ -9,6 +9,8 @@ import { getCatalogQuery, getItemIdsBySearchTextQuery, getLatestChainSchema } fr
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
+const sortByWordSimilarity = (a: { word_similarity: number }, b: { word_similarity: number }) => b.word_similarity - a.word_similarity
+
 export async function createCatalogComponent(
   components: Pick<AppComponents, 'substreamsDatabase' | 'picks'>,
   segmentWriteKey: string
@@ -57,8 +59,8 @@ export async function createCatalogComponent(
           const searchQuery = getItemIdsBySearchTextQuery(schema, { ...filters, network: network as Network })
           const filteredItemsById = await client.query<{
             id: string
-            item_id: string
             word: string
+            match_type: string
             word_similarity: number
           }>(searchQuery)
           filteredItems.push(...filteredItemsById.rows)
@@ -72,12 +74,13 @@ export async function createCatalogComponent(
             results: filteredItems.map(match => ({
               item_id: match.id,
               match: match.word,
-              matchBy: match.item_id ? 'tag' : 'name',
+              matchBy: match.match_type,
               similarity: match.word_similarity
             }))
           }
         }
         analytics.track(trackingData)
+        filteredItems.sort(sortByWordSimilarity)
         filters.ids = [...(filters.ids ?? []), ...filteredItems.map(({ id }) => id)]
 
         if (filters.ids?.length === 0) {
@@ -113,6 +116,7 @@ export async function createCatalogComponent(
     try {
       const query = `
         REFRESH MATERIALIZED VIEW CONCURRENTLY mv_builder_server_items;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_builder_server_items_utility;
       `
       await client.query(query)
     } catch (e) {
