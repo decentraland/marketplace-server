@@ -4,7 +4,7 @@ const materializedViewName = 'mv_builder_server_items_utility'
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
   // Add utility to the foreign table
-  pgm.sql('ALTER FOREIGN TABLE builder_server_items ADD COLUMN utility text;')
+  pgm.sql('ALTER FOREIGN TABLE builder_server_items ADD COLUMN IF NOT EXISTS utility text;')
 
   // New materialized view for the utility
   pgm.createMaterializedView(
