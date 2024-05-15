@@ -21,7 +21,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
      AND server_items.collection_id = collections.id 
      AND blockchain_items.id = (collections.contract_address || '-' || server_items.blockchain_item_id);`
   )
-  pgm.addIndex(materializedViewName, ['item_id'], { name: 'idx_mv_builder_server_items_utility', unique: true })
+  pgm.addIndex(materializedViewName, ['item_id'], { name: 'idx_mv_builder_server_items_utility', unique: true, ifNotExists: true })
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
