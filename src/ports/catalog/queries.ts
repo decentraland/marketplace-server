@@ -230,14 +230,12 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
   // The following code wraps the UNION query in a subquery so we can get the total count of items before applying the limit and offset
   const unionQuery = SQL`SELECT *, COUNT(*) OVER() as total FROM (\n`
   queries.forEach((query, index) => {
-    unionQuery.append('(')
     unionQuery.append(query)
-    unionQuery.append(')')
     if (queries[index + 1]) {
-      unionQuery.append(SQL`\n UNION ALL \n`)
+      unionQuery.append(SQL`\n UNION ALL ( \n`)
     }
   })
-  unionQuery.append(SQL`\n) as temp \n`)
+  unionQuery.append(SQL`\n)) as temp \n`)
   addQuerySort(unionQuery, filters)
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
