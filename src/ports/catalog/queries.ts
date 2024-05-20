@@ -96,7 +96,7 @@ const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQuery
   const { search } = filters
   const query = getSearchCTEs(schemaVersion, filters).append(
     SQL`SELECT 
-        items.id,
+        items.id AS id,
         CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
         word.text AS word,
         similarity(word.text, ${search}) AS word_similarity
