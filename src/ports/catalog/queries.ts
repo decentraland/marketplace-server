@@ -156,7 +156,7 @@ export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: Cata
     `)
 }
 
-export function getOrderBy(filters: CatalogFilters) {
+export function getOrderBy(filters: CatalogFilters, sortByTable?: string) {
   const { sortBy, sortDirection, isOnSale, search, ids } = filters
   const sortByParam = sortBy ?? CatalogSortBy.NEWEST
   const sortDirectionParam = sortDirection ?? CatalogSortDirection.DESC
@@ -169,7 +169,7 @@ export function getOrderBy(filters: CatalogFilters) {
   if (search && ids?.length) {
     // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
     // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${ids}::text[], id) `
+    return SQL`ORDER BY array_position(${ids}::text[], `.append(sortByTable ? `${sortByTable}.id` : 'id').append(') ')
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
@@ -204,10 +204,10 @@ export function getOrderBy(filters: CatalogFilters) {
   return sortByQuery
 }
 
-export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters) => {
+export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters, sortByTable?: string) => {
   const { sortBy, sortDirection } = filters
   if (sortBy && sortDirection) {
-    query.append(getOrderBy(filters))
+    query.append(getOrderBy(filters, sortByTable))
   }
 }
 
@@ -236,7 +236,8 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
     }
   })
   unionQuery.append(SQL`\n)) as temp \n`)
-  addQuerySort(unionQuery, filters)
+  const sortByTable = 'temp'
+  addQuerySort(unionQuery, filters, sortByTable)
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
   }
@@ -751,7 +752,8 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           )
       )
   )
-  addQuerySort(query, filters)
+  const sortByTable = 'items'
+  addQuerySort(query, filters, sortByTable)
   addQueryPagination(query, filters)
   return query
 }
