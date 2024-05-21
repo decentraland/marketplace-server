@@ -169,7 +169,7 @@ export function getOrderBy(filters: CatalogFilters) {
   if (search && ids?.length) {
     // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
     // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${ids}::text[], id)`
+    return SQL`ORDER BY array_position(${ids}::text[], id) `
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
