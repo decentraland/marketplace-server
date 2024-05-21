@@ -125,7 +125,7 @@ const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQuery
                 SQL`.wearable AS wearable ON metadata.wearable = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
                 LEFT JOIN `.append(schemaVersion)
                   .append(SQL`.emote AS emote ON metadata.emote = emote.id AND metadata.item_type = 'emote_v1'
-        ) AS metadata ON metadata.id = latest_metadata.id
+        ) AS metadata ON metadata.id = latest_metadata.latest_metadata_id
       `)
               )
           )
@@ -566,7 +566,7 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
   const wearablesJoin = SQL`
         LEFT JOIN (
           SELECT 
-          metadata.id, 
+          metadata.id as metadata_id, 
           wearable.description, 
           wearable.category, 
           wearable.body_shapes, 
@@ -575,13 +575,13 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
     .append(schemaVersion)
     .append('.wearable AS wearable JOIN ')
     .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.wearable = wearable.id
-        ) AS metadata_wearable ON metadata_wearable.id = latest_metadata.id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
+        ) AS metadata_wearable ON metadata_wearable.metadata_id = latest_metadata.latest_metadata_id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
   `)
 
   const emoteJoin = SQL` 
         LEFT JOIN (
           SELECT 
-            metadata.id, 
+            metadata.id as metadata_id, 
             emote.description,
             emote.category, 
             emote.body_shapes, 
@@ -601,7 +601,7 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
     .append(schemaVersion)
     .append('.emote AS emote JOIN ')
     .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.emote = emote.id
-        ) AS metadata_emote ON metadata_emote.id = latest_metadata.id AND items.item_type = 'emote_v1' 
+        ) AS metadata_emote ON metadata_emote.metadata_id = latest_metadata.latest_metadata_id AND items.item_type = 'emote_v1' 
   `)
 
   switch (filters.category) {
@@ -620,7 +620,7 @@ const getItemSoldAtJoin = (schemaVersion: string) => {
 
 const getLatestMetadataCTE = (schemaVersion: string) => {
   return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp 
+        SELECT DISTINCT ON (item_id) item_id, id AS latest_metadata_id, item_type, wearable, emote, timestamp 
         FROM `.append(schemaVersion).append(SQL`.metadata 
         ORDER BY item_id, timestamp DESC
       )
