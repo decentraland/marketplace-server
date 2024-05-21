@@ -125,7 +125,7 @@ const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQuery
                 SQL`.wearable AS wearable ON metadata.wearable = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
                 LEFT JOIN `.append(schemaVersion)
                   .append(SQL`.emote AS emote ON metadata.emote = emote.id AND metadata.item_type = 'emote_v1'
-        ) AS metadata ON metadata.id = latest_metadata.id
+        ) AS metadata ON metadata.id = latest_metadata.latest_metadata_id
       `)
               )
           )
@@ -156,7 +156,7 @@ export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: Cata
     `)
 }
 
-export function getOrderBy(filters: CatalogFilters, sortByTable?: string) {
+export function getOrderBy(filters: CatalogFilters) {
   const { sortBy, sortDirection, isOnSale, search, ids } = filters
   const sortByParam = sortBy ?? CatalogSortBy.NEWEST
   const sortDirectionParam = sortDirection ?? CatalogSortDirection.DESC
@@ -169,7 +169,7 @@ export function getOrderBy(filters: CatalogFilters, sortByTable?: string) {
   if (search && ids?.length) {
     // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
     // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${ids}::text[], `.append(sortByTable ? `${sortByTable}.id` : 'id').append(') ')
+    return SQL`ORDER BY array_position(${ids}::text[], id)`
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
@@ -204,10 +204,10 @@ export function getOrderBy(filters: CatalogFilters, sortByTable?: string) {
   return sortByQuery
 }
 
-export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters, sortByTable?: string) => {
+export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters) => {
   const { sortBy, sortDirection } = filters
   if (sortBy && sortDirection) {
-    query.append(getOrderBy(filters, sortByTable))
+    query.append(getOrderBy(filters))
   }
 }
 
@@ -236,8 +236,7 @@ const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQ
     }
   })
   unionQuery.append(SQL`\n)) as temp \n`)
-  const sortByTable = 'temp'
-  addQuerySort(unionQuery, filters, sortByTable)
+  addQuerySort(unionQuery, filters)
   if (limit !== undefined && offset !== undefined) {
     unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
   }
@@ -567,7 +566,7 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
   const wearablesJoin = SQL`
         LEFT JOIN (
           SELECT 
-          metadata.id, 
+          metadata.id as metadata_id, 
           wearable.description, 
           wearable.category, 
           wearable.body_shapes, 
@@ -576,13 +575,13 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
     .append(schemaVersion)
     .append('.wearable AS wearable JOIN ')
     .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.wearable = wearable.id
-        ) AS metadata_wearable ON metadata_wearable.id = latest_metadata.id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
+        ) AS metadata_wearable ON metadata_wearable.metadata_id = latest_metadata.latest_metadata_id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
   `)
 
   const emoteJoin = SQL` 
         LEFT JOIN (
           SELECT 
-            metadata.id, 
+            metadata.id as metadata_id, 
             emote.description,
             emote.category, 
             emote.body_shapes, 
@@ -602,7 +601,7 @@ const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) =
     .append(schemaVersion)
     .append('.emote AS emote JOIN ')
     .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.emote = emote.id
-        ) AS metadata_emote ON metadata_emote.id = latest_metadata.id AND items.item_type = 'emote_v1' 
+        ) AS metadata_emote ON metadata_emote.metadata_id = latest_metadata.latest_metadata_id AND items.item_type = 'emote_v1' 
   `)
 
   switch (filters.category) {
@@ -621,7 +620,7 @@ const getItemSoldAtJoin = (schemaVersion: string) => {
 
 const getLatestMetadataCTE = (schemaVersion: string) => {
   return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (item_id) item_id, id, item_type, wearable, emote, timestamp 
+        SELECT DISTINCT ON (item_id) item_id, id AS latest_metadata_id, item_type, wearable, emote, timestamp 
         FROM `.append(schemaVersion).append(SQL`.metadata 
         ORDER BY item_id, timestamp DESC
       )
@@ -752,8 +751,7 @@ export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: 
           )
       )
   )
-  const sortByTable = 'items'
-  addQuerySort(query, filters, sortByTable)
+  addQuerySort(query, filters)
   addQueryPagination(query, filters)
   return query
 }
