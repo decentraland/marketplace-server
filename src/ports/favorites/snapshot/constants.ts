@@ -8,7 +8,7 @@ export const strategiesByChainId = {
       params: {
         name: 'multichain',
         graphs: {
-          [ChainId.MATIC_MAINNET]: 'https://api.thegraph.com/subgraphs/name/decentraland/blocks-matic-mainnet'
+          [ChainId.MATIC_MAINNET]: 'https://subgraph.decentraland.org/blocks-matic-mainnet'
         },
         symbol: 'MANA',
         strategies: [
@@ -68,65 +68,6 @@ export const strategiesByChainId = {
       }
     }
   ],
-  [ChainId.ETHEREUM_GOERLI]: [
-    {
-      name: 'multichain',
-      network: '5',
-      params: {
-        name: 'multichain',
-        graphs: {
-          [ChainId.ETHEREUM_GOERLI]: 'https://api.thegraph.com/subgraphs/name/decentraland/blocks-ethereum-goerli',
-          [ChainId.MATIC_MUMBAI]: 'https://api.thegraph.com/subgraphs/name/decentraland/blocks-matic-mumbai'
-        },
-        symbol: 'MANA',
-        strategies: [
-          {
-            name: 'erc20-balance-of',
-            params: {
-              address: '0xe7fDae84ACaba2A5Ba817B6E6D8A2d415DBFEdbe',
-              decimals: 18
-            },
-            network: '5'
-          },
-          {
-            name: 'erc20-balance-of',
-            params: {
-              address: '0x882Da5967c435eA5cC6b09150d55E8304B838f45',
-              decimals: 18
-            },
-            network: '80001'
-          }
-        ]
-      }
-    },
-    {
-      name: 'erc721-with-multiplier',
-      network: '5',
-      params: {
-        symbol: 'LAND',
-        address: '0x25b6B4bac4aDB582a0ABd475439dA6730777Fbf7',
-        multiplier: 2000
-      }
-    },
-    {
-      name: 'decentraland-estate-size',
-      network: '5',
-      params: {
-        symbol: 'ESTATE',
-        address: '0xC9A46712E6913c24d15b46fF12221a79c4e251DC',
-        multiplier: 2000
-      }
-    },
-    {
-      name: 'erc721-with-multiplier',
-      network: '5',
-      params: {
-        symbol: 'NAMES',
-        address: '0x6b8da2752827cf926215b43bb8E46Fd7b9dDac35',
-        multiplier: 100
-      }
-    }
-  ],
   [ChainId.ETHEREUM_SEPOLIA]: [
     {
       name: 'multichain',
@@ -134,8 +75,7 @@ export const strategiesByChainId = {
       params: {
         name: 'multichain',
         graphs: {
-          [ChainId.ETHEREUM_SEPOLIA]: 'https://api.studio.thegraph.com/query/49472/blocks-ethereum-sepolia/version/latest',
-          [ChainId.MATIC_MUMBAI]: 'https://api.thegraph.com/subgraphs/name/decentraland/blocks-matic-mumbai'
+          [ChainId.ETHEREUM_SEPOLIA]: 'https://api.studio.thegraph.com/query/49472/blocks-ethereum-sepolia/version/latest'
         },
         symbol: 'MANA',
         strategies: [
