@@ -75,7 +75,8 @@ export const strategiesByChainId = {
       params: {
         name: 'multichain',
         graphs: {
-          [ChainId.ETHEREUM_SEPOLIA]: 'https://api.studio.thegraph.com/query/49472/blocks-ethereum-sepolia/version/latest'
+          [ChainId.ETHEREUM_SEPOLIA]: 'https://api.studio.thegraph.com/query/49472/blocks-ethereum-sepolia/version/latest',
+          [ChainId.MATIC_AMOY]: 'https://api.studio.thegraph.com/query/49472/blocks-matic-amoy/version/latest'
         },
         symbol: 'MANA',
         strategies: [
