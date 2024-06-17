@@ -1,5 +1,6 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { withSignerValidation } from '../middlewares/withSignerValidation'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
@@ -22,6 +23,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     createCatalogHandler(components)
   )
   router.post(
@@ -30,6 +32,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     createWertSignerHandler
   )
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
