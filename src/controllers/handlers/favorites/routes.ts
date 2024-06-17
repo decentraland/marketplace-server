@@ -1,5 +1,6 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { withSignerValidation } from '../../../middlewares/withSignerValidation'
 import { AccessBodySchema } from '../../../ports/favorites/access'
 import { AddPickInListSchema, ListCreationSchema, ListUpdateSchema } from '../../../ports/favorites/lists'
 import { PickUnpickInBulkSchema } from '../../../ports/favorites/picks'
@@ -27,6 +28,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     getPicksByListIdHandler
   )
 
@@ -36,6 +38,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AddPickInListSchema),
     createPickInListHandler
   )
@@ -46,6 +49,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     deletePickInListHandler
   )
 
@@ -55,6 +59,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     getPickStatsOfItemHandler
   )
 
@@ -66,6 +71,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     getPicksByItemIdHandler
   )
 
@@ -75,6 +81,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(PickUnpickInBulkSchema),
     pickAndUnpickInBulkHandler
   )
@@ -85,6 +92,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: true,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     getListHandler
   )
 
@@ -94,6 +102,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     getListsHandler
   )
 
@@ -103,6 +112,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(ListCreationSchema),
     createListHandler
   )
@@ -113,6 +123,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(ListUpdateSchema),
     updateListHandler
   )
@@ -123,6 +134,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     createAccessHandler
   )
@@ -133,6 +145,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     deleteAccessHandler
   )
@@ -143,6 +156,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
       optional: false,
       expiration: FIVE_MINUTES
     }),
+    withSignerValidation,
     deleteListHandler
   )
 
