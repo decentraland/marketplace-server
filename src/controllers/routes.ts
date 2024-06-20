@@ -1,6 +1,5 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
-import { withSignerValidation } from '../middlewares/withSignerValidation'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
@@ -8,6 +7,7 @@ import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { pingHandler } from './handlers/ping-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
+import { validateAuthMetadataSigner } from './utils'
 
 const FIVE_MINUTES = 5 * 60 * 1000
 
@@ -21,18 +21,18 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     '/v1/catalog',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     createCatalogHandler(components)
   )
   router.post(
     '/v1/wert/sign',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     createWertSignerHandler
   )
   router.get('/v1/ens/generate', createENSImageGeratorHandler)

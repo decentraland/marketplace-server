@@ -1,10 +1,10 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
-import { withSignerValidation } from '../../../middlewares/withSignerValidation'
 import { AccessBodySchema } from '../../../ports/favorites/access'
 import { AddPickInListSchema, ListCreationSchema, ListUpdateSchema } from '../../../ports/favorites/lists'
 import { PickUnpickInBulkSchema } from '../../../ports/favorites/picks'
 import { GlobalContext } from '../../../types'
+import { validateAuthMetadataSigner } from '../../utils'
 import {
   createPickInListHandler,
   deletePickInListHandler,
@@ -26,9 +26,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id/picks',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     getPicksByListIdHandler
   )
 
@@ -36,9 +36,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id/picks',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AddPickInListSchema),
     createPickInListHandler
   )
@@ -47,9 +47,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id/picks/:itemId',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     deletePickInListHandler
   )
 
@@ -57,9 +57,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/picks/:itemId/stats',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     getPickStatsOfItemHandler
   )
 
@@ -69,9 +69,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/picks/:itemId',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     getPicksByItemIdHandler
   )
 
@@ -79,9 +79,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/picks/:itemId',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(PickUnpickInBulkSchema),
     pickAndUnpickInBulkHandler
   )
@@ -90,9 +90,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id',
     authorizationMiddleware.wellKnownComponents({
       optional: true,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     getListHandler
   )
 
@@ -100,9 +100,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     getListsHandler
   )
 
@@ -110,9 +110,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(ListCreationSchema),
     createListHandler
   )
@@ -121,9 +121,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(ListUpdateSchema),
     updateListHandler
   )
@@ -132,9 +132,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id/access',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     createAccessHandler
   )
@@ -143,9 +143,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id/access',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     deleteAccessHandler
   )
@@ -154,9 +154,9 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     '/v1/lists/:id',
     authorizationMiddleware.wellKnownComponents({
       optional: false,
-      expiration: FIVE_MINUTES
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadataSigner
     }),
-    withSignerValidation,
     deleteListHandler
   )
 
