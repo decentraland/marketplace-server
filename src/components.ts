@@ -16,6 +16,7 @@ import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createJobComponent } from './ports/job'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
+import { createTradesComponent } from './ports/trades'
 import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
 
@@ -53,6 +54,13 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
+  const dappsDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'DAPPS'
+    }
+  )
+
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
@@ -78,6 +86,7 @@ export async function initComponents(): Promise<AppComponents> {
 
   // catalog
   const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
+  const trades = await createTradesComponent({ dappsDatabase })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
@@ -90,6 +99,7 @@ export async function initComponents(): Promise<AppComponents> {
     metrics,
     substreamsDatabase,
     favoritesDatabase,
+    dappsDatabase,
     catalog,
     balances,
     wertSigner,
@@ -99,6 +109,7 @@ export async function initComponents(): Promise<AppComponents> {
     snapshot,
     items,
     lists,
+    trades,
     access,
     picks
   }
