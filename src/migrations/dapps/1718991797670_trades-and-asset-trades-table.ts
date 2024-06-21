@@ -27,7 +27,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       notNull: true
     },
     signer: {
-      type: 'text',
+      type: 'varchar(42)',
       notNull: true
     },
     expires_at: { type: 'timestamp', notNull: true },
@@ -60,15 +60,15 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       notNull: true
     },
     contract_address: {
-      type: 'text',
+      type: 'varchar(42)',
       notNull: true
     },
     value: {
-      type: 'numeric',
+      type: 'numeric(78, 0)',
       notNull: true
     },
     beneficiary: {
-      type: 'text',
+      type: 'varchar(42)',
       notNull: true
     },
     extra: {
