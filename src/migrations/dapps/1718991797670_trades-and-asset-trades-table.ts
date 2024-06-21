@@ -1,21 +1,21 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
 
-export const TRADES_TABLE = 'trades'
-export const TRADE_ASSETS_TABLE = 'trade_assets'
+export const SCHEMA = 'marketplace'
 
+export const TRADES_TABLE = `${SCHEMA}.trades`
+export const TRADE_ASSETS_TABLE = `${SCHEMA}.trade_assets`
+export const ASSET_DIRECTION_TYPE = `${SCHEMA}.asset_direction_type`
 export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
-  pgm.createExtension('uuid-ossp', { ifNotExists: true })
-
   pgm.createTable(TRADES_TABLE, {
     id: {
       type: 'uuid',
       notNull: true,
       primaryKey: true,
       unique: true,
-      default: pgm.func('uuid_generate_v4()')
+      default: pgm.func('public.uuid_generate_v4()')
     },
     signature: {
       type: 'text',
@@ -30,10 +30,12 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       type: 'text',
       notNull: true
     },
+    expires_at: { type: 'timestamp', notNull: true },
+    effective_since: { type: 'timestamp', notNull: true },
     created_at: { type: 'timestamp', notNull: true, default: pgm.func('now()') }
   })
 
-  pgm.createType('direction_type', ['sent', 'received'])
+  pgm.createType(ASSET_DIRECTION_TYPE, ['sent', 'received'])
 
   pgm.createTable(TRADE_ASSETS_TABLE, {
     id: {
@@ -41,16 +43,16 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       notNull: true,
       primaryKey: true,
       unique: true,
-      default: pgm.func('uuid_generate_v4()')
+      default: pgm.func('public.uuid_generate_v4()')
     },
     trade_id: {
       type: 'uuid',
       notNull: true,
-      references: `${TRADES_TABLE}(id)`,
+      references: `"${TRADES_TABLE}"(id)`,
       onDelete: 'CASCADE'
     },
     direction: {
-      type: 'direction_type',
+      type: `"${ASSET_DIRECTION_TYPE}"`,
       notNull: true
     },
     asset_type: {
@@ -78,8 +80,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
-  pgm.dropExtension('uuid-ossp')
   pgm.dropTable(TRADES_TABLE)
   pgm.dropTable(TRADE_ASSETS_TABLE)
-  pgm.dropType('direction_type')
+  pgm.dropType(ASSET_DIRECTION_TYPE)
 }
