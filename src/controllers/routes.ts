@@ -1,14 +1,15 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { TradeCreationSchema } from '../ports/trades'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { pingHandler } from './handlers/ping-handler'
-import { getTradesHandler } from './handlers/trades-handler'
+import { addTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
-import { validateAuthMetadataSigner } from './utils'
+import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
 const FIVE_MINUTES = 5 * 60 * 1000
 
@@ -23,7 +24,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     createCatalogHandler(components)
   )
@@ -32,7 +33,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     createWertSignerHandler
   )
@@ -40,6 +41,14 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)
 
   router.get('/v1/trades', getTradesHandler)
+  router.post(
+    'v1/trades',
+    authorizationMiddleware.wellKnownComponents({
+      verifyMetadataContent: validateAuthMetadata('dcl:marketplace', 'dcl:marketplace:create-trade')
+    }),
+    components.schemaValidator.withSchemaValidatorMiddleware(TradeCreationSchema),
+    addTradeHandler
+  )
 
   setupFavoritesRouter(router, { components })
 
