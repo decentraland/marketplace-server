@@ -19,6 +19,7 @@ import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IJobComponent } from './ports/job'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
+import { ITradesComponent } from './ports/trades'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -34,6 +35,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   substreamsDatabase: IPgComponent
   favoritesDatabase: IPgComponent
+  dappsDatabase: IPgComponent
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
@@ -45,6 +47,7 @@ export type BaseComponents = {
   picks: IPicksComponent
   access: IAccessComponent
   items: IItemsComponent
+  trades: ITradesComponent
 }
 
 // components used in runtime

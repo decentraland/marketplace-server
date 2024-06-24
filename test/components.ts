@@ -21,6 +21,7 @@ import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/pi
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
 import { createJobComponent } from '../src/ports/job'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
+import { createTradesComponent } from '../src/ports/trades'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -63,6 +64,13 @@ async function initComponents(): Promise<TestComponents> {
     }
   )
 
+  const dappsDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'DAPPS'
+    }
+  )
+
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
   const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
@@ -84,6 +92,7 @@ async function initComponents(): Promise<TestComponents> {
   const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
+  const trades = createTradesComponent({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
@@ -100,6 +109,7 @@ async function initComponents(): Promise<TestComponents> {
     metrics,
     substreamsDatabase,
     favoritesDatabase,
+    dappsDatabase,
     catalog,
     balances,
     wertSigner,
@@ -110,7 +120,8 @@ async function initComponents(): Promise<TestComponents> {
     picks,
     snapshot,
     items,
-    schemaValidator
+    schemaValidator,
+    trades
   }
 }
 

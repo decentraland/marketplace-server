@@ -4,18 +4,32 @@
 version: '3.8'
 
 services:
-  postgres:
+  marketplace_db:
     image: postgres
     restart: always
     environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=marketplace_admin
+      - POSTGRES_PASSWORD=marketplace_password
       - POSTGRES_DB=marketplace
     ports:
       - 5432:5432
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./test/db/init-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+      - marketplace_data:/var/lib/postgresql/data
+      - ./test/db/init-favorites-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+  dapps_db:
+    image: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=dapps_admin
+      - POSTGRES_PASSWORD=dapps_password
+      - POSTGRES_DB=dapps_test
+    ports:
+      - 5433:5432
+    volumes:
+      - dapps_data:/var/lib/postgresql/data
+      - ./test/db/init-marketplace-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+
 
 volumes:
-  postgres_data:
+  marketplace_data:
+  dapps_data:
