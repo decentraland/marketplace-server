@@ -1,4 +1,4 @@
-import { JSONSchema, TradeAsset, TradeChecks } from '@dcl/schemas'
+import { TradeAsset, TradeChecks } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
