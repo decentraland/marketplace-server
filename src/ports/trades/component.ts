@@ -6,7 +6,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
   const { dappsDatabase: pg } = components
 
   async function getTrades() {
-    const result = await pg.query<DBTrade>(SQL`SELECT * FROM trades`)
+    const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
     return { data: result.rows, count: result.rowCount }
   }
 
