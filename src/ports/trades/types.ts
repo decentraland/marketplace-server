@@ -1,22 +1,33 @@
-import { TradeAsset, TradeChecks } from '@dcl/schemas'
+import { Trade } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
-  addTrade(body: AddTradeRequestBody, signer: string): Promise<DBTrade>
+  addTrade(body: Trade, signer: string): Promise<DBTrade>
 }
 
 export type DBTrade = {
-  signer: string
-  id: string
+  chainId: number
   checks: Record<string, any>
+  createdAt: Date
+  effectiveSince: Date
+  expiresAt: Date
+  id: string
+  network: string
   signature: string
+  signer: string
+  type: 'bid' | 'public_order'
 }
 
-export type AddTradeRequestBody = {
-  signature: string
-  checks: TradeChecks
-  sent: TradeAsset[]
-  received: TradeAsset[]
+export type DBTradeAsset = {
+  asset_type: number // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
+  beneficiary?: string
+  contract_address: string
+  created_at: Date
+  direction: 'sent' | 'received'
+  extra: string
+  id: string
+  trade_id: string
+  value: number
 }
 
 export const TradeCreationAssetSchema = {
@@ -49,6 +60,9 @@ export const TradeCreationAssetSchema = {
 export const TradeCreationSchema = {
   type: 'object',
   properties: {
+    netword: { type: 'string' },
+    chainId: { type: 'number' },
+    type: { type: 'string', enum: ['bid'] }, // for now we only support bids
     signature: { type: 'string' },
     checks: {
       type: 'object',
@@ -105,6 +119,6 @@ export const TradeCreationSchema = {
     sent: { type: 'array', items: { ...TradeCreationAssetSchema } },
     received: { type: 'array', items: { ...TradeCreationAssetSchema } }
   },
-  required: ['signature', 'checks', 'sent', 'received'],
+  required: ['signature', 'checks', 'sent', 'received', 'type', 'network', 'chainId'],
   additionalProperties: false
 }

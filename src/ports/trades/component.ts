@@ -1,7 +1,10 @@
 import SQL from 'sql-template-strings'
+import { Trade } from '@dcl/schemas'
+import { fromSecondsToMilliseconds } from '../../logic/date'
+import { validateTradeByType, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents, StatusCode } from '../../types'
 import { RequestError } from '../../utils'
-import { AddTradeRequestBody, DBTrade, ITradesComponent } from './types'
+import { DBTrade, ITradesComponent } from './types'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
   const { dappsDatabase: pg } = components
@@ -11,7 +14,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     return { data: result.rows, count: result.rowCount }
   }
 
-  async function addTrade(trade: AddTradeRequestBody, signer: string) {
+  async function addTrade(trade: Trade, signer: string) {
     // validate expiration > today
     if (trade.checks.expiration < Date.now()) {
       throw new RequestError(StatusCode.BAD_REQUEST, 'Expiration date must be in the future')
@@ -21,11 +24,86 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     if (trade.checks.expiration < trade.checks.effective) {
       throw new RequestError(StatusCode.BAD_REQUEST, 'Trade should be effective before expiration')
     }
-    // validate items in sent are owned by the user
-    // validate there is no other trade with the same sent items
+
+    // validate trade type
+    if (!validateTradeByType(trade)) {
+      throw new RequestError(StatusCode.BAD_REQUEST, `Trade structure is not valid for type ${trade.type}`)
+    }
+
+    // TODO: validate items in sent are owned by the user
     // vaidate signature
-    const result = await pg.query<DBTrade>(SQL`INSERT INTO trades (id, name) VALUES (1, 'test')`)
-    console.log({ result, body, signer })
+    if (!validateTradeSignature(trade, signer)) {
+      throw new RequestError(StatusCode.BAD_REQUEST, 'Invalid signature')
+    }
+
+    const client = await pg.getPool().connect()
+    try {
+      await client.query(SQL`BEGIN`)
+      const intsertedTrade = await pg.query<DBTrade>(
+        SQL`INSERT INTO trades (
+          chainId,
+          checks,
+          effectiveSince,
+          expiresAt,
+          network,
+          signature,
+          signer,
+          type
+        ) VALUES (
+         ${trade.chainId},
+         ${trade.checks},
+         ${new Date(fromSecondsToMilliseconds(trade.checks.effective))},
+         ${new Date(fromSecondsToMilliseconds(trade.checks.expiration))},
+         ${trade.network},
+         ${trade.signature},
+         ${signer},
+         ${trade.type}
+         ) RETURNING *`
+      )
+
+      trade.sent.forEach(async asset => {
+        await pg.query(SQL`INSERT INTO trade_assets (
+          asset_type,
+          contract_address,
+          direction,
+          extra,
+          trade_id,
+          value,
+          ) VALUES (
+            ${asset.assetType},
+            ${asset.contractAddress},
+            'sent',
+            ${asset.extra},
+            ${intsertedTrade.rows[0].id},
+            ${asset.value}
+          )`)
+      })
+
+      trade.received.forEach(async asset => {
+        await pg.query(SQL`INSERT INTO trade_assets (
+          asset_type,
+          beneficiary,
+          contract_address,
+          direction,
+          extra,
+          trade_id,
+          value,
+          ) VALUES (
+            ${asset.assetType},
+            ${asset.beneficiary},
+            ${asset.contractAddress},
+            'received',
+            ${asset.extra},
+            ${intsertedTrade.rows[0].id},
+            ${asset.value}
+          )`)
+      })
+
+      await client.query(SQL`COMMIT`)
+    } catch (e) {
+      await client.query(SQL`ROLLBACK`)
+    }
+
     return result.rows[0]
   }
 
