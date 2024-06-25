@@ -3,7 +3,6 @@ import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
-import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { pingHandler } from './handlers/ping-handler'
 import { getTradesHandler } from './handlers/trades-handler'
@@ -36,7 +35,6 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     createWertSignerHandler
   )
-  router.get('/v1/ens/generate', createENSImageGeratorHandler)
   router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)
 
   router.get('/v1/trades', getTradesHandler)
