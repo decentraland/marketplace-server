@@ -54,12 +54,13 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       },
       direction: { type: ASSET_DIRECTION_TYPE, notNull: true },
       asset_type: {
-        type: 'smallint' // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
+        type: 'smallint', // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
+        notNull: true
       },
       contract_address: { type: 'varchar(42)', notNull: true },
       value: { type: 'numeric(78, 0)', notNull: true },
-      beneficiary: { type: 'varchar(42)', notNull: true },
-      extra: { type: 'text', notNull: true },
+      beneficiary: { type: 'varchar(42)', notNull: false },
+      extra: { type: 'text', notNull: false },
       created_at: { type: 'timestamp', notNull: true, default: pgm.func('now()') }
     }
   )
