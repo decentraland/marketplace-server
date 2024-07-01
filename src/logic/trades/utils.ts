@@ -1,22 +1,10 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { TypedDataField, ethers } from 'ethers'
-import { TradeAssetType, Trade } from '@dcl/schemas'
+import { TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
+import { fromMillisecondsToSeconds } from '../date'
 
-export function validateTradeByType(trade: Trade): boolean {
-  if (trade.type === 'bid') {
-    return (
-      trade.sent.length === 1 &&
-      trade.sent[0].assetType === TradeAssetType.ERC20 &&
-      trade.received.length === 1 &&
-      trade.received[0].assetType === TradeAssetType.ERC721
-    )
-  }
-
-  return false
-}
-
-export function validateTradeSignature(trade: Trade, signer: string): boolean {
+export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
   let offChainMarketplaceContract: ContractData
   try {
     offChainMarketplaceContract = getContract(ContractName.OffChainMarketplace, trade.chainId)
@@ -27,8 +15,8 @@ export function validateTradeSignature(trade: Trade, signer: string): boolean {
   const domain: ethers.TypedDataDomain = {
     name: offChainMarketplaceContract.name,
     version: offChainMarketplaceContract.version,
-    verifyingContract: offChainMarketplaceContract.address,
-    salt: ethers.zeroPadValue(ethers.toBeArray(trade.checks.salt), 32)
+    chainId: trade.chainId,
+    verifyingContract: offChainMarketplaceContract.address
   }
 
   const types: Record<string, TypedDataField[]> = {
@@ -71,12 +59,12 @@ export function validateTradeSignature(trade: Trade, signer: string): boolean {
   const values = {
     checks: {
       uses: trade.checks.uses,
-      expiration: trade.checks.uses,
-      effective: trade.checks.effective,
-      salt: ethers.zeroPadValue(ethers.toBeArray(trade.checks.salt), 32),
+      expiration: fromMillisecondsToSeconds(trade.checks.expiration),
+      effective: fromMillisecondsToSeconds(trade.checks.effective),
+      salt: ethers.zeroPadValue(trade.checks.salt, 32),
       contractSignatureIndex: trade.checks.contractSignatureIndex,
       signerSignatureIndex: trade.checks.signerSignatureIndex,
-      allowedRoot: trade.checks.allowedRoot,
+      allowedRoot: ethers.zeroPadValue(trade.checks.salt, 32),
       externalChecks: trade.checks.externalChecks?.map(externalCheck => ({
         contractAddress: externalCheck.contractAddress,
         selector: externalCheck.selector,
@@ -92,7 +80,7 @@ export function validateTradeSignature(trade: Trade, signer: string): boolean {
     })),
     received: trade.received.map(asset => ({
       assetType: asset.assetType,
-      confirmations: asset.contractAddress,
+      contractAddress: asset.contractAddress,
       value: asset.value,
       extra: asset.extra,
       beneficiary: asset.beneficiary

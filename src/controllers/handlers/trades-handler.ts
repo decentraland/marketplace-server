@@ -1,5 +1,7 @@
-import { AddTradeRequestBody, DBTrade } from '../../ports/trades'
+import { Trade, TradeCreation } from '@dcl/schemas'
+import { DBTrade } from '../../ports/trades'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
+import { RequestError } from '../../utils'
 
 export async function getTradesHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components'>
@@ -24,7 +26,7 @@ export async function getTradesHandler(
 
 export async function addTradeHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components' | 'request' | 'verification'>
-): Promise<HTTPResponse<DBTrade>> {
+): Promise<HTTPResponse<Trade>> {
   const {
     request,
     components: { trades },
@@ -42,7 +44,7 @@ export async function addTradeHandler(
     }
   }
 
-  const body: AddTradeRequestBody = await request.json()
+  const body: TradeCreation = await request.json()
 
   try {
     const data = await trades.addTrade(body, signer)
@@ -55,12 +57,21 @@ export async function addTradeHandler(
       }
     }
   } catch (e) {
-    console.error(e)
+    if (e instanceof RequestError) {
+      return {
+        status: e.statusCode,
+        body: {
+          ok: false,
+          message: e.message
+        }
+      }
+    }
+
     return {
       status: StatusCode.BAD_REQUEST,
       body: {
         ok: false,
-        message: 'Unexpected error'
+        message: 'Trade could not be created'
       }
     }
   }

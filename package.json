@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
-    "@dcl/schemas": "/Users/melisaanabellarossi/development/common-schemas/dcl-schemas-0.0.0.tgz",
+    "@dcl/schemas": "^11.10.2",
     "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
@@ -41,7 +41,7 @@
     "ajv-formats": "^3.0.1",
     "canvas": "^2.11.2",
     "decentraland-crypto-middleware": "^1.3.0",
-    "decentraland-transactions": "/Users/melisaanabellarossi/development/decentraland-transactions/decentraland-transactions-0.0.0-development.tgz",
+    "decentraland-transactions": "^2.8.0",
     "ethers": "^6.6.2",
     "nock": "^13.5.4",
     "p-limit": "^3.1.0"

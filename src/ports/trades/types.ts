@@ -1,16 +1,16 @@
-import { Trade } from '@dcl/schemas'
+import { Trade, TradeCreation } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
-  addTrade(body: Trade, signer: string): Promise<DBTrade>
+  addTrade(body: TradeCreation, signer: string): Promise<Trade>
 }
 
 export type DBTrade = {
-  chainId: number
+  chain_id: number
   checks: Record<string, any>
-  createdAt: Date
-  effectiveSince: Date
-  expiresAt: Date
+  created_at: Date
+  effective_since: Date
+  expires_at: Date
   id: string
   network: string
   signature: string
@@ -27,14 +27,14 @@ export type DBTradeAsset = {
   extra: string
   id: string
   trade_id: string
-  value: number
+  value: string
 }
 
 export const TradeCreationAssetSchema = {
   type: 'object',
   properties: {
     assetType: {
-      type: 'string',
+      type: 'number',
       enum: [1, 2, 3, 4]
     },
     contractAddress: {
@@ -42,18 +42,13 @@ export const TradeCreationAssetSchema = {
       pattern: '^0x[0-9a-fA-F]{40}$'
     },
     value: {
-      type: 'number',
-      minimum: 0
+      type: 'string'
     },
     extra: {
       type: 'string'
-    },
-    beneficiary: {
-      type: 'string',
-      pattern: '^0x[0-9a-fA-F]{40}$'
     }
   },
-  required: ['assetType', 'contractAddress', 'value', 'extra', 'beneficiary'],
+  required: ['assetType', 'contractAddress', 'value', 'extra'],
   additionalProperties: false
 }
 
@@ -80,8 +75,7 @@ export const TradeCreationSchema = {
           minimum: 0
         },
         salt: {
-          type: 'number',
-          minimum: 0
+          type: 'string'
         },
         contractSignatureIndex: {
           type: 'number',
@@ -117,7 +111,20 @@ export const TradeCreationSchema = {
       additionalProperties: false
     },
     sent: { type: 'array', items: { ...TradeCreationAssetSchema } },
-    received: { type: 'array', items: { ...TradeCreationAssetSchema } }
+    received: {
+      type: 'array',
+      items: {
+        ...TradeCreationAssetSchema,
+        properties: {
+          ...TradeCreationAssetSchema.properties,
+          beneficiary: {
+            type: 'string',
+            pattern: '^0x[0-9a-fA-F]{40}$'
+          }
+        },
+        required: [...TradeCreationAssetSchema.required, 'beneficiary']
+      }
+    }
   },
   required: ['signature', 'checks', 'sent', 'received', 'type', 'network', 'chainId'],
   additionalProperties: false

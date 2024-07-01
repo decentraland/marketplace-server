@@ -58,7 +58,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         notNull: true
       },
       contract_address: { type: 'varchar(42)', notNull: true },
-      value: { type: 'numeric(78, 0)', notNull: true },
+      value: { type: 'text', notNull: true },
       beneficiary: { type: 'varchar(42)', notNull: false },
       extra: { type: 'text', notNull: false },
       created_at: { type: 'timestamp', notNull: true, default: pgm.func('now()') }

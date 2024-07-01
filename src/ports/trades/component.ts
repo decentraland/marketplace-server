@@ -1,10 +1,12 @@
 import SQL from 'sql-template-strings'
-import { Trade } from '@dcl/schemas'
-import { fromSecondsToMilliseconds } from '../../logic/date'
-import { validateTradeByType, validateTradeSignature } from '../../logic/trades/utils'
+import { TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { fromDbTradeWithAssetsToTrade } from '../../adapters/trades/trades'
+import { validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents, StatusCode } from '../../types'
 import { RequestError } from '../../utils'
-import { DBTrade, ITradesComponent } from './types'
+import { getInsertTradeAssetQuery, getInsertTradeAssetWithBeneficiaryQuery, getInsertTradeQuery } from './queries'
+import { DBTrade, DBTradeAsset, ITradesComponent } from './types'
+import { validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
   const { dappsDatabase: pg } = components
@@ -14,7 +16,9 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     return { data: result.rows, count: result.rowCount }
   }
 
-  async function addTrade(trade: Trade, signer: string) {
+  async function addTrade(trade: TradeCreation, signer: string) {
+    const pgClient = await pg.getPool().connect()
+
     // validate expiration > today
     if (trade.checks.expiration < Date.now()) {
       throw new RequestError(StatusCode.BAD_REQUEST, 'Expiration date must be in the future')
@@ -26,85 +30,40 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     }
 
     // validate trade type
-    if (!validateTradeByType(trade)) {
+    if (!(await validateTradeByType(trade, pgClient))) {
       throw new RequestError(StatusCode.BAD_REQUEST, `Trade structure is not valid for type ${trade.type}`)
     }
 
-    // TODO: validate items in sent are owned by the user
     // vaidate signature
     if (!validateTradeSignature(trade, signer)) {
       throw new RequestError(StatusCode.BAD_REQUEST, 'Invalid signature')
     }
 
-    const client = await pg.getPool().connect()
-    try {
-      await client.query(SQL`BEGIN`)
-      const intsertedTrade = await pg.query<DBTrade>(
-        SQL`INSERT INTO trades (
-          chainId,
-          checks,
-          effectiveSince,
-          expiresAt,
-          network,
-          signature,
-          signer,
-          type
-        ) VALUES (
-         ${trade.chainId},
-         ${trade.checks},
-         ${new Date(fromSecondsToMilliseconds(trade.checks.effective))},
-         ${new Date(fromSecondsToMilliseconds(trade.checks.expiration))},
-         ${trade.network},
-         ${trade.signature},
-         ${signer},
-         ${trade.type}
-         ) RETURNING *`
-      )
+    return pg.withTransaction(
+      async client => {
+        const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
+        const sentAssets = (
+          await Promise.all(
+            trade.received.map(async asset => await client.query<DBTradeAsset>(getInsertTradeAssetQuery(asset, insertedTrade.rows[0].id)))
+          )
+        ).map(({ rows }) => rows[0])
 
-      trade.sent.forEach(async asset => {
-        await pg.query(SQL`INSERT INTO trade_assets (
-          asset_type,
-          contract_address,
-          direction,
-          extra,
-          trade_id,
-          value,
-          ) VALUES (
-            ${asset.assetType},
-            ${asset.contractAddress},
-            'sent',
-            ${asset.extra},
-            ${intsertedTrade.rows[0].id},
-            ${asset.value}
-          )`)
-      })
-
-      trade.received.forEach(async asset => {
-        await pg.query(SQL`INSERT INTO trade_assets (
-          asset_type,
-          beneficiary,
-          contract_address,
-          direction,
-          extra,
-          trade_id,
-          value,
-          ) VALUES (
-            ${asset.assetType},
-            ${asset.beneficiary},
-            ${asset.contractAddress},
-            'received',
-            ${asset.extra},
-            ${intsertedTrade.rows[0].id},
-            ${asset.value}
-          )`)
-      })
-
-      await client.query(SQL`COMMIT`)
-    } catch (e) {
-      await client.query(SQL`ROLLBACK`)
-    }
-
-    return result.rows[0]
+        const receivedAssets = (
+          await Promise.all(
+            trade.received.map(
+              async asset => await client.query<DBTradeAsset>(getInsertTradeAssetWithBeneficiaryQuery(asset, insertedTrade.rows[0].id))
+            )
+          )
+        ).map(({ rows }) => rows[0])
+        return fromDbTradeWithAssetsToTrade(insertedTrade.rows[0], sentAssets, receivedAssets)
+      },
+      e => {
+        throw new RequestError(
+          StatusCode.ERROR,
+          e && typeof e === 'object' && 'message' in e ? (e.message as string) : 'Could not create trade'
+        )
+      }
+    )
   }
 
   return {

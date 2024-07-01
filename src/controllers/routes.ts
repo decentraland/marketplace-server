@@ -42,7 +42,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/trades', getTradesHandler)
   router.post(
-    'v1/trades',
+    '/v1/trades',
     authorizationMiddleware.wellKnownComponents({
       verifyMetadataContent: validateAuthMetadata('dcl:marketplace', 'dcl:marketplace:create-trade')
     }),
