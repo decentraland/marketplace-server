@@ -4,7 +4,7 @@ import { AccessBodySchema } from '../../../ports/favorites/access'
 import { AddPickInListSchema, ListCreationSchema, ListUpdateSchema } from '../../../ports/favorites/lists'
 import { PickUnpickInBulkSchema } from '../../../ports/favorites/picks'
 import { GlobalContext } from '../../../types'
-import { validateAuthMetadataSigner } from '../../utils'
+import { validateNotKernelSceneSigner } from '../../utils'
 import {
   createPickInListHandler,
   deletePickInListHandler,
@@ -27,7 +27,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     getPicksByListIdHandler
   )
@@ -37,7 +37,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AddPickInListSchema),
     createPickInListHandler
@@ -48,7 +48,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     deletePickInListHandler
   )
@@ -58,7 +58,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     getPickStatsOfItemHandler
   )
@@ -70,7 +70,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     getPicksByItemIdHandler
   )
@@ -80,7 +80,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(PickUnpickInBulkSchema),
     pickAndUnpickInBulkHandler
@@ -91,7 +91,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     getListHandler
   )
@@ -101,7 +101,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     getListsHandler
   )
@@ -111,7 +111,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(ListCreationSchema),
     createListHandler
@@ -122,7 +122,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(ListUpdateSchema),
     updateListHandler
@@ -133,7 +133,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     createAccessHandler
@@ -144,7 +144,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     deleteAccessHandler
@@ -155,7 +155,7 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadataSigner
+      verifyMetadataContent: validateNotKernelSceneSigner
     }),
     deleteListHandler
   )
