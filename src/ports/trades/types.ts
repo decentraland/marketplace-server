@@ -1,4 +1,4 @@
-import { Trade, TradeCreation } from '@dcl/schemas'
+import { Trade, TradeAssetType, TradeCreation } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
@@ -20,15 +20,21 @@ export type DBTrade = {
 
 export type DBTradeAsset = {
   asset_type: number // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
-  beneficiary?: string
   contract_address: string
+  beneficiary?: string
   created_at: Date
   direction: 'sent' | 'received'
   extra: string
   id: string
   trade_id: string
-  value: string
 }
+
+export type DBTradeAssetValue = { token_id: string } | { item_id: string } | { amount: number }
+
+export type DBTradeAssetWithValue =
+  | (DBTradeAsset & { asset_type: TradeAssetType.ERC20; amount: number })
+  | (DBTradeAsset & { asset_type: TradeAssetType.ERC721; token_id: string })
+  | (DBTradeAsset & { asset_type: TradeAssetType.COLLECTION_ITEM; item_id: string })
 
 export const TradeCreationAssetSchema = {
   type: 'object',

@@ -5,6 +5,9 @@ export const SCHEMA = 'marketplace'
 
 export const TRADES_TABLE = 'trades'
 export const TRADE_ASSETS_TABLE = 'trade_assets'
+export const TRADE_ASSETS_ERC721_TABLE = 'trade_assets_erc721'
+export const TRADE_ASSETS_ITEM_TABLE = 'trade_assets_item'
+export const TRADE_ASSETS_ERC20_TABLE = 'trade_assets_erc20'
 export const TRADE_TYPE = 'trade_type'
 export const ASSET_DIRECTION_TYPE = 'asset_direction_type'
 export const shorthands: ColumnDefinitions | undefined = undefined
@@ -58,10 +61,51 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         notNull: true
       },
       contract_address: { type: 'varchar(42)', notNull: true },
-      value: { type: 'text', notNull: true },
       beneficiary: { type: 'varchar(42)', notNull: false },
       extra: { type: 'text', notNull: false },
       created_at: { type: 'timestamp', notNull: true, default: pgm.func('now()') }
+    }
+  )
+
+  pgm.createTable(
+    { schema: SCHEMA, name: TRADE_ASSETS_ERC721_TABLE },
+    {
+      asset_id: {
+        type: 'uuid',
+        notNull: true,
+        unique: true,
+        references: `"${TRADE_ASSETS_TABLE}"(id)`,
+        onDelete: 'CASCADE'
+      },
+      token_id: { type: 'text', notNull: true }
+    }
+  )
+
+  pgm.createTable(
+    { schema: SCHEMA, name: TRADE_ASSETS_ERC20_TABLE },
+    {
+      asset_id: {
+        type: 'uuid',
+        unique: true,
+        notNull: true,
+        references: `"${TRADE_ASSETS_TABLE}"(id)`,
+        onDelete: 'CASCADE'
+      },
+      amount: { type: 'numeric(78,0)', notNull: true }
+    }
+  )
+
+  pgm.createTable(
+    { schema: SCHEMA, name: TRADE_ASSETS_ITEM_TABLE },
+    {
+      asset_id: {
+        type: 'uuid',
+        notNull: true,
+        unique: true,
+        references: `"${TRADE_ASSETS_TABLE}"(id)`,
+        onDelete: 'CASCADE'
+      },
+      item_id: { type: 'text', notNull: true }
     }
   )
 }
@@ -69,6 +113,9 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 export async function down(pgm: MigrationBuilder): Promise<void> {
   pgm.dropTable({ schema: SCHEMA, name: TRADE_ASSETS_TABLE })
   pgm.dropTable({ schema: SCHEMA, name: TRADES_TABLE })
+  pgm.dropTable({ schema: SCHEMA, name: TRADE_ASSETS_ERC721_TABLE })
+  pgm.dropTable({ schema: SCHEMA, name: TRADE_ASSETS_ERC20_TABLE })
+  pgm.dropTable({ schema: SCHEMA, name: TRADE_ASSETS_ITEM_TABLE })
   pgm.dropType({ schema: SCHEMA, name: ASSET_DIRECTION_TYPE })
   pgm.dropType({ schema: SCHEMA, name: TRADE_TYPE })
 }

@@ -4,8 +4,8 @@ import { fromDbTradeWithAssetsToTrade } from '../../adapters/trades/trades'
 import { validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents, StatusCode } from '../../types'
 import { RequestError } from '../../utils'
-import { getInsertTradeAssetQuery, getInsertTradeAssetWithBeneficiaryQuery, getInsertTradeQuery } from './queries'
-import { DBTrade, DBTradeAsset, ITradesComponent } from './types'
+import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from './queries'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent } from './types'
 import { validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
@@ -42,20 +42,21 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     return pg.withTransaction(
       async client => {
         const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
-        const sentAssets = (
-          await Promise.all(
-            trade.received.map(async asset => await client.query<DBTradeAsset>(getInsertTradeAssetQuery(asset, insertedTrade.rows[0].id)))
-          )
-        ).map(({ rows }) => rows[0])
-
-        const receivedAssets = (
-          await Promise.all(
-            trade.received.map(
-              async asset => await client.query<DBTradeAsset>(getInsertTradeAssetWithBeneficiaryQuery(asset, insertedTrade.rows[0].id))
+        const assets = await Promise.all(
+          [
+            ...trade.sent.map(asset => ({ ...asset, direction: 'sent' })),
+            ...trade.received.map(asset => ({ ...asset, direction: 'received' }))
+          ].map(async asset => {
+            const insertedAsset = await client.query<DBTradeAsset>(
+              getInsertTradeAssetQuery(asset, insertedTrade.rows[0].id, asset.direction)
             )
-          )
-        ).map(({ rows }) => rows[0])
-        return fromDbTradeWithAssetsToTrade(insertedTrade.rows[0], sentAssets, receivedAssets)
+            const insertedValue = await client.query<DBTradeAssetValue>(
+              getInsertTradeAssetValueByTypeQuery(asset, insertedAsset.rows[0].id)
+            )
+            return { ...insertedAsset.rows[0], ...insertedValue.rows[0] }
+          })
+        )
+        return fromDbTradeWithAssetsToTrade(insertedTrade.rows[0], assets)
       },
       e => {
         throw new RequestError(

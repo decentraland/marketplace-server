@@ -1,6 +1,6 @@
-import { TradeType } from '@dcl/schemas'
+import { TradeAssetType, TradeType } from '@dcl/schemas'
 import { fromDbTradeWithAssetsToTrade } from '../../src/adapters/trades/trades'
-import { DBTradeAsset } from '../../src/ports/trades'
+import { DBTradeAssetWithValue } from '../../src/ports/trades'
 
 describe('fromDbTradeWithAssetsToTrade', () => {
   it('should convert DBTrade with assets to Trade', () => {
@@ -17,30 +17,30 @@ describe('fromDbTradeWithAssetsToTrade', () => {
       created_at: new Date()
     }
 
-    const dbSentAsset: DBTradeAsset = {
+    const dbSentAsset: DBTradeAssetWithValue = {
       id: 'asset-1',
       asset_type: 1,
       contract_address: '0xabcdef',
-      value: '1',
       extra: '',
       direction: 'sent',
       trade_id: dbTrade.id,
-      created_at: new Date()
+      created_at: new Date(),
+      amount: 100
     }
 
-    const dbReceivedAsset: DBTradeAsset = {
+    const dbReceivedAsset: DBTradeAssetWithValue = {
       id: 'asset-2',
-      asset_type: 2,
+      asset_type: TradeAssetType.ERC721,
       contract_address: '0x789abc',
-      value: '3',
       extra: '',
       direction: 'received',
       beneficiary: '0x9876543210',
       trade_id: dbTrade.id,
-      created_at: new Date()
+      created_at: new Date(),
+      token_id: '123'
     }
 
-    const result = fromDbTradeWithAssetsToTrade(dbTrade, [dbSentAsset], [dbReceivedAsset])
+    const result = fromDbTradeWithAssetsToTrade(dbTrade, [dbSentAsset, dbReceivedAsset])
 
     expect(result).toEqual({
       id: dbTrade.id,
@@ -54,7 +54,7 @@ describe('fromDbTradeWithAssetsToTrade', () => {
         {
           assetType: dbSentAsset.asset_type,
           contractAddress: dbSentAsset.contract_address,
-          value: dbSentAsset.value,
+          value: dbSentAsset.amount.toString(),
           extra: dbSentAsset.extra
         }
       ],
@@ -62,7 +62,7 @@ describe('fromDbTradeWithAssetsToTrade', () => {
         {
           assetType: dbReceivedAsset.asset_type,
           contractAddress: dbReceivedAsset.contract_address,
-          value: dbReceivedAsset.value,
+          value: dbReceivedAsset.token_id,
           extra: dbReceivedAsset.extra,
           beneficiary: dbReceivedAsset.beneficiary
         }
