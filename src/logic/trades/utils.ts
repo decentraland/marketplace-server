@@ -1,8 +1,21 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { TypedDataField, ethers } from 'ethers'
-import { TradeCreation } from '@dcl/schemas'
+import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../date'
+
+export function getValueFromTradeAsset(asset: TradeAsset) {
+  switch (asset.assetType) {
+    case TradeAssetType.COLLECTION_ITEM:
+      return asset.itemId
+    case TradeAssetType.ERC20:
+      return asset.amount
+    case TradeAssetType.ERC721:
+      return asset.tokenId
+    default:
+      throw new Error('Unsupported asset type')
+  }
+}
 
 export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
   let offChainMarketplaceContract: ContractData
@@ -75,13 +88,13 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
     sent: trade.sent.map(asset => ({
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
-      value: asset.value,
+      value: getValueFromTradeAsset(asset),
       extra: asset.extra
     })),
     received: trade.received.map(asset => ({
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
-      value: asset.value,
+      value: getValueFromTradeAsset(asset),
       extra: asset.extra,
       beneficiary: asset.beneficiary
     }))

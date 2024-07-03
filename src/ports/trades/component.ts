@@ -2,8 +2,13 @@ import SQL from 'sql-template-strings'
 import { TradeCreation } from '@dcl/schemas/dist/dapps/trade'
 import { fromDbTradeWithAssetsToTrade } from '../../adapters/trades/trades'
 import { validateTradeSignature } from '../../logic/trades/utils'
-import { AppComponents, StatusCode } from '../../types'
-import { RequestError } from '../../utils'
+import { AppComponents } from '../../types'
+import {
+  InvalidTradeSignatureError,
+  TradeAlreadyExpiredError,
+  TradeEffectiveAfterExpirationError,
+  InvalidTradeStructureError
+} from './errors'
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent } from './types'
 import { validateTradeByType } from './utils'
@@ -17,26 +22,24 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
   }
 
   async function addTrade(trade: TradeCreation, signer: string) {
-    const pgClient = await pg.getPool().connect()
-
     // validate expiration > today
     if (trade.checks.expiration < Date.now()) {
-      throw new RequestError(StatusCode.BAD_REQUEST, 'Expiration date must be in the future')
+      throw new TradeAlreadyExpiredError()
     }
 
     // validate effective < expiration
     if (trade.checks.expiration < trade.checks.effective) {
-      throw new RequestError(StatusCode.BAD_REQUEST, 'Trade should be effective before expiration')
+      throw new TradeEffectiveAfterExpirationError()
     }
 
     // validate trade type
-    if (!(await validateTradeByType(trade, pgClient))) {
-      throw new RequestError(StatusCode.BAD_REQUEST, `Trade structure is not valid for type ${trade.type}`)
+    if (!(await validateTradeByType(trade, pg))) {
+      throw new InvalidTradeStructureError(trade.type)
     }
 
     // vaidate signature
     if (!validateTradeSignature(trade, signer)) {
-      throw new RequestError(StatusCode.BAD_REQUEST, 'Invalid signature')
+      throw new InvalidTradeSignatureError()
     }
 
     return pg.withTransaction(
@@ -59,10 +62,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         return fromDbTradeWithAssetsToTrade(insertedTrade.rows[0], assets)
       },
       e => {
-        throw new RequestError(
-          StatusCode.ERROR,
-          e && typeof e === 'object' && 'message' in e ? (e.message as string) : 'Could not create trade'
-        )
+        throw new Error(e && typeof e === 'object' && 'message' in e ? (e.message as string) : 'Could not create trade')
       }
     )
   }

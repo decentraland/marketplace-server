@@ -1,6 +1,6 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
-import { TradeCreationSchema } from '../ports/trades'
+import { TradeCreationSchema } from '../ports/trades/schemas'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'

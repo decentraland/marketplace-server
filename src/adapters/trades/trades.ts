@@ -2,25 +2,21 @@ import { Network, Trade, TradeAsset, TradeChecks } from '@dcl/schemas'
 import { TradeAssetType, TradeAssetWithBeneficiary, TradeType } from '@dcl/schemas/dist/dapps/trade'
 import { DBTrade, DBTradeAssetWithValue } from '../../ports/trades'
 
-export function getValueFromDBTradeAssetWithValue(dbTradeAssetWithValue: DBTradeAssetWithValue): string {
-  switch (dbTradeAssetWithValue.asset_type) {
+export function fromDBTradeAssetToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
+  const tradeBaseValues = {
+    contractAddress: dbTradeAsset.contract_address,
+    extra: dbTradeAsset.extra
+  }
+
+  switch (dbTradeAsset.asset_type) {
     case TradeAssetType.ERC20:
-      return dbTradeAssetWithValue.amount.toString()
+      return { ...tradeBaseValues, assetType: TradeAssetType.ERC20, amount: dbTradeAsset.amount }
     case TradeAssetType.ERC721:
-      return dbTradeAssetWithValue.token_id
+      return { ...tradeBaseValues, assetType: TradeAssetType.ERC721, tokenId: dbTradeAsset.token_id }
     case TradeAssetType.COLLECTION_ITEM:
-      return dbTradeAssetWithValue.item_id
+      return { ...tradeBaseValues, assetType: TradeAssetType.COLLECTION_ITEM, itemId: dbTradeAsset.item_id }
     default:
       throw new Error('Unknown asset type')
-  }
-}
-
-export function fromDBTradeAssetToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
-  return {
-    assetType: dbTradeAsset.asset_type,
-    contractAddress: dbTradeAsset.contract_address,
-    value: getValueFromDBTradeAssetWithValue(dbTradeAsset),
-    extra: dbTradeAsset.extra
   }
 }
 

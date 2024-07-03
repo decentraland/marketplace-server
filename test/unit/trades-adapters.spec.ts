@@ -25,7 +25,7 @@ describe('fromDbTradeWithAssetsToTrade', () => {
       direction: 'sent',
       trade_id: dbTrade.id,
       created_at: new Date(),
-      amount: 100
+      amount: '100'
     }
 
     const dbReceivedAsset: DBTradeAssetWithValue = {
@@ -54,7 +54,7 @@ describe('fromDbTradeWithAssetsToTrade', () => {
         {
           assetType: dbSentAsset.asset_type,
           contractAddress: dbSentAsset.contract_address,
-          value: dbSentAsset.amount.toString(),
+          amount: dbSentAsset.amount.toString(),
           extra: dbSentAsset.extra
         }
       ],
@@ -62,7 +62,7 @@ describe('fromDbTradeWithAssetsToTrade', () => {
         {
           assetType: dbReceivedAsset.asset_type,
           contractAddress: dbReceivedAsset.contract_address,
-          value: dbReceivedAsset.token_id,
+          tokenId: dbReceivedAsset.token_id,
           extra: dbReceivedAsset.extra,
           beneficiary: dbReceivedAsset.beneficiary
         }

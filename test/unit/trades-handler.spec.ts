@@ -1,7 +1,13 @@
 import { Request } from 'node-fetch'
 import { addTradeHandler } from '../../src/controllers/handlers/trades-handler'
+import {
+  DuplicatedBidError,
+  InvalidTradeSignatureError,
+  InvalidTradeStructureError,
+  TradeAlreadyExpiredError,
+  TradeEffectiveAfterExpirationError
+} from '../../src/ports/trades/errors'
 import { StatusCode } from '../../src/types'
-import { RequestError } from '../../src/utils'
 
 describe('addTradeHandler', () => {
   describe('when request is missing authentication', () => {
@@ -61,9 +67,14 @@ describe('addTradeHandler', () => {
   })
 
   describe('when trade creation failed', () => {
-    describe('and the error is an instance of RequestError', () => {
-      it('should return an HTTPResponse with error status code and message', async () => {
-        const error = new RequestError(StatusCode.CONFLICT, 'Invalid trade')
+    describe.each([
+      { errorName: 'TradeAlreadyExpiredError', error: new TradeAlreadyExpiredError(), code: StatusCode.BAD_REQUEST },
+      { errorName: 'TradeEffectiveAfterExpirationError', error: new TradeEffectiveAfterExpirationError(), code: StatusCode.BAD_REQUEST },
+      { errorName: 'InvalidTradeStructureError', error: new InvalidTradeStructureError('bid'), code: StatusCode.BAD_REQUEST },
+      { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
+      { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT }
+    ])('and the error is an instance of $errorName', ({ error, code }) => {
+      it(`should return an HTTPResponse with error status code ${code} and correct error message`, async () => {
         const body = { type: 'bid' }
         const context = {
           request: {
@@ -82,7 +93,7 @@ describe('addTradeHandler', () => {
         }
         const result = await addTradeHandler(context)
         expect(result).toEqual({
-          status: error.statusCode,
+          status: code,
           body: {
             ok: false,
             message: error.message
@@ -117,7 +128,7 @@ describe('addTradeHandler', () => {
           status: StatusCode.BAD_REQUEST,
           body: {
             ok: false,
-            message: 'Trade could not be created'
+            message: error.message
           }
         })
 

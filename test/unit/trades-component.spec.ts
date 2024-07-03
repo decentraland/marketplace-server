@@ -21,7 +21,7 @@ describe('addTrade', () => {
       network: Network.ETHEREUM,
       chainId: ChainId.ETHEREUM_MAINNET,
       checks: {
-        expiration: new Date().getTime() + 10000,
+        expiration: new Date().getTime() + 100000000000,
         effective: new Date().getTime(),
         uses: 1,
         salt: '',
@@ -34,7 +34,7 @@ describe('addTrade', () => {
         {
           assetType: TradeAssetType.ERC20,
           contractAddress: '0xabcdef',
-          value: '2',
+          amount: '2',
           extra: ''
         }
       ],
@@ -42,7 +42,7 @@ describe('addTrade', () => {
         {
           assetType: TradeAssetType.ERC721,
           contractAddress: '0x789abc',
-          value: '1',
+          tokenId: '1',
           extra: '',
           beneficiary: '0x9876543210'
         }
@@ -76,7 +76,7 @@ describe('addTrade', () => {
     }
 
     await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
-      new RequestError(StatusCode.BAD_REQUEST, 'Expiration date must be in the future')
+      new RequestError(StatusCode.BAD_REQUEST, 'Trade expiration date must be in the future')
     )
   })
 

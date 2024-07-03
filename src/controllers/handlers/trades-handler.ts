@@ -1,7 +1,13 @@
 import { Trade, TradeCreation } from '@dcl/schemas'
 import { DBTrade } from '../../ports/trades'
+import {
+  DuplicatedBidError,
+  InvalidTradeSignatureError,
+  InvalidTradeStructureError,
+  TradeAlreadyExpiredError,
+  TradeEffectiveAfterExpirationError
+} from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
-import { RequestError } from '../../utils'
 
 export async function getTradesHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components'>
@@ -57,9 +63,24 @@ export async function addTradeHandler(
       }
     }
   } catch (e) {
-    if (e instanceof RequestError) {
+    if (
+      e instanceof TradeAlreadyExpiredError ||
+      e instanceof TradeEffectiveAfterExpirationError ||
+      e instanceof InvalidTradeStructureError ||
+      e instanceof InvalidTradeSignatureError
+    ) {
       return {
-        status: e.statusCode,
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: e.message
+        }
+      }
+    }
+
+    if (e instanceof DuplicatedBidError) {
+      return {
+        status: StatusCode.CONFLICT,
         body: {
           ok: false,
           message: e.message
@@ -71,7 +92,7 @@ export async function addTradeHandler(
       status: StatusCode.BAD_REQUEST,
       body: {
         ok: false,
-        message: 'Trade could not be created'
+        message: typeof e === 'object' && e && 'message' in e && typeof e.message === 'string' ? e.message : 'Trade could not be created'
       }
     }
   }
