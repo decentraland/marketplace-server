@@ -20,12 +20,12 @@ test('trades controller', function ({ components }) {
     beforeEach(() => {
       bid = {
         signature: Math.random().toString(),
-        signer: '0xtest',
+        signer: '0xtest', // the value stored will be change in the test as the signer is the one that signed the request
         chainId: 1,
         type: TradeType.BID,
         checks: {
           effective: Date.now(),
-          expiration: Date.now() + 1000,
+          expiration: Date.now() + 1000000,
           allowedRoot: '0x',
           contractSignatureIndex: 0,
           signerSignatureIndex: 0,
