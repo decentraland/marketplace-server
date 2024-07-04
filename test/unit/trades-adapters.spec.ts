@@ -117,7 +117,7 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
         }
       })
 
-      it('should return trade asset with amount', () => {
+      it('should return trade asset with the token id', () => {
         const result = fromDBTradeAssetWithValueToTradeAsset(erc721Asset)
         expect(result).toEqual({
           assetType: TradeAssetType.ERC721,
@@ -139,7 +139,7 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
         }
       })
 
-      it('should return trade asset with amount', () => {
+      it('should return trade asset with the item id', () => {
         const result = fromDBTradeAssetWithValueToTradeAsset(collectionItemAsset)
         expect(result).toEqual({
           assetType: TradeAssetType.COLLECTION_ITEM,
@@ -171,7 +171,7 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
         }
       })
 
-      it('should return trade asset with amount', () => {
+      it('should return trade asset with amount and the beneficiary', () => {
         const result = fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(erc20Asset)
         expect(result).toEqual({
           assetType: TradeAssetType.ERC20,
@@ -194,7 +194,7 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
         }
       })
 
-      it('should return trade asset with amount', () => {
+      it('should return trade asset with the token id and the beneficiary', () => {
         const result = fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(erc721Asset)
         expect(result).toEqual({
           assetType: TradeAssetType.ERC721,
@@ -217,7 +217,7 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
         }
       })
 
-      it('should return trade asset with amount', () => {
+      it('should return trade asset with the item id and the beneficiary', () => {
         const result = fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(collectionItemAsset)
         expect(result).toEqual({
           assetType: TradeAssetType.COLLECTION_ITEM,
