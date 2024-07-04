@@ -1,3 +1,5 @@
+import { ChainId, Network } from '@dcl/schemas'
+
 export class TradeAlreadyExpiredError extends Error {
   constructor() {
     super('Trade expiration date must be in the future')
@@ -16,9 +18,21 @@ export class InvalidTradeStructureError extends Error {
   }
 }
 
+export class InvalidTradeSignerError extends Error {
+  constructor() {
+    super('Trade and request signer do not match')
+  }
+}
+
 export class InvalidTradeSignatureError extends Error {
   constructor() {
     super('Invalid signature')
+  }
+}
+
+export class MarketplaceContractNotFound extends Error {
+  constructor(public chainId: ChainId, public network: Network) {
+    super(`Contract not found for ${chainId} and ${network}`)
   }
 }
 

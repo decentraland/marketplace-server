@@ -1,13 +1,15 @@
 import SQL from 'sql-template-strings'
-import { TradeCreation } from '@dcl/schemas/dist/dapps/trade'
-import { fromDbTradeWithAssetsToTrade } from '../../adapters/trades/trades'
+import { TradeAssetDirection, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
+import { isErrorWithMessage } from '../../logic/errors'
 import { validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
-  InvalidTradeStructureError
+  InvalidTradeStructureError,
+  InvalidTradeSignerError
 } from './errors'
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent } from './types'
@@ -32,6 +34,10 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new TradeEffectiveAfterExpirationError()
     }
 
+    if (trade.signer.toLowerCase() !== signer.toLowerCase()) {
+      throw new InvalidTradeSignerError()
+    }
+
     // validate trade type
     if (!(await validateTradeByType(trade, pg))) {
       throw new InvalidTradeStructureError(trade.type)
@@ -47,8 +53,8 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
         const assets = await Promise.all(
           [
-            ...trade.sent.map(asset => ({ ...asset, direction: 'sent' })),
-            ...trade.received.map(asset => ({ ...asset, direction: 'received' }))
+            ...trade.sent.map(asset => ({ ...asset, direction: TradeAssetDirection.SENT })),
+            ...trade.received.map(asset => ({ ...asset, direction: TradeAssetDirection.RECEIVED }))
           ].map(async asset => {
             const insertedAsset = await client.query<DBTradeAsset>(
               getInsertTradeAssetQuery(asset, insertedTrade.rows[0].id, asset.direction)
@@ -59,10 +65,10 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
             return { ...insertedAsset.rows[0], ...insertedValue.rows[0] }
           })
         )
-        return fromDbTradeWithAssetsToTrade(insertedTrade.rows[0], assets)
+        return fromDbTradeAndDBTradeAssetWithValueListToTrade(insertedTrade.rows[0], assets)
       },
       e => {
-        throw new Error(e && typeof e === 'object' && 'message' in e ? (e.message as string) : 'Could not create trade')
+        throw new Error(isErrorWithMessage(e) ? e.message : 'Could not create trade')
       }
     )
   }

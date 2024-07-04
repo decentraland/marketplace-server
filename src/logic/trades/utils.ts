@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { TypedDataField, ethers } from 'ethers'
+import { TypedDataField, ethers, toBeArray, zeroPadValue } from 'ethers'
 import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
+import { MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
 
 export function getValueFromTradeAsset(asset: TradeAsset) {
@@ -17,56 +18,57 @@ export function getValueFromTradeAsset(asset: TradeAsset) {
   }
 }
 
+export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
+  Trade: [
+    { name: 'checks', type: 'Checks' },
+    { name: 'sent', type: 'AssetWithoutBeneficiary[]' },
+    { name: 'received', type: 'Asset[]' }
+  ],
+  Asset: [
+    { name: 'assetType', type: 'uint256' },
+    { name: 'contractAddress', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'extra', type: 'bytes' },
+    { name: 'beneficiary', type: 'address' }
+  ],
+  AssetWithoutBeneficiary: [
+    { name: 'assetType', type: 'uint256' },
+    { name: 'contractAddress', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'extra', type: 'bytes' }
+  ],
+  Checks: [
+    { name: 'uses', type: 'uint256' },
+    { name: 'expiration', type: 'uint256' },
+    { name: 'effective', type: 'uint256' },
+    { name: 'salt', type: 'bytes32' },
+    { name: 'contractSignatureIndex', type: 'uint256' },
+    { name: 'signerSignatureIndex', type: 'uint256' },
+    { name: 'allowedRoot', type: 'bytes32' },
+    { name: 'externalChecks', type: 'ExternalCheck[]' }
+  ],
+  ExternalCheck: [
+    { name: 'contractAddress', type: 'address' },
+    { name: 'selector', type: 'bytes4' },
+    { name: 'value', type: 'uint256' },
+    { name: 'required', type: 'bool' }
+  ]
+}
+
 export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
   let offChainMarketplaceContract: ContractData
   try {
     offChainMarketplaceContract = getContract(ContractName.OffChainMarketplace, trade.chainId)
   } catch (e) {
-    return false
+    throw new MarketplaceContractNotFound(trade.chainId, trade.network)
   }
 
+  const SALT = zeroPadValue(toBeArray(trade.chainId), 32)
   const domain: ethers.TypedDataDomain = {
     name: offChainMarketplaceContract.name,
     version: offChainMarketplaceContract.version,
-    chainId: trade.chainId,
+    salt: SALT,
     verifyingContract: offChainMarketplaceContract.address
-  }
-
-  const types: Record<string, TypedDataField[]> = {
-    Trade: [
-      { name: 'checks', type: 'Checks' },
-      { name: 'sent', type: 'AssetWithoutBeneficiary[]' },
-      { name: 'received', type: 'Asset[]' }
-    ],
-    Asset: [
-      { name: 'assetType', type: 'uint256' },
-      { name: 'contractAddress', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'extra', type: 'bytes' },
-      { name: 'beneficiary', type: 'address' }
-    ],
-    AssetWithoutBeneficiary: [
-      { name: 'assetType', type: 'uint256' },
-      { name: 'contractAddress', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'extra', type: 'bytes' }
-    ],
-    Checks: [
-      { name: 'uses', type: 'uint256' },
-      { name: 'expiration', type: 'uint256' },
-      { name: 'effective', type: 'uint256' },
-      { name: 'salt', type: 'bytes32' },
-      { name: 'contractSignatureIndex', type: 'uint256' },
-      { name: 'signerSignatureIndex', type: 'uint256' },
-      { name: 'allowedRoot', type: 'bytes32' },
-      { name: 'externalChecks', type: 'ExternalCheck[]' }
-    ],
-    ExternalCheck: [
-      { name: 'contractAddress', type: 'address' },
-      { name: 'selector', type: 'bytes4' },
-      { name: 'value', type: 'uint256' },
-      { name: 'required', type: 'bool' }
-    ]
   }
 
   const values = {
@@ -74,10 +76,10 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       uses: trade.checks.uses,
       expiration: fromMillisecondsToSeconds(trade.checks.expiration),
       effective: fromMillisecondsToSeconds(trade.checks.effective),
-      salt: ethers.zeroPadValue(trade.checks.salt, 32),
+      salt: SALT,
       contractSignatureIndex: trade.checks.contractSignatureIndex,
       signerSignatureIndex: trade.checks.signerSignatureIndex,
-      allowedRoot: ethers.zeroPadValue(trade.checks.salt, 32),
+      allowedRoot: zeroPadValue(trade.checks.allowedRoot, 32),
       externalChecks: trade.checks.externalChecks?.map(externalCheck => ({
         contractAddress: externalCheck.contractAddress,
         selector: externalCheck.selector,
@@ -100,5 +102,5 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
     }))
   }
 
-  return ethers.verifyTypedData(domain, types, values, trade.signature).toLowerCase() === signer
+  return ethers.verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
 }

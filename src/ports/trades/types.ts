@@ -1,4 +1,5 @@
 import { Trade, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
@@ -23,7 +24,7 @@ export type DBTradeAsset = {
   contract_address: string
   beneficiary?: string
   created_at: Date
-  direction: 'sent' | 'received'
+  direction: TradeAssetDirection
   extra: string
   id: string
   trade_id: string

@@ -1,60 +1,79 @@
-import { TradeAssetType } from '@dcl/schemas'
+import { JSONSchema, TradeAssetType, TradeAsset, TradeCreation, TradeType } from '@dcl/schemas'
+import { BaseTradeAsset, TradeAssetWithBeneficiary } from '@dcl/schemas/dist/dapps/trade'
 
-export const TradeCreationAssetSchema = {
+export const BaseTradeAssetSchema: JSONSchema<BaseTradeAsset> = {
   type: 'object',
   properties: {
     assetType: {
-      type: 'number',
+      type: 'integer',
       enum: [TradeAssetType.ERC20, TradeAssetType.ERC721, TradeAssetType.COLLECTION_ITEM]
     },
     contractAddress: {
       type: 'string',
       pattern: '^0x[0-9a-fA-F]{40}$'
     },
-    amount: {
-      type: 'string',
-      pattern: '^(0|[1-9][0-9]*)$'
-    },
-    itemId: {
-      type: 'string'
-    },
-    tokenId: {
-      type: 'string'
-    },
     extra: {
       type: 'string'
     }
   },
-  anyOf: [
-    {
-      properties: {
-        assetType: { const: TradeAssetType.ERC20 }
-      },
-      required: ['amount']
-    },
-    {
-      properties: {
-        assetType: { const: TradeAssetType.ERC721 }
-      },
-      required: ['tokenId']
-    },
-    {
-      properties: {
-        assetType: { const: TradeAssetType.COLLECTION_ITEM }
-      },
-      required: ['itemId']
-    }
-  ],
-  required: ['contractAddress', 'extra', 'assetType'],
-  additionalProperties: false
+  required: ['assetType', 'contractAddress', 'extra']
 }
 
-export const TradeCreationSchema = {
+export const TradeCreationAssetSchema: JSONSchema<TradeAsset> = {
+  type: 'object',
+  oneOf: [
+    {
+      properties: {
+        ...BaseTradeAssetSchema.properties,
+        assetType: { const: TradeAssetType.ERC20 },
+        amount: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' }
+      },
+      required: [...BaseTradeAssetSchema.required, 'amount']
+    },
+    {
+      properties: {
+        ...BaseTradeAssetSchema.properties,
+        assetType: { const: TradeAssetType.ERC721 },
+        tokenId: { type: 'string' }
+      },
+      required: [...BaseTradeAssetSchema.required, 'tokenId']
+    },
+    {
+      properties: {
+        ...BaseTradeAssetSchema.properties,
+        assetType: { const: TradeAssetType.COLLECTION_ITEM },
+        itemId: { type: 'string' }
+      },
+      required: [...BaseTradeAssetSchema.required, 'itemId']
+    }
+  ],
+  required: []
+}
+
+export const TradeCreationAssetSchemaWithBeneficiary: JSONSchema<TradeAssetWithBeneficiary> = {
+  type: 'object',
+  oneOf:
+    TradeCreationAssetSchema.oneOf?.map(schema => ({
+      ...schema,
+      properties: {
+        ...schema.properties,
+        beneficiary: {
+          type: 'string',
+          pattern: '^0x[0-9a-fA-F]{40}$'
+        }
+      },
+      required: [...schema.required, 'beneficiary']
+    })) ?? [],
+  required: []
+}
+
+export const TradeCreationSchema: JSONSchema<TradeCreation> = {
   type: 'object',
   properties: {
-    netword: { type: 'string' },
+    signer: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' },
+    network: { type: 'string' },
     chainId: { type: 'number' },
-    type: { type: 'string', enum: ['bid'] }, // for now we only support bids
+    type: { type: 'string', enum: [TradeType.BID] }, // for now we only support bids
     signature: { type: 'string' },
     checks: {
       type: 'object',
@@ -85,6 +104,13 @@ export const TradeCreationSchema = {
         allowedRoot: {
           type: 'string'
         },
+        allowedProof: {
+          type: 'array',
+          nullable: true,
+          items: {
+            type: 'string'
+          }
+        },
         externalChecks: {
           type: 'array',
           items: {
@@ -93,7 +119,7 @@ export const TradeCreationSchema = {
               contractAddress: { type: 'string', pattern: '^0x[a-fA-F0-9]{40}$' },
               selector: { type: 'string' },
               value: {
-                type: 'number'
+                type: 'string'
               },
               required: {
                 type: 'boolean'
@@ -107,20 +133,11 @@ export const TradeCreationSchema = {
       required: ['uses', 'expiration', 'effective', 'salt', 'contractSignatureIndex', 'signerSignatureIndex'],
       additionalProperties: false
     },
-    sent: { type: 'array', items: { ...TradeCreationAssetSchema } },
+    sent: { type: 'array', minItems: 1, items: TradeCreationAssetSchema },
     received: {
       type: 'array',
-      items: {
-        ...TradeCreationAssetSchema,
-        properties: {
-          ...TradeCreationAssetSchema.properties,
-          beneficiary: {
-            type: 'string',
-            pattern: '^0x[0-9a-fA-F]{40}$'
-          }
-        },
-        required: [...TradeCreationAssetSchema.required, 'beneficiary']
-      }
+      minItems: 1,
+      items: TradeCreationAssetSchemaWithBeneficiary
     }
   },
   required: ['signature', 'checks', 'sent', 'received', 'type', 'network', 'chainId'],

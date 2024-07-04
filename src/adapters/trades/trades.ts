@@ -1,8 +1,8 @@
 import { Network, Trade, TradeAsset, TradeChecks } from '@dcl/schemas'
-import { TradeAssetType, TradeAssetWithBeneficiary, TradeType } from '@dcl/schemas/dist/dapps/trade'
+import { TradeAssetDirection, TradeAssetType, TradeAssetWithBeneficiary, TradeType } from '@dcl/schemas/dist/dapps/trade'
 import { DBTrade, DBTradeAssetWithValue } from '../../ports/trades'
 
-export function fromDBTradeAssetToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
+export function fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
   const tradeBaseValues = {
     contractAddress: dbTradeAsset.contract_address,
     extra: dbTradeAsset.extra
@@ -20,18 +20,18 @@ export function fromDBTradeAssetToTradeAsset(dbTradeAsset: DBTradeAssetWithValue
   }
 }
 
-export function fromDBTradeAssetToTradeAssetWithBeneficiary(dbTradeAsset: DBTradeAssetWithValue): TradeAssetWithBeneficiary {
+export function fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(dbTradeAsset: DBTradeAssetWithValue): TradeAssetWithBeneficiary {
   if (!dbTradeAsset.beneficiary) {
     throw new Error('DBTradeAsset does not have a beneficiary')
   }
 
   return {
-    ...fromDBTradeAssetToTradeAsset(dbTradeAsset),
+    ...fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset),
     beneficiary: dbTradeAsset.beneficiary
   }
 }
 
-export function fromDbTradeWithAssetsToTrade(dbTrade: DBTrade, assets: DBTradeAssetWithValue[]): Trade {
+export function fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade: DBTrade, assets: DBTradeAssetWithValue[]): Trade {
   return {
     id: dbTrade.id,
     signer: dbTrade.signer,
@@ -40,7 +40,9 @@ export function fromDbTradeWithAssetsToTrade(dbTrade: DBTrade, assets: DBTradeAs
     chainId: dbTrade.chain_id,
     checks: dbTrade.checks as TradeChecks,
     createdAt: dbTrade.created_at.getTime(),
-    sent: assets.filter(asset => asset.direction === 'sent').map(fromDBTradeAssetToTradeAsset),
-    received: assets.filter(asset => asset.direction === 'received').map(fromDBTradeAssetToTradeAssetWithBeneficiary)
+    sent: assets.filter(asset => asset.direction === TradeAssetDirection.SENT).map(fromDBTradeAssetWithValueToTradeAsset),
+    received: assets
+      .filter(asset => asset.direction === TradeAssetDirection.RECEIVED)
+      .map(fromDBTradeAssetWithValueToTradeAssetWithBeneficiary)
   }
 }

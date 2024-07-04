@@ -1,4 +1,5 @@
 import { Request } from 'node-fetch'
+import { Trade, TradeCreation } from '@dcl/schemas'
 import { addTradeHandler } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
@@ -7,23 +8,34 @@ import {
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError
 } from '../../src/ports/trades/errors'
-import { StatusCode } from '../../src/types'
+import { HandlerContextWithPath, StatusCode } from '../../src/types'
 
-describe('addTradeHandler', () => {
-  describe('when request is missing authentication', () => {
-    it('should return an HTTPResponse with status code 401', async () => {
-      const context = {
-        verification: {
-          auth: null
-        },
-        components: {
-          trades: {
-            getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-            addTrade: jest.fn().mockResolvedValue({})
-          }
+describe('when handling the creation of a new trade', () => {
+  let context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components' | 'request' | 'verification'>
+
+  beforeEach(() => {
+    context = {
+      request: {} as any as Request,
+      verification: {
+        auth: 'signer',
+        authMetadata: {}
+      },
+      components: {
+        trades: {
+          getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          addTrade: jest.fn().mockResolvedValue({})
         }
       }
-      const result = await addTradeHandler(context as any)
+    }
+  })
+
+  describe('when request is missing authentication', () => {
+    beforeEach(() => {
+      context.verification = undefined
+    })
+
+    it('should return an HTTPResponse with status code 401', async () => {
+      const result = await addTradeHandler(context)
       expect(result).toEqual({
         status: 401,
         body: {
@@ -35,24 +47,19 @@ describe('addTradeHandler', () => {
   })
 
   describe('when trade was created successfully', () => {
+    let response: Trade
+    let body: TradeCreation
+    let addTradeMock: jest.Mock
+
+    beforeEach(() => {
+      response = { id: 'trade-id' } as Trade
+      body = { type: 'bid' } as TradeCreation
+      addTradeMock = jest.fn().mockResolvedValue(response)
+      context.request.json = jest.fn().mockResolvedValue(body)
+      context.components.trades.addTrade = addTradeMock
+    })
+
     it('should return an HTTPResponse with status code 201 and the added trade', async () => {
-      const response = { id: 'trade-id' }
-      const body = { type: 'bid' }
-      const context = {
-        request: {
-          json: jest.fn().mockResolvedValue(body)
-        } as any as Request,
-        components: {
-          trades: {
-            getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-            addTrade: jest.fn().mockResolvedValue(response)
-          }
-        },
-        verification: {
-          auth: 'signer',
-          authMetadata: {}
-        }
-      }
       const result = await addTradeHandler(context)
       expect(result).toEqual({
         status: 201,
@@ -61,12 +68,14 @@ describe('addTradeHandler', () => {
           data: response
         }
       })
-
-      expect(context.components.trades.addTrade).toHaveBeenCalledWith(body, 'signer')
+      expect(addTradeMock).toHaveBeenCalledWith(body, context.verification?.auth)
     })
   })
 
-  describe('when trade creation failed', () => {
+  describe('when the trade creation failed', () => {
+    let addTradeMock: jest.Mock
+    let body: TradeCreation
+
     describe.each([
       { errorName: 'TradeAlreadyExpiredError', error: new TradeAlreadyExpiredError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'TradeEffectiveAfterExpirationError', error: new TradeEffectiveAfterExpirationError(), code: StatusCode.BAD_REQUEST },
@@ -74,23 +83,14 @@ describe('addTradeHandler', () => {
       { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
+      beforeEach(() => {
+        body = { type: 'bid' } as TradeCreation
+        addTradeMock = jest.fn().mockRejectedValue(error)
+        context.request.json = jest.fn().mockResolvedValue(body)
+        context.components.trades.addTrade = addTradeMock
+      })
+
       it(`should return an HTTPResponse with error status code ${code} and correct error message`, async () => {
-        const body = { type: 'bid' }
-        const context = {
-          request: {
-            json: jest.fn().mockResolvedValue(body)
-          } as any as Request,
-          components: {
-            trades: {
-              getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-              addTrade: jest.fn().mockRejectedValue(error)
-            }
-          },
-          verification: {
-            auth: 'signer',
-            authMetadata: {}
-          }
-        }
         const result = await addTradeHandler(context)
         expect(result).toEqual({
           status: code,
@@ -100,39 +100,30 @@ describe('addTradeHandler', () => {
           }
         })
 
-        expect(context.components.trades.addTrade).toHaveBeenCalledWith(body, 'signer')
+        expect(addTradeMock).toHaveBeenCalledWith(body, context.verification?.auth)
       })
     })
 
     describe('and there is an unexpected error', () => {
-      it('should return an HTTPResponse with status code 400', async () => {
-        const error = new Error('Some error')
-        const body = { type: 'bid' }
-        const context = {
-          request: {
-            json: jest.fn().mockResolvedValue(body)
-          } as any as Request,
-          components: {
-            trades: {
-              getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-              addTrade: jest.fn().mockRejectedValue(error)
-            }
-          },
-          verification: {
-            auth: 'signer',
-            authMetadata: {}
-          }
-        }
+      let error: Error
+      beforeEach(() => {
+        error = new Error('Some error')
+        body = { type: 'bid' } as TradeCreation
+        addTradeMock = jest.fn().mockRejectedValue(error)
+        context.request.json = jest.fn().mockResolvedValue(body)
+        context.components.trades.addTrade = addTradeMock
+      })
+      it('should return an HTTPResponse with status code 500', async () => {
         const result = await addTradeHandler(context)
         expect(result).toEqual({
-          status: StatusCode.BAD_REQUEST,
+          status: StatusCode.ERROR,
           body: {
             ok: false,
             message: error.message
           }
         })
 
-        expect(context.components.trades.addTrade).toHaveBeenCalledWith(body, 'signer')
+        expect(addTradeMock).toHaveBeenCalledWith(body, context.verification?.auth)
       })
     })
   })

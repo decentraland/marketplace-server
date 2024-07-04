@@ -1,7 +1,7 @@
 import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
 import { Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { ERC20TradeAsset, ERC721TradeAsset } from '@dcl/schemas/dist/dapps/trade'
+import { ERC20TradeAsset, ERC721TradeAsset, TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -62,6 +62,10 @@ test('trades controller', function ({ components }) {
           signer: 'dcl:marketplace'
         })
         signer = signedRequest.identity.realAccount.address.toLowerCase()
+        bid = {
+          ...bid,
+          signer
+        }
         response = await localFetch.fetch('/v1/trades', {
           method: signedRequest.method,
           body: JSON.stringify(bid),
@@ -83,12 +87,12 @@ test('trades controller', function ({ components }) {
         expect(queryResult.rows).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
-              direction: 'sent',
+              direction: TradeAssetDirection.SENT,
               contract_address: bid.sent[0].contractAddress,
               asset_type: bid.sent[0].assetType
             }),
             expect.objectContaining({
-              direction: 'received',
+              direction: TradeAssetDirection.RECEIVED,
               contract_address: bid.received[0].contractAddress,
               asset_type: bid.received[0].assetType,
               beneficiary: bid.received[0].beneficiary
@@ -100,7 +104,7 @@ test('trades controller', function ({ components }) {
       it('should insert trade asset erc20 values in db', async () => {
         const { dappsDatabase } = components
         const queryResult = await dappsDatabase.query(
-          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc20 as erc20 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc20.asset_id = ta.id AND ta.direction = 'sent'`
+          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc20 as erc20 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc20.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.SENT}`
         )
         expect(queryResult.rows).toEqual([
           expect.objectContaining({ asset_type: TradeAssetType.ERC20, amount: (bid.sent[0] as ERC20TradeAsset).amount })
@@ -110,12 +114,12 @@ test('trades controller', function ({ components }) {
       it('should insert trade asset erc721 values in db', async () => {
         const { dappsDatabase } = components
         const queryResult = await dappsDatabase.query(
-          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc721 as erc721 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc721.asset_id = ta.id AND ta.direction = 'received'`
+          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc721 as erc721 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc721.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.RECEIVED}`
         )
         expect(queryResult.rows).toEqual([expect.objectContaining({ token_id: (bid.received[0] as ERC721TradeAsset).tokenId })])
       })
 
-      it('should return 200 status with trade body', async () => {
+      it('should return 201 status with trade body', async () => {
         expect(response.status).toEqual(StatusCode.CREATED)
         const { signature, ...responseBid } = bid
         expect(await response.json()).toEqual({

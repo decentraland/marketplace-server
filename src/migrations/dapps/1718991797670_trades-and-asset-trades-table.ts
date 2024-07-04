@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
+import { TradeType } from '@dcl/schemas'
+import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
 
 export const SCHEMA = 'marketplace'
 
@@ -13,7 +15,7 @@ export const ASSET_DIRECTION_TYPE = 'asset_direction_type'
 export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
-  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, ['bid', 'public_order'])
+  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID, TradeType.PUBLIC_ORDER])
 
   pgm.createTable(
     { schema: SCHEMA, name: TRADES_TABLE },
@@ -37,7 +39,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     }
   )
 
-  pgm.createType({ schema: SCHEMA, name: ASSET_DIRECTION_TYPE }, ['sent', 'received'])
+  pgm.createType({ schema: SCHEMA, name: ASSET_DIRECTION_TYPE }, [TradeAssetDirection.SENT, TradeAssetDirection.RECEIVED])
 
   pgm.createTable(
     { schema: SCHEMA, name: TRADE_ASSETS_TABLE },
@@ -91,7 +93,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         references: `"${TRADE_ASSETS_TABLE}"(id)`,
         onDelete: 'CASCADE'
       },
-      amount: { type: 'numeric(78,0)', notNull: true }
+      amount: { type: 'numeric(78,0)', notNull: true, check: 'amount >= 0 AND amount < 2^256' }
     }
   )
 

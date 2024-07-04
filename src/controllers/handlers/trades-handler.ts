@@ -1,8 +1,10 @@
 import { Trade, TradeCreation } from '@dcl/schemas'
+import { isErrorWithMessage } from '../../logic/errors'
 import { DBTrade } from '../../ports/trades'
 import {
   DuplicatedBidError,
   InvalidTradeSignatureError,
+  InvalidTradeSignerError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError
@@ -67,7 +69,8 @@ export async function addTradeHandler(
       e instanceof TradeAlreadyExpiredError ||
       e instanceof TradeEffectiveAfterExpirationError ||
       e instanceof InvalidTradeStructureError ||
-      e instanceof InvalidTradeSignatureError
+      e instanceof InvalidTradeSignatureError ||
+      e instanceof InvalidTradeSignerError
     ) {
       return {
         status: StatusCode.BAD_REQUEST,
@@ -89,10 +92,10 @@ export async function addTradeHandler(
     }
 
     return {
-      status: StatusCode.BAD_REQUEST,
+      status: StatusCode.ERROR,
       body: {
         ok: false,
-        message: typeof e === 'object' && e && 'message' in e && typeof e.message === 'string' ? e.message : 'Trade could not be created'
+        message: isErrorWithMessage(e) ? e.message : 'Trade could not be created'
       }
     }
   }

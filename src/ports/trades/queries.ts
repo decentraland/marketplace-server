@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset } from '@dcl/schemas'
-import { TradeAssetType, TradeAssetWithBeneficiary, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { TradeAssetDirection, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   return SQL`
@@ -22,7 +22,7 @@ export function getDuplicateBidQuery(trade: TradeCreation) {
   const NOT_EXPIRED = SQL`bid_with_assets.expires_at > now()::timestamptz(3)`
   const SAME_SIGNER = SQL`LOWER(bid_with_assets.signer) = LOWER(${trade.signer.toLowerCase()})`
   const SAME_NETWORK = SQL`bid_with_assets.network = ${trade.network}`
-  const RECEIVED_ASSET = SQL`bid_with_assets.direction = 'received'`
+  const RECEIVED_ASSET = SQL`bid_with_assets.direction = ${TradeAssetDirection.RECEIVED}`
   const SAME_CONTRACT = SQL`LOWER(bid_with_assets.contract_address) = LOWER(${trade.received[0].contractAddress})`
   const SAME_TOKEN_ID =
     'tokenId' in trade.received[0] ? SQL`bid_with_assets.token_id = ${trade.received[0].tokenId}` : SQL`bid_with_assets.token_id IS NULL`
