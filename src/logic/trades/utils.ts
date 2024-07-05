@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { TypedDataField, ethers, toBeArray, zeroPadValue } from 'ethers'
+import { TypedDataField, hexlify, TypedDataDomain, verifyTypedData, toBeArray, toUtf8Bytes, zeroPadValue } from 'ethers'
 import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { MarketplaceContractNotFound } from '../../ports/trades/errors'
@@ -64,7 +64,7 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
   }
 
   const SALT = zeroPadValue(toBeArray(trade.chainId), 32)
-  const domain: ethers.TypedDataDomain = {
+  const domain: TypedDataDomain = {
     name: offChainMarketplaceContract.name,
     version: offChainMarketplaceContract.version,
     salt: SALT,
@@ -91,16 +91,16 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
       value: getValueFromTradeAsset(asset),
-      extra: asset.extra
+      extra: hexlify(toUtf8Bytes(asset.extra))
     })),
     received: trade.received.map(asset => ({
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
       value: getValueFromTradeAsset(asset),
-      extra: asset.extra,
+      extra: hexlify(toUtf8Bytes(asset.extra)),
       beneficiary: asset.beneficiary
     }))
   }
 
-  return ethers.verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
+  return verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
 }
