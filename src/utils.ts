@@ -1,7 +1,7 @@
 import { IFetchComponent } from '@well-known-components/http-server'
 import { Response } from 'node-fetch'
 import pLimit from 'p-limit'
-import { HTTPErrorResponseBody, HTTPSuccessResponseBody, PaginatedResponse } from './types'
+import { HTTPErrorResponseBody, HTTPSuccessResponseBody, PaginatedResponse, StatusCode } from './types'
 
 export const MAX_CONCURRENT_REQUEST = 5
 export const MAX_URL_LENGTH = 2048
@@ -84,4 +84,10 @@ export async function queryMultipleTimesWhenExceedingUrlLimit<T>(
   )
 
   return results.flatMap(({ data }) => (isPaginated(data) ? data.results : data))
+}
+
+export class RequestError extends Error {
+  constructor(public statusCode: StatusCode, public message: string) {
+    super(message)
+  }
 }
