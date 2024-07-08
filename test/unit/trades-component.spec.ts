@@ -32,8 +32,8 @@ describe('when adding a new trade', () => {
       network: Network.ETHEREUM,
       chainId: ChainId.ETHEREUM_MAINNET,
       checks: {
-        expiration: new Date().getTime() + 100000000000,
-        effective: new Date().getTime(),
+        expiration: Date.now() + 100000000000,
+        effective: Date.now(),
         uses: 1,
         salt: '',
         allowedRoot: '',
@@ -98,8 +98,7 @@ describe('when adding a new trade', () => {
     beforeEach(() => {
       mockTrade.checks = {
         ...mockTrade.checks,
-        expiration: new Date().getTime(),
-        effective: new Date().getTime() + 1000
+        effective: mockTrade.checks.expiration + 1000
       }
     })
     it('should throw a RequestError with BAD_REQUEST status code', async () => {
