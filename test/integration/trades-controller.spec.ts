@@ -1,7 +1,7 @@
 import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
 import { Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { ERC20TradeAsset, ERC721TradeAsset, TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { CollectionItemTradeAsset, ERC20TradeAsset, ERC721TradeAsset, TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -54,77 +54,185 @@ test('trades controller', function ({ components }) {
       }
     })
 
-    describe('and the bid is valid', () => {
-      beforeEach(async () => {
-        const { localFetch } = components
-        const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-          intent: 'dcl:marketplace:create-trade',
-          signer: 'dcl:marketplace'
-        })
-        signer = signedRequest.identity.realAccount.address.toLowerCase()
+    describe('and the bid is on an nft', () => {
+      beforeEach(() => {
         bid = {
           ...bid,
-          signer
+          received: [
+            {
+              assetType: TradeAssetType.ERC721,
+              contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+              tokenId: 'atokenid',
+              extra: '0x',
+              beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+            }
+          ]
         }
-        response = await localFetch.fetch('/v1/trades', {
-          method: signedRequest.method,
-          body: JSON.stringify(bid),
-          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+      describe('and the bid is valid', () => {
+        beforeEach(async () => {
+          const { localFetch } = components
+          const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+            intent: 'dcl:marketplace:create-trade',
+            signer: 'dcl:marketplace'
+          })
+          signer = signedRequest.identity.realAccount.address.toLowerCase()
+          bid = {
+            ...bid,
+            signer
+          }
+          response = await localFetch.fetch('/v1/trades', {
+            method: signedRequest.method,
+            body: JSON.stringify(bid),
+            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+          })
+        })
+
+        it('should insert a new trade in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${bid.signature}`)
+          expect(queryResult.rowCount).toBe(1)
+        })
+
+        it('should insert trade assets in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature})`
+          )
+          expect(queryResult.rows).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                direction: TradeAssetDirection.SENT,
+                contract_address: bid.sent[0].contractAddress,
+                asset_type: bid.sent[0].assetType
+              }),
+              expect.objectContaining({
+                direction: TradeAssetDirection.RECEIVED,
+                contract_address: bid.received[0].contractAddress,
+                asset_type: bid.received[0].assetType,
+                beneficiary: bid.received[0].beneficiary
+              })
+            ])
+          )
+        })
+
+        it('should insert trade asset erc20 values in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc20 as erc20 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc20.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.SENT}`
+          )
+          expect(queryResult.rows).toEqual([
+            expect.objectContaining({ asset_type: TradeAssetType.ERC20, amount: (bid.sent[0] as ERC20TradeAsset).amount })
+          ])
+        })
+
+        it('should insert trade asset erc721 values in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc721 as erc721 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc721.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.RECEIVED}`
+          )
+          expect(queryResult.rows).toEqual([expect.objectContaining({ token_id: (bid.received[0] as ERC721TradeAsset).tokenId })])
+        })
+
+        it('should return 201 status with trade body', async () => {
+          expect(response.status).toEqual(StatusCode.CREATED)
+          const { signature, ...responseBid } = bid
+          expect(await response.json()).toEqual({
+            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            ok: true
+          })
         })
       })
+    })
 
-      it('should insert a new trade in db', async () => {
-        const { dappsDatabase } = components
-        const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${bid.signature}`)
-        expect(queryResult.rowCount).toBe(1)
+    describe('and the bid is on an item', () => {
+      beforeEach(() => {
+        bid = {
+          ...bid,
+          received: [
+            {
+              assetType: TradeAssetType.COLLECTION_ITEM,
+              contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+              itemId: 'anItemId',
+              extra: '0x',
+              beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+            }
+          ]
+        }
       })
 
-      it('should insert trade assets in db', async () => {
-        const { dappsDatabase } = components
-        const queryResult = await dappsDatabase.query(
-          SQL`SELECT * FROM marketplace.trade_assets WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature})`
-        )
-        expect(queryResult.rows).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              direction: TradeAssetDirection.SENT,
-              contract_address: bid.sent[0].contractAddress,
-              asset_type: bid.sent[0].assetType
-            }),
-            expect.objectContaining({
-              direction: TradeAssetDirection.RECEIVED,
-              contract_address: bid.received[0].contractAddress,
-              asset_type: bid.received[0].assetType,
-              beneficiary: bid.received[0].beneficiary
-            })
+      describe('and the bid is valid', () => {
+        beforeEach(async () => {
+          const { localFetch } = components
+          const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+            intent: 'dcl:marketplace:create-trade',
+            signer: 'dcl:marketplace'
+          })
+          signer = signedRequest.identity.realAccount.address.toLowerCase()
+          bid = {
+            ...bid,
+            signer
+          }
+          response = await localFetch.fetch('/v1/trades', {
+            method: signedRequest.method,
+            body: JSON.stringify(bid),
+            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+          })
+        })
+
+        it('should insert a new trade in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${bid.signature}`)
+          expect(queryResult.rowCount).toBe(1)
+        })
+
+        it('should insert trade assets in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature})`
+          )
+          expect(queryResult.rows).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                direction: TradeAssetDirection.SENT,
+                contract_address: bid.sent[0].contractAddress,
+                asset_type: bid.sent[0].assetType
+              }),
+              expect.objectContaining({
+                direction: TradeAssetDirection.RECEIVED,
+                contract_address: bid.received[0].contractAddress,
+                asset_type: bid.received[0].assetType,
+                beneficiary: bid.received[0].beneficiary
+              })
+            ])
+          )
+        })
+
+        it('should insert trade asset erc20 values in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc20 as erc20 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc20.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.SENT}`
+          )
+          expect(queryResult.rows).toEqual([
+            expect.objectContaining({ asset_type: TradeAssetType.ERC20, amount: (bid.sent[0] as ERC20TradeAsset).amount })
           ])
-        )
-      })
+        })
 
-      it('should insert trade asset erc20 values in db', async () => {
-        const { dappsDatabase } = components
-        const queryResult = await dappsDatabase.query(
-          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc20 as erc20 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc20.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.SENT}`
-        )
-        expect(queryResult.rows).toEqual([
-          expect.objectContaining({ asset_type: TradeAssetType.ERC20, amount: (bid.sent[0] as ERC20TradeAsset).amount })
-        ])
-      })
+        it('should insert trade asset item values in db', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(
+            SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_item as item WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND item.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.RECEIVED}`
+          )
+          expect(queryResult.rows).toEqual([expect.objectContaining({ item_id: (bid.received[0] as CollectionItemTradeAsset).itemId })])
+        })
 
-      it('should insert trade asset erc721 values in db', async () => {
-        const { dappsDatabase } = components
-        const queryResult = await dappsDatabase.query(
-          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_erc721 as erc721 WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${bid.signature}) AND erc721.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.RECEIVED}`
-        )
-        expect(queryResult.rows).toEqual([expect.objectContaining({ token_id: (bid.received[0] as ERC721TradeAsset).tokenId })])
-      })
-
-      it('should return 201 status with trade body', async () => {
-        expect(response.status).toEqual(StatusCode.CREATED)
-        const { signature, ...responseBid } = bid
-        expect(await response.json()).toEqual({
-          data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
-          ok: true
+        it('should return 201 status with trade body', async () => {
+          expect(response.status).toEqual(StatusCode.CREATED)
+          const { signature, ...responseBid } = bid
+          expect(await response.json()).toEqual({
+            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            ok: true
+          })
         })
       })
     })

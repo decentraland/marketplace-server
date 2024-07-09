@@ -106,7 +106,7 @@ export function getInsertTradeAssetValueByTypeQuery(asset: TradeAsset | TradeAss
           ${asset.amount}
         ) RETURNING *;`
     case TradeAssetType.COLLECTION_ITEM:
-      return SQL`INSERT INTO marketplace.trade_assets_erc20 (
+      return SQL`INSERT INTO marketplace.trade_assets_item (
         asset_id,
         item_id
         ) VALUES (
