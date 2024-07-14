@@ -1,12 +1,13 @@
 import { Request } from 'node-fetch'
 import { Trade, TradeCreation } from '@dcl/schemas'
-import { addTradeHandler } from '../../src/controllers/handlers/trades-handler'
+import { addTradeHandler, getTradeHandler } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
-  TradeEffectiveAfterExpirationError
+  TradeEffectiveAfterExpirationError,
+  TradeNotFoundError
 } from '../../src/ports/trades/errors'
 import { HandlerContextWithPath, StatusCode } from '../../src/types'
 
@@ -23,7 +24,8 @@ describe('when handling the creation of a new trade', () => {
       components: {
         trades: {
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-          addTrade: jest.fn().mockResolvedValue({})
+          addTrade: jest.fn().mockResolvedValue({}),
+          getTrade: jest.fn().mockResolvedValue({} as Trade)
         }
       }
     }
@@ -124,6 +126,109 @@ describe('when handling the creation of a new trade', () => {
         })
 
         expect(addTradeMock).toHaveBeenCalledWith(body, context.verification?.auth)
+      })
+    })
+  })
+})
+
+describe('when handling the retrieval of a trade', () => {
+  let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
+
+  describe('and the trade exists', () => {
+    let trade: Trade
+
+    beforeEach(() => {
+      trade = { id: 'trade-id' } as Trade
+
+      context = {
+        params: {
+          id: trade.id
+        },
+        components: {
+          trades: {
+            getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+            addTrade: jest.fn().mockResolvedValue({}),
+            getTrade: jest.fn().mockResolvedValue(trade)
+          }
+        }
+      }
+    })
+
+    it('should return trade', async () => {
+      const result = await getTradeHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.OK,
+        body: {
+          ok: true,
+          data: trade
+        }
+      })
+    })
+  })
+
+  describe('and the trade does not exist', () => {
+    let trade: Trade
+    let error: TradeNotFoundError
+
+    beforeEach(() => {
+      trade = { id: 'trade-id' } as Trade
+      error = new TradeNotFoundError(trade.id)
+      context = {
+        params: {
+          id: trade.id
+        },
+        components: {
+          trades: {
+            getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+            addTrade: jest.fn().mockResolvedValue({}),
+            getTrade: jest.fn().mockRejectedValue(error)
+          }
+        }
+      }
+    })
+
+    it('should return not found error', async () => {
+      const result = await getTradeHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.NOT_FOUND,
+        body: {
+          ok: false,
+          message: error.message
+        }
+      })
+    })
+  })
+
+  describe('and there was a unexpected error', () => {
+    let trade: Trade
+    let error: Error
+
+    beforeEach(() => {
+      trade = { id: 'trade-id' } as Trade
+      error = new Error('Some unexpected error')
+
+      context = {
+        params: {
+          id: trade.id
+        },
+        components: {
+          trades: {
+            getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+            addTrade: jest.fn().mockResolvedValue({}),
+            getTrade: jest.fn().mockRejectedValue(error)
+          }
+        }
+      }
+    })
+
+    it('should return not found error', async () => {
+      const result = await getTradeHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.ERROR,
+        body: {
+          ok: false,
+          message: error.message
+        }
       })
     })
   })

@@ -1,5 +1,13 @@
-import { Network, Trade, TradeAsset, TradeChecks } from '@dcl/schemas'
-import { TradeAssetDirection, TradeAssetType, TradeAssetWithBeneficiary, TradeType } from '@dcl/schemas/dist/dapps/trade'
+import {
+  Network,
+  Trade,
+  TradeAsset,
+  TradeChecks,
+  TradeAssetDirection,
+  TradeAssetType,
+  TradeAssetWithBeneficiary,
+  TradeType
+} from '@dcl/schemas'
 import { DBTrade, DBTradeAssetWithValue } from '../../ports/trades'
 
 export function fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
@@ -35,6 +43,7 @@ export function fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade: DBTrade,
   return {
     id: dbTrade.id,
     signer: dbTrade.signer,
+    signature: dbTrade.signature,
     type: dbTrade.type as TradeType,
     network: dbTrade.network as Network,
     chainId: dbTrade.chain_id,

@@ -7,7 +7,8 @@ import {
   InvalidTradeSignerError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
-  TradeEffectiveAfterExpirationError
+  TradeEffectiveAfterExpirationError,
+  TradeNotFoundError
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
@@ -96,6 +97,45 @@ export async function addTradeHandler(
       body: {
         ok: false,
         message: isErrorWithMessage(e) ? e.message : 'Trade could not be created'
+      }
+    }
+  }
+}
+
+export async function getTradeHandler(
+  context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
+): Promise<HTTPResponse<Trade | null>> {
+  try {
+    const {
+      components: { trades },
+      params: { id }
+    } = context
+
+    const data = await trades.getTrade(id)
+
+    return {
+      status: StatusCode.OK,
+      body: {
+        ok: true,
+        data
+      }
+    }
+  } catch (e) {
+    if (e instanceof TradeNotFoundError) {
+      return {
+        status: StatusCode.NOT_FOUND,
+        body: {
+          ok: false,
+          message: e.message
+        }
+      }
+    }
+
+    return {
+      status: StatusCode.ERROR,
+      body: {
+        ok: false,
+        message: isErrorWithMessage(e) ? e.message : 'Could not fetch the trade'
       }
     }
   }

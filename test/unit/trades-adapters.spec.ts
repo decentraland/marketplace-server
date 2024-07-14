@@ -1,5 +1,4 @@
-import { TradeAssetType, TradeType } from '@dcl/schemas'
-import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { TradeAssetType, TradeType, TradeAssetDirection } from '@dcl/schemas'
 import {
   fromDBTradeAssetWithValueToTradeAsset,
   fromDBTradeAssetWithValueToTradeAssetWithBeneficiary,
@@ -71,6 +70,7 @@ describe('when adapting a db trade with its assets to a trade', () => {
     expect(result).toEqual({
       id: dbTrade.id,
       signer: dbTrade.signer,
+      signature: dbTrade.signature,
       type: dbTrade.type,
       network: dbTrade.network,
       chainId: dbTrade.chain_id,

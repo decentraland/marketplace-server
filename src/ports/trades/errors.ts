@@ -41,3 +41,9 @@ export class DuplicatedBidError extends Error {
     super('There is already a bid with the same parameters')
   }
 }
+
+export class TradeNotFoundError extends Error {
+  constructor(public tradeId: string) {
+    super(`Trade not found for id ${tradeId}`)
+  }
+}

@@ -1,6 +1,5 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { TradeAsset } from '@dcl/schemas'
-import { TradeAssetDirection, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { TradeAsset, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeAssetDirection } from '@dcl/schemas'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   return SQL`
@@ -116,4 +115,8 @@ export function getInsertTradeAssetValueByTypeQuery(asset: TradeAsset | TradeAss
     default:
       throw new Error('Invalid asset type')
   }
+}
+
+export function getTradeAssetsWithValuesByIdQuery(id: string) {
+  return getTradeAssetsWithValuesQuery(SQL`t.id = ${id}`)
 }

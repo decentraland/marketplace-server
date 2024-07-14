@@ -1,5 +1,4 @@
-import { JSONSchema, TradeAssetType, TradeAsset, TradeCreation, TradeType } from '@dcl/schemas'
-import { BaseTradeAsset, TradeAssetWithBeneficiary } from '@dcl/schemas/dist/dapps/trade'
+import { JSONSchema, TradeAssetType, TradeAsset, TradeCreation, TradeType, BaseTradeAsset, TradeAssetWithBeneficiary } from '@dcl/schemas'
 
 export const BaseTradeAssetSchema: JSONSchema<BaseTradeAsset> = {
   type: 'object',
