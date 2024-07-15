@@ -3,6 +3,7 @@ import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
+import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
@@ -51,6 +52,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/trades/:id', getTradeHandler)
+
+  router.get('/v1/bids', getBidsHandler)
 
   setupFavoritesRouter(router, { components })
 

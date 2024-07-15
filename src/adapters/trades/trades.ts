@@ -1,13 +1,4 @@
-import {
-  Network,
-  Trade,
-  TradeAsset,
-  TradeChecks,
-  TradeAssetDirection,
-  TradeAssetType,
-  TradeAssetWithBeneficiary,
-  TradeType
-} from '@dcl/schemas'
+import { Network, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeAssetWithBeneficiary } from '@dcl/schemas'
 import { DBTrade, DBTradeAssetWithValue } from '../../ports/trades'
 
 export function fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
@@ -44,10 +35,10 @@ export function fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade: DBTrade,
     id: dbTrade.id,
     signer: dbTrade.signer,
     signature: dbTrade.signature,
-    type: dbTrade.type as TradeType,
+    type: dbTrade.type,
     network: dbTrade.network as Network,
     chainId: dbTrade.chain_id,
-    checks: dbTrade.checks as TradeChecks,
+    checks: dbTrade.checks,
     createdAt: dbTrade.created_at.getTime(),
     sent: assets.filter(asset => asset.direction === TradeAssetDirection.SENT).map(fromDBTradeAssetWithValueToTradeAsset),
     received: assets

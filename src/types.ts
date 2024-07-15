@@ -9,6 +9,7 @@ import type {
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IBalanceComponent } from './ports/balance/types'
+import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
@@ -48,6 +49,7 @@ export type BaseComponents = {
   access: IAccessComponent
   items: IItemsComponent
   trades: ITradesComponent
+  bids: IBidsComponent
 }
 
 // components used in runtime
