@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
-import { TradeType } from '@dcl/schemas'
-import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { TradeType, TradeAssetDirection } from '@dcl/schemas'
 
 export const SCHEMA = 'marketplace'
 

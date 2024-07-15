@@ -1,9 +1,9 @@
-import { Trade, TradeAssetType, TradeCreation } from '@dcl/schemas'
-import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { Trade, TradeAssetType, TradeCreation, TradeAssetDirection } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
+  getTrade(id: string): Promise<Trade>
 }
 
 export type DBTrade = {

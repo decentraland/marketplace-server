@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { TradeAssetDirection, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import { validateTradeSignature } from '../../logic/trades/utils'
@@ -9,10 +9,16 @@ import {
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
   InvalidTradeStructureError,
-  InvalidTradeSignerError
+  InvalidTradeSignerError,
+  TradeNotFoundError
 } from './errors'
-import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent } from './types'
+import {
+  getInsertTradeAssetQuery,
+  getInsertTradeAssetValueByTypeQuery,
+  getInsertTradeQuery,
+  getTradeAssetsWithValuesByIdQuery
+} from './queries'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent } from './types'
 import { validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
@@ -73,8 +79,19 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     )
   }
 
+  async function getTrade(id: string) {
+    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByIdQuery(id))
+
+    if (!result.rowCount) {
+      throw new TradeNotFoundError(id)
+    }
+
+    return fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+  }
+
   return {
     getTrades,
-    addTrade
+    addTrade,
+    getTrade
   }
 }

@@ -1,7 +1,15 @@
 import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
-import { Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { CollectionItemTradeAsset, ERC20TradeAsset, ERC721TradeAsset, TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import {
+  Network,
+  TradeAssetType,
+  TradeCreation,
+  TradeType,
+  CollectionItemTradeAsset,
+  ERC20TradeAsset,
+  ERC721TradeAsset,
+  TradeAssetDirection
+} from '@dcl/schemas'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -136,9 +144,8 @@ test('trades controller', function ({ components }) {
 
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
-          const { signature, ...responseBid } = bid
           expect(await response.json()).toEqual({
-            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
             ok: true
           })
         })
@@ -228,9 +235,8 @@ test('trades controller', function ({ components }) {
 
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
-          const { signature, ...responseBid } = bid
           expect(await response.json()).toEqual({
-            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
             ok: true
           })
         })
@@ -263,6 +269,71 @@ test('trades controller', function ({ components }) {
           message: 'There is already a bid with the same parameters',
           ok: false
         })
+      })
+    })
+  })
+
+  describe('when getting a trade', () => {
+    let trade: TradeCreation
+    let response: Response
+
+    beforeEach(async () => {
+      const { localFetch } = components
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:marketplace:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      trade = {
+        signature: Math.random().toString(),
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            extra: '0x',
+            amount: '100'
+          }
+        ],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            tokenId: 'atokenid',
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+      const createdTradeResponse = await localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify(trade),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+      const createdTrade = (await createdTradeResponse.json()).data
+      response = await localFetch.fetch(`/v1/trades/${createdTrade.id}`, {
+        method: 'GET',
+        headers: signedRequest.headers
+      })
+    })
+
+    it('should return 200 status with trade body', async () => {
+      expect(response.status).toEqual(StatusCode.OK)
+      expect(await response.json()).toEqual({
+        data: { ...trade, id: expect.any(String), createdAt: expect.any(Number) },
+        ok: true
       })
     })
   })

@@ -7,7 +7,7 @@ import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { pingHandler } from './handlers/ping-handler'
-import { addTradeHandler, getTradesHandler } from './handlers/trades-handler'
+import { addTradeHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
@@ -49,6 +49,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     components.schemaValidator.withSchemaValidatorMiddleware(TradeCreationSchema),
     addTradeHandler
   )
+
+  router.get('/v1/trades/:id', getTradeHandler)
 
   setupFavoritesRouter(router, { components })
 
