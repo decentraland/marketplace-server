@@ -1,4 +1,4 @@
-import { Trade, TradeAssetType, TradeCreation, TradeAssetDirection } from '@dcl/schemas'
+import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
@@ -8,7 +8,7 @@ export type ITradesComponent = {
 
 export type DBTrade = {
   chain_id: number
-  checks: Record<string, any>
+  checks: TradeChecks
   created_at: Date
   effective_since: Date
   expires_at: Date
@@ -16,7 +16,7 @@ export type DBTrade = {
   network: string
   signature: string
   signer: string
-  type: 'bid' | 'public_order'
+  type: TradeType
 }
 
 export type DBTradeAsset = {
@@ -37,3 +37,18 @@ export type DBTradeAssetWithERC721Value = DBTradeAsset & { asset_type: TradeAsse
 export type DBTradeAssetWithCollectionItemValue = DBTradeAsset & { asset_type: TradeAssetType.COLLECTION_ITEM; item_id: string }
 
 export type DBTradeAssetWithValue = DBTradeAssetWithERC20Value | DBTradeAssetWithERC721Value | DBTradeAssetWithCollectionItemValue
+
+export type DBTradeWithAssets = {
+  count: number
+  chain_id: number
+  checks: TradeChecks
+  created_at: Date
+  effective_since: Date
+  expires_at: Date
+  id: string
+  network: string
+  signature: string
+  signer: string
+  type: TradeType
+  assets: DBTradeAssetWithValue[]
+}

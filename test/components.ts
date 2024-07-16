@@ -10,6 +10,7 @@ import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createBalanceComponent } from '../src/ports/balance/component'
+import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
@@ -93,6 +94,7 @@ async function initComponents(): Promise<TestComponents> {
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const trades = createTradesComponent({ dappsDatabase })
+  const bids = createBidsComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
@@ -121,6 +123,7 @@ async function initComponents(): Promise<TestComponents> {
     snapshot,
     items,
     schemaValidator,
+    bids,
     trades
   }
 }

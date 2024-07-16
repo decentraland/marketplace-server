@@ -6,6 +6,7 @@ import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createBalanceComponent } from './ports/balance/component'
+import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
@@ -87,10 +88,12 @@ export async function initComponents(): Promise<AppComponents> {
   // catalog
   const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
   const trades = await createTradesComponent({ dappsDatabase })
+  const bids = await createBidsComponents({ dappsDatabase })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
+    bids,
     config,
     logs,
     server,

@@ -22,8 +22,13 @@ export const getPaginationParams = (params: URLSearchParams): { limit: number; o
   }
 }
 
-export function getParameter(parameterName: string, params: URLSearchParams) {
-  const parameter = params.get(parameterName)
+export function getParameter<T = string>(parameterName: string, params: URLSearchParams, values?: T[]): T | undefined {
+  const parameter = params.get(parameterName) as T | null
+
+  if (values && parameter && !values.includes(parameter as T)) {
+    throw new InvalidParameterError(parameterName, (parameter as any).toString())
+  }
+
   return parameter === null ? undefined : parameter
 }
 
