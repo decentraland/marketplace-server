@@ -63,7 +63,7 @@ export function getBidTradesQuery() {
 export function getBidsQuery(options: GetBidsParameters) {
   const FROM_BID_TRADES = SQL` FROM (`.append(getBidTradesQuery()).append(SQL`) as bid_trades`)
 
-  const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder})` : null
+  const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` LOWER(contract_address) = LOWER(${options.contractAddress}) ` : null
   const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
   const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
