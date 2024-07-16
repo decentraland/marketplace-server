@@ -62,10 +62,9 @@ export function getBidTradesQuery() {
 
 export function getBidsQuery(options: GetBidsParameters) {
   const FROM_BID_TRADES = SQL` FROM (`.append(getBidTradesQuery()).append(SQL`) as bid_trades`)
-  const WHERE_BIDDER = options.bidder ? SQL`bidder = ${options.bidder}` : SQL``
+  const WHERE_BIDDER = options.bidder ? SQL` WHERE bidder = ${options.bidder}` : SQL``
   return SQL`SELECT *, COUNT(*) OVER() as count`
     .append(FROM_BID_TRADES)
-    .append(SQL` WHERE `)
     .append(WHERE_BIDDER)
     .append(getBidsSortyByQuery(options.sortBy))
     .append(SQL` LIMIT ${options.limit} OFFSET ${options.offset} `)

@@ -1,6 +1,7 @@
 import { BidSortBy, Bid } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { PaginatedResponse, getPaginationParams, getParameter } from '../../logic/http'
+import { InvalidParameterError } from '../../logic/http/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
 export async function getBidsHandler(
@@ -14,7 +15,7 @@ export async function getBidsHandler(
 
     const { limit, offset } = getPaginationParams(url.searchParams)
     const bidder = getParameter('bidder', url.searchParams)
-    const sortBy = getParameter('sortBy', url.searchParams) as BidSortBy
+    const sortBy = getParameter('sortBy', url.searchParams, Object.values(BidSortBy))
 
     const { data, count } = await bids.getBids({ limit, offset, bidder, sortBy })
 
@@ -32,6 +33,16 @@ export async function getBidsHandler(
       }
     }
   } catch (e) {
+    if (e instanceof InvalidParameterError) {
+      return {
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: e.message
+        }
+      }
+    }
+
     return {
       status: StatusCode.ERROR,
       body: {

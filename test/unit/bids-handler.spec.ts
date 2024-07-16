@@ -19,13 +19,13 @@ describe('when fetching bids', () => {
         tradeId: '1',
         price: '10',
         tokenId: '1',
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
         network: Network.ETHEREUM,
         chainId: ChainId.ETHEREUM_SEPOLIA,
         bidder: '0x1',
         contractAddress: '0x1',
-        expiresAt: new Date().getTime(),
+        expiresAt: Date.now(),
         fingerprint: '123'
       }
     ]

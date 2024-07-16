@@ -46,7 +46,7 @@ describe('when fetching bids', () => {
       bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
     })
 
-    it('should correct data and count', async () => {
+    it('should return the bids with the count', async () => {
       expect(await bidsComponent.getBids({ limit: 1, offset: 0 })).toEqual({ data: [fromDBBidToBid(bids[0])], count: bids[0].count })
     })
   })
