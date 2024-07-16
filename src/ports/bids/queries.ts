@@ -26,8 +26,8 @@ export function getBidTradesQuery() {
       network,
       chain_id,
       assets -> 'sent' ->> 'amount' as price,
-      assets -> 'received' ->> 'tokenId' as tokenId,
-      assets -> 'received' ->> 'itemId' as itemId,
+      assets -> 'received' ->> 'token_id' as token_id,
+      assets -> 'received' ->> 'item_id' as item_id,
       assets -> 'received' ->> 'contract_address' as contract_address,
       assets -> 'received' ->> 'extra' as fingerprint
       FROM (SELECT
@@ -44,8 +44,8 @@ export function getBidTradesQuery() {
             'direction', assets_with_values.direction,
             'beneficiary', assets_with_values.beneficiary,
             'extra', assets_with_values.extra,
-            'tokenId', assets_with_values.token_id, 
-            'itemId', assets_with_values.item_id,
+            'token_id', assets_with_values.token_id, 
+            'item_id', assets_with_values.item_id,
             'amount', assets_with_values.amount
           )) as assets
           FROM marketplace.trades as t
@@ -62,10 +62,31 @@ export function getBidTradesQuery() {
 
 export function getBidsQuery(options: GetBidsParameters) {
   const FROM_BID_TRADES = SQL` FROM (`.append(getBidTradesQuery()).append(SQL`) as bid_trades`)
-  const WHERE_BIDDER = options.bidder ? SQL` WHERE bidder = ${options.bidder}` : SQL``
+
+  const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder})` : null
+  const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` LOWER(contract_address) = LOWER(${options.contractAddress}) ` : null
+  const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
+  const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
+  const FILTER_BY_NETWORK = options.network ? SQL` network = ${options.network} ` : null
+
+  const FILTERS = [FILTER_BY_BIDDER, FILTER_BY_CONTRACT_ADDRESS, FILTER_BY_TOKEN_ID, FILTER_BY_ITEM_ID, FILTER_BY_NETWORK].reduce(
+    (acc, filter) => {
+      if (filter === null) {
+        return acc
+      }
+
+      if (acc === null) {
+        return SQL` WHERE `.append(filter)
+      }
+
+      return acc.append(SQL` AND `).append(filter)
+    },
+    null
+  )
+
   return SQL`SELECT *, COUNT(*) OVER() as count`
     .append(FROM_BID_TRADES)
-    .append(WHERE_BIDDER)
+    .append(FILTERS ? FILTERS : SQL``)
     .append(getBidsSortyByQuery(options.sortBy))
     .append(SQL` LIMIT ${options.limit} OFFSET ${options.offset} `)
 }

@@ -10,7 +10,7 @@ export function createBidsComponents(components: Pick<AppComponents, 'dappsDatab
     const result = await pg.query<DBBid>(getBidsQuery(options))
     return {
       data: result.rows.map(fromDBBidToBid),
-      count: result.rows.length ? result.rows[0].count : 0
+      count: result.rows.length ? Number(result.rows[0].count) : 0
     }
   }
 
