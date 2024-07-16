@@ -5,9 +5,14 @@ export type IBidsComponent = {
   getBids(options: GetBidsParameters): Promise<{ data: Bid[]; count: number }>
 }
 
+// TODO: Add missing filters: seller, bidAddress, status
 export type GetBidsParameters = PaginationParameters & {
   bidder?: string
+  contractAddress?: string
+  tokenId?: string
+  itemId?: string
   sortBy?: BidSortBy
+  network?: Network
 }
 
 type DBTradeBid = {
