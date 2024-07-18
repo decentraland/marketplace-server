@@ -183,6 +183,34 @@ describe('when fetching bids', () => {
     })
   })
 
+  describe('and the seller parameter is defined in the url', () => {
+    beforeEach(async () => {
+      context.url = new URL('http://localhost:3000/v1/bids?seller=0x123')
+
+      response = await getBidsHandler(context)
+    })
+
+    it('should fetch bids with the correct seller', () => {
+      expect(getBidsMock).toHaveBeenCalledWith(expect.objectContaining({ seller: '0x123' }))
+    })
+
+    it('should return the correct data and count', () => {
+      expect(response).toEqual({
+        status: StatusCode.OK,
+        body: {
+          ok: true,
+          data: {
+            results: bids,
+            total: 1,
+            page: 0,
+            pages: 1,
+            limit: 100
+          }
+        }
+      })
+    })
+  })
+
   describe('and the contractAddress parameter is defined in the url', () => {
     beforeEach(async () => {
       context.url = new URL('http://localhost:3000/v1/bids?contractAddress=0x123')
