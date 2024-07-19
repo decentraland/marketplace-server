@@ -58,7 +58,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       },
       direction: { type: ASSET_DIRECTION_TYPE, notNull: true },
       asset_type: {
-        type: 'smallint', // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
+        type: 'smallint', // (1: ERC20, 2: USD_PEGGED_MANA, 3: ERC721, 4: COLLECTION ITEM)
         notNull: true
       },
       contract_address: { type: 'varchar(42)', notNull: true },
