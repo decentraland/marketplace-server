@@ -15,13 +15,14 @@ export async function getBidsHandler(
 
     const { limit, offset } = getPaginationParams(url.searchParams)
     const bidder = getParameter('bidder', url.searchParams)
+    const seller = getParameter('seller', url.searchParams)
     const sortBy = getParameter<BidSortBy>('sortBy', url.searchParams, Object.values(BidSortBy))
     const contractAddress = getParameter('contractAddress', url.searchParams)
     const tokenId = getParameter('tokenId', url.searchParams)
     const itemId = getParameter('itemId', url.searchParams)
     const network = getParameter<Network>('network', url.searchParams, Object.values(Network) as Network[])
 
-    const { data, count } = await bids.getBids({ limit, offset, bidder, sortBy, contractAddress, tokenId, itemId, network })
+    const { data, count } = await bids.getBids({ limit, offset, bidder, seller, sortBy, contractAddress, tokenId, itemId, network })
 
     return {
       status: StatusCode.OK,

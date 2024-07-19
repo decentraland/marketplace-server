@@ -38,7 +38,9 @@ describe('when fetching bids', () => {
           contract_address: '0x1',
           expires_at: new Date(),
           item_id: null,
-          fingerprint: '123'
+          fingerprint: '123',
+          seller: '0x1234',
+          legacy_bid_id: null
         }
       ]
       pgComponent = createTestPgComponent()

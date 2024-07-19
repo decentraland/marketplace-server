@@ -1,7 +1,9 @@
 import { IFetchComponent } from '@well-known-components/http-server'
 import { Response } from 'node-fetch'
 import pLimit from 'p-limit'
-import { HTTPErrorResponseBody, HTTPSuccessResponseBody, PaginatedResponse, StatusCode } from './types'
+import { Network } from '@dcl/schemas'
+import { DBNetwork } from './ports/bids'
+import { HTTPErrorResponseBody, HTTPSuccessResponseBody, PaginatedResponse, SquidNetwork, StatusCode } from './types'
 
 export const MAX_CONCURRENT_REQUEST = 5
 export const MAX_URL_LENGTH = 2048
@@ -90,4 +92,16 @@ export class RequestError extends Error {
   constructor(public statusCode: StatusCode, public message: string) {
     super(message)
   }
+}
+
+export function getDBNetworks(network: Network): DBNetwork[] {
+  if (network === Network.ETHEREUM) {
+    return [Network.ETHEREUM, SquidNetwork.ETHEREUM]
+  }
+
+  if (network === Network.MATIC) {
+    return [Network.MATIC, SquidNetwork.POLYGON]
+  }
+
+  return []
 }

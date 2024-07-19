@@ -129,3 +129,8 @@ export type HTTPResponse<T> = {
         data?: T
       }
 }
+
+export enum SquidNetwork {
+  ETHEREUM = 'ethereum',
+  POLYGON = 'polygon'
+}
