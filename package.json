@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^0.6.4",
-    "@dcl/schemas": "^12.0.0",
+    "@dcl/schemas": "^12.1.0",
     "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",
@@ -41,7 +41,7 @@
     "ajv-formats": "^3.0.1",
     "canvas": "^2.11.2",
     "decentraland-crypto-middleware": "^1.3.0",
-    "decentraland-transactions": "^2.9.0",
+    "decentraland-transactions": "^2.10.0",
     "ethers": "^6.6.2",
     "nock": "^13.5.4",
     "p-limit": "^3.1.0"
