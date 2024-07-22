@@ -7,7 +7,7 @@ export function createBidsComponents(components: Pick<AppComponents, 'dappsDatab
   const { dappsDatabase: pg } = components
 
   async function getBids(options: GetBidsParameters) {
-    const schema = 'marketplace_squid_20240715_211526' // TODO: fetch schema
+    const schema = 'marketplace_squid_20240722_163348' // TODO: fetch schema
     const result = await pg.query<DBBid>(getBidsQuery(options, schema))
 
     return {
