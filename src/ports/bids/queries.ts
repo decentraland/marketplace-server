@@ -16,7 +16,7 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
   }
 }
 
-export function getBidTradesQuery(marketplace_squid_schema: string): string {
+export function getBidTradesQuery(): string {
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -72,15 +72,15 @@ export function getBidTradesQuery(marketplace_squid_schema: string): string {
         LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
         LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
         LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
-        LEFT JOIN ${marketplace_squid_schema}.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-        LEFT JOIN ${marketplace_squid_schema}.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+        LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
+        LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
       ) as assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'bid'
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks
     ) as trades`
 }
 
-export function getLegacyBidsQuery(marketplace_squid_schema: string): string {
+export function getLegacyBidsQuery(): string {
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -100,13 +100,13 @@ export function getLegacyBidsQuery(marketplace_squid_schema: string): string {
       network,
       token_id::text,
       nft_address as contract_address
-    FROM ${marketplace_squid_schema}.bid
+    FROM squid_marketplace.bid
   `
 }
 
-export function getBidsQuery(options: GetBidsParameters, marketplace_squid_schema: string) {
-  const BID_TRADES = ` (${getBidTradesQuery(marketplace_squid_schema)}) as bid_trades `
-  const LEGACY_BIDS = ` (${getLegacyBidsQuery(marketplace_squid_schema)}) as legacy_bids`
+export function getBidsQuery(options: GetBidsParameters) {
+  const BID_TRADES = ` (${getBidTradesQuery()}) as bid_trades `
+  const LEGACY_BIDS = ` (${getLegacyBidsQuery()}) as legacy_bids`
 
   const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null

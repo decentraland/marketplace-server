@@ -29,6 +29,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       network: { type: 'text', notNull: true },
       chain_id: { type: 'integer', notNull: true },
       signature: { type: 'text', notNull: true, unique: true },
+      hashed_signature: { type: 'text', notNull: true, unique: true },
       checks: { type: 'jsonb', notNull: true },
       signer: { type: 'varchar(42)', notNull: true },
       type: { type: TRADE_TYPE, notNull: true },
