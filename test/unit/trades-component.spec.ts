@@ -40,7 +40,8 @@ describe('when adding a new trade', () => {
     mockSigner = '0x1234567890'
     mockTrade = {
       signer: mockSigner,
-      signature: '123123',
+      signature:
+        '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
       type: TradeType.BID,
       network: Network.ETHEREUM,
       chainId: ChainId.ETHEREUM_MAINNET,
@@ -161,7 +162,8 @@ describe('when adding a new trade', () => {
         created_at: new Date(),
         effective_since: new Date(),
         expires_at: new Date(),
-        signature: '123123',
+        signature:
+          '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
         signer: '0x1234567890',
         type: mockTrade.type
       }
@@ -263,7 +265,8 @@ describe('when getting a trade', () => {
         id: '1',
         createdAt: Date.now(),
         signer: mockSigner,
-        signature: '123123',
+        signature:
+          '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
         type: TradeType.BID,
         network: Network.ETHEREUM,
         chainId: ChainId.ETHEREUM_MAINNET,
