@@ -1,3 +1,4 @@
+import { keccak256, toUtf8Bytes } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeAssetDirection } from '@dcl/schemas'
 
@@ -54,6 +55,7 @@ export function getInsertTradeQuery(trade: TradeCreation, signer: string) {
     expires_at,
     network,
     signature,
+    hashed_signature,
     signer,
     type
   ) VALUES (
@@ -63,6 +65,7 @@ export function getInsertTradeQuery(trade: TradeCreation, signer: string) {
    ${new Date(trade.checks.expiration)},
    ${trade.network},
    ${trade.signature},
+   ${keccak256(toUtf8Bytes(trade.signature))},
    ${signer.toLowerCase()},
    ${trade.type}
    ) RETURNING *;`
