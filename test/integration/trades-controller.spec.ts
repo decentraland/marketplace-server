@@ -1,5 +1,6 @@
 import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
+import { Authenticator } from '@dcl/crypto'
 import {
   Network,
   TradeAssetType,
@@ -87,7 +88,8 @@ test('trades controller', function ({ components }) {
           signer = signedRequest.identity.realAccount.address.toLowerCase()
           bid = {
             ...bid,
-            signer
+            signer,
+            signature: Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
           }
           response = await localFetch.fetch('/v1/trades', {
             method: signedRequest.method,
@@ -178,7 +180,8 @@ test('trades controller', function ({ components }) {
           signer = signedRequest.identity.realAccount.address.toLowerCase()
           bid = {
             ...bid,
-            signer
+            signer,
+            signature: Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
           }
           response = await localFetch.fetch('/v1/trades', {
             method: signedRequest.method,
@@ -251,14 +254,24 @@ test('trades controller', function ({ components }) {
           signer: 'dcl:marketplace'
         })
         signer = signedRequest.identity.realAccount.address.toLowerCase()
+        const signature = Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
+
         await localFetch.fetch('/v1/trades', {
           method: 'POST',
-          body: JSON.stringify({ ...bid, signer }),
+          body: JSON.stringify({
+            ...bid,
+            signer,
+            signature
+          }),
           headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
         })
         response = await localFetch.fetch('/v1/trades', {
           method: 'POST',
-          body: JSON.stringify({ ...bid, signer }),
+          body: JSON.stringify({
+            ...bid,
+            signer,
+            signature
+          }),
           headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
         })
       })
@@ -284,7 +297,7 @@ test('trades controller', function ({ components }) {
         signer: 'dcl:marketplace'
       })
       trade = {
-        signature: Math.random().toString(),
+        signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
         signer: signedRequest.identity.realAccount.address.toLowerCase(),
         chainId: 1,
         type: TradeType.BID,
