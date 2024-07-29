@@ -1,6 +1,7 @@
 import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { TradeAsset, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeAssetDirection } from '@dcl/schemas'
+import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation } from '@dcl/schemas'
+import { getBidsQuery } from '../bids/queries'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   return SQL`
@@ -17,34 +18,14 @@ export function getBidsWithAssetsQuery() {
 }
 
 export function getDuplicateBidQuery(trade: TradeCreation) {
-  // TODO: Check trade not cancelled when status table is added
-  const FROM_BIDS = SQL`FROM (`.append(getBidsWithAssetsQuery()).append(SQL`) AS bid_with_assets `)
-  const NOT_EXPIRED = SQL`bid_with_assets.expires_at > now()::timestamptz(3)`
-  const SAME_SIGNER = SQL`LOWER(bid_with_assets.signer) = LOWER(${trade.signer.toLowerCase()})`
-  const SAME_NETWORK = SQL`bid_with_assets.network = ${trade.network}`
-  const RECEIVED_ASSET = SQL`bid_with_assets.direction = ${TradeAssetDirection.RECEIVED}`
-  const SAME_CONTRACT = SQL`LOWER(bid_with_assets.contract_address) = LOWER(${trade.received[0].contractAddress})`
-  const SAME_TOKEN_ID =
-    'tokenId' in trade.received[0] ? SQL`bid_with_assets.token_id = ${trade.received[0].tokenId}` : SQL`bid_with_assets.token_id IS NULL`
-  const SAME_ITEM_ID =
-    'itemId' in trade.received[0] ? SQL`bid_with_assets.item_id = ${trade.received[0].itemId}` : SQL`bid_with_assets.item_id IS NULL`
-
-  return SQL`SELECT *`
-    .append(FROM_BIDS)
-    .append(SQL` WHERE `)
-    .append(NOT_EXPIRED)
-    .append(SQL` AND `)
-    .append(SAME_SIGNER)
-    .append(SQL` AND `)
-    .append(SAME_NETWORK)
-    .append(SQL` AND `)
-    .append(RECEIVED_ASSET)
-    .append(SQL` AND `)
-    .append(SAME_CONTRACT)
-    .append(SQL` AND `)
-    .append(SAME_TOKEN_ID)
-    .append(SQL` AND `)
-    .append(SAME_ITEM_ID)
+  return getBidsQuery({
+    bidder: trade.signer,
+    network: trade.network,
+    contractAddress: trade.received[0].contractAddress,
+    ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
+    ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
+    status: ListingStatus.OPEN
+  })
 }
 
 export function getInsertTradeQuery(trade: TradeCreation, signer: string) {

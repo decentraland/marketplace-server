@@ -1,7 +1,8 @@
 import SQL from 'sql-template-strings'
-import { BidSortBy } from '@dcl/schemas'
+import { BidSortBy, GetBidsParameters, ListingStatus } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
+import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
-import { GetBidsParameters } from './types'
 
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
   switch (sortBy) {
@@ -17,6 +18,8 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
 }
 
 export function getBidTradesQuery(): string {
+  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
+  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -33,7 +36,8 @@ export function getBidTradesQuery(): string {
       assets -> 'received' ->> 'item_id' as item_id,
       assets -> 'received' ->> 'contract_address' as contract_address,
       assets -> 'received' ->> 'extra' as fingerprint,
-	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller
+	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
+      status
     FROM (
       SELECT
         t.id,
@@ -54,7 +58,20 @@ export function getBidTradesQuery(): string {
           'amount', assets_with_values.amount,
           'creator', assets_with_values.creator,
           'owner', assets_with_values.owner_id
-        )) as assets
+        )) as assets,
+        CASE
+          WHEN status = 'cancelled' THEN '${ListingStatus.CANCELLED}'
+          WHEN (
+            (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
+            OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+          ) THEN '${ListingStatus.CANCELLED}'
+          WHEN (
+            (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
+            OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+          ) THEN '${ListingStatus.CANCELLED}'
+          WHEN trade_status.uses >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
+        ELSE '${ListingStatus.OPEN}'
+        END AS status
       FROM marketplace.trades as t
       JOIN (
         SELECT
@@ -75,8 +92,11 @@ export function getBidTradesQuery(): string {
         LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
         LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
       ) as assets_with_values ON t.id = assets_with_values.trade_id
+      LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
+      LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+      LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address}','${marketplacePolygon.address}')) as contract_signature_index ON t.network = contract_signature_index.network
       WHERE t.type = 'bid'
-      GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks
+      GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, trade_status.status, trade_status.uses, contract_signature_index.index, signer_signature_index.index
     ) as trades`
 }
 
@@ -114,6 +134,8 @@ export function getBidsQuery(options: GetBidsParameters) {
   const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
   const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
   const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
+  const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
+  const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
   const FILTERS = [
     FILTER_BY_BIDDER,
@@ -121,7 +143,9 @@ export function getBidsQuery(options: GetBidsParameters) {
     FILTER_BY_CONTRACT_ADDRESS,
     FILTER_BY_TOKEN_ID,
     FILTER_BY_ITEM_ID,
-    FILTER_BY_NETWORK
+    FILTER_BY_NETWORK,
+    FILTER_BY_STATUS,
+    FILTER_NOT_EXPIRED
   ].reduce((acc, filter) => {
     if (filter === null) {
       return acc

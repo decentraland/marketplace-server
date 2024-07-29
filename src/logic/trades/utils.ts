@@ -76,7 +76,7 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       uses: trade.checks.uses,
       expiration: fromMillisecondsToSeconds(trade.checks.expiration),
       effective: fromMillisecondsToSeconds(trade.checks.effective),
-      salt: SALT,
+      salt: zeroPadValue(trade.checks.salt, 32),
       contractSignatureIndex: trade.checks.contractSignatureIndex,
       signerSignatureIndex: trade.checks.signerSignatureIndex,
       allowedRoot: zeroPadValue(trade.checks.allowedRoot, 32),

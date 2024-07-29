@@ -4,6 +4,11 @@ import { DBBid, IBidsComponent, createBidsComponents } from '../../src/ports/bid
 import { IPgComponent } from '../../src/ports/db/types'
 import { createTestPgComponent } from '../components'
 
+jest.mock('../../src/logic/chainIds', () => ({
+  getEthereumChainId: () => ChainId.ETHEREUM_SEPOLIA,
+  getPolygonChainId: () => ChainId.MATIC_AMOY
+}))
+
 describe('when fetching bids', () => {
   let bidsComponent: IBidsComponent
   let pgComponent: IPgComponent

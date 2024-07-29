@@ -1,7 +1,8 @@
+import { GetBidsParameters } from '@dcl/schemas'
 import { fromDBBidToBid } from '../../adapters/bids/bids'
 import { AppComponents } from '../../types'
 import { getBidsQuery } from './queries'
-import { DBBid, GetBidsParameters, IBidsComponent } from './types'
+import { DBBid, IBidsComponent } from './types'
 
 export function createBidsComponents(components: Pick<AppComponents, 'dappsDatabase'>): IBidsComponent {
   const { dappsDatabase: pg } = components

@@ -1,8 +1,18 @@
-import { Network } from '@dcl/schemas'
+import { Network, ChainId, ListingStatus } from '@dcl/schemas'
 import { getBidsQuery } from '../../src/ports/bids/queries'
 import { SquidNetwork } from '../../src/types'
 
+jest.mock('../../src/logic/chainIds', () => ({
+  getEthereumChainId: () => ChainId.ETHEREUM_SEPOLIA,
+  getPolygonChainId: () => ChainId.MATIC_AMOY
+}))
+
 describe('when querying for bids', () => {
+  it('should only query the ones not expired', () => {
+    const query = getBidsQuery({})
+    expect(query.text).toContain('expires_at > now()::timestamptz(3)')
+  })
+
   describe('and limit and offset are defined', () => {
     const query = getBidsQuery({ offset: 2, limit: 1 })
     expect(query.text).toContain('LIMIT $1 OFFSET $2')
@@ -64,6 +74,14 @@ describe('when querying for bids', () => {
         expect(query.text).toContain('network = ANY ($1)')
         expect(query.values).toEqual(expect.arrayContaining([[Network.ETHEREUM, SquidNetwork.ETHEREUM]]))
       })
+    })
+  })
+
+  describe('and the status is defined', () => {
+    it('should add the filter to the query', () => {
+      const query = getBidsQuery({ status: ListingStatus.OPEN })
+      expect(query.text).toContain('status = $1')
+      expect(query.values).toEqual(expect.arrayContaining(['open']))
     })
   })
 })
