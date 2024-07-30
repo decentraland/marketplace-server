@@ -1,5 +1,4 @@
-import { ChainId, Network, BidSortBy, Bid, ListingStatus } from '@dcl/schemas'
-import { PaginationParameters } from '../../logic/http'
+import { ChainId, Network, Bid, ListingStatus, GetBidsParameters } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
 export type IBidsComponent = {
@@ -9,17 +8,6 @@ export type IBidsComponent = {
 export type WithCount<T> = T & { count: number }
 
 export type DBNetwork = SquidNetwork | Network.ETHEREUM | Network.MATIC
-
-// TODO: Add missing filters: seller, bidAddress, status
-export type GetBidsParameters = PaginationParameters & {
-  bidder?: string
-  contractAddress?: string
-  tokenId?: string
-  itemId?: string
-  sortBy?: BidSortBy
-  network?: Network
-  seller?: string
-}
 
 type DBBaseBid = {
   status?: ListingStatus

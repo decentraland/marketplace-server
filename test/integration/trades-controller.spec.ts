@@ -9,8 +9,10 @@ import {
   CollectionItemTradeAsset,
   ERC20TradeAsset,
   ERC721TradeAsset,
-  TradeAssetDirection
+  TradeAssetDirection,
+  ChainId
 } from '@dcl/schemas'
+import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -19,6 +21,8 @@ import { getSignedFetchRequest } from '../utils'
 test('trades controller', function ({ components }) {
   beforeEach(() => {
     jest.spyOn(tradeUtils, 'validateTradeSignature').mockImplementation(() => true)
+    jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
+    jest.spyOn(chainIdUtils, 'getPolygonChainId').mockReturnValue(ChainId.MATIC_AMOY)
   })
 
   describe('when inserting a bid', () => {

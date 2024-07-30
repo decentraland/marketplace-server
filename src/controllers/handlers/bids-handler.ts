@@ -1,4 +1,4 @@
-import { BidSortBy, Bid, Network } from '@dcl/schemas'
+import { BidSortBy, Bid, Network, ListingStatus } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { PaginatedResponse, getPaginationParams, getParameter } from '../../logic/http'
 import { InvalidParameterError } from '../../logic/http/errors'
@@ -21,8 +21,9 @@ export async function getBidsHandler(
     const tokenId = getParameter('tokenId', url.searchParams)
     const itemId = getParameter('itemId', url.searchParams)
     const network = getParameter<Network>('network', url.searchParams, Object.values(Network) as Network[])
+    const status = getParameter<ListingStatus>('status', url.searchParams, Object.values(ListingStatus) as ListingStatus[])
 
-    const { data, count } = await bids.getBids({ limit, offset, bidder, seller, sortBy, contractAddress, tokenId, itemId, network })
+    const { data, count } = await bids.getBids({ limit, offset, bidder, seller, sortBy, contractAddress, tokenId, itemId, network, status })
 
     return {
       status: StatusCode.OK,
