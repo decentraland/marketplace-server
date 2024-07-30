@@ -9,7 +9,6 @@ import { createBalanceComponent } from './ports/balance/component'
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createPgComponent } from './ports/db/component'
-import { createENS } from './ports/ens/component'
 import { createAccessComponent } from './ports/favorites/access'
 import { createItemsComponent } from './ports/favorites/items'
 import { createListsComponent } from './ports/favorites/lists'
@@ -69,7 +68,6 @@ export async function initComponents(): Promise<AppComponents> {
 
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
-  const ens = createENS()
 
   // favorites stuff
   const schemaValidator = await createSchemaValidatorComponent()
@@ -106,7 +104,6 @@ export async function initComponents(): Promise<AppComponents> {
     catalog,
     balances,
     wertSigner,
-    ens,
     updateBuilderServerItemsViewJob,
     schemaValidator,
     snapshot,
