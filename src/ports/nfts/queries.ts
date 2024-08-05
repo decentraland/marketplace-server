@@ -38,29 +38,5 @@ export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, n
       nft.token_id::text = ${tokenId} and
       nft.network = ANY (${getDBNetworks(network)}) and
       nft.contract_address = ${contractAddress}
-    group by
-      nft.id,
-      nft.contract_address,
-      nft.token_id,
-      nft.network,
-      nft.created_at,
-      nft.updated_at,
-      nft.sold_at,
-      nft.urn,
-      nft.token_uri,
-      account.address,
-      nft.image,
-      nft.issued_id,
-      nft.item_id,
-      wearable.name,
-      wearable.rarity,
-      wearable.category,
-      emote.name,
-      emote.rarity,
-      emote.category,
-      land_data.name,
-      ens.subdomain,
-      parcel.x,
-      parcel.y
 	`
 }
