@@ -1,4 +1,5 @@
 import { IPgComponent } from '@well-known-components/pg-component'
+import { formatEther } from 'ethers'
 import {
   Network,
   ChainId,
@@ -19,7 +20,6 @@ import { DBItem } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { triggerEvent } from '../../src/ports/trades/utils'
-import { formatMana } from '../../src/utils'
 
 describe('when calling triggerEvent function', () => {
   let mockPgComponent: IPgComponent
@@ -33,12 +33,7 @@ describe('when calling triggerEvent function', () => {
     mockPublishMessage = jest.fn()
 
     mockPgComponent = {
-      getPool: jest.fn().mockReturnValue({
-        connect: () => ({
-          query: mockPgQuery,
-          release: jest.fn()
-        })
-      })
+      query: mockPgQuery
     } as unknown as IPgComponent
 
     mockEventPublisherComponent = {
@@ -145,7 +140,7 @@ describe('when calling triggerEvent function', () => {
             nftName: dbNFT.name,
             price: (trade.sent[0] as ERC20TradeAsset).amount,
             title: 'Bid Received',
-            description: `You received a bid of ${formatMana((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${dbNFT.name}.`,
+            description: `You received a bid of ${formatEther((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${dbNFT.name}.`,
             network: trade.network
           }
         })
@@ -214,7 +209,7 @@ describe('when calling triggerEvent function', () => {
             nftName: dbItem.name,
             price: (trade.sent[0] as ERC20TradeAsset).amount,
             title: 'Bid Received',
-            description: `You received a bid of ${formatMana((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${dbItem.name}.`,
+            description: `You received a bid of ${formatEther((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${dbItem.name}.`,
             network: trade.network
           }
         })

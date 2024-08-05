@@ -1,6 +1,6 @@
 import { IPgComponent } from '@well-known-components/pg-component'
+import { formatEther } from 'ethers'
 import { ERC20TradeAsset, Trade, TradeAssetType, TradeCreation, TradeType, Events } from '@dcl/schemas'
-import { formatMana } from '../../utils'
 import { IEventPublisherComponent } from '../events/types'
 import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
@@ -38,8 +38,7 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
   }
 }
 
-export async function triggerEvent(trade: Trade, client: IPgComponent, eventPublisher: IEventPublisherComponent): Promise<void> {
-  const pgClient = await client.getPool().connect()
+export async function triggerEvent(trade: Trade, pg: IPgComponent, eventPublisher: IEventPublisherComponent): Promise<void> {
   const marketplaceBaseUrl = process.env.MARKETPLACE_BASE_URL
 
   try {
@@ -47,11 +46,11 @@ export async function triggerEvent(trade: Trade, client: IPgComponent, eventPubl
       const bidAsset = trade.received[0]
       let asset: DBNFT | DBItem | null = null
       if (bidAsset.assetType === TradeAssetType.ERC721) {
-        asset = await pgClient
+        asset = await pg
           .query<DBNFT>(getNftByTokenIdQuery(bidAsset.contractAddress, bidAsset.tokenId, trade.network))
           .then(result => result.rows[0])
       } else if (bidAsset.assetType === TradeAssetType.COLLECTION_ITEM) {
-        asset = await pgClient.query<DBItem>(getItemByItemIdQuery(bidAsset.contractAddress, bidAsset.itemId)).then(result => result.rows[0])
+        asset = await pg.query<DBItem>(getItemByItemIdQuery(bidAsset.contractAddress, bidAsset.itemId)).then(result => result.rows[0])
       }
 
       if (!asset) {
@@ -73,14 +72,12 @@ export async function triggerEvent(trade: Trade, client: IPgComponent, eventPubl
           nftName: asset.name,
           price: (trade.sent[0] as ERC20TradeAsset).amount,
           title: 'Bid Received',
-          description: `You received a bid of ${formatMana((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${asset.name}.`,
+          description: `You received a bid of ${formatEther((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${asset.name}.`,
           network: trade.network
         }
       })
     }
   } catch (e) {
     console.error(e)
-  } finally {
-    await pgClient.release()
   }
 }
