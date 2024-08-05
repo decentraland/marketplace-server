@@ -105,3 +105,7 @@ export function getDBNetworks(network: Network): DBNetwork[] {
 
   return []
 }
+
+export function formatMana(mana: string, maximumFractionDigits = 2): string {
+  return (Number(mana || '0') / 1e18).toFixed(maximumFractionDigits).toLocaleString()
+}

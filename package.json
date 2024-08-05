@@ -26,8 +26,9 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
+    "@aws-sdk/client-sns": "^3.621.0",
     "@covalenthq/client-sdk": "^0.6.4",
-    "@dcl/schemas": "^13.3.0",
+    "@dcl/schemas": "^13.4.0",
     "@segment/analytics-node": "^2.1.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.6",

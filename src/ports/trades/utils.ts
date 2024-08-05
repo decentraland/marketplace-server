@@ -1,5 +1,11 @@
 import { IPgComponent } from '@well-known-components/pg-component'
-import { TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { ERC20TradeAsset, Trade, TradeAssetType, TradeCreation, TradeType, Events } from '@dcl/schemas'
+import { formatMana } from '../../utils'
+import { IEventPublisherComponent } from '../events/types'
+import { getItemByItemIdQuery } from '../items/queries'
+import { DBItem } from '../items/types'
+import { getNftByTokenIdQuery } from '../nfts/queries'
+import { DBNFT } from '../nfts/types'
 import { DuplicatedBidError, InvalidTradeStructureError } from './errors'
 import { getDuplicateBidQuery } from './queries'
 
@@ -27,6 +33,53 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
   } catch (e) {
     console.error(e)
     throw e
+  } finally {
+    await pgClient.release()
+  }
+}
+
+export async function triggerEvent(trade: Trade, client: IPgComponent, eventPublisher: IEventPublisherComponent): Promise<void> {
+  const pgClient = await client.getPool().connect()
+  const marketplaceBaseUrl = process.env.MARKETPLACE_BASE_URL
+
+  try {
+    if (trade.type === TradeType.BID) {
+      const bidAsset = trade.received[0]
+      let asset: DBNFT | DBItem | null = null
+      if (bidAsset.assetType === TradeAssetType.ERC721) {
+        asset = await pgClient
+          .query<DBNFT>(getNftByTokenIdQuery(bidAsset.contractAddress, bidAsset.tokenId, trade.network))
+          .then(result => result.rows[0])
+      } else if (bidAsset.assetType === TradeAssetType.COLLECTION_ITEM) {
+        asset = await pgClient.query<DBItem>(getItemByItemIdQuery(bidAsset.contractAddress, bidAsset.itemId)).then(result => result.rows[0])
+      }
+
+      if (!asset) {
+        return
+      }
+
+      eventPublisher.publishMessage({
+        type: Events.Type.MARKETPLACE,
+        subType: Events.SubType.Marketplace.BID_RECEIVED,
+        key: `bid-created-${trade.id}`,
+        timestamp: trade.createdAt,
+        metadata: {
+          address: 'creator' in asset ? asset.creator : asset.owner,
+          image: asset.image,
+          seller: 'creator' in asset ? asset.creator : asset.owner,
+          category: asset.category,
+          rarity: asset.rarity,
+          link: `${marketplaceBaseUrl}/account?section=bids`,
+          nftName: asset.name,
+          price: (trade.sent[0] as ERC20TradeAsset).amount,
+          title: 'Bid Received',
+          description: `You received a bid of ${formatMana((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${asset.name}.`,
+          network: trade.network
+        }
+      })
+    }
+  } catch (e) {
+    console.error(e)
   } finally {
     await pgClient.release()
   }
