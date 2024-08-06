@@ -52,12 +52,6 @@ async function initComponents(): Promise<TestComponents> {
   const logs = await createLogComponent({ metrics })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const eventPublisher: IEventPublisherComponent = { publishMessage: () => Promise.resolve('event') }
-  const substreamsDatabase = await createPgComponent(
-    { config, logs, metrics },
-    {
-      dbPrefix: 'SUBSTREAMS'
-    }
-  )
 
   const favoritesDatabase = await createPgComponent(
     { config, logs, metrics },
