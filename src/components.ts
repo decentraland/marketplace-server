@@ -10,6 +10,7 @@ import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
+import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
 import { createItemsComponent } from './ports/favorites/items'
 import { createListsComponent } from './ports/favorites/lists'
@@ -27,6 +28,7 @@ const fiveMinutes = 5 * 60 * 1000
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const eventPublisher = await createEventPublisher({ config })
   const cors = {
     origin: (await config.requireString('CORS_ORIGIN')).split(';').map(origin => new RegExp(origin)),
     methods: await config.requireString('CORS_METHODS')
@@ -80,7 +82,7 @@ export async function initComponents(): Promise<AppComponents> {
 
   // catalog
   const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
-  const trades = await createTradesComponent({ dappsDatabase })
+  const trades = await createTradesComponent({ dappsDatabase, eventPublisher })
   const bids = await createBidsComponents({ dappsDatabase })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
@@ -106,6 +108,7 @@ export async function initComponents(): Promise<AppComponents> {
     lists,
     trades,
     access,
-    picks
+    picks,
+    eventPublisher
   }
 }

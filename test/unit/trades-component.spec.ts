@@ -12,6 +12,7 @@ import {
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
+import { IEventPublisherComponent } from '../../src/ports/events/types'
 import {
   DBTrade,
   DBTradeAsset,
@@ -33,7 +34,9 @@ import * as utils from '../../src/ports/trades/utils'
 let mockTrade: TradeCreation
 let mockSigner: string
 let mockPg: IPgComponent
+let mockEventPublisher: IEventPublisherComponent
 let tradesComponent: ITradesComponent
+let publishMessageMock: jest.Mock
 
 describe('when adding a new trade', () => {
   beforeEach(() => {
@@ -75,7 +78,8 @@ describe('when adding a new trade', () => {
     }
 
     const mockPgClient = {
-      query: jest.fn()
+      query: jest.fn(),
+      release: jest.fn()
     }
     mockPg = {
       getPool: jest.fn().mockReturnValue({
@@ -88,8 +92,14 @@ describe('when adding a new trade', () => {
       streamQuery: jest.fn()
     }
 
+    publishMessageMock = jest.fn()
+
+    mockEventPublisher = {
+      publishMessage: publishMessageMock
+    }
+
     jest.clearAllMocks()
-    tradesComponent = createTradesComponent({ dappsDatabase: mockPg })
+    tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
   })
 
   describe('when the expiration date is in the past', () => {
@@ -147,6 +157,7 @@ describe('when adding a new trade', () => {
     let insertedReceivedAsset: DBTradeAsset
     let insertedReceivedAssetValue: DBTradeAssetValue
     let response: Trade
+    let triggerEventMock: jest.Mock
 
     beforeEach(async () => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
@@ -204,6 +215,10 @@ describe('when adding a new trade', () => {
         .mockResolvedValueOnce({ rows: [insertedSentAssetValue] }) // trade sent asset value insert
         .mockResolvedValueOnce({ rows: [insertedReceivedAssetValue] }) // trade received asset insert
 
+      triggerEventMock = jest.fn()
+
+      jest.spyOn(utils, 'triggerEvent').mockImplementation(triggerEventMock)
+
       response = await tradesComponent.addTrade(mockTrade, mockSigner)
     })
 
@@ -231,6 +246,17 @@ describe('when adding a new trade', () => {
         ])
       )
     })
+
+    it('should send event notification', () => {
+      expect(triggerEventMock).toHaveBeenCalledWith(
+        fromDbTradeAndDBTradeAssetWithValueListToTrade(insertedTrade, [
+          { ...insertedSentAsset, ...insertedSentAssetValue },
+          { ...insertedReceivedAsset, ...insertedReceivedAssetValue }
+        ]),
+        mockPg,
+        mockEventPublisher
+      )
+    })
   })
 })
 
@@ -248,7 +274,10 @@ describe('when getting a trade', () => {
         query: jest.fn().mockResolvedValue({ rowCount: 0 })
       }
 
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg })
+      mockEventPublisher = {
+        publishMessage: jest.fn()
+      }
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
     })
 
     it('should throw TradeNotFoundError', async () => {
@@ -347,8 +376,11 @@ describe('when getting a trade', () => {
         streamQuery: jest.fn(),
         query: jest.fn().mockResolvedValue({ rows: assets, rowCount: 2 })
       }
+      const mockEventPublisher = {
+        publishMessage: jest.fn()
+      }
 
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg })
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
     })
 
     it('should return trade', async () => {

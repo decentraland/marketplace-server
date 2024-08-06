@@ -13,6 +13,7 @@ import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
+import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
 import { IItemsComponent } from './ports/favorites/items'
 import { IListsComponents } from './ports/favorites/lists'
@@ -49,6 +50,7 @@ export type BaseComponents = {
   items: IItemsComponent
   trades: ITradesComponent
   bids: IBidsComponent
+  eventPublisher: IEventPublisherComponent
 }
 
 // components used in runtime
