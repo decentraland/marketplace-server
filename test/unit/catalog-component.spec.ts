@@ -161,7 +161,7 @@ describe('Catalog Component', () => {
 
       beforeEach(() => {
         // Mock console.error
-        consoleErrorMock = jest.spyOn(console, 'error').mockImplementation(() => {})
+        consoleErrorMock = jest.spyOn(console, 'error').mockImplementation(() => undefined)
         dbClientQueryMock.mockRejectedValue(new Error('Failed to refresh views'))
       })
 

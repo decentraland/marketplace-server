@@ -1,4 +1,4 @@
-import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item, Network } from '@dcl/schemas'
+import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item } from '@dcl/schemas'
 
 export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
