@@ -5,7 +5,7 @@ export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
-  const marketplaceServerDBUser = await config.requireString('PG_COMPONENT_PSQL_USER')
+  const marketplaceServerDBUser = await config.requireString('DAPPS_PG_COMPONENT_PSQL_PASSWORD')
   const builderServerDBHost = await config.requireString('BUILDER_SERVER_DB_HOST')
   const builderServerDBPort = await config.requireString('PG_COMPONENT_PSQL_PORT')
   const builderServerDBUser = await config.requireString('BUILDER_SERVER_DB_USER')
@@ -39,7 +39,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
-  const marketplaceServerDBUser = await config.requireString('PG_COMPONENT_PSQL_USER')
+  const marketplaceServerDBUser = await config.requireString('DAPPS_PG_COMPONENT_PSQL_PASSWORD')
   pgm.sql('DROP FOREIGN TABLE builder_server_items;')
   pgm.sql('DROP FOREIGN TABLE builder_server_collections;')
   pgm.sql(`DROP USER MAPPING FOR ${marketplaceServerDBUser} SERVER builder_server;`)
