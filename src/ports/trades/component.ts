@@ -21,8 +21,9 @@ import {
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent } from './types'
 import { triggerEvent, validateTradeByType } from './utils'
 
-export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher'>): ITradesComponent {
-  const { dappsDatabase: pg, eventPublisher } = components
+export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
+  const { dappsDatabase: pg, eventPublisher, logs } = components
+  const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
     const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
@@ -78,7 +79,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       }
     )
 
-    await triggerEvent(insertedTrade, pg, eventPublisher)
+    await triggerEvent(insertedTrade, pg, eventPublisher, logger)
 
     return insertedTrade
   }
