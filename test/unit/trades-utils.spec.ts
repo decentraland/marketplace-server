@@ -1,3 +1,4 @@
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '@well-known-components/pg-component'
 import { formatEther } from 'ethers'
 import {
@@ -24,6 +25,7 @@ import { triggerEvent } from '../../src/ports/trades/utils'
 describe('when calling triggerEvent function', () => {
   let mockPgComponent: IPgComponent
   let mockEventPublisherComponent: IEventPublisherComponent
+  let mockLogger: ILoggerComponent.ILogger
   let mockPgQuery: jest.Mock
   let mockPublishMessage: jest.Mock
   let trade: Trade
@@ -39,6 +41,8 @@ describe('when calling triggerEvent function', () => {
     mockEventPublisherComponent = {
       publishMessage: mockPublishMessage
     }
+
+    mockLogger = { info: () => undefined, error: () => undefined, log: () => undefined, warn: () => undefined, debug: () => undefined }
 
     trade = {
       id: '1',
@@ -115,7 +119,7 @@ describe('when calling triggerEvent function', () => {
           name: 'a name'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbNFT] })
-        return triggerEvent(nftBid, mockPgComponent, mockEventPublisherComponent)
+        return triggerEvent(nftBid, mockPgComponent, mockEventPublisherComponent, mockLogger)
       })
 
       it('should fetch asset from database', () => {
@@ -184,7 +188,7 @@ describe('when calling triggerEvent function', () => {
           uri: 'uri'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbItem] })
-        return triggerEvent(dbBid, mockPgComponent, mockEventPublisherComponent)
+        return triggerEvent(dbBid, mockPgComponent, mockEventPublisherComponent, mockLogger)
       })
 
       it('should fetch asset from database', () => {

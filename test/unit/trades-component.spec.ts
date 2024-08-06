@@ -1,3 +1,4 @@
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import {
   ChainId,
   Network,
@@ -30,12 +31,14 @@ import {
 } from '../../src/ports/trades/errors'
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
+import { createTestLogsComponent } from '../components'
 
 let mockTrade: TradeCreation
 let mockSigner: string
 let mockPg: IPgComponent
 let mockEventPublisher: IEventPublisherComponent
 let tradesComponent: ITradesComponent
+let logs: ILoggerComponent
 let publishMessageMock: jest.Mock
 
 describe('when adding a new trade', () => {
@@ -98,8 +101,12 @@ describe('when adding a new trade', () => {
       publishMessage: publishMessageMock
     }
 
+    logs = createTestLogsComponent({
+      getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined })
+    })
+
     jest.clearAllMocks()
-    tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
+    tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
   })
 
   describe('when the expiration date is in the past', () => {
@@ -254,7 +261,8 @@ describe('when adding a new trade', () => {
           { ...insertedReceivedAsset, ...insertedReceivedAssetValue }
         ]),
         mockPg,
-        mockEventPublisher
+        mockEventPublisher,
+        logs.getLogger('Trades component')
       )
     })
   })
@@ -277,7 +285,7 @@ describe('when getting a trade', () => {
       mockEventPublisher = {
         publishMessage: jest.fn()
       }
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
     })
 
     it('should throw TradeNotFoundError', async () => {
@@ -380,7 +388,7 @@ describe('when getting a trade', () => {
         publishMessage: jest.fn()
       }
 
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher })
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
     })
 
     it('should return trade', async () => {
