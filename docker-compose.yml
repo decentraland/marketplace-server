@@ -45,3 +45,4 @@ services:
 volumes:
   marketplace_data:
   dapps_data:
+  builder_data:
