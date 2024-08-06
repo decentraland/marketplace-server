@@ -83,7 +83,7 @@ describe('when calling triggerEvent function', () => {
       let nftBid: Trade
       let dbNFT: DBNFT
 
-      beforeEach(async () => {
+      beforeEach(() => {
         nftBid = {
           ...trade,
           received: [
