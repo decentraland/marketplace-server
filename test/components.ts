@@ -91,7 +91,6 @@ async function initComponents(): Promise<TestComponents> {
   const trades = createTradesComponent({ dappsDatabase, eventPublisher })
   const bids = createBidsComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
-  jest.spyOn(dappsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
