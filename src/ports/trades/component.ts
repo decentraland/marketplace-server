@@ -19,10 +19,10 @@ import {
   getTradeAssetsWithValuesByIdQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent } from './types'
-import { validateTradeByType } from './utils'
+import { triggerEvent, validateTradeByType } from './utils'
 
-export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
-  const { dappsDatabase: pg } = components
+export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher'>): ITradesComponent {
+  const { dappsDatabase: pg, eventPublisher } = components
 
   async function getTrades() {
     const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
@@ -54,7 +54,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidTradeSignatureError()
     }
 
-    return pg.withTransaction(
+    const insertedTrade = await pg.withTransaction(
       async client => {
         const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
         const assets = await Promise.all(
@@ -77,6 +77,10 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         throw new Error(isErrorWithMessage(e) ? e.message : 'Could not create trade')
       }
     )
+
+    await triggerEvent(insertedTrade, pg, eventPublisher)
+
+    return insertedTrade
   }
 
   async function getTrade(id: string) {

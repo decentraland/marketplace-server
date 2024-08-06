@@ -15,6 +15,7 @@ import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
+import { IEventPublisherComponent } from '../src/ports/events'
 import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
 import { IItemsComponent, createItemsComponent } from '../src/ports/favorites/items'
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
@@ -50,7 +51,7 @@ async function initComponents(): Promise<TestComponents> {
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const logs = await createLogComponent({ metrics })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
-
+  const eventPublisher: IEventPublisherComponent = { publishMessage: () => Promise.resolve('event') }
   const substreamsDatabase = await createPgComponent(
     { config, logs, metrics },
     {
@@ -93,7 +94,7 @@ async function initComponents(): Promise<TestComponents> {
   const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
-  const trades = createTradesComponent({ dappsDatabase })
+  const trades = createTradesComponent({ dappsDatabase, eventPublisher })
   const bids = createBidsComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
@@ -124,7 +125,8 @@ async function initComponents(): Promise<TestComponents> {
     items,
     schemaValidator,
     bids,
-    trades
+    trades,
+    eventPublisher
   }
 }
 
