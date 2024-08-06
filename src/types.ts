@@ -34,7 +34,6 @@ export type BaseComponents = {
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
-  substreamsDatabase: IPgComponent
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
   catalog: ICatalogComponent

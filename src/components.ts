@@ -41,13 +41,6 @@ export async function initComponents(): Promise<AppComponents> {
     startupDelay: thirtySeconds
   })
 
-  const substreamsDatabase = await createPgComponent(
-    { config, logs, metrics },
-    {
-      dbPrefix: 'SUBSTREAMS'
-    }
-  )
-
   const favoritesDatabase = await createPgComponent(
     { config, logs, metrics },
     {
@@ -75,7 +68,7 @@ export async function initComponents(): Promise<AppComponents> {
   const schemaValidator = await createSchemaValidatorComponent()
 
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, substreamsDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -86,7 +79,7 @@ export async function initComponents(): Promise<AppComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
 
   // catalog
-  const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
+  const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
   const trades = await createTradesComponent({ dappsDatabase })
   const bids = await createBidsComponents({ dappsDatabase })
 
@@ -100,7 +93,6 @@ export async function initComponents(): Promise<AppComponents> {
     statusChecks,
     fetch,
     metrics,
-    substreamsDatabase,
     favoritesDatabase,
     dappsDatabase,
     catalog,
