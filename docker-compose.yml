@@ -16,6 +16,7 @@ services:
     volumes:
       - marketplace_data:/var/lib/postgresql/data
       - ./test/db/init-favorites-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+
   dapps_db:
     image: postgres
     restart: always
@@ -28,6 +29,9 @@ services:
     volumes:
       - dapps_data:/var/lib/postgresql/data
       - ./test/db/init-marketplace-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+    depends_on:
+      - builder_db
+
   builder_db:
     image: postgres
     restart: always
@@ -40,7 +44,6 @@ services:
     volumes:
       - builder_data:/var/lib/postgresql/data
       - ./test/db/init-marketplace-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
-
 
 volumes:
   marketplace_data:
