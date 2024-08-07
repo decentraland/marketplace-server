@@ -2,8 +2,7 @@
 set -e
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE DATABASE builder;
-	CREATE TABLE items (
+    CREATE TABLE items (
         id uuid PRIMARY KEY,
         name text NOT NULL,
         description text,
