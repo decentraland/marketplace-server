@@ -1,6 +1,8 @@
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '@well-known-components/pg-component'
 import { formatEther } from 'ethers'
 import { ERC20TradeAsset, Trade, TradeAssetType, TradeCreation, TradeType, Events } from '@dcl/schemas'
+import { isErrorWithMessage } from '../../logic/errors'
 import { IEventPublisherComponent } from '../events/types'
 import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
@@ -38,7 +40,12 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
   }
 }
 
-export async function triggerEvent(trade: Trade, pg: IPgComponent, eventPublisher: IEventPublisherComponent): Promise<void> {
+export async function triggerEvent(
+  trade: Trade,
+  pg: IPgComponent,
+  eventPublisher: IEventPublisherComponent,
+  logger: ILoggerComponent.ILogger
+): Promise<void> {
   const marketplaceBaseUrl = process.env.MARKETPLACE_BASE_URL
 
   try {
@@ -78,6 +85,6 @@ export async function triggerEvent(trade: Trade, pg: IPgComponent, eventPublishe
       })
     }
   } catch (e) {
-    console.error(e)
+    logger.error('Error triggering notification event', isErrorWithMessage(e) ? e.message : (e as any))
   }
 }

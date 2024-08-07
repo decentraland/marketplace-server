@@ -88,7 +88,7 @@ async function initComponents(): Promise<TestComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
-  const trades = createTradesComponent({ dappsDatabase, eventPublisher })
+  const trades = createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
