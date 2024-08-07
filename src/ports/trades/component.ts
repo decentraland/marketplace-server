@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { TradeAssetDirection, TradeCreation } from '@dcl/schemas'
+import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import { validateTradeSignature } from '../../logic/trades/utils'
@@ -10,16 +10,19 @@ import {
   TradeEffectiveAfterExpirationError,
   InvalidTradeStructureError,
   InvalidTradeSignerError,
-  TradeNotFoundError
+  TradeNotFoundError,
+  EventNotGeneratedError,
+  TradeNotFoundBySignatureError
 } from './errors'
 import {
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
+  getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery
 } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent } from './types'
-import { triggerEvent, validateTradeByType } from './utils'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
+import { getNotificationEventForTrade, validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
   const { dappsDatabase: pg, eventPublisher, logs } = components
@@ -79,7 +82,16 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       }
     )
 
-    await triggerEvent(insertedTrade, pg, eventPublisher, logger)
+    // trigger notification for trade creation
+    try {
+      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED)
+      if (event) {
+        const messageId = await eventPublisher.publishMessage(event)
+        logger.info(`Trade creation event triggered. MessageId: ${messageId}`)
+      }
+    } catch (e) {
+      logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
+    }
 
     return insertedTrade
   }
@@ -94,9 +106,30 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     return fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
   }
 
+  async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number): Promise<Event> {
+    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature))
+
+    if (!result.rowCount) {
+      throw new TradeNotFoundBySignatureError(hashedSignature)
+    }
+
+    const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED)
+
+    if (!event) {
+      throw new EventNotGeneratedError()
+    }
+
+    return {
+      ...event,
+      timestamp
+    }
+  }
+
   return {
     getTrades,
     addTrade,
-    getTrade
+    getTrade,
+    getTradeAcceptedEvent
   }
 }
