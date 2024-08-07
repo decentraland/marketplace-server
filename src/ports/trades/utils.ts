@@ -64,7 +64,7 @@ export async function triggerEvent(
         return
       }
 
-      const messageId = eventPublisher.publishMessage({
+      const messageId = await eventPublisher.publishMessage({
         type: Events.Type.MARKETPLACE,
         subType: Events.SubType.Marketplace.BID_RECEIVED,
         key: `bid-created-${trade.id}`,
