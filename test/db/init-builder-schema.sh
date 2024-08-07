@@ -1,14 +1,11 @@
 #!/bin/bash
 set -e
 
-# Connect to the default database to create the "builder" database
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
-    CREATE DATABASE builder;
-EOSQL
 
 # Connect to the "builder" database to create the tables
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "builder" <<-EOSQL
-    CREATE TABLE items (
+    CREATE DATABASE builder;
+    CREATE TABLE IF NOT EXISTS items (
         id uuid PRIMARY KEY,
         name text NOT NULL,
         description text,
@@ -32,7 +29,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "builder" <<-EOSQL
         utility text,
         mappings json
     );
-    CREATE TABLE collections (
+    CREATE TABLE IF NOT EXISTS collections (
         id uuid PRIMARY KEY,
         name text NOT NULL,
         eth_address text NOT NULL,
