@@ -87,7 +87,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED)
       if (event) {
         const messageId = await eventPublisher.publishMessage(event)
-        logger.info(`Trade creation event triggered. MessageId: ${messageId}`)
+        logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
       }
     } catch (e) {
       logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
