@@ -64,7 +64,7 @@ export async function triggerEvent(
         return
       }
 
-      eventPublisher.publishMessage({
+      const messageId = eventPublisher.publishMessage({
         type: Events.Type.MARKETPLACE,
         subType: Events.SubType.Marketplace.BID_RECEIVED,
         key: `bid-created-${trade.id}`,
@@ -83,6 +83,7 @@ export async function triggerEvent(
           network: trade.network
         }
       })
+      logger.info(`Notification has been send for trade ${trade.id} with message id ${messageId}`)
     }
   } catch (e) {
     logger.error('Error triggering notification event', isErrorWithMessage(e) ? e.message : (e as any))
