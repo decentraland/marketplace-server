@@ -4,7 +4,6 @@ set -e
 
 # Connect to the "builder" database to create the tables
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "builder" <<-EOSQL
-    CREATE DATABASE builder;
     CREATE TABLE IF NOT EXISTS items (
         id uuid PRIMARY KEY,
         name text NOT NULL,
@@ -29,6 +28,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "builder" <<-EOSQL
         utility text,
         mappings json
     );
+
     CREATE TABLE IF NOT EXISTS collections (
         id uuid PRIMARY KEY,
         name text NOT NULL,
