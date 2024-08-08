@@ -52,12 +52,6 @@ async function initComponents(): Promise<TestComponents> {
   const logs = await createLogComponent({ metrics })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const eventPublisher: IEventPublisherComponent = { publishMessage: () => Promise.resolve('event') }
-  const substreamsDatabase = await createPgComponent(
-    { config, logs, metrics },
-    {
-      dbPrefix: 'SUBSTREAMS'
-    }
-  )
 
   const favoritesDatabase = await createPgComponent(
     { config, logs, metrics },
@@ -82,7 +76,7 @@ async function initComponents(): Promise<TestComponents> {
 
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, substreamsDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -91,13 +85,12 @@ async function initComponents(): Promise<TestComponents> {
   })
   const access = createAccessComponent({ favoritesDatabase, logs, lists })
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
-  const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
+  const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const trades = createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
-  jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
@@ -110,9 +103,8 @@ async function initComponents(): Promise<TestComponents> {
     localFetch: await createLocalFetchCompoment(config),
     fetch,
     metrics,
-    substreamsDatabase,
-    favoritesDatabase,
     dappsDatabase,
+    favoritesDatabase,
     catalog,
     balances,
     wertSigner,

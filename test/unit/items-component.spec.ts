@@ -1,17 +1,14 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
-import { getLatestSchemas } from '../../src/logic/substreams/utils'
 import { IPgComponent } from '../../src/ports/db/types'
 import { IItemsComponent, createItemsComponent } from '../../src/ports/favorites/items'
 import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import { QueryFailure } from '../../src/ports/favorites/lists/errors'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
 
-jest.mock('../../src/logic/substreams/utils')
-
 let itemId: string
 let items: IItemsComponent
 let logs: ILoggerComponent
-let substreamsDatabase: IPgComponent
+let dappsDatabase: IPgComponent
 let dbClientQueryMock: jest.Mock
 let dbClientReleaseMock: jest.Mock
 
@@ -21,7 +18,7 @@ beforeEach(() => {
   })
   dbClientQueryMock = jest.fn()
   dbClientReleaseMock = jest.fn().mockResolvedValue(undefined)
-  substreamsDatabase = createTestPgComponent({
+  dappsDatabase = createTestPgComponent({
     getPool: jest.fn().mockReturnValue({
       connect: () => ({
         query: dbClientQueryMock,
@@ -30,11 +27,10 @@ beforeEach(() => {
     })
   })
   items = createItemsComponent({
-    substreamsDatabase,
+    dappsDatabase,
     logs
   })
   itemId = '0x08de0de733cc11081d43569b809c00e6ddf314fb-0'
-  ;(getLatestSchemas as jest.Mock).mockResolvedValue(['dcl1', 'dcl2'])
 })
 
 describe('when validating if an item exists', () => {
