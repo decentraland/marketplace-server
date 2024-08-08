@@ -241,7 +241,7 @@ export const getIsOnSale = (filters: CatalogFilters) => {
     : SQL`((search_is_store_minter = false OR available = 0) AND listings_count IS NULL)`
 }
 
-export const getisWearableHeadAccessoryWhere = () => {
+export const getIsWearableHeadAccessoryWhere = () => {
   return SQL`items.search_is_wearable_head = true`
 }
 
@@ -323,7 +323,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.creator?.length ? getCreatorWhere(filters) : undefined,
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
     filters.isOnSale !== undefined ? getIsOnSale(filters) : undefined,
-    filters.isWearableHead ? getisWearableHeadAccessoryWhere() : undefined,
+    filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
     filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
     filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
     filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
@@ -358,7 +358,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
   return result.append(' ')
 }
 
-/** At the moment, the UI just needs the Owners count when listing the NOT ON SALE items, so for optimize the query, let's JOIN only in that case since it's an expensive operation */
+/** At the moment, the UI just needs the Owners count when listing the NOT ON SALE items, so to optimize the query, let's JOIN only in that case since it's an expensive operation */
 const getOwnersJoin = () => {
   return SQL` LEFT JOIN (
           SELECT item, COUNT(distinct owner) as owners_count FROM `
@@ -546,8 +546,4 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
         ORDER BY id DESC, word_similarity DESC`)
 
   return query
-}
-
-export const getCatalogQuery = (filters: CatalogFilters) => {
-  return getCollectionsItemsCatalogQuery(filters)
 }

@@ -6,7 +6,7 @@ import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
-import { getCatalogQuery, getItemIdsBySearchTextQuery } from './queries'
+import { getCollectionsItemsCatalogQuery, getItemIdsBySearchTextQuery } from './queries'
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
@@ -26,7 +26,6 @@ export async function createCatalogComponent(
     try {
       if (filters.search) {
         const analytics = new Analytics({ writeKey: segmentWriteKey })
-        console.log('Analytics: ', Analytics)
         const searchQuery = getItemIdsBySearchTextQuery(filters)
         const filteredItemsById = await client.query<{
           id: string
@@ -57,7 +56,7 @@ export async function createCatalogComponent(
           return { data: [], total: 0 }
         }
       }
-      const query = getCatalogQuery(filters)
+      const query = getCollectionsItemsCatalogQuery(filters)
       const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0

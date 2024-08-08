@@ -2,7 +2,7 @@ import { Analytics } from '@segment/analytics-node'
 import { Network } from '@dcl/schemas'
 import { HttpError } from '../../src/logic/http/response'
 import { createCatalogComponent } from '../../src/ports/catalog/component'
-import { ICatalogComponent } from '../../src/ports/catalog/types'
+import { CollectionsItemDBResult, ICatalogComponent } from '../../src/ports/catalog/types'
 import { FragmentItemType } from '../../src/ports/catalog/utils'
 import { IPicksComponent } from '../../src/ports/favorites/picks'
 import { AppComponents } from '../../src/types'
@@ -42,7 +42,7 @@ beforeEach(async () => {
 })
 
 describe('Catalog Component', () => {
-  describe('fetch', () => {
+  describe('when fetching catalog items', () => {
     describe('and there are no results from the search text query', () => {
       beforeEach(() => {
         dbClientQueryMock.mockResolvedValueOnce({ rows: [] })
@@ -58,23 +58,22 @@ describe('Catalog Component', () => {
     })
 
     describe('and there are results from the search text query', () => {
-      const items = [
-        {
-          id: 'item1',
-          name: 'Item 1',
-          item_type: FragmentItemType.WEARABLE_V1,
-          image:
-            'https://peer.decentraland.zone/lambdas/collections/contents/urn:decentraland:amoy:collections-v2:0x60aba8c01848c7ef7c1a5451ff11ca05b2b4893e:0/thumbnail'
-        },
-        {
-          id: 'item2',
-          name: 'Item 2',
-          item_type: FragmentItemType.WEARABLE_V1,
-          image:
-            'https://peer.decentraland.zone/lambdas/collections/contents/urn:decentraland:amoy:collections-v2:0x60aba8c01848c7ef7c1a5451ff11ca05b2b4893e:0/thumbnail'
-        }
-      ]
+      let items: Partial<CollectionsItemDBResult>[]
       beforeEach(() => {
+        items = [
+          {
+            id: 'item1',
+            item_type: FragmentItemType.WEARABLE_V1,
+            image:
+              'https://peer.decentraland.zone/lambdas/collections/contents/urn:decentraland:amoy:collections-v2:0x60aba8c01848c7ef7c1a5451ff11ca05b2b4893e:0/thumbnail'
+          },
+          {
+            id: 'item2',
+            item_type: FragmentItemType.WEARABLE_V1,
+            image:
+              'https://peer.decentraland.zone/lambdas/collections/contents/urn:decentraland:amoy:collections-v2:0x60aba8c01848c7ef7c1a5451ff11ca05b2b4893e:0/thumbnail'
+          }
+        ]
         dbClientQueryMock.mockResolvedValueOnce({
           rows: [
             { id: 'item1', word: 'Item 1', word_similarity: 0.9, match_type: 'exact' },
@@ -89,11 +88,10 @@ describe('Catalog Component', () => {
             track: analyticsTrackMock
           }
         })
+        ;(picks.getPicksStats as jest.Mock).mockResolvedValue([])
       })
 
       it('should return catalog items based on the provided filters', async () => {
-        ;(picks.getPicksStats as jest.Mock).mockResolvedValue([])
-
         const filters = { search: 'item', network: Network.ETHEREUM }
         const result = await catalogComponent.fetch(filters, { searchId: 'testSearchId', anonId: 'anon123' })
 
@@ -103,12 +101,7 @@ describe('Catalog Component', () => {
       })
 
       it('should track the search event with Segment Analytics', async () => {
-        const items = [
-          { id: 'item1', word: 'Item 1', word_similarity: 0.9, match_type: 'exact' },
-          { id: 'item2', word: 'Item 2', word_similarity: 0.8, match_type: 'partial' }
-        ]
         dbClientQueryMock.mockResolvedValueOnce({ rows: items })
-        ;(picks.getPicksStats as jest.Mock).mockResolvedValue([])
 
         const filters = { search: 'item' }
         await catalogComponent.fetch(filters, { searchId: 'testSearchId', anonId: 'anon123' })
