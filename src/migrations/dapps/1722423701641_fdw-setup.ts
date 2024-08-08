@@ -11,7 +11,6 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
   const builderServerDBUser = await config.requireString('BUILDER_SERVER_DB_USER')
   const builderServerDBPassword = await config.requireString('BUILDER_SERVER_DB_PASSWORD')
 
-  pgm.sql('CREATE EXTENSION IF NOT EXISTS postgres_fdw;')
   pgm.sql(`
             CREATE SERVER IF NOT EXISTS builder_server
             FOREIGN DATA WRAPPER postgres_fdw

@@ -25,4 +25,5 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE TABLE squid_marketplace."emote" ("id" character varying NOT NULL, "name" text NOT NULL, "description" text NOT NULL, "collection" text NOT NULL, "category" character varying(13) NOT NULL, "loop" boolean NOT NULL, "rarity" character varying(9) NOT NULL, "body_shapes" character varying(10) array, "has_sound" boolean, "has_geometry" boolean, CONSTRAINT "PK_c08d432f6b22ef550be511163ac" PRIMARY KEY ("id"));
 
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "postgres_fdw";
 EOSQL
