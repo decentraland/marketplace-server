@@ -47,3 +47,9 @@ export class TradeNotFoundError extends Error {
     super(`Trade not found for id ${tradeId}`)
   }
 }
+
+export class InvalidECDSASignatureError extends Error {
+  constructor() {
+    super('The server does not accept ECDSA signatures with V as 0 or 1')
+  }
+}

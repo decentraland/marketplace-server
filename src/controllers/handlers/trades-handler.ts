@@ -3,6 +3,7 @@ import { isErrorWithMessage } from '../../logic/errors'
 import { DBTrade } from '../../ports/trades'
 import {
   DuplicatedBidError,
+  InvalidECDSASignatureError,
   InvalidTradeSignatureError,
   InvalidTradeSignerError,
   InvalidTradeStructureError,
@@ -71,7 +72,8 @@ export async function addTradeHandler(
       e instanceof TradeEffectiveAfterExpirationError ||
       e instanceof InvalidTradeStructureError ||
       e instanceof InvalidTradeSignatureError ||
-      e instanceof InvalidTradeSignerError
+      e instanceof InvalidTradeSignerError ||
+      e instanceof InvalidECDSASignatureError
     ) {
       return {
         status: StatusCode.BAD_REQUEST,
