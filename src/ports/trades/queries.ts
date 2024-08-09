@@ -104,3 +104,7 @@ export function getInsertTradeAssetValueByTypeQuery(asset: TradeAsset | TradeAss
 export function getTradeAssetsWithValuesByIdQuery(id: string) {
   return getTradeAssetsWithValuesQuery(SQL`t.id = ${id}`)
 }
+
+export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: string) {
+  return getTradeAssetsWithValuesQuery(SQL`t.hashed_signature = ${hashedSignature}`)
+}

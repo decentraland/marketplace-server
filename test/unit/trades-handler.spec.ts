@@ -1,12 +1,14 @@
 import { Request } from 'node-fetch'
-import { Trade, TradeCreation } from '@dcl/schemas'
-import { addTradeHandler, getTradeHandler } from '../../src/controllers/handlers/trades-handler'
+import { Event, Events, Trade, TradeCreation } from '@dcl/schemas'
+import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
+  EventNotGeneratedError,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
+  TradeNotFoundBySignatureError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
 import { HandlerContextWithPath, StatusCode } from '../../src/types'
@@ -25,7 +27,8 @@ describe('when handling the creation of a new trade', () => {
         trades: {
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
           addTrade: jest.fn().mockResolvedValue({}),
-          getTrade: jest.fn().mockResolvedValue({} as Trade)
+          getTrade: jest.fn().mockResolvedValue({} as Trade),
+          getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
         }
       }
     }
@@ -148,7 +151,8 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
-            getTrade: jest.fn().mockResolvedValue(trade)
+            getTrade: jest.fn().mockResolvedValue(trade),
+            getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
           }
         }
       }
@@ -181,7 +185,8 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
-            getTrade: jest.fn().mockRejectedValue(error)
+            getTrade: jest.fn().mockRejectedValue(error),
+            getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
           }
         }
       }
@@ -215,7 +220,8 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
-            getTrade: jest.fn().mockRejectedValue(error)
+            getTrade: jest.fn().mockRejectedValue(error),
+            getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
           }
         }
       }
@@ -228,6 +234,96 @@ describe('when handling the retrieval of a trade', () => {
         body: {
           ok: false,
           message: error.message
+        }
+      })
+    })
+  })
+})
+
+describe('when handling the retrieval of a trade accepted event', () => {
+  let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:hashedSignature/accept'>, 'components' | 'params' | 'url'>
+  beforeEach(() => {
+    context = {
+      params: {
+        hashedSignature: 'asignature'
+      },
+      url: new URL('http://test.com/v1/trades/asignature/accept'),
+      components: {
+        trades: {
+          getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          addTrade: jest.fn().mockResolvedValue({}),
+          getTrade: jest.fn().mockResolvedValue({}),
+          getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
+        }
+      }
+    }
+  })
+
+  describe('and the trade does not exist', () => {
+    beforeEach(() => {
+      context.components.trades.getTradeAcceptedEvent = jest.fn().mockRejectedValue(new TradeNotFoundBySignatureError('asignature'))
+    })
+
+    it('should return a not found error', async () => {
+      const result = await getTradeAcceptedEventHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.NOT_FOUND,
+        body: {
+          ok: false,
+          message: new TradeNotFoundBySignatureError('asignature').message
+        }
+      })
+    })
+  })
+
+  describe('and the event could not be created', () => {
+    beforeEach(() => {
+      context.components.trades.getTradeAcceptedEvent = jest.fn().mockRejectedValue(new EventNotGeneratedError())
+    })
+
+    it('should return a not found error', async () => {
+      const result = await getTradeAcceptedEventHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.ERROR,
+        body: {
+          ok: false,
+          message: new EventNotGeneratedError().message
+        }
+      })
+    })
+  })
+
+  describe('and there was a unexpected error', () => {
+    beforeEach(() => {
+      context.components.trades.getTradeAcceptedEvent = jest.fn().mockRejectedValue(new Error('message'))
+    })
+
+    it('should return a not found error', async () => {
+      const result = await getTradeAcceptedEventHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.ERROR,
+        body: {
+          ok: false,
+          message: 'message'
+        }
+      })
+    })
+  })
+
+  describe('and the event was created successfully', () => {
+    let event: Event
+    beforeEach(() => {
+      event = { type: Events.Type.MARKETPLACE } as Event
+      context.components.trades.getTradeAcceptedEvent = jest.fn().mockResolvedValue(event)
+    })
+
+    it('should return the event', async () => {
+      const result = await getTradeAcceptedEventHandler(context)
+      expect(result).toEqual({
+        status: StatusCode.OK,
+        body: {
+          ok: true,
+          data: event
         }
       })
     })

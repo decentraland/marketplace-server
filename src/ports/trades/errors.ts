@@ -47,3 +47,15 @@ export class TradeNotFoundError extends Error {
     super(`Trade not found for id ${tradeId}`)
   }
 }
+
+export class TradeNotFoundBySignatureError extends Error {
+  constructor(public signature: string) {
+    super(`Trade not found for signature ${signature}`)
+  }
+}
+
+export class EventNotGeneratedError extends Error {
+  constructor() {
+    super('Event could not be generated')
+  }
+}
