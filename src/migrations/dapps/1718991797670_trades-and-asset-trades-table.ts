@@ -14,7 +14,7 @@ export const ASSET_DIRECTION_TYPE = 'asset_direction_type'
 export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
-  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID, TradeType.PUBLIC_ORDER])
+  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID])
 
   pgm.createTable(
     { schema: SCHEMA, name: TRADES_TABLE },
