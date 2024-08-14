@@ -1,4 +1,3 @@
-import { IPgComponent } from '@well-known-components/pg-component'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import {
   CatalogFilters,
@@ -11,52 +10,9 @@ import {
   Network,
   WearableCategory
 } from '@dcl/schemas'
+import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
-
-const SCHEMA_PREFIX = 'dcl'
-
-const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]
-
-export function getLatestChainSchema(chainId: string) {
-  return SQL`
-    SELECT 
-        entity_schema 
-    FROM 
-        substreams.network_schema
-    WHERE 
-        LOWER(network) = LOWER(${chainId})
-    `
-}
-
-export async function getLatestSchema(database: IPgComponent) {
-  let schema: string | undefined
-  try {
-    const query = SQL`
-        SELECT information.schema_name
-        FROM information_schema.schemata as information
-        WHERE schema_name LIKE ${SCHEMA_PREFIX} || '%'
-        ORDER BY CAST(SUBSTRING(information.schema_name FROM 'dcl([0-9]+)') AS INTEGER) desc 
-        LIMIT 1
-      `
-    const getLatestSchemaResult = await database.query<{ schema_name: string }>(query)
-    schema = getLatestSchemaResult.rows[0]?.schema_name
-  } catch (error) {
-    console.error('error:', error)
-  }
-  return schema
-}
-
-const getWhereWordsJoin = () => {
-  return SQL`
-      JOIN LATERAL 
-      (
-        SELECT unnest(string_to_array(metadata.name, ' ')) AS text
-      UNION 
-        SELECT tag AS text FROM builder_server_items WHERE builder_server_items.item_id = items.id::text
-      ) AS word ON TRUE 
-  `
-}
 
 const getBuilderServerTagsJoin = () => {
   return SQL`LEFT JOIN builder_server_items ON builder_server_items.item_id = items.id::text `
@@ -64,18 +20,22 @@ const getBuilderServerTagsJoin = () => {
 
 const wrapQuery = (statement: SQLStatement, start: SQLStatement, end: SQLStatement) => start.append(statement).append(end)
 
-const getItemIdsByUtilityQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+const getItemIdsByUtilityQuery = (filters: CatalogQueryFilters) => {
   const { search } = filters
   const includesUtilityKeyword = search?.toLowerCase().includes('utility')
   let where = SQL``
   if (!includesUtilityKeyword) {
-    where = SQL`WHERE mv_builder_server_items_utility.utility % ${search}`
+    where = SQL`WHERE `.append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items_utility.utility % ${search}`)
   }
 
   // Reduce the weight of the utility similarity so it doesn't overshadow the rest of the search
-  const similarityColumn = SQL`similarity(mv_builder_server_items_utility.utility, ${search}) * 0.5`
+  const similarityColumn = SQL`similarity(`
+    .append(BUILDER_SERVER_TABLE_SCHEMA)
+    .append(SQL`.mv_builder_server_items_utility.utility, ${search}) * 0.5`)
 
-  const query = SQL`SELECT mv_builder_server_items_utility.item_id as id, 'utility' as match_type, '' as word, `
+  const query = SQL`SELECT `
+    .append(BUILDER_SERVER_TABLE_SCHEMA)
+    .append(".mv_builder_server_items_utility.item_id as id, 'utility' as match_type, '' as word, ")
   // If the utility keyword is included in the search, we want to give it a higher weight to items with utility
   if (includesUtilityKeyword) {
     query.append(wrapQuery(similarityColumn, SQL`GREATEST(`, SQL`, 0.01)`))
@@ -83,48 +43,48 @@ const getItemIdsByUtilityQuery = (schemaVersion: string, filters: CatalogQueryFi
     query.append(similarityColumn)
   }
   query
-    .append(SQL` AS word_similarity FROM mv_builder_server_items_utility LEFT JOIN `)
-    .append(schemaVersion)
-    .append(SQL`.items AS items ON items.id = mv_builder_server_items_utility.item_id `)
+    .append(SQL` AS word_similarity FROM `.append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items_utility LEFT JOIN `))
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.item AS items ON items.id = `.append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items_utility.item_id `))
     .append(where)
     .append(SQL` ORDER BY word_similarity DESC, items.first_listed_at DESC`)
 
   return query
 }
 
-const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
+const getItemIdsByTagOrNameQuery = (filters: CatalogQueryFilters) => {
   const { search } = filters
-  const query = getSearchCTEs(schemaVersion, filters).append(
-    SQL`SELECT 
+  const query = getSearchCTEs(filters).append(
+    SQL`SELECT
         items.id AS id,
         CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
         word.text AS word,
         similarity(word.text, ${search}) AS word_similarity
       `
       .append(' FROM ')
-      .append(schemaVersion)
+      .append(MARKETPLACE_SQUID_SCHEMA)
       .append(
-        `.items AS items 
+        `.item AS items
         `
       )
       .append(getLatestMetadataJoin(filters))
       .append(
         SQL`
           LEFT JOIN (
-            SELECT 
-                metadata.id, 
+            SELECT
+                metadata.id,
                 COALESCE(wearable.name, emote.name) AS name
-            FROM 
+            FROM
                 `
-          .append(schemaVersion)
+          .append(MARKETPLACE_SQUID_SCHEMA)
           .append(
-            SQL`.metadata AS metadata 
+            SQL`.metadata AS metadata
                 LEFT JOIN `
-              .append(schemaVersion)
+              .append(MARKETPLACE_SQUID_SCHEMA)
               .append(
-                SQL`.wearable AS wearable ON metadata.wearable = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
-                LEFT JOIN `.append(schemaVersion)
-                  .append(SQL`.emote AS emote ON metadata.emote = emote.id AND metadata.item_type = 'emote_v1'
+                SQL`.wearable AS wearable ON metadata.wearable_id = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
+                LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA)
+                  .append(SQL`.emote AS emote ON metadata.emote_id = emote.id AND metadata.item_type = 'emote_v1'
         ) AS metadata ON metadata.id = latest_metadata.latest_metadata_id
       `)
               )
@@ -140,21 +100,41 @@ const getItemIdsByTagOrNameQuery = (schemaVersion: string, filters: CatalogQuery
   return query
 }
 
-export const getItemIdsBySearchTextQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const utilityQuery = getItemIdsByUtilityQuery(schemaVersion, filters)
-  const tagOrNameQuery = getItemIdsByTagOrNameQuery(schemaVersion, filters)
-
-  return SQL`SELECT DISTINCT ON (id) id,
-      word_similarity,
-      match_type,
-      word
-      FROM ((`
-    .append(utilityQuery)
-    .append(SQL`) UNION (`)
-    .append(tagOrNameQuery).append(SQL`)) AS items_found
-      ORDER BY id DESC, word_similarity DESC
-    `)
+const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
+  return filters.network === Network.ETHEREUM
+    ? SQL`
+        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.metadata ` // TODO: This will be fix during next indexation, is a workaround for the current one
+    : SQL`
+        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
 }
+
+const getLatestMetadataCTE = () => {
+  return SQL`latest_metadata AS (
+        SELECT DISTINCT ON (wearable_id) wearable_id as item_id, id AS latest_metadata_id, item_type, wearable_id, emote_id
+        FROM metadata
+        ORDER BY wearable_id DESC
+      )
+    `
+}
+
+const getSearchCTEs = (filters: CatalogQueryFilters) => {
+  return SQL`WITH `.append(getLatestMetadataCTE()).append(
+    SQL`, builder_server_items AS (
+      SELECT
+      item_id,
+      tag
+    FROM
+      `.append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items
+    WHERE
+      LOWER(tag) = LOWER(${filters.search})
+    )
+  `)
+  )
+}
+
+const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]
+
+const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
 
 export function getOrderBy(filters: CatalogFilters) {
   const { sortBy, sortDirection, isOnSale, search, ids } = filters
@@ -166,35 +146,25 @@ export function getOrderBy(filters: CatalogFilters) {
     return ''
   }
 
-  if (search && ids?.length) {
+  if (search && !sortBy && ids?.length) {
     // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
     // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${ids}::text[], id) `
+    return SQL`ORDER BY array_position(${filters.ids}::text[], id) `
   }
 
   let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
   switch (sortByParam) {
     case CatalogSortBy.NEWEST:
-      sortByQuery = 'ORDER BY first_listed_at desc NULLS last, id desc \n'
+      sortByQuery = 'ORDER BY first_listed_at desc NULLS last \n'
       break
     case CatalogSortBy.MOST_EXPENSIVE:
       sortByQuery = 'ORDER BY max_price desc \n'
       break
-    case CatalogSortBy.RECENTLY_LISTED: {
-      // for ETHEREUM, sort by the items.created_at as the first_listed_at field
-      // for MATIC use collection_minters.first_listed_at
-      //  if NO network is specified, it's asking for the SORT of the multi-network query, so use the first_listed_at that will be defined in each of the networks query
-      const firstListedAtColumn =
-        filters.network === Network.ETHEREUM
-          ? 'items.created_at as first_listed_at'
-          : filters.network === Network.MATIC
-          ? 'collection_minters.first_listed_at'
-          : 'first_listed_at'
-      sortByQuery = SQL`ORDER BY GREATEST(max_order_created_at, `.append(firstListedAtColumn).append(') desc \n')
+    case CatalogSortBy.RECENTLY_LISTED:
+      sortByQuery = 'ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n'
       break
-    }
     case CatalogSortBy.RECENTLY_SOLD:
-      sortByQuery = 'ORDER BY sold_at desc nulls last \n'
+      sortByQuery = 'ORDER BY sold_at desc \n'
       break
     case CatalogSortBy.CHEAPEST:
       sortByQuery = 'ORDER BY min_price asc, first_listed_at desc \n'
@@ -204,13 +174,6 @@ export function getOrderBy(filters: CatalogFilters) {
   return sortByQuery
 }
 
-export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters) => {
-  const { sortBy, sortDirection } = filters
-  if (sortBy && sortDirection) {
-    query.append(getOrderBy(filters))
-  }
-}
-
 export const addQueryPagination = (query: SQLStatement, filters: CatalogQueryFilters) => {
   const { limit, offset } = filters
   if (limit !== undefined && offset !== undefined) {
@@ -218,29 +181,11 @@ export const addQueryPagination = (query: SQLStatement, filters: CatalogQueryFil
   }
 }
 
-const getMultiNetworkQuery = (schemas: Record<string, string>, filters: CatalogQueryFilters) => {
-  const { sortBy, sortDirection, limit, offset, ...restOfFilters } = filters
-  const queries = Object.entries(schemas).map(([network, schema]) =>
-    getCollectionsItemsCatalogQuery(schema, {
-      ...restOfFilters,
-      network: network as Network
-    })
-  )
-
-  // The following code wraps the UNION query in a subquery so we can get the total count of items before applying the limit and offset
-  const unionQuery = SQL`SELECT *, COUNT(*) OVER() as total FROM (\n`
-  queries.forEach((query, index) => {
-    unionQuery.append(query)
-    if (queries[index + 1]) {
-      unionQuery.append(SQL`\n UNION ALL ( \n`)
-    }
-  })
-  unionQuery.append(SQL`\n)) as temp \n`)
-  addQuerySort(unionQuery, filters)
-  if (limit !== undefined && offset !== undefined) {
-    unionQuery.append(SQL`LIMIT ${limit} OFFSET ${offset}`)
+export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters) => {
+  const { sortBy, sortDirection } = filters
+  if (sortBy && sortDirection) {
+    query.append(getOrderBy(filters))
   }
-  return unionQuery
 }
 
 export const getCategoryWhere = (filters: CatalogFilters) => {
@@ -250,7 +195,7 @@ export const getCategoryWhere = (filters: CatalogFilters) => {
       ? SQL`items.item_type = '`.append(FragmentItemType.SMART_WEARABLE_V1).append(SQL`'`)
       : SQL`items.item_type IN `.append(
           SQL`
-              (`
+            (`
             .append(WEARABLE_ITEM_TYPES.map(itemType => `'${itemType}'`).join(', '))
             .append(SQL`)`)
         )
@@ -259,40 +204,7 @@ export const getCategoryWhere = (filters: CatalogFilters) => {
     : undefined
 }
 
-const WEARABLE_ACCESSORIES_CATEGORIES = [
-  WearableCategory.EARRING,
-  WearableCategory.EYEWEAR,
-  WearableCategory.HAT,
-  WearableCategory.HELMET,
-  WearableCategory.MASK,
-  WearableCategory.TIARA,
-  WearableCategory.TOP_HEAD
-]
-
-const WEARABLE_HEAD_CATEGORIES = [
-  WearableCategory.EYEBROWS,
-  WearableCategory.EYES,
-  WearableCategory.FACIAL_HAIR,
-  WearableCategory.HAIR,
-  WearableCategory.MOUTH
-]
-
 export const getWearableCategoryWhere = (filters: CatalogFilters) => {
-  if (filters.isWearableAccessory) {
-    return SQL`metadata_wearable.category IN `.append(
-      SQL`
-          (`.append(WEARABLE_ACCESSORIES_CATEGORIES.map(itemType => `'${itemType}'`).join(', ')).append(SQL`
-          )
-          `)
-    )
-  } else if (filters.isWearableHead) {
-    return SQL`metadata_wearable.category IN `.append(
-      SQL`
-          (`
-        .append(WEARABLE_HEAD_CATEGORIES.map(itemType => `'${itemType}'`).join(', '))
-        .append(SQL`)`)
-    )
-  }
   return WearableCategory.validate(filters.wearableCategory)
     ? SQL`metadata_wearable.category = '`.append(filters.wearableCategory).append(SQL`'`)
     : undefined
@@ -300,7 +212,7 @@ export const getWearableCategoryWhere = (filters: CatalogFilters) => {
 
 export const getEmoteCategoryWhere = (filters: CatalogFilters) => {
   return EmoteCategory.validate(filters.emoteCategory)
-    ? SQL`metadata_emote.category ILIKE '`.append(filters.emoteCategory).append(SQL`'`)
+    ? SQL`metadata_emote.category = '`.append(filters.emoteCategory).append(SQL`'`)
     : undefined
 }
 
@@ -312,39 +224,21 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
     : SQL`metadata_emote.loop = ${filters.emotePlayMode === EmotePlayMode.LOOP}`
 }
 
-export const getEmoteHasGeometryWhere = (filters: CatalogFilters) => {
-  return filters.network === Network.MATIC ? SQL`metadata_emote.has_geometry = true` : undefined
-}
-
-export const getEmoteHasSoundWhere = (filters: CatalogFilters) => {
-  return filters.network === Network.MATIC ? SQL`metadata_emote.has_sound = true` : undefined
-}
-
 export const getSearchWhere = (filters: CatalogFilters) => {
-  return SQL`word.text % ${filters.search}`
+  if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
+    return SQL`word::text % ${filters.search}`
+  }
+  return SQL`word_wearable::text % ${filters.search} OR word_emote::text % ${filters.search}`
 }
 
 export const getIsSoldOutWhere = () => {
   return SQL`items.available = 0`
 }
 
-export const getIsOnSaleJoin = (schemaVersion: string) => {
-  const join = SQL`
-          LEFT JOIN `
-
-  return join
-    .append(schemaVersion)
-    .append(SQL`.collection_minters_view AS collection_minters ON items.collection = collection_minters.collection_id `)
-}
-
-export const getIsCollectionApprovedJoin = (schemaVersion: string, filters: CatalogFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL` `
-    : SQL`JOIN `
-        .append(schemaVersion)
-        .append(
-          SQL`.collection_set_approved_events_view AS collection_set_approved_events ON items.collection = collection_set_approved_events.collection_id AND collection_set_approved_events.value = true `
-        )
+export const getIsOnSale = (filters: CatalogFilters) => {
+  return filters.isOnSale
+    ? SQL`((search_is_store_minter = true AND available > 0) OR listings_count IS NOT NULL)`
+    : SQL`((search_is_store_minter = false OR available = 0) AND listings_count IS NULL)`
 }
 
 export const getIsWearableHeadAccessoryWhere = () => {
@@ -364,7 +258,7 @@ export const getWearableGenderWhere = (filters: CatalogFilters) => {
   if (genders?.includes(GenderFilterOption.MALE)) {
     parsedGenders.push('BaseMale')
   }
-  return parsedGenders.length ? SQL`metadata_wearable.body_shapes @> (${parsedGenders})` : undefined
+  return parsedGenders.length ? SQL`items.search_wearable_body_shapes @> (${parsedGenders})` : undefined
 }
 
 export const getCreatorWhere = (filters: CatalogFilters) => {
@@ -387,56 +281,39 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 }
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`min_price >= ${filters.minPrice} `
-    : SQL`(min_price >= ${filters.minPrice} 
-            OR (COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} 
-              AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
-              AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-            )
-          ) `
+  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND search_is_store_minter = true))`
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`max_price <= ${filters.maxPrice} `
-    : SQL`(max_price <= ${filters.maxPrice} 
-            OR (COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} 
-                AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 
-                AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-              )
-          ) `
+  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND search_is_store_minter = true))`
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
-  return SQL`items.collection = ANY(${filters.contractAddresses})`
+  return SQL`items.collection_id = ANY(${filters.contractAddresses})`
 }
 
-export const getOnlyListingsWhere = (filters: CatalogFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`listings_count > 0 `
-    : SQL`(
-                COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) is false
-                OR ((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) = 0)
-              ) AND listings_count > 0`
+export const getOnlyListingsWhere = () => {
+  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
 }
 
 export const getOnlyMintingWhere = () => {
-  return SQL`(item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0`
+  return SQL`items.search_is_store_minter = true AND available > 0`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
   return SQL`items.id = ANY(${filters.ids})`
 }
 
-export const getIsOnSale = (filters: CatalogFilters) => {
-  return filters.isOnSale
-    ? filters.network === Network.MATIC
-      ? SQL`(((item_set_minter_event.value = true OR collection_minters.is_store_minter = true) AND (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0) OR listings_count IS NOT NULL)`
-      : SQL`listings_count IS NOT NULL`
-    : filters.network === Network.ETHEREUM
-    ? SQL`listings_count IS NULL`
-    : SQL`listings_count IS NULL AND COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) is false`
+export const getHasSoundWhere = () => {
+  return SQL`items.search_emote_has_sound = true`
+}
+
+export const getHasGeometryWhere = () => {
+  return SQL`items.search_emote_has_geometry = true`
+}
+
+export const getUrnsWhere = (filters: CatalogFilters) => {
+  return SQL`items.urn = ANY(${filters.urns})`
 }
 
 export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
@@ -446,319 +323,227 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
     filters.creator?.length ? getCreatorWhere(filters) : undefined,
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
     filters.isOnSale !== undefined ? getIsOnSale(filters) : undefined,
-    filters.wearableCategory || filters.isWearableAccessory || filters.isWearableHead ? getWearableCategoryWhere(filters) : undefined,
+    filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
+    filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
+    filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
     filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
     filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
     filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
-    filters.emoteHasGeometry ? getEmoteHasGeometryWhere(filters) : undefined,
-    filters.emoteHasSound ? getEmoteHasSoundWhere(filters) : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
-    filters.onlyListing ? getOnlyListingsWhere(filters) : undefined,
+    filters.onlyListing ? getOnlyListingsWhere() : undefined,
     filters.onlyMinting ? getOnlyMintingWhere() : undefined,
-    filters.ids?.length ? getIdsWhere(filters) : undefined
+    filters.ids?.length ? getIdsWhere(filters) : undefined,
+    filters.emoteHasSound ? getHasSoundWhere() : undefined,
+    filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
+    filters.urns?.length ? getUrnsWhere(filters) : undefined
   ].filter(Boolean)
 
-  const where = SQL`WHERE `
-
+  const result = SQL`WHERE items.search_is_collection_approved = true `
   if (!conditions.length) {
-    return SQL` `
+    return result
+  } else {
+    result.append(SQL` AND `)
   }
-
   conditions.forEach((condition, index) => {
     if (condition) {
-      where.append(condition)
+      result.append(condition)
       if (conditions[index + 1]) {
-        where.append(SQL` AND `)
+        result.append(SQL` AND `)
       }
     }
   })
 
-  return where.append(`
-  `)
+  return result.append(' ')
+}
+
+/** At the moment, the UI just needs the Owners count when listing the NOT ON SALE items, so to optimize the query, let's JOIN only in that case since it's an expensive operation */
+const getOwnersJoin = () => {
+  return SQL` LEFT JOIN (
+          SELECT item, COUNT(distinct owner) as owners_count FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append('.nft as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id')
 }
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`nfts_with_orders.min_price::numeric as min_price `
-    : SQL`
-          CASE
-            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `
-        .append(filters.minPrice ? SQL`AND COALESCE(latest_prices.price, items.price) >= ${filters.minPrice} ` : SQL` `)
-        .append(
-          SQL`
-              THEN LEAST(COALESCE(latest_prices.price, items.price), nfts_with_orders.min_price) 
-              ELSE nfts_with_orders.min_price 
-          END AS min_price 
-        `
-        )
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
+    .append(` THEN LEAST(items.price, nfts_with_orders.min_price) 
+                ELSE nfts_with_orders.min_price 
+              END AS min_price
+            `)
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`nfts_with_orders.max_price::numeric as max_price `
-    : SQL`
-          CASE
-            WHEN (items.max_supply - COALESCE(nfts.nfts_count, 0)) > 0 AND (item_set_minter_event.value = true OR collection_minters.is_store_minter = true)
-                  `
-        .append(filters.maxPrice ? SQL`AND COALESCE(latest_prices.price, items.price) <= ${filters.maxPrice} ` : SQL` `)
-        .append(
-          SQL`
-              THEN GREATEST(COALESCE(latest_prices.price, items.price), nfts_with_orders.max_price)
-              ELSE nfts_with_orders.max_price 
-          END AS max_price 
-          `
-        )
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
+    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
+          ELSE nfts_with_orders.max_price 
+          END AS max_price
+          `)
 }
 
-const getOwnersViewJoin = (schemaVersion: string) => {
-  return SQL`LEFT JOIN `
-    .append(schemaVersion)
-    .append('.nfts_owners_view AS nfts_with_owners_count ON nfts_with_owners_count.item = items.id ')
-}
-
-const getNFTsViewJoin = (schemaVersion: string) => {
+const getWhereWordsJoin = () => {
   return SQL`
-        LEFT JOIN `
-    .append(schemaVersion)
-    .append(SQL`.nfts_view as nfts ON nfts.item = items.id `)
+      JOIN LATERAL
+      (
+        SELECT unnest(string_to_array(metadata.name, ' ')) AS text
+      UNION
+        SELECT tag AS text FROM builder_server_items WHERE builder_server_items.item_id = items.id::text
+      ) AS word ON TRUE
+  `
 }
 
-const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`
-        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.metadata ` // TODO: This will be fix during next indexation, is a workaround for the current one
-    : SQL`
-        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
-}
-
-const getEventsTableJoins = (schemaVersion: string) => {
-  return SQL`
-        LEFT JOIN `
-    .append(schemaVersion)
-    .append(SQL`.item_set_minter_event_view AS item_set_minter_event ON items.id = item_set_minter_event.item_id `)
-}
-
-const getOrdersViewJoin = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const join = SQL`
-        LEFT JOIN `
-    .append(schemaVersion)
-    .append(SQL`.nfts_with_orders_view AS nfts_with_orders ON nfts_with_orders.item = items.id `)
-  if (filters.minPrice) {
-    join.append(SQL`AND nfts_with_orders.min_price >= ${filters.minPrice} `)
-  }
-  if (filters.maxPrice) {
-    join.append(SQL`AND nfts_with_orders.max_price <= ${filters.maxPrice} `)
-  }
-  return join
-}
-
-const getLatestPriceViewJoin = (schemaVersion: string) => {
-  return SQL` 
-        LEFT JOIN `
-    .append(schemaVersion)
-    .append(SQL`.latest_prices_view as latest_prices ON latest_prices.item_id = items.id`)
-}
-
-const addMetadataJoins = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const wearablesJoin = SQL`
-        LEFT JOIN (
-          SELECT 
-          metadata.id as metadata_id, 
-          wearable.description, 
-          wearable.category, 
-          wearable.body_shapes, 
-          wearable.name
-        FROM `
-    .append(schemaVersion)
-    .append('.wearable AS wearable JOIN ')
-    .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.wearable = wearable.id
-        ) AS metadata_wearable ON metadata_wearable.metadata_id = latest_metadata.latest_metadata_id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') 
-  `)
-
-  const emoteJoin = SQL` 
-        LEFT JOIN (
-          SELECT 
-            metadata.id as metadata_id, 
-            emote.description,
-            emote.category, 
-            emote.body_shapes, 
-            emote.name, 
-            emote.loop`
+const getMetadataJoins = () => {
+  return SQL` LEFT JOIN (
+    SELECT 
+    metadata.id as metadata_id, 
+    wearable.description, 
+    wearable.category, 
+    wearable.body_shapes, 
+    wearable.rarity, 
+    wearable.name
+  FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
     .append(
-      filters.network === Network.MATIC
-        ? SQL` ,
-            emote.has_geometry, 
-            emote.has_sound`
-        : ''
+      SQL`.wearable AS wearable
+  JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.metadata AS metadata ON metadata.wearable_id = wearable.id
+) AS metadata_wearable ON metadata_wearable.metadata_id = items.metadata_id AND (items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1')
+LEFT JOIN (
+  SELECT 
+    metadata.id as metadata_id, 
+    emote.description, 
+    emote.category, 
+    emote.body_shapes, 
+    emote.rarity, 
+    emote.name, 
+    emote.loop,
+    emote.has_sound,
+    emote.has_geometry
+  FROM `
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`.emote AS emote
+    JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.metadata AS metadata ON metadata.emote_id = emote.id
+) AS metadata_emote ON metadata_emote.metadata_id = items.metadata_id AND items.item_type = 'emote_v1' `)
+            )
+        )
     )
+}
+
+export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
+  const query = SQL`
+            SELECT
+              COUNT(*) OVER() as total_rows,
+              items.id,
+              items.blockchain_id,
+              items.search_is_collection_approved,
+              to_json(
+                CASE WHEN (
+                  items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') THEN metadata_wearable 
+                  ELSE metadata_emote 
+                END
+              ) as metadata,
+              items.image, 
+              items.blockchain_id,
+              items.collection_id,
+              items.rarity,
+              items.item_type::text,
+              items.price,
+              items.available,
+              items.search_is_store_minter,
+              items.creator,
+              items.beneficiary,
+              items.created_at,
+              items.updated_at,
+              items.reviewed_at,
+              items.sold_at,
+              items.network,
+              items.first_listed_at,
+              items.urn,
+              nfts_with_orders.min_price AS min_listing_price,
+              nfts_with_orders.max_price AS max_listing_price, 
+              COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+    .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
+    .append(
+      `
+              nfts_with_orders.max_order_created_at as max_order_created_at,
+              `
+    )
+    .append(getMinPriceCase(filters))
+    .append(
+      `,
+              `
+    )
+    .append(getMaxPriceCase(filters))
     .append(
       SQL`
-          FROM `
+            FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(SQL`.item AS items`)
     )
-    .append(schemaVersion)
-    .append('.emote AS emote JOIN ')
-    .append(schemaVersion).append(SQL`.metadata AS metadata ON metadata.emote = emote.id
-        ) AS metadata_emote ON metadata_emote.metadata_id = latest_metadata.latest_metadata_id AND items.item_type = 'emote_v1' 
-  `)
-
-  switch (filters.category) {
-    case NFTCategory.WEARABLE:
-      return wearablesJoin
-    case NFTCategory.EMOTE:
-      return emoteJoin
-    default:
-      return wearablesJoin.append(emoteJoin)
-  }
-}
-
-const getItemSoldAtJoin = (schemaVersion: string) => {
-  return SQL`LEFT JOIN `.append(schemaVersion).append(SQL`.item_sold_at_view AS item_sold_at_view ON item_sold_at_view.item = items.id `)
-}
-
-const getLatestMetadataCTE = (schemaVersion: string) => {
-  return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (item_id) item_id, id AS latest_metadata_id, item_type, wearable, emote, timestamp 
-        FROM `.append(schemaVersion).append(SQL`.metadata 
-        ORDER BY item_id, timestamp DESC
-      )
-    `)
-}
-
-const getCTEs = (schemaVersion: string) => {
-  return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion))
-}
-
-const getSearchCTEs = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  return SQL`WITH `.append(getLatestMetadataCTE(schemaVersion)).append(
-    SQL`, builder_server_items AS (
-      SELECT 
-      item_id,
-      tag
-    FROM 
-      mv_builder_server_items
-    WHERE
-      LOWER(tag) = LOWER(${filters.search})
+    .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
+    .append(
+      SQL`
+            LEFT JOIN (
+              SELECT 
+                orders.item_id, 
+                COUNT(orders.id) AS listings_count,
+                MIN(orders.price) AS min_price,
+                MAX(orders.price) AS max_price,
+                MAX(orders.created_at) AS max_order_created_at
+              FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS orders 
+            WHERE 
+                orders.status = 'open' 
+                AND orders.expires_at < `
+        )
+        .append(MAX_ORDER_TIMESTAMP)
     )
-  `
-  )
-}
-
-const getMetadataSelect = (filters: CatalogQueryFilters) => {
-  switch (filters.category) {
-    case NFTCategory.WEARABLE:
-      return SQL`to_json(metadata_wearable) as metadata,`
-    case NFTCategory.EMOTE:
-      return SQL`to_json(metadata_emote) as metadata,`
-    default:
-      return SQL`
-        to_json(
-          CASE 
-            WHEN latest_metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1') THEN metadata_wearable 
-            WHEN latest_metadata.item_type = 'emote_v1' THEN metadata_emote 
-            ELSE null
-          END
-        ) as metadata,
+    .append(
+      ` 
+                AND ((LENGTH(orders.expires_at::text) = 13 AND TO_TIMESTAMP(orders.expires_at / 1000.0) > NOW())
+                      OR
+                    (LENGTH(orders.expires_at::text) = 10 AND TO_TIMESTAMP(orders.expires_at) > NOW()))
+                `
+    )
+    .append(getOrderRangePriceWhere(filters))
+    .append(
       `
-  }
-}
+                GROUP BY orders.item_id
+              ) AS nfts_with_orders ON nfts_with_orders.item_id = items.id 
+              `
+    )
+    .append(getMetadataJoins())
+    .append(getCollectionsQueryWhere(filters))
 
-const getFirstListedAtField = (filters: CatalogFilters) => {
-  if (filters.network === Network.ETHEREUM) {
-    return SQL`items.created_at as first_listed_at,`
-  }
-  return SQL`collection_minters.first_listed_at first_listed_at,`
-}
-
-const getIsSearchStoreMinter = (filters: CatalogFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`false as search_is_store_minter,`
-    : SQL`COALESCE((item_set_minter_event.value = true OR collection_minters.is_store_minter = true), false) as search_is_store_minter,`
-}
-
-export const getCollectionsItemsCatalogQuery = (schemaVersion: string, filters: CatalogQueryFilters) => {
-  const query = getCTEs(schemaVersion).append(
-    SQL`
-      SELECT
-          COUNT(*) OVER() as total_rows,
-          items.id,
-          items.blockchain_id,
-          `
-      .append(getMetadataSelect(filters))
-      .append(
-        SQL`
-          items.image,
-          items.collection,
-          items.rarity,
-          items.item_type::text,
-          COALESCE(latest_prices.price, items.price) AS price,
-          (items.max_supply - COALESCE(nfts.nfts_count, 0)) AS available,
-          `
-      )
-      .append(getIsSearchStoreMinter(filters))
-      .append(
-        SQL`
-          items.creator,
-          items.beneficiary,
-          items.created_at,
-          items.updated_at,
-          items.reviewed_at,
-          item_sold_at_view.max as sold_at,
-          ${filters.network} as network,
-          `
-          .append(getFirstListedAtField(filters))
-          .append(
-            SQL`
-          nfts_with_orders.min_price::numeric AS min_listing_price,
-          nfts_with_orders.max_price::numeric AS max_listing_price, 
-          COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
-              .append(
-                filters.isOnSale === false
-                  ? SQL`
-          nfts_with_owners_count.owners_count,`
-                  : SQL``
-              )
-              .append(
-                `
-          nfts_with_orders.max_order_created_at as max_order_created_at,
-          `
-              )
-              .append(getMinPriceCase(filters))
-              .append(',')
-              .append(getMaxPriceCase(filters))
-              .append(
-                `
-        FROM `
-              )
-              .append(schemaVersion)
-              .append(
-                `.items AS items 
-          `
-              )
-              .append(filters.isOnSale === false ? getOwnersViewJoin(schemaVersion) : SQL``)
-              .append(getNFTsViewJoin(schemaVersion))
-              .append(getOrdersViewJoin(schemaVersion, filters))
-              .append(getLatestPriceViewJoin(schemaVersion))
-              .append(getIsOnSaleJoin(schemaVersion))
-              .append(getLatestMetadataJoin(filters))
-              .append(addMetadataJoins(schemaVersion, filters))
-              .append(getItemSoldAtJoin(schemaVersion))
-              .append(getIsCollectionApprovedJoin(schemaVersion, filters))
-              .append(getEventsTableJoins(schemaVersion))
-              .append(getCollectionsQueryWhere(filters))
-          )
-      )
-  )
   addQuerySort(query, filters)
   addQueryPagination(query, filters)
   return query
 }
 
-export const getCatalogQuery = (schemas: Record<string, string>, filters: CatalogFilters) => {
-  if (Object.values(schemas).length > 1) {
-    return getMultiNetworkQuery(schemas, filters)
-  }
-  return getCollectionsItemsCatalogQuery(Object.values(schemas)[0], filters)
+export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
+  const utilityQuery = getItemIdsByUtilityQuery(filters)
+  const tagOrNameQuery = getItemIdsByTagOrNameQuery(filters)
+
+  const query = SQL`
+      SELECT DISTINCT ON (id) id,
+        word_similarity,
+        match_type,
+        word
+        FROM ((`
+    .append(utilityQuery)
+    .append(SQL`) UNION (`)
+    .append(tagOrNameQuery).append(SQL`)) AS items_found
+        ORDER BY id DESC, word_similarity DESC`)
+
+  return query
 }

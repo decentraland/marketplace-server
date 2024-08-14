@@ -133,9 +133,13 @@ export function fromTradeAndAssetsToEventNotification(
       [TradeEvent.CREATED]: fromBidAndAssetsToBidCreatedEventNotification,
       [TradeEvent.ACCEPTED]: fromBidAndAssetsToBidAcceptedEventNotification
     },
-    [TradeType.PUBLIC_ORDER]: {
-      [TradeEvent.CREATED]: null, // TODO: Add event for public order created
-      [TradeEvent.ACCEPTED]: null // TODO: Add event for public order created
+    [TradeType.PUBLIC_ITEM_ORDER]: {
+      [TradeEvent.CREATED]: null, // TODO: Add event for public item order created
+      [TradeEvent.ACCEPTED]: null // TODO: Add event for public item order created
+    },
+    [TradeType.PUBLIC_NFT_ORDER]: {
+      [TradeEvent.CREATED]: null, // TODO: Add event for public nft order created
+      [TradeEvent.ACCEPTED]: null // TODO: Add event for public nft order created
     }
   }
 

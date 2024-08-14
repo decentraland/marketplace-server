@@ -1,4 +1,4 @@
-import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item, Network } from '@dcl/schemas'
+import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item } from '@dcl/schemas'
 
 export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
@@ -6,7 +6,7 @@ export type CollectionsItemDBResult = {
   id: string
   urn: string
   image: string
-  collection: string
+  collection_id: string
   blockchain_id: string
   rarity: string
   item_type: string
@@ -26,7 +26,7 @@ export type CollectionsItemDBResult = {
   owners_count: number | null
   min_price: string
   max_price: string
-  network?: Network
+  network: 'POLYGON' | 'ETHEREUM'
   metadata: {
     id: string
     description: string
