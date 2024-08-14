@@ -96,7 +96,7 @@ describe('when calling getNotificationEventForTrade function', () => {
         dbNFT = {
           id: '1',
           contract_address: '0xaddr',
-          token_id: 'tokenid',
+          token_id: (nftBid.received[0] as ERC721TradeAsset).tokenId,
           network: Network.ETHEREUM,
           created_at: Date.now(),
           url: 'url',
@@ -169,7 +169,7 @@ describe('when calling getNotificationEventForTrade function', () => {
           sold_at: Date.now(),
           urn: 'an-urn',
           image: 'an-image',
-          item_id: '1',
+          item_id: (dbBid.received[0] as CollectionItemTradeAsset).itemId,
           rarity: Rarity.COMMON,
           name: 'a name',
           available: 0,

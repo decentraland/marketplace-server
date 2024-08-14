@@ -81,18 +81,18 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
 
 export async function getNotificationEventForTrade(trade: Trade, pg: IPgComponent, tradeEvent: TradeEvent): Promise<Event | null> {
   const assets: (DBNFT | DBItem | undefined)[] = await Promise.all(
-    [...trade.sent, ...trade.received]
-      .filter(asset => [TradeAssetType.ERC721, TradeAssetType.COLLECTION_ITEM].includes(asset.assetType))
-      .map((asset: TradeAsset) => {
-        if (asset.assetType === TradeAssetType.ERC721) {
-          return pg.query<DBNFT>(getNftByTokenIdQuery(asset.contractAddress, asset.tokenId, trade.network)).then(result => result.rows[0])
-        } else {
-          return pg
-            .query<DBItem>(getItemByItemIdQuery(asset.contractAddress, (asset as CollectionItemTradeAsset).itemId))
-            .then(result => result.rows[0])
-        }
-      })
+    [...trade.sent, ...trade.received].map((asset: TradeAsset) => {
+      if (asset.assetType === TradeAssetType.ERC721) {
+        return pg.query<DBNFT>(getNftByTokenIdQuery(asset.contractAddress, asset.tokenId, trade.network)).then(result => result.rows[0])
+      } else if (asset.assetType === TradeAssetType.COLLECTION_ITEM) {
+        return pg.query<DBItem>(getItemByItemIdQuery(asset.contractAddress, asset.itemId)).then(result => result.rows[0])
+      } else {
+        return Promise.resolve(undefined)
+      }
+    })
   )
+
+  console.log('assets', assets)
 
   return fromTradeAndAssetsToEventNotification(trade, assets, tradeEvent)
 }

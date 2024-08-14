@@ -9,7 +9,8 @@ import {
   Events,
   ERC20TradeAsset,
   NFTCategory,
-  Rarity
+  Rarity,
+  ERC721TradeAsset
 } from '@dcl/schemas'
 import {
   fromDBTradeAssetWithValueToTradeAsset,
@@ -297,7 +298,7 @@ describe('when adapting a trade and its assets to a notification event', () => {
       asset = {
         image: 'image.png',
         contract_address: 'contract-address',
-        token_id: 'tokenId',
+        token_id: (trade.received[0] as ERC721TradeAsset).tokenId,
         owner: '0x123',
         category: NFTCategory.WEARABLE,
         rarity: Rarity.COMMON,
@@ -359,7 +360,7 @@ describe('when adapting a trade and its assets to a notification event', () => {
     beforeEach(() => {
       trade = {
         ...trade,
-        type: TradeType.PUBLIC_ORDER
+        type: TradeType.PUBLIC_NFT_ORDER
       }
     })
     it('should return null', () => {

@@ -62,10 +62,22 @@ export function fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade: DBTrade,
 }
 
 export function fromBidAndAssetsToBidCreatedEventNotification(bid: Trade, assets: (DBNFT | DBItem | undefined)[]): Event | null {
-  if (assets.length !== 1 || !assets[0]) {
+  if (!assets.length) {
     return null
   }
-  const asset = assets[0]
+
+  console.log({ assets, bid: bid.received[0] })
+
+  const asset = assets.find(
+    asset =>
+      ('tokenId' in bid.received[0] && asset && 'token_id' in asset && asset.token_id === bid.received[0].tokenId) ||
+      ('itemId' in bid.received[0] && asset && 'item_id' in asset && asset.item_id === bid.received[0].itemId)
+  )
+
+  if (!asset) {
+    return null
+  }
+
   const MARKETPLACE_BASE_URL = process.env.MARKETPLACE_BASE_URL
 
   return {
