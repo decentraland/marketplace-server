@@ -9,7 +9,6 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
   const builderServerDBHost = await config.requireString('BUILDER_SERVER_DB_HOST')
   const builderServerDBPort = await config.requireString('BUILDER_SERVER_DB_PORT')
   const builderServerDBUser = await config.requireString('BUILDER_SERVER_DB_USER')
-  console.log({ builderServerDBUser })
   const builderServerDBPassword = await config.requireString('BUILDER_SERVER_DB_PASSWORD')
 
   pgm.sql(`
