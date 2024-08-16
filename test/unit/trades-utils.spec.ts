@@ -1,4 +1,3 @@
-import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '@well-known-components/pg-component'
 import { formatEther } from 'ethers'
 import {
@@ -13,38 +12,30 @@ import {
   NFTCategory,
   ERC20TradeAsset,
   WearableCategory,
-  CollectionItemTradeAsset
+  CollectionItemTradeAsset,
+  Event
 } from '@dcl/schemas'
 import * as chainIdUtils from '../../src/logic/chainIds'
-import { IEventPublisherComponent } from '../../src/ports/events'
 import { getItemByItemIdQuery } from '../../src/ports/items/queries'
 import { DBItem } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
+import { TradeEvent } from '../../src/ports/trades'
 import { InvalidTradeStructureError } from '../../src/ports/trades/errors'
-import { triggerEvent, validateTradeByType } from '../../src/ports/trades/utils'
+import { getNotificationEventForTrade, validateTradeByType } from '../../src/ports/trades/utils'
 
-describe('when calling triggerEvent function', () => {
+describe('when calling getNotificationEventForTrade function', () => {
   let mockPgComponent: IPgComponent
-  let mockEventPublisherComponent: IEventPublisherComponent
-  let mockLogger: ILoggerComponent.ILogger
   let mockPgQuery: jest.Mock
-  let mockPublishMessage: jest.Mock
   let trade: Trade
+  let response: Event | null
 
   beforeEach(() => {
     mockPgQuery = jest.fn()
-    mockPublishMessage = jest.fn()
 
     mockPgComponent = {
       query: mockPgQuery
     } as unknown as IPgComponent
-
-    mockEventPublisherComponent = {
-      publishMessage: mockPublishMessage
-    }
-
-    mockLogger = { info: () => undefined, error: () => undefined, log: () => undefined, warn: () => undefined, debug: () => undefined }
 
     trade = {
       id: '1',
@@ -89,7 +80,7 @@ describe('when calling triggerEvent function', () => {
       let nftBid: Trade
       let dbNFT: DBNFT
 
-      beforeEach(() => {
+      beforeEach(async () => {
         nftBid = {
           ...trade,
           received: [
@@ -105,7 +96,7 @@ describe('when calling triggerEvent function', () => {
         dbNFT = {
           id: '1',
           contract_address: '0xaddr',
-          token_id: 'tokenid',
+          token_id: (nftBid.received[0] as ERC721TradeAsset).tokenId,
           network: Network.ETHEREUM,
           created_at: Date.now(),
           url: 'url',
@@ -121,7 +112,7 @@ describe('when calling triggerEvent function', () => {
           name: 'a name'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbNFT] })
-        return triggerEvent(nftBid, mockPgComponent, mockEventPublisherComponent, mockLogger)
+        response = await getNotificationEventForTrade(nftBid, mockPgComponent, TradeEvent.CREATED)
       })
 
       it('should fetch asset from database', () => {
@@ -130,8 +121,8 @@ describe('when calling triggerEvent function', () => {
         )
       })
 
-      it('should publish message', () => {
-        expect(mockPublishMessage).toHaveBeenCalledWith({
+      it('should return event', () => {
+        expect(response).toEqual({
           type: Events.Type.MARKETPLACE,
           subType: Events.SubType.Marketplace.BID_RECEIVED,
           key: `bid-created-${trade.id}`,
@@ -178,7 +169,7 @@ describe('when calling triggerEvent function', () => {
           sold_at: Date.now(),
           urn: 'an-urn',
           image: 'an-image',
-          item_id: '1',
+          item_id: (dbBid.received[0] as CollectionItemTradeAsset).itemId,
           rarity: Rarity.COMMON,
           name: 'a name',
           available: 0,
@@ -190,7 +181,7 @@ describe('when calling triggerEvent function', () => {
           uri: 'uri'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbItem] })
-        return triggerEvent(dbBid, mockPgComponent, mockEventPublisherComponent, mockLogger)
+        response = await getNotificationEventForTrade(dbBid, mockPgComponent, TradeEvent.CREATED)
       })
 
       it('should fetch asset from database', () => {
@@ -200,7 +191,7 @@ describe('when calling triggerEvent function', () => {
       })
 
       it('should publish message', () => {
-        expect(mockPublishMessage).toHaveBeenCalledWith({
+        expect(response).toEqual({
           type: Events.Type.MARKETPLACE,
           subType: Events.SubType.Marketplace.BID_RECEIVED,
           key: `bid-created-${trade.id}`,
