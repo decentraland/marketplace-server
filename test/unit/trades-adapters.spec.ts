@@ -1,15 +1,31 @@
-import { TradeAssetType, TradeType, TradeAssetDirection } from '@dcl/schemas'
+import { formatEther } from 'ethers'
+import {
+  TradeAssetType,
+  TradeType,
+  TradeAssetDirection,
+  Trade,
+  Network,
+  ChainId,
+  Events,
+  ERC20TradeAsset,
+  NFTCategory,
+  Rarity,
+  ERC721TradeAsset
+} from '@dcl/schemas'
 import {
   fromDBTradeAssetWithValueToTradeAsset,
   fromDBTradeAssetWithValueToTradeAssetWithBeneficiary,
-  fromDbTradeAndDBTradeAssetWithValueListToTrade
+  fromDbTradeAndDBTradeAssetWithValueListToTrade,
+  fromTradeAndAssetsToEventNotification
 } from '../../src/adapters/trades/trades'
+import { DBNFT } from '../../src/ports/nfts/types'
 import {
   DBTrade,
   DBTradeAssetWithCollectionItemValue,
   DBTradeAssetWithERC20Value,
   DBTradeAssetWithERC721Value,
-  DBTradeAssetWithValue
+  DBTradeAssetWithValue,
+  TradeEvent
 } from '../../src/ports/trades'
 
 let dbTrade: DBTrade
@@ -227,6 +243,128 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
           beneficiary: collectionItemAsset.beneficiary
         })
       })
+    })
+  })
+})
+
+describe('when adapting a trade and its assets to a notification event', () => {
+  let trade: Trade
+  let marketplaceBaseUrl: string
+
+  beforeEach(() => {
+    marketplaceBaseUrl = 'marketplace'
+    process.env = { ...process.env, MARKETPLACE_BASE_URL: marketplaceBaseUrl }
+    trade = {
+      id: '1',
+      createdAt: Date.now(),
+      signer: '0x123',
+      signature:
+        '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
+      type: TradeType.BID,
+      network: Network.ETHEREUM,
+      chainId: ChainId.ETHEREUM_MAINNET,
+      checks: {
+        expiration: Date.now() + 100000000000,
+        effective: Date.now(),
+        uses: 1,
+        salt: '',
+        allowedRoot: '',
+        contractSignatureIndex: 0,
+        externalChecks: [],
+        signerSignatureIndex: 0
+      },
+      sent: [
+        {
+          assetType: TradeAssetType.ERC20,
+          contractAddress: '0xabcdef',
+          amount: '2',
+          extra: ''
+        }
+      ],
+      received: [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x789abc',
+          tokenId: '1',
+          extra: '',
+          beneficiary: '0x9876543210'
+        }
+      ]
+    }
+  })
+  describe('when the trade is a bid', () => {
+    let asset: DBNFT
+    beforeEach(() => {
+      asset = {
+        image: 'image.png',
+        contract_address: 'contract-address',
+        token_id: (trade.received[0] as ERC721TradeAsset).tokenId,
+        owner: '0x123',
+        category: NFTCategory.WEARABLE,
+        rarity: Rarity.COMMON,
+        name: 'asset name'
+      } as DBNFT
+    })
+    describe('when the trade is created', () => {
+      it('should return the correct event notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.CREATED)
+        expect(result).toEqual({
+          type: Events.Type.MARKETPLACE,
+          subType: Events.SubType.Marketplace.BID_RECEIVED,
+          key: `bid-created-${trade.id}`,
+          timestamp: expect.any(Number),
+          metadata: {
+            address: trade.signer,
+            image: asset.image,
+            seller: asset.owner,
+            category: asset.category,
+            rarity: asset.rarity,
+            link: `${marketplaceBaseUrl}/account?section=bids`,
+            nftName: asset.name,
+            price: (trade.sent[0] as ERC20TradeAsset).amount,
+            title: 'Bid Received',
+            description: `You received a bid of ${formatEther((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${asset.name}.`,
+            network: trade.network
+          }
+        })
+      })
+    })
+
+    describe('when the trade is accepted', () => {
+      it('should return the correct event notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.ACCEPTED)
+        expect(result).toEqual({
+          type: Events.Type.BLOCKCHAIN,
+          subType: Events.SubType.Blockchain.BID_ACCEPTED,
+          key: `bid-accepted-${trade.id}`,
+          timestamp: expect.any(Number),
+          metadata: {
+            address: trade.signer,
+            image: asset.image,
+            seller: asset.owner,
+            category: asset.category,
+            rarity: asset.rarity,
+            link: `${marketplaceBaseUrl}/contracts/${asset.contract_address}/tokens/${asset.token_id}`,
+            nftName: asset.name,
+            price: (trade.sent[0] as ERC20TradeAsset).amount,
+            title: 'Bid Accepted',
+            description: `Your bid for ${formatEther((trade.sent[0] as ERC20TradeAsset).amount)} MANA for this ${asset.name} was accepted.`,
+            network: trade.network
+          }
+        })
+      })
+    })
+  })
+
+  describe('when a trade is not a bid', () => {
+    beforeEach(() => {
+      trade = {
+        ...trade,
+        type: TradeType.PUBLIC_NFT_ORDER
+      }
+    })
+    it('should return null', () => {
+      expect(fromTradeAndAssetsToEventNotification(trade, [], TradeEvent.CREATED)).toBeNull()
     })
   })
 })

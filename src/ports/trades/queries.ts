@@ -155,3 +155,7 @@ export function getTradesForTypeQuery(type: TradeType) {
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, trade_status.status, trade_status.uses, contract_signature_index.index, signer_signature_index.index
   `
 }
+
+export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: string) {
+  return getTradeAssetsWithValuesQuery(SQL`t.hashed_signature = ${hashedSignature}`)
+}

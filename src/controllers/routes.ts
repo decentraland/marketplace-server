@@ -9,7 +9,7 @@ import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { pingHandler } from './handlers/ping-handler'
-import { addTradeHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
+import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
@@ -55,6 +55,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/trades/:id', getTradeHandler)
 
   router.get('/v1/bids', getBidsHandler)
+  router.get('/v1/trades/:hashedSignature/accept', getTradeAcceptedEventHandler)
 
   router.get(
     '/v1/nfts',

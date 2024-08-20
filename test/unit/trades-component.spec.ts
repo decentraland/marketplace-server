@@ -8,7 +8,11 @@ import {
   TradeAssetDirection,
   TradeAssetType,
   TradeCreation,
-  TradeType
+  TradeType,
+  Events,
+  NFTCategory,
+  Rarity,
+  Event
 } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
@@ -164,7 +168,7 @@ describe('when adding a new trade', () => {
     let insertedReceivedAsset: DBTradeAsset
     let insertedReceivedAssetValue: DBTradeAssetValue
     let response: Trade
-    let triggerEventMock: jest.Mock
+    let event: Event
 
     beforeEach(async () => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
@@ -222,9 +226,26 @@ describe('when adding a new trade', () => {
         .mockResolvedValueOnce({ rows: [insertedSentAssetValue] }) // trade sent asset value insert
         .mockResolvedValueOnce({ rows: [insertedReceivedAssetValue] }) // trade received asset insert
 
-      triggerEventMock = jest.fn()
-
-      jest.spyOn(utils, 'triggerEvent').mockImplementation(triggerEventMock)
+      event = {
+        type: Events.Type.MARKETPLACE,
+        subType: Events.SubType.Marketplace.BID_RECEIVED,
+        key: 'bid-created-1',
+        timestamp: Date.now(),
+        metadata: {
+          address: '0x123',
+          image: 'image.png',
+          seller: '0x123',
+          category: NFTCategory.WEARABLE,
+          rarity: Rarity.COMMON,
+          link: '/account?section=bids',
+          nftName: 'nft name',
+          price: '123123',
+          title: 'Bid Received',
+          description: 'You received a bid of 1 MANA for this nft name.',
+          network: Network.ETHEREUM
+        }
+      }
+      jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(event)
 
       response = await tradesComponent.addTrade(mockTrade, mockSigner)
     })
@@ -255,15 +276,7 @@ describe('when adding a new trade', () => {
     })
 
     it('should send event notification', () => {
-      expect(triggerEventMock).toHaveBeenCalledWith(
-        fromDbTradeAndDBTradeAssetWithValueListToTrade(insertedTrade, [
-          { ...insertedSentAsset, ...insertedSentAssetValue },
-          { ...insertedReceivedAsset, ...insertedReceivedAssetValue }
-        ]),
-        mockPg,
-        mockEventPublisher,
-        logs.getLogger('Trades component')
-      )
+      expect(publishMessageMock).toHaveBeenCalledWith(event)
     })
   })
 })
@@ -283,7 +296,7 @@ describe('when getting a trade', () => {
       }
 
       mockEventPublisher = {
-        publishMessage: jest.fn()
+        publishMessage: publishMessageMock
       }
       tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
     })
