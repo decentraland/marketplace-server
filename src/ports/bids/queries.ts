@@ -1,8 +1,7 @@
 import SQL from 'sql-template-strings'
-import { BidSortBy, GetBidsParameters, ListingStatus } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
+import { getTradesForTypeQuery } from '../trades/queries'
 
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
   switch (sortBy) {
@@ -18,8 +17,6 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
 }
 
 export function getBidTradesQuery(): string {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -38,66 +35,7 @@ export function getBidTradesQuery(): string {
       assets -> 'received' ->> 'extra' as fingerprint,
 	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
       status
-    FROM (
-      SELECT
-        t.id,
-        t.created_at,
-        t.signer,
-        t.expires_at,
-        t.checks,
-        t.network,
-        t.chain_id,
-        COUNT(*) OVER() as count,
-        json_object_agg(assets_with_values.direction, json_build_object(
-          'contract_address', assets_with_values.contract_address,
-          'direction', assets_with_values.direction,
-          'beneficiary', assets_with_values.beneficiary,
-          'extra', assets_with_values.extra,
-          'token_id', assets_with_values.token_id, 
-          'item_id', assets_with_values.item_id,
-          'amount', assets_with_values.amount,
-          'creator', assets_with_values.creator,
-          'owner', assets_with_values.owner_id
-        )) as assets,
-        CASE
-          WHEN status = 'cancelled' THEN '${ListingStatus.CANCELLED}'
-          WHEN (
-            (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
-            OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
-          ) THEN '${ListingStatus.CANCELLED}'
-          WHEN (
-            (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
-            OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
-          ) THEN '${ListingStatus.CANCELLED}'
-          WHEN trade_status.uses >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
-        ELSE '${ListingStatus.OPEN}'
-        END AS status
-      FROM marketplace.trades as t
-      JOIN (
-        SELECT
-          ta.trade_id,
-          ta.contract_address,
-          ta.direction,
-          ta.beneficiary,
-          ta.extra,
-          erc721_asset.token_id,
-          item_asset.item_id,
-          erc20_asset.amount,
-          item.creator,
-          nft.owner_id
-        FROM marketplace.trade_assets as ta 
-        LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
-        LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-        LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
-      ) as assets_with_values ON t.id = assets_with_values.trade_id
-      LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
-      LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-      LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address}','${marketplacePolygon.address}')) as contract_signature_index ON t.network = contract_signature_index.network
-      WHERE t.type = 'bid'
-      GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, trade_status.status, trade_status.uses, contract_signature_index.index, signer_signature_index.index
-    ) as trades`
+    FROM (${getTradesForTypeQuery(TradeType.BID)}) as trades`
 }
 
 export function getLegacyBidsQuery(): string {

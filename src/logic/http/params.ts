@@ -32,7 +32,7 @@ export class Params {
 
   getBoolean(key: string) {
     const value = this.params.get(key)
-    return value !== null
+    return value !== null ? value !== 'false' : undefined
   }
 
   getValue<T extends string>(key: string, values: Values = {}, defaultValue?: T) {

@@ -47,3 +47,9 @@ export class TradeNotFoundError extends Error {
     super(`Trade not found for id ${tradeId}`)
   }
 }
+
+export class DuplicateNFTOrderError extends Error {
+  constructor() {
+    super('There is already an open order for this NFT')
+  }
+}

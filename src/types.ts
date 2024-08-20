@@ -20,6 +20,7 @@ import { IListsComponents } from './ports/favorites/lists'
 import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IJobComponent } from './ports/job'
+import { INFTsComponent } from './ports/nfts/types'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { ITradesComponent } from './ports/trades'
 import { IWertSignerComponent } from './ports/wert-signer/types'
@@ -51,6 +52,7 @@ export type BaseComponents = {
   trades: ITradesComponent
   bids: IBidsComponent
   eventPublisher: IEventPublisherComponent
+  nfts: INFTsComponent
 }
 
 // components used in runtime
@@ -132,6 +134,6 @@ export type HTTPResponse<T> = {
 }
 
 export enum SquidNetwork {
-  ETHEREUM = 'ethereum',
-  POLYGON = 'polygon'
+  ETHEREUM = 'ETHEREUM',
+  POLYGON = 'POLYGON'
 }

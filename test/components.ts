@@ -22,6 +22,7 @@ import { IListsComponents, createListsComponent } from '../src/ports/favorites/l
 import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/picks'
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
 import { createJobComponent } from '../src/ports/job'
+import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
 import { createTradesComponent } from '../src/ports/trades'
 import { createWertSigner } from '../src/ports/wert-signer/component'
@@ -90,6 +91,7 @@ async function initComponents(): Promise<TestComponents> {
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const trades = createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase })
+  const nfts = createNFTsComponent({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
@@ -118,7 +120,8 @@ async function initComponents(): Promise<TestComponents> {
     schemaValidator,
     bids,
     trades,
-    eventPublisher
+    eventPublisher,
+    nfts
   }
 }
 

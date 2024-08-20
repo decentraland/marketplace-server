@@ -1,5 +1,16 @@
 import { ethers } from 'ethers'
-import { EmoteCategory, EmotePlayMode, GenderFilterOption, NFTCategory, Network, Rarity, WearableCategory } from '@dcl/schemas'
+import {
+  EmoteCategory,
+  EmotePlayMode,
+  GenderFilterOption,
+  NFTCategory,
+  NFTFilters,
+  NFTSortBy,
+  Network,
+  Rarity,
+  RentalStatus,
+  WearableCategory
+} from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 
 export const getItemsParams = (params: Params) => {
@@ -29,5 +40,50 @@ export const getItemsParams = (params: Params) => {
     minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
     urns: params.getList('urn'),
     ids: params.getList('id')
+  }
+}
+
+export const getNFTParams = (params: Params): NFTFilters => {
+  const maxPrice = params.getString('maxPrice')
+  const minPrice = params.getString('minPrice')
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<NFTSortBy>('sortBy', NFTSortBy),
+    category: params.getValue<NFTCategory>('category', NFTCategory),
+    owner: params.getAddress('owner') || undefined,
+    isOnSale: params.getBoolean('isOnSale'),
+    isOnRent: params.getBoolean('isOnRent'),
+    search: params.getString('search'),
+    isLand: params.getBoolean('isLand'),
+    isWearableHead: params.getBoolean('isWearableHead'),
+    isWearableAccessory: params.getBoolean('isWearableAccessory'),
+    isWearableSmart: params.getBoolean('isWearableSmart'),
+    wearableCategory: params.getValue<WearableCategory>('wearableCategory', WearableCategory),
+    wearableGenders: params.getList<GenderFilterOption>('wearableGender', GenderFilterOption),
+    emoteCategory: params.getValue<EmoteCategory>('emoteCategory', EmoteCategory),
+    emoteGenders: params.getList<GenderFilterOption>('emoteGender', GenderFilterOption),
+    emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
+    contractAddresses: params.getAddressList('contractAddress'),
+    creator: params.getList('creator'),
+    tokenId: params.getString('tokenId'),
+    itemRarities: params.getList<Rarity>('itemRarity', Rarity),
+    itemId: params.getString('itemId'),
+    network: params.getValue<Network>('network', Network),
+    rentalStatus: params.getList<RentalStatus>('rentalStatus', RentalStatus),
+    adjacentToRoad: params.getBoolean('adjacentToRoad'),
+    minDistanceToPlaza: params.getNumber('minDistanceToPlaza'),
+    maxDistanceToPlaza: params.getNumber('maxDistanceToPlaza'),
+    tenant: params.getAddress('tenant')?.toLowerCase(),
+    maxPrice: maxPrice ? ethers.parseEther(maxPrice).toString() : undefined,
+    minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
+    minEstateSize: params.getNumber('minEstateSize'),
+    maxEstateSize: params.getNumber('maxEstateSize'),
+    emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
+    emoteHasSound: params.getBoolean('emoteHasSound'),
+    rentalDays: params
+      .getList('rentalDays')
+      .map(days => Number.parseInt(days))
+      .filter(number => !Number.isNaN(number))
   }
 }

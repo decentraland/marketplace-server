@@ -7,6 +7,7 @@ import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
+import { getNFTsHandler } from './handlers/nfts-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { addTradeHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
@@ -54,6 +55,16 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/trades/:id', getTradeHandler)
 
   router.get('/v1/bids', getBidsHandler)
+
+  router.get(
+    '/v1/nfts',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      verifyMetadataContent: validateNotKernelSceneSigner,
+      expiration: FIVE_MINUTES
+    }),
+    getNFTsHandler
+  )
 
   setupFavoritesRouter(router, { components })
 
