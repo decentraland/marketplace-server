@@ -53,3 +53,15 @@ export class InvalidECDSASignatureError extends Error {
     super('The server does not accept ECDSA signatures with V as 0 or 1')
   }
 }
+
+export class TradeNotFoundBySignatureError extends Error {
+  constructor(public signature: string) {
+    super(`Trade not found for signature ${signature}`)
+  }
+}
+
+export class EventNotGeneratedError extends Error {
+  constructor() {
+    super('Event could not be generated')
+  }
+}

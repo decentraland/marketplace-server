@@ -1,9 +1,15 @@
-import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType } from '@dcl/schemas'
+import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event } from '@dcl/schemas'
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
+  getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number): Promise<Event>
+}
+
+export enum TradeEvent {
+  CREATED = 'TRADE_CREATED',
+  ACCEPTED = 'TRADE_ACCEPTED'
 }
 
 export type DBTrade = {

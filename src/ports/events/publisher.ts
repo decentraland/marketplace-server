@@ -16,7 +16,17 @@ export async function createEventPublisher({ config }: Pick<AppComponents, 'conf
     const { MessageId } = await client.send(
       new PublishCommand({
         TopicArn: snsArn,
-        Message: JSON.stringify(event)
+        Message: JSON.stringify(event),
+        MessageAttributes: {
+          type: {
+            DataType: 'String',
+            StringValue: event.type
+          },
+          subType: {
+            DataType: 'String',
+            StringValue: event.subType
+          }
+        }
       })
     )
 
