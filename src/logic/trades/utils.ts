@@ -2,8 +2,9 @@
 import { TypedDataField, hexlify, TypedDataDomain, verifyTypedData, toBeArray, toUtf8Bytes, zeroPadValue } from 'ethers'
 import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
-import { MarketplaceContractNotFound } from '../../ports/trades/errors'
+import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
+import { hasECDSASignatureAValidV } from '../signatures'
 
 export function getValueFromTradeAsset(asset: TradeAsset) {
   switch (asset.assetType) {
@@ -56,6 +57,10 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
 }
 
 export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
+  if (!hasECDSASignatureAValidV(trade.signature)) {
+    throw new InvalidECDSASignatureError()
+  }
+
   let offChainMarketplaceContract: ContractData
   try {
     offChainMarketplaceContract = getContract(ContractName.OffChainMarketplace, trade.chainId)
