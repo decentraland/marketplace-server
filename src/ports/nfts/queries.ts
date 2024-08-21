@@ -93,8 +93,8 @@ function getNFTWhereStatement(nftFilters?: NFTFilters): SQLStatement {
   const FILTER_BY_MIN_PRICE = nftFilters.minPrice
     ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR trades.assets -> 'sent' --> amount >= ${nftFilters.minPrice})`
     : null
-  const FILTER_BY_MAX_PRICE = nftFilters.minPrice
-    ? SQL` (nft.search_order_price <= ${nftFilters.maxDistanceToPlaza} OR trades.assets -> 'sent' --> amount <= ${nftFilters.minPrice})`
+  const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
+    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR trades.assets -> 'sent' --> amount <= ${nftFilters.maxPrice})`
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR nft.search_order_status = ${ListingStatus.OPEN}) ` : null
 

@@ -94,6 +94,8 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 export function getTradesForTypeQuery(type: TradeType) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  // Important! This is handled as a string. If input values are later used in this query,
+  // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
     SELECT
       t.id,
