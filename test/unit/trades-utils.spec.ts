@@ -19,7 +19,7 @@ import * as chainIdUtils from '../../src/logic/chainIds'
 import { getItemByItemIdQuery } from '../../src/ports/items/queries'
 import { DBItem } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
-import { DBNFT } from '../../src/ports/nfts/types'
+import { DBNFT, ItemType } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
 import { InvalidTradeStructureError } from '../../src/ports/trades/errors'
 import { getNotificationEventForTrade, validateTradeByType } from '../../src/ports/trades/utils'
@@ -32,6 +32,9 @@ describe('when calling getNotificationEventForTrade function', () => {
 
   beforeEach(() => {
     mockPgQuery = jest.fn()
+
+    jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
+    jest.spyOn(chainIdUtils, 'getPolygonChainId').mockReturnValue(ChainId.MATIC_AMOY)
 
     mockPgComponent = {
       query: mockPgQuery
@@ -95,6 +98,9 @@ describe('when calling getNotificationEventForTrade function', () => {
         }
         dbNFT = {
           id: '1',
+          count: 1,
+          body_shapes: [],
+          item_type: ItemType.EMOTE_V1,
           contract_address: '0xaddr',
           token_id: (nftBid.received[0] as ERC721TradeAsset).tokenId,
           network: Network.ETHEREUM,

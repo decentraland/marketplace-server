@@ -8,15 +8,16 @@ import {
   TradeAsset,
   ERC721TradeAsset,
   CollectionItemTradeAsset,
+  ListingStatus,
   Event
 } from '@dcl/schemas'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
+import { getBidsQuery } from '../bids/queries'
 import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
-import { getNftByTokenIdQuery } from '../nfts/queries'
+import { getNftByTokenIdQuery, getNFTsQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
-import { DuplicatedBidError, InvalidTradeStructureError } from './errors'
-import { getDuplicateBidQuery } from './queries'
+import { DuplicatedBidError, DuplicateNFTOrderError, InvalidTradeStructureError } from './errors'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
@@ -44,7 +45,16 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(type)
       }
 
-      const duplicateBid = await client.query(getDuplicateBidQuery(trade))
+      const duplicateBid = await client.query(
+        getBidsQuery({
+          bidder: trade.signer,
+          network: trade.network,
+          contractAddress: trade.received[0].contractAddress,
+          ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
+          ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
+          status: ListingStatus.OPEN
+        })
+      )
       if (duplicateBid.rowCount > 0) {
         throw new DuplicatedBidError()
       }
@@ -58,7 +68,18 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
-      // TODO: Add duplicate check for public nft orders
+      const duplicateOrder = await client.query(
+        getNFTsQuery({
+          contractAddresses: [trade.sent[0].contractAddress],
+          tokenId: (trade.sent[0] as ERC721TradeAsset).tokenId,
+          network: trade.network,
+          isOnSale: true
+        })
+      )
+
+      if (duplicateOrder.rowCount > 0) {
+        throw new DuplicateNFTOrderError()
+      }
     }
 
     if (trade.type === TradeType.PUBLIC_ITEM_ORDER) {
@@ -91,8 +112,6 @@ export async function getNotificationEventForTrade(trade: Trade, pg: IPgComponen
       }
     })
   )
-
-  console.log('assets', assets)
 
   return fromTradeAndAssetsToEventNotification(trade, assets, tradeEvent)
 }
