@@ -51,7 +51,7 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
   ExternalCheck: [
     { name: 'contractAddress', type: 'address' },
     { name: 'selector', type: 'bytes4' },
-    { name: 'value', type: 'uint256' },
+    { name: 'value', type: 'bytes' },
     { name: 'required', type: 'bool' }
   ]
 }
@@ -88,7 +88,7 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       externalChecks: trade.checks.externalChecks?.map(externalCheck => ({
         contractAddress: externalCheck.contractAddress,
         selector: externalCheck.selector,
-        value: externalCheck.value,
+        value: hexlify(toUtf8Bytes(externalCheck.value)),
         required: externalCheck.required
       }))
     },

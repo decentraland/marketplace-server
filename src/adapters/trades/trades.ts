@@ -66,8 +66,6 @@ export function fromBidAndAssetsToBidCreatedEventNotification(bid: Trade, assets
     return null
   }
 
-  console.log({ assets, bid: bid.received[0] })
-
   const asset = assets.find(
     asset =>
       ('tokenId' in bid.received[0] && asset && 'token_id' in asset && asset.token_id === bid.received[0].tokenId) ||
