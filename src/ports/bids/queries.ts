@@ -2,6 +2,7 @@ import SQL from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
+import { getWhereStatementFromFilters } from '../utils'
 
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
   switch (sortBy) {
@@ -75,7 +76,7 @@ export function getBidsQuery(options: GetBidsParameters) {
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
-  const FILTERS = [
+  const FILTERS = getWhereStatementFromFilters([
     FILTER_BY_BIDDER,
     FILTER_BY_SELLER,
     FILTER_BY_CONTRACT_ADDRESS,
@@ -84,24 +85,14 @@ export function getBidsQuery(options: GetBidsParameters) {
     FILTER_BY_NETWORK,
     FILTER_BY_STATUS,
     FILTER_NOT_EXPIRED
-  ].reduce((acc, filter) => {
-    if (filter === null) {
-      return acc
-    }
-
-    if (acc === null) {
-      return SQL` WHERE `.append(filter)
-    }
-
-    return acc.append(SQL` AND `).append(filter)
-  }, null)
+  ])
 
   return SQL`SELECT *, COUNT(*) OVER() as count`
     .append(SQL` FROM `)
     .append(BID_TRADES)
     .append(SQL` NATURAL FULL OUTER JOIN `)
     .append(LEGACY_BIDS)
-    .append(FILTERS ? FILTERS : SQL``)
+    .append(FILTERS)
     .append(getBidsSortByQuery(options.sortBy))
     .append(SQL` LIMIT ${options.limit} OFFSET ${options.offset} `)
 }

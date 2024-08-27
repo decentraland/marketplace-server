@@ -18,6 +18,7 @@ import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
+import { createOrdersComponent } from './ports/orders/component'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
 import { createTradesComponent } from './ports/trades'
 import { createWertSigner } from './ports/wert-signer/component'
@@ -85,7 +86,8 @@ export async function initComponents(): Promise<AppComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
   const trades = await createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = await createBidsComponents({ dappsDatabase })
-  const nfts = await createNFTsComponent({ dappsDatabase })
+  const nfts = await createNFTsComponent({ dappsDatabase, config })
+  const orders = await createOrdersComponent({ dappsDatabase })
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
@@ -111,6 +113,7 @@ export async function initComponents(): Promise<AppComponents> {
     access,
     picks,
     eventPublisher,
-    nfts
+    nfts,
+    orders
   }
 }

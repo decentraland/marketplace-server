@@ -9,3 +9,5 @@ DAPPS_PG_COMPONENT_PSQL_SCHEMA=marketplace
 SNAPSHOT_URL=https://score.snapshot.org/
 SNAPSHOT_NETWORK=11155111
 SNAPSHOT_SPACE=daotest.dcl.eth
+
+DCL_LISTS_SERVER=https://dcl-lists.decentraland.org
