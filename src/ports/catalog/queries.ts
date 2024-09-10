@@ -111,10 +111,10 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 const getLatestMetadataCTE = () => {
   return SQL`latest_metadata AS (
         SELECT DISTINCT ON (wearable_id) wearable_id as item_id, id AS latest_metadata_id, item_type, wearable_id, emote_id
-        FROM metadata
+        FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.metadata
         ORDER BY wearable_id DESC
       )
-    `
+    `)
 }
 
 const getSearchCTEs = (filters: CatalogQueryFilters) => {
