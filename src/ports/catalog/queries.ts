@@ -146,29 +146,29 @@ export function getOrderBy(filters: CatalogFilters) {
     return ''
   }
 
-  if (search && !sortBy && ids?.length) {
-    // If the filters have a search term, there's no other Sort applied and ids matching the search were returned, then
-    // we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
-    return SQL`ORDER BY array_position(${filters.ids}::text[], id) `
+  const sortByQuery: SQLStatement = SQL`ORDER BY `
+  if (search && ids?.length) {
+    // If the filters have a search term, we need to order by the position of the item in the search results that is pre-computed and passed in the ids filter.
+    sortByQuery.append(SQL`array_position(${filters.ids}::text[], id), `)
   }
-
-  let sortByQuery: SQLStatement | string = `ORDER BY first_listed_at ${sortDirectionParam}\n`
   switch (sortByParam) {
     case CatalogSortBy.NEWEST:
-      sortByQuery = 'ORDER BY first_listed_at desc NULLS last \n'
+      sortByQuery.append(SQL`first_listed_at desc NULLS last \n`)
       break
     case CatalogSortBy.MOST_EXPENSIVE:
-      sortByQuery = 'ORDER BY max_price desc \n'
+      sortByQuery.append(SQL`max_price desc \n`)
       break
     case CatalogSortBy.RECENTLY_LISTED:
-      sortByQuery = 'ORDER BY GREATEST(max_order_created_at, first_listed_at) desc \n'
+      sortByQuery.append(SQL`GREATEST(max_order_created_at, first_listed_at) desc \n`)
       break
     case CatalogSortBy.RECENTLY_SOLD:
-      sortByQuery = 'ORDER BY sold_at desc \n'
+      sortByQuery.append(SQL`sold_at desc \n`)
       break
     case CatalogSortBy.CHEAPEST:
-      sortByQuery = 'ORDER BY min_price asc, first_listed_at desc \n'
+      sortByQuery.append(SQL`min_price asc, first_listed_at desc \n`)
       break
+    default:
+      sortByQuery.append(SQL`first_listed_at ${sortDirectionParam}\n`)
   }
 
   return sortByQuery
@@ -535,7 +535,7 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
   const tagOrNameQuery = getItemIdsByTagOrNameQuery(filters)
 
   const query = SQL`
-      SELECT DISTINCT ON (id) id,
+      SELECT id,
         word_similarity,
         match_type,
         word
@@ -543,7 +543,7 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
     .append(utilityQuery)
     .append(SQL`) UNION (`)
     .append(tagOrNameQuery).append(SQL`)) AS items_found
-        ORDER BY id DESC, word_similarity DESC`)
+        ORDER BY word_similarity DESC`)
 
   return query
 }
