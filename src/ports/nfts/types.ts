@@ -16,6 +16,8 @@ export type INFTsComponent = {
   getNFTs(filters?: NFTFilters, caller?: string): Promise<GetNFTsResponse>
 }
 
+export type GetNFTsFilters = NFTFilters & { bannedNames?: string[] }
+
 export type NFTResult = {
   nft: NFT
   order: Order | null

@@ -1,4 +1,4 @@
-import { EmoteCategory, NFT, NFTCategory, WearableCategory } from '@dcl/schemas'
+import { EmoteCategory, NFT, NFTCategory, RentalListing, WearableCategory } from '@dcl/schemas'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { capitalize } from '../../logic/strings'
 import { DBNFT, ItemType, NFTResult } from '../../ports/nfts/types'
@@ -85,16 +85,18 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
   }
 }
 
-export function fromNFTsAndOrdersToNFTsResult(nfts: DBNFT[], orders: DBOrder[]): NFTResult[] {
+export function fromNFTsAndOrdersToNFTsResult(nfts: DBNFT[], orders: DBOrder[], listings: RentalListing[]): NFTResult[] {
   return nfts.map(nft => {
     const order = orders.find(order => order.nft_id === nft.id)
+    const listing = listings.find(listing => listing.nftId === nft.id)
     return {
       nft: {
         ...fromDBNFTToNFT(nft),
-        activeOrderId: order ? order.id : null
+        activeOrderId: order ? order.id : null,
+        openRentalId: listing ? listing.id : null
       },
       order: order ? fromDBOrderToOrder(order) : null,
-      rental: null
+      rental: listing ? listing : null
     }
   })
 }

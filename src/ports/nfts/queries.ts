@@ -1,24 +1,9 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import {
-  EmotePlayMode,
-  GenderFilterOption,
-  ListingStatus,
-  Network,
-  NFTCategory,
-  NFTFilters,
-  Rarity,
-  TradeType,
-  WearableGender
-} from '@dcl/schemas'
+import { EmotePlayMode, GenderFilterOption, ListingStatus, Network, NFTCategory, Rarity, TradeType, WearableGender } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
-import { ItemType } from './types'
-
-// TODO: Add rental filters
-// isOnRent?: boolean;
-// rentalStatus?: RentalsListingsFilterBy['status'];
-// rentalDays?: number[];
+import { GetNFTsFilters, ItemType } from './types'
 
 function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlayMode[] | undefined): SQLStatement | null {
   if (!emotePlayMode || (Array.isArray(emotePlayMode) && (emotePlayMode.length === 2 || emotePlayMode.length === 0))) {
@@ -62,7 +47,7 @@ function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
   return SQL` (nft.search_wearable_rarity = ANY (${rarities}) OR nft.search_emote_rarity = ANY (${rarities})) `
 }
 
-function getNFTWhereStatement(nftFilters: NFTFilters, bannedNames: string[]): SQLStatement {
+function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   if (!nftFilters) {
     return SQL``
   }
@@ -108,7 +93,10 @@ function getNFTWhereStatement(nftFilters: NFTFilters, bannedNames: string[]): SQ
     ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR trades.assets -> 'sent' --> amount <= ${nftFilters.maxPrice})`
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR nft.search_order_status = ${ListingStatus.OPEN}) ` : null
-  const FITLER_BANNED_NAMES = SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${bannedNames})) `
+  const FITLER_BANNED_NAMES =
+    nftFilters.bannedNames && nftFilters.bannedNames.length
+      ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `
+      : null
 
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,
@@ -144,14 +132,14 @@ function getNFTWhereStatement(nftFilters: NFTFilters, bannedNames: string[]): SQ
   ])
 }
 
-function getNFTLimitAndOffsetStatement(nftFilters?: NFTFilters) {
+function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
   const limit = nftFilters?.first ? nftFilters.first : 100
   const offset = nftFilters?.skip ? nftFilters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
-export function getNFTsQuery(nftFilters: NFTFilters = {}, bannedNames: string[] = []) {
+export function getNFTsQuery(nftFilters: GetNFTsFilters = {}) {
   return SQL`
     SELECT
       COUNT(*) OVER() as count,
@@ -216,7 +204,7 @@ export function getNFTsQuery(nftFilters: NFTFilters = {}, bannedNames: string[] 
         ListingStatus.OPEN
       }' AND trades.signer = account.address`
     )
-    .append(getNFTWhereStatement(nftFilters, bannedNames))
+    .append(getNFTWhereStatement(nftFilters))
     .append(getNFTLimitAndOffsetStatement(nftFilters))
 }
 

@@ -1,4 +1,16 @@
-import { BodyShape, EmoteCategory, ListingStatus, Network, NFT, NFTCategory, Rarity, WearableCategory } from '@dcl/schemas'
+import {
+  BodyShape,
+  ChainId,
+  EmoteCategory,
+  ListingStatus,
+  Network,
+  NFT,
+  NFTCategory,
+  Rarity,
+  RentalListing,
+  RentalStatus,
+  WearableCategory
+} from '@dcl/schemas'
 import { fromDBNFTToNFT, fromNFTsAndOrdersToNFTsResult } from '../../src/adapters/nfts'
 import { fromDBOrderToOrder } from '../../src/adapters/orders'
 import { getNetwork, getNetworkChainId } from '../../src/logic/chainIds'
@@ -407,12 +419,42 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
       }
     ]
 
+    const rentals: RentalListing[] = [
+      {
+        category: NFTCategory.PARCEL,
+        chainId: ChainId.ETHEREUM_MAINNET,
+        contractAddress: '0x456def',
+        createdAt: Date.now(),
+        expiration: Date.now(),
+        id: '1',
+        lessor: '0x789ghi',
+        network: Network.ETHEREUM,
+        nftId: nfts[0].id,
+        periods: [],
+        rentalContractAddress: '0x23',
+        rentedDays: 0,
+        searchText: '123',
+        signature: '0x123',
+        status: RentalStatus.OPEN,
+        startedAt: Date.now(),
+        target: '0x456',
+        nonces: [],
+        tenant: '0xabcjkl',
+        tokenId: '456',
+        updatedAt: Date.now()
+      }
+    ]
+
     const expectedNFTsResult = [
-      { nft: { ...fromDBNFTToNFT(nfts[0]), activeOrderId: orders[0].id }, order: fromDBOrderToOrder(orders[0]), rental: null },
+      {
+        nft: { ...fromDBNFTToNFT(nfts[0]), activeOrderId: orders[0].id, openRentalId: rentals[0].id },
+        order: fromDBOrderToOrder(orders[0]),
+        rental: rentals[0]
+      },
       { nft: { ...fromDBNFTToNFT(nfts[1]), activeOrderId: orders[1].id }, order: fromDBOrderToOrder(orders[1]), rental: null }
     ]
 
-    const result = fromNFTsAndOrdersToNFTsResult(nfts, orders)
+    const result = fromNFTsAndOrdersToNFTsResult(nfts, orders, rentals)
 
     expect(result).toEqual(expectedNFTsResult)
   })
