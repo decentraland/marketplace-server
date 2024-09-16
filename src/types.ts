@@ -21,6 +21,7 @@ import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
+import { IOrdersComponent } from './ports/orders/types'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { ITradesComponent } from './ports/trades'
 import { IWertSignerComponent } from './ports/wert-signer/types'
@@ -53,6 +54,7 @@ export type BaseComponents = {
   bids: IBidsComponent
   eventPublisher: IEventPublisherComponent
   nfts: INFTsComponent
+  orders: IOrdersComponent
 }
 
 // components used in runtime

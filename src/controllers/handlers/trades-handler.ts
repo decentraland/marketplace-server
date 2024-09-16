@@ -12,7 +12,8 @@ import {
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
   TradeNotFoundBySignatureError,
-  TradeNotFoundError
+  TradeNotFoundError,
+  DuplicateNFTOrderError
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
@@ -87,7 +88,7 @@ export async function addTradeHandler(
       }
     }
 
-    if (e instanceof DuplicatedBidError) {
+    if (e instanceof DuplicatedBidError || e instanceof DuplicateNFTOrderError) {
       return {
         status: StatusCode.CONFLICT,
         body: {

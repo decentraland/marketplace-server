@@ -1,8 +1,11 @@
-import { BodyShape, EmoteCategory, Network, NFT, NFTCategory, Rarity, WearableCategory } from '@dcl/schemas'
-import { fromDBNFTToNFT } from '../../src/adapters/nfts'
+import { BodyShape, EmoteCategory, ListingStatus, Network, NFT, NFTCategory, Rarity, WearableCategory } from '@dcl/schemas'
+import { fromDBNFTToNFT, fromNFTsAndOrdersToNFTsResult } from '../../src/adapters/nfts'
+import { fromDBOrderToOrder } from '../../src/adapters/orders'
 import { getNetwork, getNetworkChainId } from '../../src/logic/chainIds'
 import { capitalize } from '../../src/logic/strings'
 import { DBNFT, ItemType } from '../../src/ports/nfts/types'
+import { DBOrder } from '../../src/ports/orders/types'
+import { SquidNetwork } from '../../src/types'
 
 describe('fromDBNFTToNFT', () => {
   it('should return the correct NFT object for a wearable DBNFT', () => {
@@ -303,5 +306,114 @@ describe('fromDBNFTToNFT', () => {
     const result = fromDBNFTToNFT(dbNFT)
 
     expect(result).toEqual(expectedNFT)
+  })
+})
+
+describe('fromNFTsAndOrdersToNFTsResult', () => {
+  it('should return the correct NFTsResult object', () => {
+    const nfts: DBNFT[] = [
+      {
+        id: '1',
+        category: NFTCategory.WEARABLE,
+        network: Network.ETHEREUM,
+        contract_address: '0x123abc',
+        created_at: 1634567890,
+        image: 'https://example.com/image.png',
+        owner: '0x456def',
+        token_id: '123',
+        name: 'Wearable NFT',
+        body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
+        wearableCategory: WearableCategory.HAT,
+        description: 'A cool wearable NFT',
+        rarity: Rarity.COMMON,
+        item_type: ItemType.SMART_WEARABLE_V1,
+        updated_at: 1634567890,
+        count: 1,
+        sold_at: 0,
+        url: 'https:test.com',
+        urn: '123:2312',
+        issued_id: '123',
+        item_id: '123'
+      },
+      {
+        id: '2',
+        category: NFTCategory.PARCEL,
+        network: Network.ETHEREUM,
+        contract_address: '0x456def',
+        created_at: 1634567890,
+        image: 'https://example.com/image.png',
+        owner: '0x789ghi',
+        token_id: '456',
+        x: '10',
+        y: '20',
+        description: 'A cool parcel NFT',
+        parcel_estate_id: '123',
+        parcel_estate_name: 'Estate 1',
+        parcel_estate_token_id: '789',
+        updated_at: 1634567890,
+        body_shapes: [],
+        item_type: ItemType.EMOTE_V1,
+        rarity: Rarity.COMMON,
+        count: 1,
+        sold_at: 0,
+        name: 'Test name',
+        url: 'https:test.com',
+        urn: '123:2312',
+        issued_id: '123',
+        item_id: '123'
+      }
+    ]
+
+    const orders: DBOrder[] = [
+      {
+        id: '1',
+        count: 1,
+        marketplace_address: '0xabc123',
+        category: NFTCategory.WEARABLE,
+        nft_address: '0x123abc',
+        token_id: '123',
+        owner: '0x456def',
+        buyer: '0x789ghi',
+        price: '1.0',
+        status: ListingStatus.OPEN,
+        created_at: new Date(),
+        expires_at: new Date(),
+        updated_at: new Date(),
+        nft_id: '1',
+        network: SquidNetwork.ETHEREUM,
+        item_id: '123',
+        issued_id: '123',
+        trade_id: '123'
+      },
+      {
+        id: '2',
+        count: 1,
+        marketplace_address: '0xdef456',
+        category: NFTCategory.PARCEL,
+        nft_address: '0x456def',
+        token_id: '456',
+        owner: '0x789ghi',
+        buyer: '0xabcjkl',
+        price: '2.0',
+        status: ListingStatus.OPEN,
+        created_at: new Date(),
+        expires_at: new Date(),
+        updated_at: new Date(),
+        nft_id: '2',
+        network: SquidNetwork.ETHEREUM,
+        item_id: '456',
+        issued_id: '456',
+        trade_id: '456'
+      }
+    ]
+
+    const expectedNFTsResult = [
+      { nft: { ...fromDBNFTToNFT(nfts[0]), activeOrderId: orders[0].id }, order: fromDBOrderToOrder(orders[0]), rental: null },
+      { nft: { ...fromDBNFTToNFT(nfts[1]), activeOrderId: orders[1].id }, order: fromDBOrderToOrder(orders[1]), rental: null }
+    ]
+
+    const result = fromNFTsAndOrdersToNFTsResult(nfts, orders)
+
+    expect(result).toEqual(expectedNFTsResult)
   })
 })

@@ -5,11 +5,14 @@ import {
   GenderFilterOption,
   NFTCategory,
   NFTFilters,
+  OrderFilters,
   NFTSortBy,
   Network,
   Rarity,
   RentalStatus,
-  WearableCategory
+  WearableCategory,
+  OrderSortBy,
+  ListingStatus
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 
@@ -85,5 +88,22 @@ export const getNFTParams = (params: Params): NFTFilters => {
       .getList('rentalDays')
       .map(days => Number.parseInt(days))
       .filter(number => !Number.isNaN(number))
+  }
+}
+
+export const getOrdersParams = (params: Params): OrderFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<OrderSortBy>('sortBy', OrderSortBy),
+    marketplaceAddress: params.getValue('marketplaceAddress'),
+    owner: params.getValue('owner'),
+    buyer: params.getValue('buyer'),
+    contractAddress: params.getValue('contractAddress'),
+    tokenId: params.getValue('tokenId'),
+    status: params.getValue<ListingStatus>('status', ListingStatus),
+    network: params.getValue<Network>('network', Network),
+    itemId: params.getValue('itemId'),
+    nftName: params.getValue('nftName')
   }
 }
