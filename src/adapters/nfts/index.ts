@@ -4,6 +4,7 @@ import { capitalize } from '../../logic/strings'
 import { DBNFT, ItemType, NFTResult } from '../../ports/nfts/types'
 import { DBOrder } from '../../ports/orders/types'
 import { fromDBOrderToOrder } from '../orders'
+import { fromSecondsToMilliseconds } from './utils'
 
 function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
   if (dbNFT.category === NFTCategory.WEARABLE) {
@@ -68,7 +69,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     category: dbNFT.category,
     chainId: getNetworkChainId(dbNFT.network),
     contractAddress: dbNFT.contract_address,
-    createdAt: dbNFT.created_at,
+    createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
     data: getDataFromDBNFT(dbNFT),
     id: dbNFT.id,
     image: dbNFT.image,
@@ -80,7 +81,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     owner: dbNFT.owner.toLowerCase(),
     tokenId: dbNFT.token_id,
     soldAt: 0, // TODO: Calculate sold at
-    updatedAt: dbNFT.updated_at,
+    updatedAt: fromSecondsToMilliseconds(Number(dbNFT.updated_at)), // Convert to ms
     url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
   }
 }

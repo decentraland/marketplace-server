@@ -38,7 +38,7 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
 
     return {
       data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
-      total: nfts.rowCount > 0 ? nfts.rows[0].count : 0
+      total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
     }
   }
 
