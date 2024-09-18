@@ -11,7 +11,7 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
     return {
       wearable: {
         bodyShapes: dbNFT.body_shapes,
-        category: dbNFT.wearableCategory as WearableCategory,
+        category: dbNFT.wearable_category as WearableCategory,
         description: dbNFT.description || '',
         rarity: dbNFT.rarity,
         isSmart: dbNFT.item_type === ItemType.SMART_WEARABLE_V1
@@ -53,7 +53,7 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
   return {
     emote: {
       bodyShapes: dbNFT.body_shapes,
-      category: dbNFT.emoteCategory as EmoteCategory,
+      category: dbNFT.emote_category as EmoteCategory,
       description: dbNFT.description || '',
       rarity: dbNFT.rarity,
       loop: dbNFT.loop || false,
@@ -72,7 +72,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
     data: getDataFromDBNFT(dbNFT),
     id: dbNFT.id,
-    image: dbNFT.image,
+    image: dbNFT.image || '',
     issuedId: dbNFT.issued_id,
     itemId: dbNFT.item_id,
     name: dbNFT.name || capitalize(dbNFT.category),
@@ -82,7 +82,8 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     tokenId: dbNFT.token_id,
     soldAt: 0, // TODO: Calculate sold at
     updatedAt: fromSecondsToMilliseconds(Number(dbNFT.updated_at)), // Convert to ms
-    url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+    url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+    urn: dbNFT.urn || undefined
   }
 }
 

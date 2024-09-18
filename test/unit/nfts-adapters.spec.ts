@@ -32,7 +32,7 @@ describe('fromDBNFTToNFT', () => {
       token_id: '123',
       name: 'Wearable NFT',
       body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-      wearableCategory: WearableCategory.HAT,
+      wearable_category: WearableCategory.HAT,
       description: 'A cool wearable NFT',
       rarity: Rarity.COMMON,
       item_type: ItemType.SMART_WEARABLE_V1,
@@ -54,7 +54,7 @@ describe('fromDBNFTToNFT', () => {
       data: {
         wearable: {
           bodyShapes: dbNFT.body_shapes,
-          category: dbNFT.wearableCategory as WearableCategory,
+          category: dbNFT.wearable_category as WearableCategory,
           description: dbNFT.description || '',
           rarity: dbNFT.rarity,
           isSmart: dbNFT.item_type === ItemType.SMART_WEARABLE_V1
@@ -267,7 +267,7 @@ describe('fromDBNFTToNFT', () => {
       owner: '0xuvwxy',
       token_id: '345',
       body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-      emoteCategory: EmoteCategory.DANCE,
+      emote_category: EmoteCategory.DANCE,
       description: 'A cool emote NFT',
       rarity: Rarity.COMMON,
       loop: true,
@@ -293,7 +293,7 @@ describe('fromDBNFTToNFT', () => {
       data: {
         emote: {
           bodyShapes: dbNFT.body_shapes,
-          category: dbNFT.emoteCategory as EmoteCategory,
+          category: dbNFT.emote_category as EmoteCategory,
           description: dbNFT.description || '',
           rarity: dbNFT.rarity,
           loop: dbNFT.loop || false,
@@ -335,7 +335,7 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
         token_id: '123',
         name: 'Wearable NFT',
         body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-        wearableCategory: WearableCategory.HAT,
+        wearable_category: WearableCategory.HAT,
         description: 'A cool wearable NFT',
         rarity: Rarity.COMMON,
         item_type: ItemType.SMART_WEARABLE_V1,
