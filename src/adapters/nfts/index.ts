@@ -1,10 +1,10 @@
 import { EmoteCategory, NFT, NFTCategory, RentalListing, WearableCategory } from '@dcl/schemas'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
+import { fromSecondsToMilliseconds } from '../../logic/date'
 import { capitalize } from '../../logic/strings'
 import { DBNFT, ItemType, NFTResult } from '../../ports/nfts/types'
 import { DBOrder } from '../../ports/orders/types'
 import { fromDBOrderToOrder } from '../orders'
-import { fromSecondsToMilliseconds } from './utils'
 
 function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
   if (dbNFT.category === NFTCategory.WEARABLE) {
