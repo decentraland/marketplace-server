@@ -54,9 +54,9 @@ export function getTradesOrdersQuery(): string {
       assets -> 'sent' ->> 'nft_id' as nft_id,
       assets -> 'sent' ->> 'owner' as owner,
       status,
-      created_at,
-      expires_at,
-      created_at as updated_at,
+      EXTRACT(EPOCH FROM created_at) as created_at,
+      EXTRACT(EPOCH FROM created_at) as updated_at,
+      EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (${getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER)}) as trades`
 }
@@ -75,9 +75,9 @@ export function getLegacyOrdersQuery(): string {
       ord.price,
       ord.status,
       ord.block_number,
-      to_timestamp(ord.created_at) AT TIME ZONE 'UTC' as created_at,
-      to_timestamp(ord.updated_at) AT TIME ZONE 'UTC' as updated_at,
-      to_timestamp(ord.expires_at) AT TIME ZONE 'UTC' as expires_at,
+      ord.created_at,
+      ord.updated_at,
+      ord.expires_at,
       ord.nft_id,
       ord.network,
       ord.item_id,
