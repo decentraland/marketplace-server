@@ -161,7 +161,6 @@ export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
       return SQL` ORDER BY order_created_at DESC `
     case NFTSortBy.RECENTLY_SOLD:
       return SQL` ORDER BY sold_at DESC `
-    // add rentals sort by
     default:
       return SQL` ORDER BY created_at DESC `
   }
