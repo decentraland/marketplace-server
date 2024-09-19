@@ -16,6 +16,8 @@ export type INFTsComponent = {
   getNFTs(filters?: NFTFilters, caller?: string): Promise<GetNFTsResponse>
 }
 
+export type GetNFTsFilters = NFTFilters & { bannedNames?: string[] }
+
 export type NFTResult = {
   nft: NFT
   order: Order | null
@@ -56,8 +58,8 @@ export type DBNFT = {
   body_shapes: BodyShape[]
   x?: string
   y?: string
-  wearableCategory?: WearableCategory
-  emoteCategory?: EmoteCategory
+  wearable_category?: WearableCategory
+  emote_category?: EmoteCategory
   description?: string
   isSmart?: boolean
   size?: number

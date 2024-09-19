@@ -6,6 +6,7 @@ import { ILoggerComponent, ITracerComponent } from '@well-known-components/inter
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent } from '@well-known-components/metrics'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
+import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
@@ -24,6 +25,7 @@ import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favori
 import { createJobComponent } from '../src/ports/job'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
+import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
 import { createTradesComponent } from '../src/ports/trades'
 import { createWertSigner } from '../src/ports/wert-signer/component'
@@ -92,7 +94,15 @@ async function initComponents(): Promise<TestComponents> {
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const trades = createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase })
-  const nfts = createNFTsComponent({ dappsDatabase, config })
+
+  const rentalsSubgraph = await createSubgraphComponent(
+    { logs, config, fetch, metrics },
+    await config.requireString('RENTALS_SUBGRAPH_URL')
+  )
+  const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
+  const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
+
+  const nfts = createNFTsComponent({ dappsDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
@@ -124,7 +134,8 @@ async function initComponents(): Promise<TestComponents> {
     trades,
     eventPublisher,
     nfts,
-    orders
+    orders,
+    rentals
   }
 }
 

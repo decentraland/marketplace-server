@@ -1,7 +1,20 @@
-import { BodyShape, EmoteCategory, ListingStatus, Network, NFT, NFTCategory, Rarity, WearableCategory } from '@dcl/schemas'
+import {
+  BodyShape,
+  ChainId,
+  EmoteCategory,
+  ListingStatus,
+  Network,
+  NFT,
+  NFTCategory,
+  Rarity,
+  RentalListing,
+  RentalStatus,
+  WearableCategory
+} from '@dcl/schemas'
 import { fromDBNFTToNFT, fromNFTsAndOrdersToNFTsResult } from '../../src/adapters/nfts'
 import { fromDBOrderToOrder } from '../../src/adapters/orders'
 import { getNetwork, getNetworkChainId } from '../../src/logic/chainIds'
+import { fromSecondsToMilliseconds } from '../../src/logic/date'
 import { capitalize } from '../../src/logic/strings'
 import { DBNFT, ItemType } from '../../src/ports/nfts/types'
 import { DBOrder } from '../../src/ports/orders/types'
@@ -20,7 +33,7 @@ describe('fromDBNFTToNFT', () => {
       token_id: '123',
       name: 'Wearable NFT',
       body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-      wearableCategory: WearableCategory.HAT,
+      wearable_category: WearableCategory.HAT,
       description: 'A cool wearable NFT',
       rarity: Rarity.COMMON,
       item_type: ItemType.SMART_WEARABLE_V1,
@@ -38,11 +51,11 @@ describe('fromDBNFTToNFT', () => {
       category: NFTCategory.WEARABLE,
       chainId: getNetworkChainId(dbNFT.network),
       contractAddress: dbNFT.contract_address,
-      createdAt: dbNFT.created_at,
+      createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         wearable: {
           bodyShapes: dbNFT.body_shapes,
-          category: dbNFT.wearableCategory as WearableCategory,
+          category: dbNFT.wearable_category as WearableCategory,
           description: dbNFT.description || '',
           rarity: dbNFT.rarity,
           isSmart: dbNFT.item_type === ItemType.SMART_WEARABLE_V1
@@ -58,8 +71,9 @@ describe('fromDBNFTToNFT', () => {
       owner: dbNFT.owner.toLowerCase(),
       tokenId: dbNFT.token_id,
       soldAt: 0,
-      updatedAt: dbNFT.updated_at,
-      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+      updatedAt: fromSecondsToMilliseconds(dbNFT.updated_at),
+      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+      urn: dbNFT.urn
     }
 
     const result = fromDBNFTToNFT(dbNFT)
@@ -101,7 +115,7 @@ describe('fromDBNFTToNFT', () => {
       category: NFTCategory.PARCEL,
       chainId: getNetworkChainId(dbNFT.network),
       contractAddress: dbNFT.contract_address,
-      createdAt: dbNFT.created_at,
+      createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         parcel: {
           x: dbNFT.x as string,
@@ -123,8 +137,9 @@ describe('fromDBNFTToNFT', () => {
       owner: dbNFT.owner.toLowerCase(),
       tokenId: dbNFT.token_id,
       soldAt: 0,
-      updatedAt: dbNFT.updated_at,
-      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+      updatedAt: fromSecondsToMilliseconds(dbNFT.updated_at),
+      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+      urn: dbNFT.urn
     }
 
     const result = fromDBNFTToNFT(dbNFT)
@@ -161,7 +176,7 @@ describe('fromDBNFTToNFT', () => {
       category: NFTCategory.ENS,
       chainId: getNetworkChainId(dbNFT.network),
       contractAddress: dbNFT.contract_address,
-      createdAt: dbNFT.created_at,
+      createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         ens: {
           subdomain: dbNFT.subdomain as string
@@ -177,8 +192,9 @@ describe('fromDBNFTToNFT', () => {
       owner: dbNFT.owner.toLowerCase(),
       tokenId: dbNFT.token_id,
       soldAt: 0,
-      updatedAt: dbNFT.updated_at,
-      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+      updatedAt: fromSecondsToMilliseconds(dbNFT.updated_at),
+      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+      urn: dbNFT.urn
     }
 
     const result = fromDBNFTToNFT(dbNFT)
@@ -217,7 +233,7 @@ describe('fromDBNFTToNFT', () => {
       category: NFTCategory.ESTATE,
       chainId: getNetworkChainId(dbNFT.network),
       contractAddress: dbNFT.contract_address,
-      createdAt: dbNFT.created_at,
+      createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         estate: {
           size: dbNFT.size || 0,
@@ -235,8 +251,9 @@ describe('fromDBNFTToNFT', () => {
       owner: dbNFT.owner.toLowerCase(),
       tokenId: dbNFT.token_id,
       soldAt: 0,
-      updatedAt: dbNFT.updated_at,
-      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+      updatedAt: fromSecondsToMilliseconds(dbNFT.updated_at),
+      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+      urn: dbNFT.urn
     }
 
     const result = fromDBNFTToNFT(dbNFT)
@@ -255,7 +272,7 @@ describe('fromDBNFTToNFT', () => {
       owner: '0xuvwxy',
       token_id: '345',
       body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-      emoteCategory: EmoteCategory.DANCE,
+      emote_category: EmoteCategory.DANCE,
       description: 'A cool emote NFT',
       rarity: Rarity.COMMON,
       loop: true,
@@ -277,11 +294,11 @@ describe('fromDBNFTToNFT', () => {
       category: NFTCategory.EMOTE,
       chainId: getNetworkChainId(dbNFT.network),
       contractAddress: dbNFT.contract_address,
-      createdAt: dbNFT.created_at,
+      createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         emote: {
           bodyShapes: dbNFT.body_shapes,
-          category: dbNFT.emoteCategory as EmoteCategory,
+          category: dbNFT.emote_category as EmoteCategory,
           description: dbNFT.description || '',
           rarity: dbNFT.rarity,
           loop: dbNFT.loop || false,
@@ -299,8 +316,9 @@ describe('fromDBNFTToNFT', () => {
       owner: dbNFT.owner.toLowerCase(),
       tokenId: dbNFT.token_id,
       soldAt: 0,
-      updatedAt: dbNFT.updated_at,
-      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+      updatedAt: fromSecondsToMilliseconds(dbNFT.updated_at),
+      url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+      urn: dbNFT.urn
     }
 
     const result = fromDBNFTToNFT(dbNFT)
@@ -323,7 +341,7 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
         token_id: '123',
         name: 'Wearable NFT',
         body_shapes: [BodyShape.FEMALE, BodyShape.MALE],
-        wearableCategory: WearableCategory.HAT,
+        wearable_category: WearableCategory.HAT,
         description: 'A cool wearable NFT',
         rarity: Rarity.COMMON,
         item_type: ItemType.SMART_WEARABLE_V1,
@@ -407,12 +425,42 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
       }
     ]
 
+    const rentals: RentalListing[] = [
+      {
+        category: NFTCategory.PARCEL,
+        chainId: ChainId.ETHEREUM_MAINNET,
+        contractAddress: '0x456def',
+        createdAt: Date.now(),
+        expiration: Date.now(),
+        id: '1',
+        lessor: '0x789ghi',
+        network: Network.ETHEREUM,
+        nftId: nfts[0].id,
+        periods: [],
+        rentalContractAddress: '0x23',
+        rentedDays: 0,
+        searchText: '123',
+        signature: '0x123',
+        status: RentalStatus.OPEN,
+        startedAt: Date.now(),
+        target: '0x456',
+        nonces: [],
+        tenant: '0xabcjkl',
+        tokenId: '456',
+        updatedAt: Date.now()
+      }
+    ]
+
     const expectedNFTsResult = [
-      { nft: { ...fromDBNFTToNFT(nfts[0]), activeOrderId: orders[0].id }, order: fromDBOrderToOrder(orders[0]), rental: null },
+      {
+        nft: { ...fromDBNFTToNFT(nfts[0]), activeOrderId: orders[0].id, openRentalId: rentals[0].id },
+        order: fromDBOrderToOrder(orders[0]),
+        rental: rentals[0]
+      },
       { nft: { ...fromDBNFTToNFT(nfts[1]), activeOrderId: orders[1].id }, order: fromDBOrderToOrder(orders[1]), rental: null }
     ]
 
-    const result = fromNFTsAndOrdersToNFTsResult(nfts, orders)
+    const result = fromNFTsAndOrdersToNFTsResult(nfts, orders, rentals)
 
     expect(result).toEqual(expectedNFTsResult)
   })
