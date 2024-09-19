@@ -69,7 +69,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     category: dbNFT.category,
     chainId: getNetworkChainId(dbNFT.network),
     contractAddress: dbNFT.contract_address,
-    createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
+    createdAt: fromSecondsToMilliseconds(Number(dbNFT.created_at)),
     data: getDataFromDBNFT(dbNFT),
     id: dbNFT.id,
     image: dbNFT.image || '',
