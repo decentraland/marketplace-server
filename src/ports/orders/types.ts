@@ -16,9 +16,9 @@ export type DBOrder = {
   buyer: string
   price: string
   status: ListingStatus
-  created_at: Date
-  expires_at: Date
-  updated_at: Date
+  created_at: number
+  expires_at: number
+  updated_at: number
   nft_id: string
   network: SquidNetwork
   item_id: string
