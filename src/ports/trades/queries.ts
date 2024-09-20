@@ -142,7 +142,7 @@ export function getTradesForTypeQuery(type: TradeType) {
         ta.beneficiary,
         ta.extra,
         erc721_asset.token_id,
-        item_asset.item_id,
+        coalesce(item_asset.item_id, nft.item_blockchain_id::text) as item_id,
         erc20_asset.amount,
         item.creator,
         account.address as owner,
