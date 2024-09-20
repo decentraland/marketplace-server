@@ -42,7 +42,7 @@ export function getTradesOrdersQuery(): string {
       id::text,
       id as trade_id,
       CASE
-        WHEN LOWER(network) = 'polygon' then '${marketplacePolygon.address}'
+        WHEN LOWER(network) = 'matic' then '${marketplacePolygon.address}'
       ELSE '${marketplaceEthereum.address}'
       END AS marketplace_address,
       assets -> 'sent' ->> 'category' as category,
