@@ -61,7 +61,7 @@ describe('fromDBNFTToNFT', () => {
           isSmart: dbNFT.item_type === ItemType.SMART_WEARABLE_V1
         }
       },
-      id: dbNFT.id,
+      id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
       image: dbNFT.image,
       issuedId: dbNFT.issued_id,
       itemId: dbNFT.item_id,
@@ -127,7 +127,7 @@ describe('fromDBNFTToNFT', () => {
           }
         }
       },
-      id: dbNFT.id,
+      id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
       image: dbNFT.image,
       issuedId: dbNFT.issued_id,
       itemId: dbNFT.item_id,
@@ -182,7 +182,7 @@ describe('fromDBNFTToNFT', () => {
           subdomain: dbNFT.subdomain as string
         }
       },
-      id: dbNFT.id,
+      id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
       image: dbNFT.image,
       issuedId: dbNFT.issued_id,
       itemId: dbNFT.item_id,
@@ -241,7 +241,7 @@ describe('fromDBNFTToNFT', () => {
           parcels: dbNFT.estate_parcels || []
         }
       },
-      id: dbNFT.id,
+      id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
       image: dbNFT.image,
       issuedId: dbNFT.issued_id,
       itemId: dbNFT.item_id,
@@ -306,7 +306,7 @@ describe('fromDBNFTToNFT', () => {
           hasGeometry: dbNFT.has_geometry || false
         }
       },
-      id: dbNFT.id,
+      id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
       image: dbNFT.image,
       issuedId: dbNFT.issued_id,
       itemId: dbNFT.item_id,
