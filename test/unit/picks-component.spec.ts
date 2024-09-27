@@ -1,7 +1,5 @@
 import { IDatabase, ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '../../src/ports/db/types'
-import { IItemsComponent } from '../../src/ports/favorites/items'
-import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import { IListsComponents } from '../../src/ports/favorites/lists'
 import { ListsNotFoundError } from '../../src/ports/favorites/lists/errors'
 import {
@@ -13,6 +11,8 @@ import {
 } from '../../src/ports/favorites/picks'
 import { ISnapshotComponent } from '../../src/ports/favorites/snapshot'
 import { ScoreError } from '../../src/ports/favorites/snapshot/errors'
+import { IItemsComponent } from '../../src/ports/items'
+import { ItemNotFoundError } from '../../src/ports/items/errors'
 import {
   createTestItemsComponent,
   createTestListsComponent,

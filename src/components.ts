@@ -13,10 +13,10 @@ import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
-import { createItemsComponent } from './ports/favorites/items'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
+import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
@@ -98,6 +98,7 @@ export async function initComponents(): Promise<AppComponents> {
   const bids = await createBidsComponents({ dappsDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase })
+
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {

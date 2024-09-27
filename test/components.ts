@@ -18,10 +18,10 @@ import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
 import { IEventPublisherComponent } from '../src/ports/events'
 import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
-import { IItemsComponent, createItemsComponent } from '../src/ports/favorites/items'
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
 import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/picks'
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
+import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
@@ -211,7 +211,8 @@ export function createTestAccessComponent(
 
 export function createTestItemsComponent({ validateItemExists = jest.fn() }): IItemsComponent {
   return {
-    validateItemExists
+    validateItemExists,
+    getItems: jest.fn()
   }
 }
 

@@ -3,8 +3,6 @@ import { DEFAULT_LIST_ID, DEFAULT_LIST_USER_ADDRESS } from '../../src/migrations
 import { IPgComponent } from '../../src/ports/db/types'
 import { Permission } from '../../src/ports/favorites/access'
 import { AccessNotFoundError } from '../../src/ports/favorites/access/errors'
-import { IItemsComponent } from '../../src/ports/favorites/items'
-import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import {
   createListsComponent,
   DBGetListsWithCount,
@@ -25,6 +23,8 @@ import {
 import { DBGetFilteredPicksWithCount, DBPick } from '../../src/ports/favorites/picks'
 import { ISnapshotComponent } from '../../src/ports/favorites/snapshot'
 import { ScoreError } from '../../src/ports/favorites/snapshot/errors'
+import { IItemsComponent } from '../../src/ports/items'
+import { ItemNotFoundError } from '../../src/ports/items/errors'
 import { createTestSnapshotComponent, createTestPgComponent, createTestItemsComponent, createTestLogsComponent } from '../components'
 
 let listId: string

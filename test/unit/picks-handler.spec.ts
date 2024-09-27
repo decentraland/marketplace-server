@@ -6,9 +6,9 @@ import {
   getPickStatsOfItemHandler,
   pickAndUnpickInBulkHandler
 } from '../../src/controllers/handlers/favorites/picks-handlers'
-import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import { ListsNotFoundError } from '../../src/ports/favorites/lists/errors'
 import { DBGetFilteredPicksWithCount, DBPickStats, PickUnpickInBulkBody, PickUnpickInBulkResponse } from '../../src/ports/favorites/picks'
+import { ItemNotFoundError } from '../../src/ports/items/errors'
 import { AppComponents, HandlerContextWithPath, StatusCode } from '../../src/types'
 import { createTestPicksComponent } from '../components'
 
