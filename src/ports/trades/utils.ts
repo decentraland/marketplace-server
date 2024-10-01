@@ -13,11 +13,11 @@ import {
 } from '@dcl/schemas'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
 import { getBidsQuery } from '../bids/queries'
-import { getItemByItemIdQuery } from '../items/queries'
+import { getItemByItemIdQuery, getItemsQuery } from '../items/queries'
 import { DBItem } from '../items/types'
 import { getNftByTokenIdQuery, getNFTsQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
-import { DuplicatedBidError, DuplicateNFTOrderError, InvalidTradeStructureError } from './errors'
+import { DuplicatedBidError, DuplicateItemOrderError, DuplicateNFTOrderError, InvalidTradeStructureError } from './errors'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
@@ -90,7 +90,18 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
-      // TODO: Add duplicate check for public item orders
+      const duplicateOrder = await client.query(
+        getItemsQuery({
+          contractAddresses: [trade.sent[0].contractAddress],
+          itemId: (trade.sent[0] as CollectionItemTradeAsset).itemId,
+          network: trade.network,
+          isOnSale: true
+        })
+      )
+
+      if (duplicateOrder.rowCount > 0) {
+        throw new DuplicateItemOrderError()
+      }
     }
 
     return true

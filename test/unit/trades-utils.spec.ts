@@ -11,18 +11,20 @@ import {
   Rarity,
   NFTCategory,
   ERC20TradeAsset,
-  WearableCategory,
   CollectionItemTradeAsset,
-  Event
+  Event,
+  EmoteCategory
 } from '@dcl/schemas'
+import { getCategoryFromDBItem } from '../../src/adapters/items'
 import * as chainIdUtils from '../../src/logic/chainIds'
 import { getItemByItemIdQuery } from '../../src/ports/items/queries'
-import { DBItem } from '../../src/ports/items/types'
+import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
-import { DBNFT, ItemType } from '../../src/ports/nfts/types'
+import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
 import { InvalidTradeStructureError } from '../../src/ports/trades/errors'
 import { getNotificationEventForTrade, validateTradeByType } from '../../src/ports/trades/utils'
+import { SquidNetwork } from '../../src/types'
 
 describe('when calling getNotificationEventForTrade function', () => {
   let mockPgComponent: IPgComponent
@@ -168,6 +170,11 @@ describe('when calling getNotificationEventForTrade function', () => {
           ]
         }
         dbItem = {
+          count: 1,
+          body_shapes: [],
+          first_listed_at: new Date(),
+          search_is_store_item: false,
+          network: SquidNetwork.ETHEREUM,
           id: '1',
           contract_address: '0xaddr',
           created_at: Date.now(),
@@ -180,7 +187,8 @@ describe('when calling getNotificationEventForTrade function', () => {
           name: 'a name',
           available: 0,
           beneficiary: 'x123',
-          category: WearableCategory.BODY_SHAPE,
+          item_type: ItemType.EMOTE_V1,
+          emote_category: EmoteCategory.DANCE,
           creator: '0x123',
           price: '123',
           reviewed_at: Date.now(),
@@ -206,7 +214,7 @@ describe('when calling getNotificationEventForTrade function', () => {
             address: dbItem.creator,
             image: dbItem.image,
             seller: dbItem.creator,
-            category: dbItem.category,
+            category: 'category' in dbItem ? dbItem.category : getCategoryFromDBItem(dbItem),
             rarity: dbItem.rarity,
             link: `${process.env.MARKETPLACE_BASE_URL}/account?section=bids`,
             nftName: dbItem.name,

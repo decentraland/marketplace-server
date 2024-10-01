@@ -16,10 +16,10 @@ import {
 import { DEFAULT_LIST_ID } from '../../src/migrations/favorites/1678303321034_default-list'
 import { Permission } from '../../src/ports/favorites/access'
 import { AccessNotFoundError, DuplicatedAccessError } from '../../src/ports/favorites/access/errors'
-import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import { DBGetListsWithCount, DBList, DBListsWithItemsCount, ListSortBy, ListSortDirection } from '../../src/ports/favorites/lists'
 import { DuplicatedListError, ListNotFoundError, PickAlreadyExistsError, PickNotFoundError } from '../../src/ports/favorites/lists/errors'
 import { DBGetFilteredPicksWithCount, DBPick } from '../../src/ports/favorites/picks'
+import { ItemNotFoundError } from '../../src/ports/items/errors'
 import { AppComponents, HTTPResponse, HandlerContextWithPath, StatusCode } from '../../src/types'
 import { createTestListsComponent, createTestAccessComponent } from '../components'
 

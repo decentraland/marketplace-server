@@ -1,9 +1,11 @@
-import { isErrorWithMessage } from '../../../logic/errors'
-import { AppComponents } from '../../../types'
-import { QueryFailure } from '../lists/errors'
+import { ItemFilters } from '@dcl/schemas'
+import { fromDBItemToItem } from '../../adapters/items'
+import { isErrorWithMessage } from '../../logic/errors'
+import { AppComponents } from '../../types'
+import { QueryFailure } from '../favorites/lists/errors'
 import { ItemNotFoundError } from './errors'
-import { getItemById } from './queries'
-import { IItemsComponent } from './types'
+import { getItemById, getItemsQuery } from './queries'
+import { DBItem, IItemsComponent } from './types'
 
 export function createItemsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IItemsComponent {
   const { dappsDatabase: database, logs } = components
@@ -30,5 +32,13 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
     }
   }
 
-  return { validateItemExists }
+  async function getItems(filters: ItemFilters) {
+    const items = await database.query<DBItem>(getItemsQuery(filters))
+    return {
+      data: items.rows.map(fromDBItemToItem),
+      total: items.rowCount > 0 ? Number(items.rows[0].count) : 0
+    }
+  }
+
+  return { validateItemExists, getItems }
 }

@@ -2,7 +2,8 @@ import { EmoteCategory, NFT, NFTCategory, RentalListing, WearableCategory } from
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { fromSecondsToMilliseconds } from '../../logic/date'
 import { capitalize } from '../../logic/strings'
-import { DBNFT, ItemType, NFTResult } from '../../ports/nfts/types'
+import { ItemType } from '../../ports/items'
+import { DBNFT, NFTResult } from '../../ports/nfts/types'
 import { DBOrder } from '../../ports/orders/types'
 import { fromDBOrderToOrder } from '../orders'
 

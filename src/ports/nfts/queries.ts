@@ -11,9 +11,10 @@ import {
   WearableGender
 } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
+import { ItemType } from '../items'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
-import { GetNFTsFilters, ItemType } from './types'
+import { GetNFTsFilters } from './types'
 
 function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlayMode[] | undefined): SQLStatement | null {
   if (!emotePlayMode || (Array.isArray(emotePlayMode) && (emotePlayMode.length === 2 || emotePlayMode.length === 0))) {
@@ -94,15 +95,16 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_EMOTE_PLAY_MODE = getEmotePlayModeWhereStatement(nftFilters.emotePlayMode)
   const FILTER_BY_EMOTE_GENDERS = getGenderWhereStatement(true, nftFilters.emoteGenders)
   const FILTER_BY_WEARABLE_GENDER = getGenderWhereStatement(false, nftFilters.wearableGenders)
+  const creators = nftFilters.creator && (Array.isArray(nftFilters.creator) ? nftFilters.creator : [nftFilters.creator])
   const FILTER_BY_CREATOR =
-    nftFilters.creator && nftFilters.creator.length ? SQL` LOWER(item.creator) = LOWER(${nftFilters.creator}) ` : null
+    creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
   const FILTER_BY_ID = nftFilters.ids && nftFilters.ids.length ? SQL` nft.id = ANY (${nftFilters.ids}) ` : null
   const FITLER_BY_RARITY = getRarityWhereStatement(nftFilters.itemRarities)
   const FILTER_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR trades.assets -> 'sent' --> amount >= ${nftFilters.minPrice})`
+    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice})`
     : null
   const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR trades.assets -> 'sent' --> amount <= ${nftFilters.maxPrice})`
+    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice})`
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR nft.search_order_status = ${ListingStatus.OPEN}) ` : null
   const FITLER_BANNED_NAMES =
@@ -202,7 +204,8 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}) {
       parcel.parcel_estate_name,
       parcel.estate_id as parcel_estate_id,
       coalesce (wearable.description, emote.description, land_data.description) as description,
-      coalesce (to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
+      coalesce (to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at,
+      trades.assets
     FROM
       squid_marketplace.nft nft
     LEFT JOIN squid_marketplace.metadata metadata on

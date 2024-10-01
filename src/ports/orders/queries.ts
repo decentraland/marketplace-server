@@ -102,6 +102,7 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
   const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
+  const FILTER_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
   const FILTERS = getWhereStatementFromFilters([
     FILTER_BY_MARKETPLACE_ADDRESS,
@@ -113,7 +114,8 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
     FILTER_BY_NETWORK,
     FILTER_BY_ITEM_ID,
     FILTER_BY_NFT_NAME,
-    FILTER_BY_NFT_ID
+    FILTER_BY_NFT_ID,
+    FILTER_NOT_EXPIRED
   ])
 
   return SQL`SELECT *, COUNT(*) OVER() as count`

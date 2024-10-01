@@ -14,6 +14,7 @@ import {
 import { DBItem } from '../../ports/items/types'
 import { DBNFT } from '../../ports/nfts/types'
 import { DBTrade, DBTradeAssetWithValue, TradeEvent } from '../../ports/trades'
+import { getCategoryFromDBItem } from '../items'
 
 export function fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset: DBTradeAssetWithValue): TradeAsset {
   const tradeBaseValues = {
@@ -87,7 +88,7 @@ export function fromBidAndAssetsToBidCreatedEventNotification(bid: Trade, assets
       address: 'creator' in asset ? asset.creator : asset.owner,
       image: asset.image,
       seller: 'creator' in asset ? asset.creator : asset.owner,
-      category: asset.category,
+      category: 'category' in asset ? asset.category : getCategoryFromDBItem(asset),
       rarity: asset.rarity,
       link: `${MARKETPLACE_BASE_URL}/account?section=bids`,
       nftName: asset.name,
@@ -121,7 +122,7 @@ export function fromBidAndAssetsToBidAcceptedEventNotification(bid: Trade, asset
       address: bid.signer,
       image: asset.image,
       seller: 'creator' in asset ? asset.creator : asset.owner,
-      category: asset.category,
+      category: 'category' in asset ? asset.category : getCategoryFromDBItem(asset),
       rarity: asset.rarity,
       link,
       nftName: asset.name,

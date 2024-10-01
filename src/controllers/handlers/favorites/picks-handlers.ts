@@ -2,9 +2,9 @@ import { fromDBGetPickByItemIdToPickUserAddressesWithCount, fromDBPickStatsToPic
 import { isEthereumAddressValid } from '../../../logic/ethereum/validations'
 import { getNumberParameter, getPaginationParams } from '../../../logic/http'
 import { InvalidParameterError } from '../../../logic/http/errors'
-import { ItemNotFoundError } from '../../../ports/favorites/items/errors'
 import { ListsNotFoundError } from '../../../ports/favorites/lists/errors'
 import { PickStats, PickUnpickInBulkBody, PickUnpickInBulkResponse } from '../../../ports/favorites/picks'
+import { ItemNotFoundError } from '../../../ports/items/errors'
 import { HandlerContextWithPath, HTTPResponse, StatusCode } from '../../../types'
 
 export async function getPickStatsOfItemHandler(
