@@ -1,11 +1,11 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, Rarity, TradeType, WearableGender } from '@dcl/schemas'
+import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeType, WearableGender } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 import { ItemType } from './types'
-import { getItemTypesFromNFTCategory } from './utils'
+import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
 
 export function getItemById(itemId: string) {
   return SQL`
@@ -16,18 +16,10 @@ export function getItemById(itemId: string) {
 }
 
 function getItemsLimitAndOffsetStatement(filters: ItemFilters) {
-  const limit = filters?.first ? filters.first : 100
+  const limit = filters?.first ? filters.first : DEFAULT_LIMIT
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
-}
-
-function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
-  if (!rarities || !rarities.length) {
-    return null
-  }
-
-  return SQL` item.rarity = ANY (${rarities}) `
 }
 
 function getGenderWhereStatement(isEmote: boolean, genders?: (WearableGender | GenderFilterOption)[]): SQLStatement | null {
@@ -77,7 +69,7 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   const creators = filters.creator && (Array.isArray(filters.creator) ? filters.creator : [filters.creator])
   const FILTER_BY_CREATOR =
     creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
-  const FITLER_BY_RARITY = getRarityWhereStatement(filters.rarities)
+  const FITLER_BY_RARITY = filters.rarities && filters.rarities.length ? SQL` item.rarity = ANY (${filters.rarities}) ` : null
   const FILTER_BY_SOLD_OUT = filters.isSoldOut ? SQL` item.available = 0 ` : null
   const FILTER_BY_IS_ON_SALE = filters.isOnSale
     ? SQL` ((trades.id IS NOT NULL OR item.search_is_store_minter = true) AND item.available > 0) `

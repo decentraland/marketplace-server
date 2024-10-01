@@ -1,6 +1,8 @@
 import { NFTCategory } from '@dcl/schemas'
 import { ItemType } from './types'
 
+export const DEFAULT_LIMIT = 100
+
 export function getItemTypesFromNFTCategory(category: NFTCategory) {
   switch (category) {
     case NFTCategory.WEARABLE:

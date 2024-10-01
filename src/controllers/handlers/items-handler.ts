@@ -1,7 +1,6 @@
 import { ItemFilters } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { Params } from '../../logic/http/params'
-import { InvalidSearchByTenantAndOwnerError, InvalidTokenIdError, MissingContractAddressParamError } from '../../ports/nfts/errors'
 import { HandlerContextWithPath, StatusCode } from '../../types'
 import { getItemsParams } from './utils'
 
@@ -27,25 +26,11 @@ export async function getItemsHandler(context: Pick<HandlerContextWithPath<'item
       }
     }
   } catch (e) {
-    if (
-      e instanceof InvalidSearchByTenantAndOwnerError ||
-      e instanceof InvalidTokenIdError ||
-      e instanceof MissingContractAddressParamError
-    ) {
-      return {
-        status: StatusCode.BAD_REQUEST,
-        body: {
-          ok: false,
-          message: e.message
-        }
-      }
-    }
-
     return {
       status: StatusCode.BAD_REQUEST,
       body: {
         ok: false,
-        message: isErrorWithMessage(e) ? e.message : 'Could not fetch NFTs'
+        message: isErrorWithMessage(e) ? e.message : 'Could not fetch Items'
       }
     }
   }
