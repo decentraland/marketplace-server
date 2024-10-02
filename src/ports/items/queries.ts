@@ -87,7 +87,7 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     filters.contractAddresses && filters.contractAddresses.length ? SQL` item.collection_id = ANY (${filters.contractAddresses}) ` : null
   const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item.blockchain_id = ${filters.itemId} ` : null
   const FILTER_BY_ID = filters.ids && filters.ids.length ? SQL` item.id = ANY (${filters.ids}) ` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL` nft.network = ANY (${getDBNetworks(filters.network)}) ` : null
+  const FILTER_BY_NETWORK = filters.network ? SQL` item.network = ANY (${getDBNetworks(filters.network)}) ` : null
   const FILTER_BY_MIN_PRICE = filters.minPrice
     ? SQL` ((item.search_is_store_minter = true AND item.price >= ${filters.minPrice}) OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${filters.minPrice}) `
     : null
