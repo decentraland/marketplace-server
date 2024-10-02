@@ -167,7 +167,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
     .append(
       ` LEFT JOIN (${getTradesForTypeQuery(
         TradeType.PUBLIC_ITEM_ORDER
-      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
+      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
         ListingStatus.OPEN
       }' `
     )
