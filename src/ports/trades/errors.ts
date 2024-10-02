@@ -54,6 +54,12 @@ export class DuplicateNFTOrderError extends Error {
   }
 }
 
+export class DuplicateItemOrderError extends Error {
+  constructor() {
+    super('There is already an open order for this Item')
+  }
+}
+
 export class InvalidECDSASignatureError extends Error {
   constructor() {
     super('The server does not accept ECDSA signatures with V as 0 or 1')

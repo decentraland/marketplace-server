@@ -2,6 +2,7 @@ import { createDotEnvConfigComponent } from '@well-known-components/env-config-p
 import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
+import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
@@ -12,12 +13,14 @@ import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
-import { createItemsComponent } from './ports/favorites/items'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
+import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
+import { createOrdersComponent } from './ports/orders/component'
+import { createRentalsComponent } from './ports/rentals/components'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
 import { createTradesComponent } from './ports/trades'
 import { createWertSigner } from './ports/wert-signer/component'
@@ -67,6 +70,14 @@ export async function initComponents(): Promise<AppComponents> {
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const ens = createENS()
 
+  // rentals
+  const rentalsSubgraph = await createSubgraphComponent(
+    { logs, config, fetch, metrics },
+    await config.requireString('RENTALS_SUBGRAPH_URL')
+  )
+  const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
+  const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
+
   // favorites stuff
   const schemaValidator = await createSchemaValidatorComponent()
 
@@ -85,7 +96,9 @@ export async function initComponents(): Promise<AppComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
   const trades = await createTradesComponent({ dappsDatabase, eventPublisher, logs })
   const bids = await createBidsComponents({ dappsDatabase })
-  const nfts = await createNFTsComponent({ dappsDatabase })
+  const nfts = await createNFTsComponent({ dappsDatabase, config, rentals })
+  const orders = await createOrdersComponent({ dappsDatabase })
+
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
@@ -111,6 +124,8 @@ export async function initComponents(): Promise<AppComponents> {
     access,
     picks,
     eventPublisher,
-    nfts
+    nfts,
+    orders,
+    rentals
   }
 }

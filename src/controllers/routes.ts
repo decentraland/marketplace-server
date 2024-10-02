@@ -7,7 +7,9 @@ import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
+import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
+import { getOrdersHandler } from './handlers/orders-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
@@ -66,6 +68,10 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     getNFTsHandler
   )
+
+  router.get('/v1/orders', getOrdersHandler)
+
+  router.get('/v1/items', getItemsHandler)
 
   setupFavoritesRouter(router, { components })
 

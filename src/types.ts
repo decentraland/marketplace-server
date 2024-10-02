@@ -15,12 +15,14 @@ import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
 import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
-import { IItemsComponent } from './ports/favorites/items'
 import { IListsComponents } from './ports/favorites/lists'
 import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
+import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
+import { IOrdersComponent } from './ports/orders/types'
+import { IRentalsComponent } from './ports/rentals/types'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { ITradesComponent } from './ports/trades'
 import { IWertSignerComponent } from './ports/wert-signer/types'
@@ -53,6 +55,8 @@ export type BaseComponents = {
   bids: IBidsComponent
   eventPublisher: IEventPublisherComponent
   nfts: INFTsComponent
+  orders: IOrdersComponent
+  rentals: IRentalsComponent
 }
 
 // components used in runtime

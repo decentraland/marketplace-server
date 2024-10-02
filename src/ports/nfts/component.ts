@@ -1,12 +1,15 @@
-import { NFTFilters } from '@dcl/schemas'
-import { fromDBNFTToNFT } from '../../adapters/nfts'
+import { ListingStatus, NFTCategory, NFTFilters, RentalStatus } from '@dcl/schemas'
+import { fromNFTsAndOrdersToNFTsResult } from '../../adapters/nfts'
 import { AppComponents } from '../../types'
+import { getOrdersQuery } from '../orders/queries'
+import { DBOrder } from '../orders/types'
 import { InvalidSearchByTenantAndOwnerError, InvalidTokenIdError, MissingContractAddressParamError } from './errors'
 import { getNFTsQuery } from './queries'
 import { DBNFT, INFTsComponent } from './types'
+import { getNFTFilters } from './utils'
 
-export function createNFTsComponent(components: Pick<AppComponents, 'dappsDatabase'>): INFTsComponent {
-  const { dappsDatabase: pg } = components
+export function createNFTsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'config' | 'rentals'>): INFTsComponent {
+  const { dappsDatabase: pg, config, rentals } = components
 
   async function getNFTs(filters: NFTFilters) {
     const { owner, tenant, tokenId, contractAddresses } = filters
@@ -22,9 +25,21 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       throw new MissingContractAddressParamError()
     }
 
-    // TODO: Add banned names filters
-    const result = await pg.query<DBNFT>(getNFTsQuery(filters))
-    return { data: result.rows.map(dbNFT => ({ nft: fromDBNFTToNFT(dbNFT), order: null, rental: null })), total: result.rowCount }
+    const listsServer = await config.requireString('DCL_LISTS_SERVER')
+    const nftFilters = await getNFTFilters(filters, listsServer, rentals)
+    const nfts = await pg.query<DBNFT>(getNFTsQuery(nftFilters))
+    const nftIds = nfts.rows.map(nft => nft.id)
+    const orders = await pg.query<DBOrder>(getOrdersQuery({ nftIds, status: ListingStatus.OPEN }))
+
+    const landNftIds = nfts.rows
+      .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
+      .map(nft => nft.id)
+    const listings = landNftIds.length ? await rentals.getRentalsListingsOfNFTs(landNftIds, RentalStatus.OPEN) : []
+
+    return {
+      data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
+      total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
+    }
   }
 
   return {

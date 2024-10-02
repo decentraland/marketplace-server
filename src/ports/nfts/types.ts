@@ -11,10 +11,13 @@ import {
   EmoteCategory
 } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
+import { ItemType } from '../items'
 
 export type INFTsComponent = {
   getNFTs(filters?: NFTFilters, caller?: string): Promise<GetNFTsResponse>
 }
+
+export type GetNFTsFilters = NFTFilters & { bannedNames?: string[] }
 
 export type NFTResult = {
   nft: NFT
@@ -25,13 +28,6 @@ export type NFTResult = {
 export type GetNFTsResponse = {
   data: NFTResult[]
   total: number
-}
-
-export enum ItemType {
-  WEARABLE_V1 = 'wearable_v1',
-  WEARABLE_V2 = 'wearable_v2',
-  SMART_WEARABLE_V1 = 'smart_wearable_v1',
-  EMOTE_V1 = 'emote_v1'
 }
 
 export type DBNFT = {
@@ -56,8 +52,8 @@ export type DBNFT = {
   body_shapes: BodyShape[]
   x?: string
   y?: string
-  wearableCategory?: WearableCategory
-  emoteCategory?: EmoteCategory
+  wearable_category?: WearableCategory
+  emote_category?: EmoteCategory
   description?: string
   isSmart?: boolean
   size?: number

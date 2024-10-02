@@ -1,8 +1,8 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '../../src/ports/db/types'
-import { IItemsComponent, createItemsComponent } from '../../src/ports/favorites/items'
-import { ItemNotFoundError } from '../../src/ports/favorites/items/errors'
 import { QueryFailure } from '../../src/ports/favorites/lists/errors'
+import { IItemsComponent, createItemsComponent } from '../../src/ports/items'
+import { ItemNotFoundError } from '../../src/ports/items/errors'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
 
 let itemId: string

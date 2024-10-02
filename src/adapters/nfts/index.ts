@@ -1,14 +1,18 @@
-import { EmoteCategory, NFT, NFTCategory, WearableCategory } from '@dcl/schemas'
+import { EmoteCategory, NFT, NFTCategory, RentalListing, WearableCategory } from '@dcl/schemas'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
+import { fromSecondsToMilliseconds } from '../../logic/date'
 import { capitalize } from '../../logic/strings'
-import { DBNFT, ItemType } from '../../ports/nfts/types'
+import { ItemType } from '../../ports/items'
+import { DBNFT, NFTResult } from '../../ports/nfts/types'
+import { DBOrder } from '../../ports/orders/types'
+import { fromDBOrderToOrder } from '../orders'
 
 function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
   if (dbNFT.category === NFTCategory.WEARABLE) {
     return {
       wearable: {
         bodyShapes: dbNFT.body_shapes,
-        category: dbNFT.wearableCategory as WearableCategory,
+        category: dbNFT.wearable_category as WearableCategory,
         description: dbNFT.description || '',
         rarity: dbNFT.rarity,
         isSmart: dbNFT.item_type === ItemType.SMART_WEARABLE_V1
@@ -50,7 +54,7 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
   return {
     emote: {
       bodyShapes: dbNFT.body_shapes,
-      category: dbNFT.emoteCategory as EmoteCategory,
+      category: dbNFT.emote_category as EmoteCategory,
       description: dbNFT.description || '',
       rarity: dbNFT.rarity,
       loop: dbNFT.loop || false,
@@ -66,10 +70,10 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     category: dbNFT.category,
     chainId: getNetworkChainId(dbNFT.network),
     contractAddress: dbNFT.contract_address,
-    createdAt: dbNFT.created_at,
+    createdAt: fromSecondsToMilliseconds(Number(dbNFT.created_at)),
     data: getDataFromDBNFT(dbNFT),
-    id: dbNFT.id,
-    image: dbNFT.image,
+    id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
+    image: dbNFT.image || '',
     issuedId: dbNFT.issued_id,
     itemId: dbNFT.item_id,
     name: dbNFT.name || capitalize(dbNFT.category),
@@ -78,7 +82,24 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     owner: dbNFT.owner.toLowerCase(),
     tokenId: dbNFT.token_id,
     soldAt: 0, // TODO: Calculate sold at
-    updatedAt: dbNFT.updated_at,
-    url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`
+    updatedAt: fromSecondsToMilliseconds(Number(dbNFT.updated_at)), // Convert to ms
+    url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
+    urn: dbNFT.urn || undefined
   }
+}
+
+export function fromNFTsAndOrdersToNFTsResult(nfts: DBNFT[], orders: DBOrder[], listings: RentalListing[]): NFTResult[] {
+  return nfts.map(nft => {
+    const order = orders.find(order => order.nft_id === nft.id)
+    const listing = listings.find(listing => listing.nftId === nft.id)
+    return {
+      nft: {
+        ...fromDBNFTToNFT(nft),
+        activeOrderId: order ? order.id : null,
+        openRentalId: listing ? listing.id : null
+      },
+      order: order ? fromDBOrderToOrder(order) : null,
+      rental: listing ? listing : null
+    }
+  })
 }
