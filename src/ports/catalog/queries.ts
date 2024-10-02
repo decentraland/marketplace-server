@@ -228,7 +228,7 @@ export const getSearchWhere = (filters: CatalogFilters) => {
   if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
     return SQL`word::text % ${filters.search}`
   }
-  return SQL`word_wearable::text % ${filters.search} OR word_emote::text % ${filters.search}`
+  return SQL`word::text % ${filters.search}`
 }
 
 export const getIsSoldOutWhere = () => {
