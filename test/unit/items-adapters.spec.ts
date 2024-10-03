@@ -102,6 +102,7 @@ describe('fromDBItemToItem', () => {
       updatedAt: dbItem.updated_at,
       reviewedAt: dbItem.reviewed_at,
       soldAt: dbItem.sold_at,
+      tradeId: dbItem.trade_id,
       data: {
         wearable: {
           bodyShapes: dbItem.body_shapes,
@@ -140,6 +141,7 @@ describe('fromDBItemToItem', () => {
       price: dbItem.price,
       available: dbItem.available,
       isOnSale: false,
+      tradeId: dbItem.trade_id,
       creator: dbItem.creator,
       beneficiary: dbItem.beneficiary,
       createdAt: dbItem.created_at,
