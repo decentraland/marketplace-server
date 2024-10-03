@@ -36,7 +36,9 @@ beforeEach(() => {
     rarity: Rarity.COMMON,
     loop: true,
     has_sound: true,
-    has_geometry: false
+    has_geometry: false,
+    trade_beneficiary: '0x123',
+    trade_expires_at: new Date()
   }
 })
 
@@ -97,12 +99,13 @@ describe('fromDBItemToItem', () => {
       available: dbItem.available,
       isOnSale: false,
       creator: dbItem.creator,
-      beneficiary: dbItem.beneficiary,
+      beneficiary: dbItem.trade_beneficiary,
       createdAt: dbItem.created_at,
       updatedAt: dbItem.updated_at,
       reviewedAt: dbItem.reviewed_at,
       soldAt: dbItem.sold_at,
       tradeId: dbItem.trade_id,
+      tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
       data: {
         wearable: {
           bodyShapes: dbItem.body_shapes,
@@ -143,11 +146,12 @@ describe('fromDBItemToItem', () => {
       isOnSale: false,
       tradeId: dbItem.trade_id,
       creator: dbItem.creator,
-      beneficiary: dbItem.beneficiary,
+      beneficiary: dbItem.trade_beneficiary,
       createdAt: dbItem.created_at,
       updatedAt: dbItem.updated_at,
       reviewedAt: dbItem.reviewed_at,
       soldAt: dbItem.sold_at,
+      tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
       data: {
         emote: {
           bodyShapes: dbItem.body_shapes,
