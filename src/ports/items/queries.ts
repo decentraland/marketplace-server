@@ -143,6 +143,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       item.reviewed_at,
       item.sold_at,
       item.urn,
+      item.network,
       item.search_is_store_minter,
       trades.id as trade_id,
 	    coalesce(wearable.name, emote.name) as name,
