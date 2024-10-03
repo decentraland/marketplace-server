@@ -57,6 +57,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     available: dbItem.available,
     isOnSale: !!(dbItem.search_is_store_item || dbItem.trade_id) && dbItem.available > 0,
     creator: dbItem.creator,
+    tradeId: dbItem.trade_id,
     beneficiary: dbItem.beneficiary,
     createdAt: dbItem.created_at,
     updatedAt: dbItem.updated_at,
