@@ -154,7 +154,9 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       emote.has_sound,
       emote.has_geometry,
       coalesce (wearable.description, emote.description) as description,
-      coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at
+      coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at,
+      trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
+      trades.expires_at as trade_expires_at
     FROM
       squid_marketplace.item item
     LEFT JOIN squid_marketplace.metadata metadata on

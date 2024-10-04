@@ -49,4 +49,6 @@ export type DBItem = {
   network: Network.MATIC | Network.ETHEREUM | SquidNetwork
   search_is_store_item: boolean
   trade_id?: string
+  trade_beneficiary?: string
+  trade_expires_at?: Date
 }

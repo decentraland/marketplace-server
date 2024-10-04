@@ -58,7 +58,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     isOnSale: !!(dbItem.search_is_store_item || dbItem.trade_id) && dbItem.available > 0,
     creator: dbItem.creator,
     tradeId: dbItem.trade_id,
-    beneficiary: dbItem.beneficiary,
+    beneficiary: dbItem.trade_beneficiary || dbItem.beneficiary,
     createdAt: dbItem.created_at,
     updatedAt: dbItem.updated_at,
     reviewedAt: dbItem.reviewed_at,
@@ -68,6 +68,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     chainId: getNetworkChainId(dbItem.network),
     urn: dbItem.urn,
     firstListedAt: dbItem.first_listed_at?.getTime(),
+    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     picks: { count: 0 }, // TODO: check this
     minPrice: '0', // TODO: check this
     minListingPrice: '0', // TODO: check this
