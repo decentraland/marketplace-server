@@ -84,7 +84,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
 
     // trigger notification for trade creation
     try {
-      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED)
+      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED, signer)
       if (event) {
         const messageId = await eventPublisher.publishMessage(event)
         logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
@@ -106,7 +106,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     return fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
   }
 
-  async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number): Promise<Event> {
+  async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number, caller: string): Promise<Event> {
     const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature))
 
     if (!result.rowCount) {
@@ -114,7 +114,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     }
 
     const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
-    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED)
+    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED, caller)
 
     if (!event) {
       throw new EventNotGeneratedError()
