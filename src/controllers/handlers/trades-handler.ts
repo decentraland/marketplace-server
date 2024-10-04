@@ -1,6 +1,6 @@
 import { Trade, TradeCreation, Event } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
-import { getNumberParameter } from '../../logic/http'
+import { getNumberParameter, getParameter } from '../../logic/http'
 import { DBTrade } from '../../ports/trades'
 import {
   DuplicatedBidError,
@@ -158,8 +158,9 @@ export async function getTradeAcceptedEventHandler(
     } = context
 
     const tiemstamp = getNumberParameter('timestamp', url.searchParams) || Date.now()
+    const caller = getParameter('caller', url.searchParams) || ''
 
-    const data = await trades.getTradeAcceptedEvent(hashedSignature, tiemstamp)
+    const data = await trades.getTradeAcceptedEvent(hashedSignature, tiemstamp, caller)
 
     return {
       status: StatusCode.OK,
