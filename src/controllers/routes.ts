@@ -71,7 +71,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/orders', getOrdersHandler)
 
-  router.get('/v1/items', getItemsHandler)
+  router.get(
+    '/v1/items',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      verifyMetadataContent: validateNotKernelSceneSigner,
+      expiration: FIVE_MINUTES
+    }),
+    getItemsHandler
+  )
 
   setupFavoritesRouter(router, { components })
 
