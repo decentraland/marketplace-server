@@ -38,7 +38,9 @@ beforeEach(() => {
     has_sound: true,
     has_geometry: false,
     trade_beneficiary: '0x123',
-    trade_expires_at: new Date()
+    trade_expires_at: new Date(),
+    trade_price: '123',
+    utility: 'some utility'
   }
 })
 
@@ -95,7 +97,7 @@ describe('fromDBItemToItem', () => {
       contractAddress: dbItem.contract_address,
       itemId: dbItem.item_id,
       rarity: dbItem.rarity,
-      price: dbItem.price,
+      price: dbItem.trade_price,
       available: dbItem.available,
       isOnSale: false,
       creator: dbItem.creator,
@@ -120,12 +122,7 @@ describe('fromDBItemToItem', () => {
       urn: dbItem.urn,
       firstListedAt: dbItem.first_listed_at?.getTime(),
       picks: { count: 0 },
-      minPrice: '0',
-      minListingPrice: '0',
-      maxListingPrice: '0',
-      listings: 0,
-      owners: 0,
-      utility: ''
+      utility: dbItem.utility
     })
   })
 
@@ -141,7 +138,7 @@ describe('fromDBItemToItem', () => {
       contractAddress: dbItem.contract_address,
       itemId: dbItem.item_id,
       rarity: dbItem.rarity,
-      price: dbItem.price,
+      price: dbItem.trade_price,
       available: dbItem.available,
       isOnSale: false,
       tradeId: dbItem.trade_id,
@@ -168,12 +165,7 @@ describe('fromDBItemToItem', () => {
       urn: dbItem.urn,
       firstListedAt: dbItem.first_listed_at?.getTime(),
       picks: { count: 0 },
-      minPrice: '0',
-      minListingPrice: '0',
-      maxListingPrice: '0',
-      listings: 0,
-      owners: 0,
-      utility: ''
+      utility: dbItem.utility
     })
   })
 })

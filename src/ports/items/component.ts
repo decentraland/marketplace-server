@@ -4,7 +4,7 @@ import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { QueryFailure } from '../favorites/lists/errors'
 import { ItemNotFoundError } from './errors'
-import { getItemById, getItemsQuery } from './queries'
+import { getItemById, getItemsQuery, getUtilityByItem } from './queries'
 import { DBItem, IItemsComponent } from './types'
 
 export function createItemsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IItemsComponent {
@@ -33,10 +33,16 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function getItems(filters: ItemFilters) {
-    const items = await database.query<DBItem>(getItemsQuery(filters))
+    const result = await database.query<DBItem>(getItemsQuery(filters))
+    const items: DBItem[] = result.rows
+
+    if (result.rowCount > 0 && filters.contractAddresses && filters.contractAddresses.length === 1 && filters.itemId) {
+      items[0].utility = (await database.query(getUtilityByItem(filters.contractAddresses[0], filters.itemId))).rows[0].utility
+    }
+
     return {
-      data: items.rows.map(fromDBItemToItem),
-      total: items.rowCount > 0 ? Number(items.rows[0].count) : 0
+      data: items.map(fromDBItemToItem),
+      total: result.rowCount > 0 ? Number(items[0].count) : 0
     }
   }
 

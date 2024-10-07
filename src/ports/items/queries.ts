@@ -157,7 +157,8 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       coalesce (wearable.description, emote.description) as description,
       coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at,
       trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
-      trades.expires_at as trade_expires_at
+      trades.expires_at as trade_expires_at,
+      trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
       squid_marketplace.item item
     LEFT JOIN squid_marketplace.metadata metadata on
@@ -178,33 +179,17 @@ export function getItemsQuery(filters: ItemFilters = {}) {
     .append(getItemsLimitAndOffsetStatement(filters))
 }
 
-export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
+export function getUtilityByItem(contractAddress: string, itemId: string) {
   return SQL`
-    select
-      item.id,
-      item.image,
-      item.uri,
-      coalesce(wearable.category, emote.category) as category,
-      item.blockchain_id as item_id,
-      item.collection_id as contract_address,
-      coalesce(wearable.rarity, emote.rarity) as rarity,
-      item.price,
-      item.available,
-      item.creator,
-      item.beneficiary,
-      item.created_at,
-      item.updated_at,
-      item.reviewed_at,
-      item.sold_at,
-      item.urn,
-	    coalesce(wearable.name, emote.name) as name
-    from
-      squid_marketplace.item item
-    left join squid_marketplace.metadata metadata on
-      item.metadata_id = metadata.id
-    left join squid_marketplace.emote emote on
-      metadata.emote_id = emote.id
-    left join squid_marketplace.wearable wearable on
-      metadata.wearable_id = wearable.id
-    where item.blockchain_id::text = ${itemId} AND item.collection_id = ${contractAddress};`
+    SELECT
+      utility
+    FROM
+      squid_marketplace.item
+    LEFT JOIN marketplace.mv_builder_server_items_utility ON item.id = mv_builder_server_items_utility.item_id
+    WHERE item.collection_id = ${contractAddress} AND blockchain_id = ${itemId}
+  `
+}
+
+export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
+  return getItemsQuery({ contractAddresses: [contractAddress], itemId })
 }
