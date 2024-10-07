@@ -241,6 +241,12 @@ export const getIsSoldOutWhere = () => {
 
 export const getIsOnSale = (filters: CatalogFilters) => {
   return filters.isOnSale
+    ? SQL`((search_is_store_minter = true AND available > 0) OR listings_count IS NOT NULL)`
+    : SQL`((search_is_store_minter = false OR available = 0) AND listings_count IS NULL)`
+}
+
+export const getIsOnSaleWithTrades = (filters: CatalogFilters) => {
+  return filters.isOnSale
     ? SQL`((search_is_store_minter = true AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
     : SQL`((search_is_store_minter = false OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
 }
@@ -320,13 +326,13 @@ export const getUrnsWhere = (filters: CatalogFilters) => {
   return SQL`items.urn = ANY(${filters.urns})`
 }
 
-export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
+export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
     filters.creator?.length ? getCreatorWhere(filters) : undefined,
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
-    filters.isOnSale !== undefined ? getIsOnSale(filters) : undefined,
+    filters.isOnSale !== undefined ? (isV2 ? getIsOnSaleWithTrades(filters) : getIsOnSale(filters)) : undefined,
     filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
     filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
     filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
@@ -373,6 +379,16 @@ const getOwnersJoin = () => {
 const MAX_NUMERIC_NUMBER = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
+    .append(` THEN LEAST(items.price, nfts_with_orders.min_price) 
+                ELSE nfts_with_orders.min_price 
+              END AS min_price
+            `)
+}
+
+const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
   /* 
     This has a workaround to remove the NULLs from the LEAST function, because it will pick NULL as the lowest value.
     To avoid this, we add the COALESCE with a very high number, so it will always pick the other value.
@@ -419,6 +435,16 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
     .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
           ELSE nfts_with_orders.max_price 
+          END AS max_price
+          `)
+}
+
+const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
+    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received)
+              ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received)
           END AS max_price
           `)
 }
@@ -571,7 +597,7 @@ const getTradesJoin = () => {
   `
 }
 
-export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
+export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
   const query = SQL``.append(getTradesCTE()).append(
     SQL`
             SELECT
@@ -620,12 +646,12 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
               nfts_with_orders.max_order_created_at as max_order_created_at,
               `
       )
-      .append(getMinPriceCase(filters))
+      .append(getMinPriceCaseWithTrades(filters))
       .append(
         `,
               `
       )
-      .append(getMaxPriceCase(filters))
+      .append(getMaxPriceCaseWithTrades(filters))
       .append(
         SQL`
             FROM `
@@ -668,7 +694,7 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
       )
       .append(getMetadataJoins())
       .append(getTradesJoin())
-      .append(getCollectionsQueryWhere(filters))
+      .append(getCollectionsQueryWhere(filters, true))
   )
 
   addQuerySort(query, filters)
@@ -691,5 +717,98 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
     .append(tagOrNameQuery).append(SQL`)) AS items_found
         ORDER BY word_similarity DESC`)
 
+  return query
+}
+
+export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
+  const query = SQL`
+            SELECT
+              COUNT(*) OVER() as total_rows,
+              items.id,
+              items.blockchain_id,
+              items.search_is_collection_approved,
+              to_json(
+                CASE WHEN (
+                  items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') THEN metadata_wearable 
+                  ELSE metadata_emote 
+                END
+              ) as metadata,
+              items.image, 
+              items.blockchain_id,
+              items.collection_id,
+              items.rarity,
+              items.item_type::text,
+              items.price,
+              items.available,
+              items.search_is_store_minter,
+              items.creator,
+              items.beneficiary,
+              items.created_at,
+              items.updated_at,
+              items.reviewed_at,
+              items.sold_at,
+              items.network,
+              items.first_listed_at,
+              items.urn,
+              nfts_with_orders.min_price AS min_listing_price,
+              nfts_with_orders.max_price AS max_listing_price, 
+              COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+    .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
+    .append(
+      `
+              nfts_with_orders.max_order_created_at as max_order_created_at,
+              `
+    )
+    .append(getMinPriceCase(filters))
+    .append(
+      `,
+              `
+    )
+    .append(getMaxPriceCase(filters))
+    .append(
+      SQL`
+            FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(SQL`.item AS items`)
+    )
+    .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
+    .append(
+      SQL`
+            LEFT JOIN (
+              SELECT 
+                orders.item_id, 
+                COUNT(orders.id) AS listings_count,
+                MIN(orders.price) AS min_price,
+                MAX(orders.price) AS max_price,
+                MAX(orders.created_at) AS max_order_created_at
+              FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS orders 
+            WHERE 
+                orders.status = 'open' 
+                AND orders.expires_at < `
+        )
+        .append(MAX_ORDER_TIMESTAMP)
+    )
+    .append(
+      ` 
+                AND ((LENGTH(orders.expires_at::text) = 13 AND TO_TIMESTAMP(orders.expires_at / 1000.0) > NOW())
+                      OR
+                    (LENGTH(orders.expires_at::text) = 10 AND TO_TIMESTAMP(orders.expires_at) > NOW()))
+                `
+    )
+    .append(getOrderRangePriceWhere(filters))
+    .append(
+      `
+                GROUP BY orders.item_id
+              ) AS nfts_with_orders ON nfts_with_orders.item_id = items.id 
+              `
+    )
+    .append(getMetadataJoins())
+    .append(getCollectionsQueryWhere(filters))
+
+  addQuerySort(query, filters)
+  addQueryPagination(query, filters)
   return query
 }
