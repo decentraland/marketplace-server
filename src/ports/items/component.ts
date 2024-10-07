@@ -41,7 +41,7 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
     }
 
     return {
-      data: result.rows.map(fromDBItemToItem),
+      data: items.map(fromDBItemToItem),
       total: result.rowCount > 0 ? Number(items[0].count) : 0
     }
   }
