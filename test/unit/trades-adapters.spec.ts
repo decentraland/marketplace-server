@@ -12,12 +12,14 @@ import {
   Rarity,
   ERC721TradeAsset
 } from '@dcl/schemas'
+import { getCategoryFromDBItem } from '../../src/adapters/items'
 import {
   fromDBTradeAssetWithValueToTradeAsset,
   fromDBTradeAssetWithValueToTradeAssetWithBeneficiary,
   fromDbTradeAndDBTradeAssetWithValueListToTrade,
   fromTradeAndAssetsToEventNotification
 } from '../../src/adapters/trades/trades'
+import { DBItem } from '../../src/ports/items'
 import { DBNFT } from '../../src/ports/nfts/types'
 import {
   DBTrade,
@@ -307,7 +309,7 @@ describe('when adapting a trade and its assets to a notification event', () => {
     })
     describe('when the trade is created', () => {
       it('should return the correct event notification', () => {
-        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.CREATED)
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.CREATED, '0x123')
         expect(result).toEqual({
           type: Events.Type.MARKETPLACE,
           subType: Events.SubType.Marketplace.BID_RECEIVED,
@@ -332,7 +334,7 @@ describe('when adapting a trade and its assets to a notification event', () => {
 
     describe('when the trade is accepted', () => {
       it('should return the correct event notification', () => {
-        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.ACCEPTED)
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.ACCEPTED, '0x123')
         expect(result).toEqual({
           type: Events.Type.BLOCKCHAIN,
           subType: Events.SubType.Blockchain.BID_ACCEPTED,
@@ -356,15 +358,113 @@ describe('when adapting a trade and its assets to a notification event', () => {
     })
   })
 
-  describe('when a trade is not a bid', () => {
+  describe('when a trade is a public nft order', () => {
+    let asset: DBNFT
+    beforeEach(() => {
+      trade.type = TradeType.PUBLIC_NFT_ORDER
+      asset = {
+        image: 'image.png',
+        contract_address: 'contract-address',
+        token_id: (trade.received[0] as ERC721TradeAsset).tokenId,
+        owner: '0x123',
+        category: NFTCategory.WEARABLE,
+        rarity: Rarity.COMMON,
+        name: 'asset name'
+      } as DBNFT
+    })
+
+    describe('when the trade is created', () => {
+      it('should not send any notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.CREATED, '0x123')
+        expect(result).toBeNull()
+      })
+    })
+
+    describe('when the trade is accepted', () => {
+      it('should return the correct event notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.ACCEPTED, '0x123')
+        expect(result).toEqual({
+          type: Events.Type.BLOCKCHAIN,
+          subType: Events.SubType.Blockchain.ITEM_SOLD,
+          key: `item-sold-${trade.id}`,
+          timestamp: expect.any(Number),
+          metadata: {
+            address: trade.signer,
+            image: asset.image,
+            seller: asset.owner,
+            buyer: '0x123',
+            category: asset.category,
+            rarity: asset.rarity,
+            link: `${marketplaceBaseUrl}/contracts/${asset.contract_address}/tokens/${asset.token_id}`,
+            nftName: asset.name,
+            title: 'Item Sold',
+            description: `Someone just bought your ${asset.name}`,
+            network: trade.network,
+            tokenId: asset.token_id
+          }
+        })
+      })
+    })
+  })
+
+  describe('when a trade is a public item order', () => {
+    let asset: DBItem
+    beforeEach(() => {
+      trade.type = TradeType.PUBLIC_ITEM_ORDER
+      asset = {
+        image: 'image.png',
+        contract_address: 'contract-address',
+        item_id: (trade.received[0] as ERC721TradeAsset).tokenId,
+        creator: '0x123',
+        rarity: Rarity.COMMON,
+        name: 'asset name'
+      } as DBItem
+    })
+
+    describe('when the trade is created', () => {
+      it('should not send any notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.CREATED, '0x123')
+        expect(result).toBeNull()
+      })
+    })
+
+    describe('when the trade is accepted', () => {
+      it('should return the correct event notification', () => {
+        const result = fromTradeAndAssetsToEventNotification(trade, [asset], TradeEvent.ACCEPTED, '0x123')
+        expect(result).toEqual({
+          type: Events.Type.BLOCKCHAIN,
+          subType: Events.SubType.Blockchain.ITEM_SOLD,
+          key: `item-sold-${trade.id}`,
+          timestamp: expect.any(Number),
+          metadata: {
+            address: trade.signer,
+            image: asset.image,
+            seller: asset.creator,
+            buyer: '0x123',
+            category: getCategoryFromDBItem(asset),
+            rarity: asset.rarity,
+            link: `${marketplaceBaseUrl}/contracts/${asset.contract_address}/items/${asset.item_id}`,
+            nftName: asset.name,
+            title: 'Item Sold',
+            description: `Someone just bought your ${asset.name}`,
+            network: trade.network,
+            tokenId: asset.item_id
+          }
+        })
+      })
+    })
+  })
+
+  describe('when a trade is not a valid type', () => {
     beforeEach(() => {
       trade = {
         ...trade,
-        type: TradeType.PUBLIC_NFT_ORDER
+        type: 'invalid' as TradeType
       }
     })
+
     it('should return null', () => {
-      expect(fromTradeAndAssetsToEventNotification(trade, [], TradeEvent.CREATED)).toBeNull()
+      expect(fromTradeAndAssetsToEventNotification(trade, [], TradeEvent.CREATED, '0x123')).toBeNull()
     })
   })
 })

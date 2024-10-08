@@ -120,7 +120,7 @@ describe('when calling getNotificationEventForTrade function', () => {
           name: 'a name'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbNFT] })
-        response = await getNotificationEventForTrade(nftBid, mockPgComponent, TradeEvent.CREATED)
+        response = await getNotificationEventForTrade(nftBid, mockPgComponent, TradeEvent.CREATED, '0x123')
       })
 
       it('should fetch asset from database', () => {
@@ -192,10 +192,11 @@ describe('when calling getNotificationEventForTrade function', () => {
           creator: '0x123',
           price: '123',
           reviewed_at: Date.now(),
-          uri: 'uri'
+          uri: 'uri',
+          trade_price: '123'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbItem] })
-        response = await getNotificationEventForTrade(dbBid, mockPgComponent, TradeEvent.CREATED)
+        response = await getNotificationEventForTrade(dbBid, mockPgComponent, TradeEvent.CREATED, '0x123')
       })
 
       it('should fetch asset from database', () => {

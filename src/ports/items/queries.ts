@@ -87,7 +87,7 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     filters.contractAddresses && filters.contractAddresses.length ? SQL` item.collection_id = ANY (${filters.contractAddresses}) ` : null
   const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item.blockchain_id = ${filters.itemId} ` : null
   const FILTER_BY_ID = filters.ids && filters.ids.length ? SQL` item.id = ANY (${filters.ids}) ` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL` nft.network = ANY (${getDBNetworks(filters.network)}) ` : null
+  const FILTER_BY_NETWORK = filters.network ? SQL` item.network = ANY (${getDBNetworks(filters.network)}) ` : null
   const FILTER_BY_MIN_PRICE = filters.minPrice
     ? SQL` ((item.search_is_store_minter = true AND item.price >= ${filters.minPrice}) OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${filters.minPrice}) `
     : null
@@ -143,6 +143,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       item.reviewed_at,
       item.sold_at,
       item.urn,
+      item.network,
       item.search_is_store_minter,
       trades.id as trade_id,
 	    coalesce(wearable.name, emote.name) as name,
@@ -154,7 +155,10 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       emote.has_sound,
       emote.has_geometry,
       coalesce (wearable.description, emote.description) as description,
-      coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at
+      coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at,
+      trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
+      trades.expires_at as trade_expires_at,
+      trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
       squid_marketplace.item item
     LEFT JOIN squid_marketplace.metadata metadata on
@@ -167,7 +171,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
     .append(
       ` LEFT JOIN (${getTradesForTypeQuery(
         TradeType.PUBLIC_ITEM_ORDER
-      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
+      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
         ListingStatus.OPEN
       }' `
     )
@@ -175,33 +179,17 @@ export function getItemsQuery(filters: ItemFilters = {}) {
     .append(getItemsLimitAndOffsetStatement(filters))
 }
 
-export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
+export function getUtilityByItem(contractAddress: string, itemId: string) {
   return SQL`
-    select
-      item.id,
-      item.image,
-      item.uri,
-      coalesce(wearable.category, emote.category) as category,
-      item.blockchain_id as item_id,
-      item.collection_id as contract_address,
-      coalesce(wearable.rarity, emote.rarity) as rarity,
-      item.price,
-      item.available,
-      item.creator,
-      item.beneficiary,
-      item.created_at,
-      item.updated_at,
-      item.reviewed_at,
-      item.sold_at,
-      item.urn,
-	    coalesce(wearable.name, emote.name) as name
-    from
-      squid_marketplace.item item
-    left join squid_marketplace.metadata metadata on
-      item.metadata_id = metadata.id
-    left join squid_marketplace.emote emote on
-      metadata.emote_id = emote.id
-    left join squid_marketplace.wearable wearable on
-      metadata.wearable_id = wearable.id
-    where item.blockchain_id::text = ${itemId} AND item.collection_id = ${contractAddress};`
+    SELECT
+      utility
+    FROM
+      squid_marketplace.item
+    LEFT JOIN marketplace.mv_builder_server_items_utility ON item.id = mv_builder_server_items_utility.item_id
+    WHERE item.collection_id = ${contractAddress} AND blockchain_id = ${itemId}
+  `
+}
+
+export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
+  return getItemsQuery({ contractAddresses: [contractAddress], itemId })
 }

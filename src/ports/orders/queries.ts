@@ -52,6 +52,7 @@ export function getTradesOrdersQuery(): string {
       assets -> 'sent' ->> 'item_id' as item_id,
       (assets -> 'sent' ->> 'issued_id')::numeric(78) as issued_id,
       assets -> 'sent' ->> 'nft_id' as nft_id,
+      assets -> 'sent' ->> 'nft_name' as nft_name,
       assets -> 'sent' ->> 'owner' as owner,
       status,
       EXTRACT(EPOCH FROM created_at) as created_at,
@@ -81,7 +82,8 @@ export function getLegacyOrdersQuery(): string {
       ord.nft_id,
       ord.network,
       ord.item_id,
-      nft.issued_id
+      nft.issued_id,
+      nft.name as nft_name
     FROM squid_marketplace."order" ord
     JOIN squid_marketplace."nft" nft ON ord.nft_id = nft.id`
 }

@@ -86,7 +86,7 @@ test('trades controller', function ({ components }) {
         beforeEach(async () => {
           const { localFetch } = components
           const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-            intent: 'dcl:marketplace:create-trade',
+            intent: 'dcl:create-trade',
             signer: 'dcl:marketplace'
           })
           signer = signedRequest.identity.realAccount.address.toLowerCase()
@@ -178,7 +178,7 @@ test('trades controller', function ({ components }) {
         beforeEach(async () => {
           const { localFetch } = components
           const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-            intent: 'dcl:marketplace:create-trade',
+            intent: 'dcl:create-trade',
             signer: 'dcl:marketplace'
           })
           signer = signedRequest.identity.realAccount.address.toLowerCase()
@@ -254,7 +254,7 @@ test('trades controller', function ({ components }) {
       beforeEach(async () => {
         const { localFetch } = components
         const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-          intent: 'dcl:marketplace:create-trade',
+          intent: 'dcl:create-trade',
           signer: 'dcl:marketplace'
         })
         signer = signedRequest.identity.realAccount.address.toLowerCase()
@@ -297,7 +297,7 @@ test('trades controller', function ({ components }) {
     beforeEach(async () => {
       const { localFetch } = components
       const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-        intent: 'dcl:marketplace:create-trade',
+        intent: 'dcl:create-trade',
         signer: 'dcl:marketplace'
       })
       trade = {

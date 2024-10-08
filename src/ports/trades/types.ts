@@ -4,7 +4,7 @@ export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
-  getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number): Promise<Event>
+  getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>
 }
 
 export enum TradeEvent {

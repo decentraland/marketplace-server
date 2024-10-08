@@ -118,7 +118,8 @@ export function getTradesForTypeQuery(type: TradeType) {
         'owner', assets_with_values.owner,
         'category', assets_with_values.category,
         'nft_id', assets_with_values.nft_id,
-        'issued_id', assets_with_values.issued_id
+        'issued_id', assets_with_values.issued_id,
+        'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
         WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
@@ -148,7 +149,8 @@ export function getTradesForTypeQuery(type: TradeType) {
         account.address as owner,
         nft.category,
         nft.id as nft_id,
-        nft.issued_id as issued_id
+        nft.issued_id as issued_id,
+        nft.name as nft_name
       FROM marketplace.trade_assets as ta 
       LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
       LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id

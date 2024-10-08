@@ -111,7 +111,12 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
   }
 }
 
-export async function getNotificationEventForTrade(trade: Trade, pg: IPgComponent, tradeEvent: TradeEvent): Promise<Event | null> {
+export async function getNotificationEventForTrade(
+  trade: Trade,
+  pg: IPgComponent,
+  tradeEvent: TradeEvent,
+  caller: string
+): Promise<Event | null> {
   const assets: (DBNFT | DBItem | undefined)[] = await Promise.all(
     [...trade.sent, ...trade.received].map((asset: TradeAsset) => {
       if (asset.assetType === TradeAssetType.ERC721) {
@@ -124,5 +129,5 @@ export async function getNotificationEventForTrade(trade: Trade, pg: IPgComponen
     })
   )
 
-  return fromTradeAndAssetsToEventNotification(trade, assets, tradeEvent)
+  return fromTradeAndAssetsToEventNotification(trade, assets, tradeEvent, caller)
 }

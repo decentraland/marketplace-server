@@ -1,4 +1,5 @@
 import { EmoteCategory, Item, NFTCategory, WearableCategory } from '@dcl/schemas'
+import { isAddressZero } from '../../logic/address'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { DBItem, ItemType } from '../../ports/items'
 
@@ -44,6 +45,7 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
 }
 
 export function fromDBItemToItem(dbItem: DBItem): Item {
+  const beneficiary = dbItem.trade_beneficiary || dbItem.beneficiary
   return {
     id: dbItem.id,
     name: dbItem.name,
@@ -53,11 +55,12 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     contractAddress: dbItem.contract_address,
     itemId: dbItem.item_id,
     rarity: dbItem.rarity,
-    price: dbItem.price,
+    price: dbItem.trade_id ? dbItem.trade_price : dbItem.price,
     available: dbItem.available,
     isOnSale: !!(dbItem.search_is_store_item || dbItem.trade_id) && dbItem.available > 0,
     creator: dbItem.creator,
-    beneficiary: dbItem.beneficiary,
+    tradeId: dbItem.trade_id,
+    beneficiary: isAddressZero(beneficiary) ? null : beneficiary,
     createdAt: dbItem.created_at,
     updatedAt: dbItem.updated_at,
     reviewedAt: dbItem.reviewed_at,
@@ -67,12 +70,8 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     chainId: getNetworkChainId(dbItem.network),
     urn: dbItem.urn,
     firstListedAt: dbItem.first_listed_at?.getTime(),
+    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     picks: { count: 0 }, // TODO: check this
-    minPrice: '0', // TODO: check this
-    minListingPrice: '0', // TODO: check this
-    maxListingPrice: '0', // TODO: check this
-    listings: 0, // TODO: check this
-    owners: 0, // TODO: check this
-    utility: '' // TODO: check this
+    utility: dbItem.utility
   }
 }

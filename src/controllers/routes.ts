@@ -57,7 +57,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.post(
     '/v1/trades',
     authorizationMiddleware.wellKnownComponents({
-      verifyMetadataContent: validateAuthMetadata('dcl:marketplace', 'dcl:marketplace:create-trade')
+      verifyMetadataContent: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], 'dcl:create-trade')
     }),
     components.schemaValidator.withSchemaValidatorMiddleware(TradeCreationSchema),
     addTradeHandler
@@ -80,7 +80,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/orders', getOrdersHandler)
 
-  router.get('/v1/items', getItemsHandler)
+  router.get(
+    '/v1/items',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      verifyMetadataContent: validateNotKernelSceneSigner,
+      expiration: FIVE_MINUTES
+    }),
+    getItemsHandler
+  )
 
   setupFavoritesRouter(router, { components })
 
