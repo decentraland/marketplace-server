@@ -400,32 +400,18 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
     .append(
       ` 
                   THEN LEAST(
-                    COALESCE(items.price, `
-    )
-    .append(MAX_NUMERIC_NUMBER)
-    .append(
-      SQL`), 
-                    COALESCE(nfts_with_orders.min_price, `
-    )
-    .append(MAX_NUMERIC_NUMBER)
-    .append(
-      SQL`), 
-                    COALESCE(offchain_orders.min_order_amount_received, `
-        .append(MAX_NUMERIC_NUMBER)
-        .append(
-          SQL`)
-				          ) 
+                    COALESCE(items.price, ${MAX_NUMERIC_NUMBER}), 
+                    COALESCE(nfts_with_orders.min_price, ${MAX_NUMERIC_NUMBER}), 
+                    COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                    COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
+                  )
                 ELSE LEAST(
-                  COALESCE(nfts_with_orders.min_price, `
-            .append(MAX_NUMERIC_NUMBER)
-            .append(
-              SQL`), 
-                  COALESCE(offchain_orders.min_order_amount_received, `.append(MAX_NUMERIC_NUMBER).append(SQL`)
+                  COALESCE(nfts_with_orders.min_price, ${MAX_NUMERIC_NUMBER}), 
+                  COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                  COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
                 )
               END AS min_price
-            `)
-            )
-        )
+            `
     )
 }
 
@@ -443,8 +429,8 @@ const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
   return SQL`CASE
                 WHEN items.available > 0 AND items.search_is_store_minter = true 
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
-    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received)
-              ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received)
+    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
+              ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
           END AS max_price
           `)
 }
@@ -508,6 +494,7 @@ const getTradesCTE = () => {
         SELECT 
             t.id,
             t.created_at,
+            t.type,
             -- Select the contract address from the row where direction is 'sent'
             MAX(CASE WHEN assets_with_values.direction = 'sent' THEN assets_with_values.contract_address END) AS contract_address_sent,
             -- MAX(assets_with_values.amount) AS amount_received,
@@ -570,7 +557,7 @@ const getTradesCTE = () => {
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         -- WHERE (t.type = '${TradeType.PUBLIC_ITEM_ORDER}' AND assets_with_values.available > 0 ) or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
-        GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+        GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
     )       
   `
 }
@@ -581,14 +568,24 @@ const getTradesJoin = () => {
           (
             SELECT 
               COUNT(id),
+              COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
               contract_address_sent,
               -- Add both MIN and MAX for order_amount_received
-              MIN(amount_received) AS min_order_amount_received,
-              MAX(amount_received) AS max_order_amount_received, 
+              MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
+              MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
               -- Item amount is the minimum value for public_item_order
               MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
               assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
               MAX(created_at) AS max_created_at,
+              -- Subquery to get the min_item_created_at from all statuses
+              (
+                SELECT 
+                  MIN(created_at)     
+                  FROM unified_trades ut2
+                WHERE ut2.contract_address_sent = unified_trades.contract_address_sent AND ut2.type = 'public_item_order'
+              ) AS min_item_created_at,
+              MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
+              MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
           FROM unified_trades
             WHERE status = 'open'
@@ -626,13 +623,21 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               items.reviewed_at,
               items.sold_at,
               items.network,
-              GREATEST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at))) as first_listed_at,
+              offchain_orders.open_item_trade_id,
+              offchain_orders.open_item_trade_price,
+              LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,
               items.urn,
-              LEAST(offchain_orders.min_order_amount_received, nfts_with_orders.min_price) AS min_listing_price,
+              CASE
+                WHEN offchain_orders.min_order_amount_received IS NULL AND nfts_with_orders.min_price IS NULL THEN NULL
+                ELSE LEAST(
+                  COALESCE(offchain_orders.min_order_amount_received, nfts_with_orders.min_price),
+                  COALESCE(nfts_with_orders.min_price, offchain_orders.min_order_amount_received)
+                )
+              END AS min_listing_price,
               nfts_with_orders.min_price AS min_onchain_price,
               GREATEST(offchain_orders.max_order_amount_received, nfts_with_orders.max_price) AS max_listing_price,
               nfts_with_orders.max_price AS max_onchain_price,
-              COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.count, 0) AS listings_count,
+              COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0) AS listings_count,
               COALESCE(offchain_orders.count, 0) AS offchain_listings_count,
               COALESCE(nfts_with_orders.orders_listings_count,0) as onchain_listings_count,
               GREATEST(

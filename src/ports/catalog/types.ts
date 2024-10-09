@@ -22,6 +22,8 @@ export type CollectionsItemDBResult = {
   first_listed_at: string
   min_listing_price: string | null
   max_listing_price: string | null
+  open_item_trade_id: string | null
+  open_item_trade_price: string | null
   listings_count: number | null
   owners_count: number | null
   min_price: string
