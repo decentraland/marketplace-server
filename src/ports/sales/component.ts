@@ -8,9 +8,7 @@ export function createSalesComponents(components: Pick<AppComponents, 'dappsData
   const { dappsDatabase: database } = components
 
   async function getSales(filters: SaleFilters) {
-    console.log(getSalesQuery(filters).text)
     const sales = await database.query<DBSale>(getSalesQuery(filters))
-    console.log(getSalesQuery(filters).text)
     return {
       data: sales.rows.map(fromDBSaleToSale),
       total: sales.rowCount > 0 ? Number(sales.rows[0].count) : 0
