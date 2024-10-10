@@ -82,7 +82,6 @@ function getTradeSalesQuery(): string {
     SELECT
       trade_status.id as id,
       CASE
-        WHEN trade.type = '${TradeType.PUBLIC_ITEM_ORDER}' THEN '${SaleType.MINT}'
         WHEN trade.type = '${TradeType.PUBLIC_NFT_ORDER}' THEN '${SaleType.ORDER}'
         ELSE '${SaleType.BID}' END as type,
       trade_status.received_beneficiary as seller,
@@ -129,7 +128,7 @@ function getTradeSalesQuery(): string {
       LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
       LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
     ) as assets_with_values ON trade.id = assets_with_values.trade_id    
-    WHERE trade_status.action = 'executed'
+    WHERE trade_status.action = 'executed' AND trade.type != '${TradeType.PUBLIC_ITEM_ORDER}'
     GROUP BY trade_status.id, trade_status.timestamp, trade_status.network, trade_status.tx_hash, trade_status.sent_beneficiary, trade_status.received_beneficiary, trade.type
 
   `
