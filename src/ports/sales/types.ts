@@ -20,7 +20,7 @@ export type DBSale = {
   token_id: string
   contract_address: string
   price: string
-  timestamp: number
+  timestamp: string
   tx_hash: string
   network: SquidNetwork | Network.MATIC | Network.ETHEREUM
   category: NFTCategory
