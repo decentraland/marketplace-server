@@ -12,7 +12,7 @@ export function fromDBSaleToSale(dbSale: DBSale): Sale {
     network: getNetwork(dbSale.network),
     price: dbSale.price,
     seller: dbSale.seller,
-    timestamp: dbSale.timestamp,
+    timestamp: Number(dbSale.timestamp),
     tokenId: dbSale.token_id,
     txHash: dbSale.tx_hash,
     type: dbSale.type
