@@ -86,7 +86,7 @@ function getTradeSalesQuery(): string {
         ELSE '${SaleType.BID}' END as type,
       trade_status.received_beneficiary as seller,
       trade_status.sent_beneficiary as buyer,
-      trade_status.timestamp,
+      FLOOR(trade_status.timestamp/1000) as timestamp,
       trade_status.network,
       trade_status.tx_hash,
       (array_agg(assets_with_values.amount) FILTER (WHERE assets_with_values.asset_type = '${TradeAssetType.ERC20}'))[1] as price,
