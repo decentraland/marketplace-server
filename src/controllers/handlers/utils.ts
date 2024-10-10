@@ -18,6 +18,7 @@ import {
   SaleType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
+import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
@@ -128,5 +129,30 @@ export const getSalesParams = (params: Params): SaleFilters => {
     minPrice: params.getString('minPrice'),
     maxPrice: params.getString('maxPrice'),
     network: params.getValue<Network>('network', Network)
+  }
+}
+
+export const getPricesParams = (params: Params): PriceFilters => {
+  return {
+    category: params.getString('category') as PriceFilterCategory,
+    assetType: params.getString('assetType') as AssetType,
+    isWearableHead: params.getBoolean('isWearableHead'),
+    isWearableAccessory: params.getBoolean('isWearableAccessory'),
+    isWearableSmart: params.getBoolean('isWearableSmart'),
+    wearableCategory: params.getValue<WearableCategory>('wearableCategory', WearableCategory),
+    wearableGenders: params.getList<GenderFilterOption>('wearableGender', GenderFilterOption),
+    emoteCategory: params.getValue<EmoteCategory>('emoteCategory', EmoteCategory),
+    emoteGenders: params.getList<GenderFilterOption>('emoteGender', GenderFilterOption),
+    emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
+    contractAddresses: params.getAddressList('contractAddress'),
+    itemRarities: params.getList<Rarity>('itemRarity', Rarity),
+    network: params.getValue<Network>('network', Network),
+    adjacentToRoad: params.getBoolean('adjacentToRoad'),
+    minDistanceToPlaza: params.getNumber('minDistanceToPlaza'),
+    maxDistanceToPlaza: params.getNumber('maxDistanceToPlaza'),
+    maxEstateSize: params.getNumber('maxEstateSize'),
+    minEstateSize: params.getNumber('minEstateSize'),
+    emoteHasSound: params.getBoolean('emoteHasSound'),
+    emoteHasGeometry: params.getBoolean('emoteHasGeometry')
   }
 }
