@@ -11,6 +11,7 @@ import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
 import { pingHandler } from './handlers/ping-handler'
+import { getSalesHandler } from './handlers/sales-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
@@ -80,6 +81,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     getItemsHandler
   )
+
+  router.get('/v1/sales', getSalesHandler)
 
   setupFavoritesRouter(router, { components })
 

@@ -12,7 +12,10 @@ import {
   RentalStatus,
   WearableCategory,
   OrderSortBy,
-  ListingStatus
+  ListingStatus,
+  SaleFilters,
+  SaleSortBy,
+  SaleType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 
@@ -105,5 +108,25 @@ export const getOrdersParams = (params: Params): OrderFilters => {
     network: params.getValue<Network>('network', Network),
     itemId: params.getValue('itemId'),
     nftName: params.getValue('nftName')
+  }
+}
+
+export const getSalesParams = (params: Params): SaleFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<SaleSortBy>('sortBy', SaleSortBy),
+    type: params.getValue<SaleType>('type', SaleType),
+    categories: params.getList<NFTCategory>('category', NFTCategory),
+    seller: params.getAddress('seller') || undefined,
+    buyer: params.getAddress('buyer') || undefined,
+    contractAddress: params.getAddress('contractAddress') || undefined,
+    tokenId: params.getString('tokenId'),
+    itemId: params.getString('itemId'),
+    from: params.getNumber('from'),
+    to: params.getNumber('to'),
+    minPrice: params.getString('minPrice'),
+    maxPrice: params.getString('maxPrice'),
+    network: params.getValue<Network>('network', Network)
   }
 }
