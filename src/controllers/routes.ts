@@ -33,6 +33,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     }),
     createCatalogHandler(components)
   )
+  router.get(
+    '/v2/catalog',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateNotKernelSceneSigner
+    }),
+    createCatalogHandler(components)
+  )
   router.post(
     '/v1/wert/sign',
     authorizationMiddleware.wellKnownComponents({

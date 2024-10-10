@@ -14,6 +14,7 @@ export function createCatalogHandler(
 
   return async context => {
     const params = new Params(context.url.searchParams)
+    const isV2 = context.url.pathname.includes('/v2/')
     const annonId = context.request.headers.get('X-Anonymous-Id')
     const searchId = context.request.headers.get('X-Search-Uuid')
 
@@ -39,7 +40,7 @@ export function createCatalogHandler(
           pickedBy,
           ...getItemsParams(params)
         },
-        { searchId: searchId || '', anonId: annonId || '' }
+        { searchId: searchId || '', anonId: annonId || '', isV2 }
       )
     })
   }

@@ -22,6 +22,8 @@ export type CollectionsItemDBResult = {
   first_listed_at: string
   min_listing_price: string | null
   max_listing_price: string | null
+  open_item_trade_id: string | null
+  open_item_trade_price: string | null
   listings_count: number | null
   owners_count: number | null
   min_price: string
@@ -50,6 +52,9 @@ export type CatalogQueryFilters = Omit<CatalogFilters, 'sortBy' | 'sortDirection
 export type CatalogOptions = CatalogFilters & { pickedBy?: string }
 
 export interface ICatalogComponent {
-  fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }): Promise<{ data: Item[]; total: number }>
+  fetch(
+    filters: CatalogOptions,
+    { searchId, anonId }: { searchId: string; anonId: string; isV2?: boolean }
+  ): Promise<{ data: Item[]; total: number }>
   updateBuilderServerItemsView(): Promise<void>
 }
