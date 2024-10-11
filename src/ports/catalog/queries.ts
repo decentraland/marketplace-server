@@ -6,11 +6,15 @@ import {
   EmoteCategory,
   EmotePlayMode,
   GenderFilterOption,
+  ListingStatus,
   NFTCategory,
   Network,
+  TradeType,
   WearableCategory
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
@@ -241,6 +245,12 @@ export const getIsOnSale = (filters: CatalogFilters) => {
     : SQL`((search_is_store_minter = false OR available = 0) AND listings_count IS NULL)`
 }
 
+export const getIsOnSaleWithTrades = (filters: CatalogFilters) => {
+  return filters.isOnSale
+    ? SQL`((search_is_store_minter = true AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
+    : SQL`((search_is_store_minter = false OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
+}
+
 export const getIsWearableHeadAccessoryWhere = () => {
   return SQL`items.search_is_wearable_head = true`
 }
@@ -316,13 +326,13 @@ export const getUrnsWhere = (filters: CatalogFilters) => {
   return SQL`items.urn = ANY(${filters.urns})`
 }
 
-export const getCollectionsQueryWhere = (filters: CatalogFilters) => {
+export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
     filters.creator?.length ? getCreatorWhere(filters) : undefined,
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
-    filters.isOnSale !== undefined ? getIsOnSale(filters) : undefined,
+    filters.isOnSale !== undefined ? (isV2 ? getIsOnSaleWithTrades(filters) : getIsOnSale(filters)) : undefined,
     filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
     filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
     filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
@@ -366,6 +376,8 @@ const getOwnersJoin = () => {
     .append('.nft as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id')
 }
 
+const MAX_NUMERIC_NUMBER = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
   return SQL`CASE
                 WHEN items.available > 0 AND items.search_is_store_minter = true 
@@ -376,12 +388,49 @@ const getMinPriceCase = (filters: CatalogQueryFilters) => {
             `)
 }
 
+const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
+  /* 
+    This has a workaround to remove the NULLs from the LEAST function, because it will pick NULL as the lowest value.
+    To avoid this, we add the COALESCE with a very high number, so it will always pick the other value.
+  */
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `
+    .append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
+    .append(
+      ` 
+                  THEN LEAST(
+                    COALESCE(items.price, ${MAX_NUMERIC_NUMBER}), 
+                    COALESCE(nfts_with_orders.min_price, ${MAX_NUMERIC_NUMBER}), 
+                    COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                    COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
+                  )
+                ELSE LEAST(
+                  COALESCE(nfts_with_orders.min_price, ${MAX_NUMERIC_NUMBER}), 
+                  COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                  COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
+                )
+              END AS min_price
+            `
+    )
+}
+
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
   return SQL`CASE
                 WHEN items.available > 0 AND items.search_is_store_minter = true 
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
     .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
           ELSE nfts_with_orders.max_price 
+          END AS max_price
+          `)
+}
+
+const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
+  return SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
+    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
+              ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
           END AS max_price
           `)
 }
@@ -435,6 +484,244 @@ LEFT JOIN (
             )
         )
     )
+}
+
+const getTradesCTE = () => {
+  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
+  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  return `
+      WITH unified_trades AS (
+        SELECT 
+            t.id,
+            t.created_at,
+            t.type,
+            -- Select the contract address from the row where direction is 'sent'
+            MAX(CASE WHEN assets_with_values.direction = 'sent' THEN assets_with_values.contract_address END) AS contract_address_sent,
+            -- MAX(assets_with_values.amount) AS amount_received,
+            MAX(CASE WHEN assets_with_values.direction = 'received' THEN assets_with_values.amount END) AS amount_received,
+            MAX(CASE WHEN assets_with_values.direction = 'sent' THEN assets_with_values.available END) AS available,
+            json_object_agg(
+              assets_with_values.direction, 
+              json_build_object(
+                'contract_address', assets_with_values.contract_address,
+                'direction', assets_with_values.direction,
+                'beneficiary', assets_with_values.beneficiary,
+                'extra', assets_with_values.extra,
+                'token_id', assets_with_values.token_id,
+                'item_id', assets_with_values.item_id,
+                'amount', assets_with_values.amount,
+                'creator', assets_with_values.creator
+              )
+            ) AS assets,
+            CASE
+              WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
+              WHEN t.expires_at < now()::timestamptz(3) THEN '${ListingStatus.CANCELLED}'
+              WHEN (
+                (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
+                OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+              ) THEN '${ListingStatus.CANCELLED}'
+              WHEN (
+                (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
+                OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+              ) THEN '${ListingStatus.CANCELLED}'
+              WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
+            ELSE '${ListingStatus.OPEN}'
+            END AS status
+        FROM marketplace.trades AS t
+        JOIN (
+          SELECT 
+              ta.id, 
+              ta.trade_id,
+              ta.contract_address,
+              ta.direction,
+              ta.beneficiary,
+              ta.extra,
+              erc721_asset.token_id,
+              erc20_asset.amount,
+              item.creator,
+              item.available,
+              coalesce(nft.item_blockchain_id::text, item_asset.item_id) as item_id
+          FROM marketplace.trade_assets AS ta
+          LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset ON ta.id = erc721_asset.asset_id
+          LEFT JOIN marketplace.trade_assets_erc20 AS erc20_asset ON ta.id = erc20_asset.asset_id
+          LEFT JOIN marketplace.trade_assets_item AS item_asset ON ta.id = item_asset.asset_id
+          LEFT JOIN squid_marketplace.item AS item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
+          LEFT JOIN squid_marketplace.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+        ) AS assets_with_values ON t.id = assets_with_values.trade_id
+        LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
+        LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+        LEFT JOIN (
+          SELECT *
+          FROM squid_trades.signature_index signature_index
+          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address}', '${marketplacePolygon.address}')
+        ) AS contract_signature_index ON t.network = contract_signature_index.network
+        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
+        GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+    )       
+  `
+}
+
+const getTradesJoin = () => {
+  return SQL`
+        LEFT JOIN
+          (
+            SELECT 
+              COUNT(id),
+              COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
+              contract_address_sent,
+              -- Add both MIN and MAX for order_amount_received
+              MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
+              MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
+              -- Item amount is the minimum value for public_item_order
+              MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
+              assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
+              MAX(created_at) AS max_created_at,
+              -- Subquery to get the min_item_created_at from all statuses
+              (
+                SELECT 
+                  MIN(created_at)     
+                  FROM unified_trades ut2
+                WHERE ut2.contract_address_sent = unified_trades.contract_address_sent AND ut2.type = 'public_item_order'
+              ) AS min_item_created_at,
+              MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
+              MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
+              json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
+          FROM unified_trades
+            WHERE status = 'open'
+            GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
+          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text AND items.available > 0
+  `
+}
+
+export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
+  const query = SQL``.append(getTradesCTE()).append(
+    SQL`
+            SELECT
+              COUNT(*) OVER() as total_rows,
+              items.id,
+              items.blockchain_id,
+              items.search_is_collection_approved,
+              to_json(
+                CASE WHEN (
+                  items.item_type = 'wearable_v1' OR items.item_type = 'wearable_v2' OR items.item_type = 'smart_wearable_v1') THEN metadata_wearable 
+                  ELSE metadata_emote 
+                END
+              ) as metadata,
+              items.image, 
+              items.blockchain_id,
+              items.collection_id,
+              items.rarity,
+              items.item_type::text,
+              items.price,
+              items.available,
+              items.search_is_store_minter,
+              items.creator,
+              items.beneficiary,
+              items.created_at,
+              items.updated_at,
+              items.reviewed_at,
+              items.sold_at,
+              items.network,
+              offchain_orders.open_item_trade_id,
+              offchain_orders.open_item_trade_price,
+              LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,
+              items.urn,
+              CASE
+                WHEN offchain_orders.min_order_amount_received IS NULL AND nfts_with_orders.min_price IS NULL THEN NULL
+                ELSE LEAST(
+                  COALESCE(offchain_orders.min_order_amount_received, nfts_with_orders.min_price),
+                  COALESCE(nfts_with_orders.min_price, offchain_orders.min_order_amount_received)
+                )
+              END AS min_listing_price,
+              nfts_with_orders.min_price AS min_onchain_price,
+              GREATEST(offchain_orders.max_order_amount_received, nfts_with_orders.max_price) AS max_listing_price,
+              nfts_with_orders.max_price AS max_onchain_price,
+              COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0) AS listings_count,
+              COALESCE(offchain_orders.count, 0) AS offchain_listings_count,
+              COALESCE(nfts_with_orders.orders_listings_count,0) as onchain_listings_count,
+              GREATEST(
+                ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 
+                nfts_with_orders.max_order_created_at
+              ) AS max_order_created_at,`
+
+      .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
+      .append(
+        `
+              nfts_with_orders.max_order_created_at as max_order_created_at,
+              `
+      )
+      .append(getMinPriceCaseWithTrades(filters))
+      .append(
+        `,
+              `
+      )
+      .append(getMaxPriceCaseWithTrades(filters))
+      .append(
+        SQL`
+            FROM `
+          .append(MARKETPLACE_SQUID_SCHEMA)
+          .append(SQL`.item AS items`)
+      )
+      .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
+      .append(
+        SQL`
+            LEFT JOIN (
+              SELECT 
+                orders.item_id, 
+                COUNT(orders.id) AS orders_listings_count,
+                MIN(orders.price) AS min_price,
+                MAX(orders.price) AS max_price,
+                MAX(orders.created_at) AS max_order_created_at
+              FROM `
+          .append(MARKETPLACE_SQUID_SCHEMA)
+          .append(
+            SQL`.order AS orders 
+            WHERE 
+                orders.status = 'open' 
+                AND orders.expires_at < `
+          )
+          .append(MAX_ORDER_TIMESTAMP)
+      )
+      .append(
+        ` 
+                AND ((LENGTH(orders.expires_at::text) = 13 AND TO_TIMESTAMP(orders.expires_at / 1000.0) > NOW())
+                      OR
+                    (LENGTH(orders.expires_at::text) = 10 AND TO_TIMESTAMP(orders.expires_at) > NOW()))
+                `
+      )
+      .append(getOrderRangePriceWhere(filters))
+      .append(
+        `
+                GROUP BY orders.item_id
+              ) AS nfts_with_orders ON nfts_with_orders.item_id = items.id 
+              `
+      )
+      .append(getMetadataJoins())
+      .append(getTradesJoin())
+      .append(getCollectionsQueryWhere(filters, true))
+  )
+
+  addQuerySort(query, filters)
+  addQueryPagination(query, filters)
+  return query
+}
+
+export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
+  const utilityQuery = getItemIdsByUtilityQuery(filters)
+  const tagOrNameQuery = getItemIdsByTagOrNameQuery(filters)
+
+  const query = SQL`
+      SELECT id,
+        word_similarity,
+        match_type,
+        word
+        FROM ((`
+    .append(utilityQuery)
+    .append(SQL`) UNION (`)
+    .append(tagOrNameQuery).append(SQL`)) AS items_found
+        ORDER BY word_similarity DESC`)
+
+  return query
 }
 
 export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
@@ -527,23 +814,5 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
 
   addQuerySort(query, filters)
   addQueryPagination(query, filters)
-  return query
-}
-
-export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
-  const utilityQuery = getItemIdsByUtilityQuery(filters)
-  const tagOrNameQuery = getItemIdsByTagOrNameQuery(filters)
-
-  const query = SQL`
-      SELECT id,
-        word_similarity,
-        match_type,
-        word
-        FROM ((`
-    .append(utilityQuery)
-    .append(SQL`) UNION (`)
-    .append(tagOrNameQuery).append(SQL`)) AS items_found
-        ORDER BY word_similarity DESC`)
-
   return query
 }

@@ -20,14 +20,14 @@ export async function getPricesHandler(
 
     return {
       status: StatusCode.OK,
-      body: result
+      body: { data: result }
     }
   } catch (e) {
     return {
       status: StatusCode.BAD_REQUEST,
       body: {
         ok: false,
-        message: isErrorWithMessage(e) ? e.message : 'Could not fetch sales'
+        message: isErrorWithMessage(e) ? e.message : 'Could not fetch prices'
       }
     }
   }

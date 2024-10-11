@@ -6,7 +6,7 @@ import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
-import { getCollectionsItemsCatalogQuery, getItemIdsBySearchTextQuery } from './queries'
+import { getCollectionsItemsCatalogQuery, getCollectionsItemsCatalogQueryWithTrades, getItemIdsBySearchTextQuery } from './queries'
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
@@ -18,7 +18,10 @@ export async function createCatalogComponent(
 ): Promise<ICatalogComponent> {
   const { dappsDatabase: database, picks } = components
 
-  async function fetch(filters: CatalogOptions, { searchId, anonId }: { searchId: string; anonId: string }) {
+  async function fetch(
+    filters: CatalogOptions,
+    { searchId, anonId, isV2 = false }: { searchId: string; anonId: string; isV2: boolean }
+  ): Promise<{ data: Item[]; total: number }> {
     const { network } = filters
     let catalogItems: Item[] = []
     let total = 0
@@ -56,7 +59,7 @@ export async function createCatalogComponent(
           return { data: [], total: 0 }
         }
       }
-      const query = getCollectionsItemsCatalogQuery(filters)
+      const query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
       const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
