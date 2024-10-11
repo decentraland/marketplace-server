@@ -1,10 +1,10 @@
-import { SaleFilters } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { Params } from '../../logic/http/params'
+import { PriceFilters } from '../../ports/prices'
 import { HandlerContextWithPath, StatusCode } from '../../types'
 import { getPricesParams } from './utils'
 
-export async function getSalesHandler(
+export async function getPricesHandler(
   context: Pick<HandlerContextWithPath<'prices', '/v1/prices'>, 'components' | 'url' | 'verification'>
 ) {
   try {
@@ -14,16 +14,13 @@ export async function getSalesHandler(
 
     const params = new Params(context.url.searchParams)
 
-    const filters: SaleFilters = getPricesParams(params)
+    const filters: PriceFilters = getPricesParams(params)
 
-    const { data, total } = await prices.getPrices(filters)
+    const result = await prices.getPrices(filters)
 
     return {
       status: StatusCode.OK,
-      body: {
-        data,
-        total
-      }
+      body: result
     }
   } catch (e) {
     return {
