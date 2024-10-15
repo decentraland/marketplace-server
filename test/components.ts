@@ -25,6 +25,7 @@ import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
+import { createPricesComponents } from '../src/ports/prices'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
@@ -106,6 +107,7 @@ async function initComponents(): Promise<TestComponents> {
   const nfts = createNFTsComponent({ dappsDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase })
   const sales = createSalesComponents({ dappsDatabase })
+  const prices = createPricesComponents({ dappsDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
@@ -138,7 +140,8 @@ async function initComponents(): Promise<TestComponents> {
     nfts,
     orders,
     rentals,
-    sales
+    sales,
+    prices
   }
 }
 

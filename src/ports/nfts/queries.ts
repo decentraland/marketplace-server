@@ -181,6 +181,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}) {
       nft.updated_at,
       nft.sold_at,
       nft.urn,
+      COALESCE(nft.search_order_price, (trades.assets -> 'received' ->> 'amount')::numeric(78)) as price,
       account.address as owner,
       nft.image,
       nft.issued_id,

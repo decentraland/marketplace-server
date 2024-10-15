@@ -20,6 +20,7 @@ import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
+import { createPricesComponents } from './ports/prices'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
@@ -100,6 +101,7 @@ export async function initComponents(): Promise<AppComponents> {
   const nfts = await createNFTsComponent({ dappsDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase })
   const sales = await createSalesComponents({ dappsDatabase })
+  const prices = await createPricesComponents({ dappsDatabase })
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
@@ -128,6 +130,7 @@ export async function initComponents(): Promise<AppComponents> {
     nfts,
     orders,
     rentals,
-    sales
+    sales,
+    prices
   }
 }

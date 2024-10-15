@@ -22,6 +22,7 @@ import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
+import { IPricesComponent } from './ports/prices'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
@@ -59,6 +60,7 @@ export type BaseComponents = {
   orders: IOrdersComponent
   rentals: IRentalsComponent
   sales: ISalesComponent
+  prices: IPricesComponent
 }
 
 // components used in runtime
