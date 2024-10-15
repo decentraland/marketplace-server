@@ -27,6 +27,7 @@ import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { ITradesComponent } from './ports/trades'
+import { ITransakComponent } from './ports/transak/types'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -45,6 +46,7 @@ export type BaseComponents = {
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
+  transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent

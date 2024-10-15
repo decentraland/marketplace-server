@@ -25,6 +25,7 @@ import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
 import { createTradesComponent } from './ports/trades'
+import { createTransak } from './ports/transak/component'
 import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
 
@@ -102,6 +103,16 @@ export async function initComponents(): Promise<AppComponents> {
   const orders = await createOrdersComponent({ dappsDatabase })
   const sales = await createSalesComponents({ dappsDatabase })
   const prices = await createPricesComponents({ dappsDatabase })
+
+  const transak = await createTransak(
+    { fetch },
+    {
+      apiURL: await config.requireString('TRANSAK_API_URL'),
+      apiKey: await config.requireString('TRANSAK_API_KEY'),
+      apiSecret: await config.requireString('TRANSAK_API_SECRET')
+    }
+  )
+
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
@@ -131,6 +142,7 @@ export async function initComponents(): Promise<AppComponents> {
     orders,
     rentals,
     sales,
-    prices
+    prices,
+    transak
   }
 }
