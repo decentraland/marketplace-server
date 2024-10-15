@@ -1,7 +1,7 @@
 import { AppComponents } from '../../types'
 import { ITransakComponent, OrderResponse } from './types'
 
-export function createTransak(
+export function createTransakComponent(
   components: Pick<AppComponents, 'fetch'>,
   {
     apiURL,
