@@ -22,7 +22,7 @@ export function createTransakComponent(
    * @param orderId - Transak Order ID.
    */
   async function getOrder(orderId: string): Promise<OrderResponse> {
-    if (!accessToken || Date.now() > Number(`${accessTokenExpiresAt}000`)) {
+    if (!accessToken || !accessTokenExpiresAt || Date.now() > accessTokenExpiresAt * 1000) {
       // accessTokenExpires at is in seconds
       accessToken = await refreshAccessToken()
     }
@@ -48,8 +48,9 @@ export function createTransakComponent(
       })
     })
 
-    const bodyRes: { data: { accessToken: string; expiresAt: string } } = await res.json()
+    const bodyRes: { data: { accessToken: string; expiresAt: number } } = await res.json()
 
+    accessTokenExpiresAt = bodyRes.data.expiresAt
     return bodyRes.data.accessToken
   }
 
