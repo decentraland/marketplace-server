@@ -22,7 +22,7 @@ beforeEach(() => {
     price: '0',
     reviewed_at: Date.now(),
     sold_at: Date.now(),
-    search_is_store_item: false,
+    search_is_store_minter: false,
     updated_at: Date.now(),
     uri: 'url',
     urn: 'urn',

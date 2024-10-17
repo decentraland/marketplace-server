@@ -13,8 +13,10 @@ import { getOrdersHandler } from './handlers/orders-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getSalesHandler } from './handlers/sales-handler'
+import { getStatsHandler } from './handlers/stats-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createTransakHandler } from './handlers/transak-handler'
+import { getTrendingsHandler } from './handlers/trending-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
@@ -104,6 +106,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/sales', getSalesHandler)
   router.get('/v1/prices', getPricesHandler)
+  router.get('/v1/trendings', getTrendingsHandler)
+  router.get('/v1/stats/:category/:stat', getStatsHandler)
 
   setupFavoritesRouter(router, { components })
 
