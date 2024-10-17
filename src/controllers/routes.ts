@@ -14,6 +14,7 @@ import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getSalesHandler } from './handlers/sales-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
+import { createTransakHandler } from './handlers/transak-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
@@ -51,6 +52,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       verifyMetadataContent: validateNotKernelSceneSigner
     }),
     createWertSignerHandler
+  )
+  router.get(
+    '/v1/transak/orders/:id',
+    authorizationMiddleware.wellKnownComponents({
+      optional: true,
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateNotKernelSceneSigner
+    }),
+    createTransakHandler
   )
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
   router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)

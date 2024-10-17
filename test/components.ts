@@ -30,6 +30,7 @@ import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
 import { createTradesComponent } from '../src/ports/trades'
+import { createTransakComponent } from '../src/ports/transak/component'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -114,6 +115,8 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
 
+  const transak = createTransakComponent({ fetch }, { apiURL: '', apiKey: '', apiSecret: '' })
+
   return {
     config,
     logs,
@@ -141,7 +144,8 @@ async function initComponents(): Promise<TestComponents> {
     orders,
     rentals,
     sales,
-    prices
+    prices,
+    transak
   }
 }
 
