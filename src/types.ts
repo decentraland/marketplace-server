@@ -26,8 +26,10 @@ import { IPricesComponent } from './ports/prices'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
+import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades'
 import { ITransakComponent } from './ports/transak/types'
+import { ITrendingsComponent } from './ports/trendings/types'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -62,7 +64,9 @@ export type BaseComponents = {
   orders: IOrdersComponent
   rentals: IRentalsComponent
   sales: ISalesComponent
+  trendings: ITrendingsComponent
   prices: IPricesComponent
+  stats: IStatsComponent
 }
 
 // components used in runtime
