@@ -23,6 +23,7 @@ import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
 import { IPricesComponent } from './ports/prices'
+import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
@@ -67,6 +68,7 @@ export type BaseComponents = {
   trendings: ITrendingsComponent
   prices: IPricesComponent
   stats: IStatsComponent
+  rankings: IItemsDayDataComponent
 }
 
 // components used in runtime
