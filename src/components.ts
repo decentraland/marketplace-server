@@ -30,6 +30,7 @@ import { createTransakComponent } from './ports/transak/component'
 import { createTrendingsComponent } from './ports/trendings/component'
 import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
+import { createRankingsComponent } from './ports/rankings/component'
 
 const thirtySeconds = 30 * 1000
 const fiveMinutes = 5 * 60 * 1000
@@ -107,6 +108,7 @@ export async function initComponents(): Promise<AppComponents> {
   const prices = await createPricesComponents({ dappsDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
   const stats = await createStatsComponent({ dappsDatabase })
+  const rankings = await createRankingsComponent({ })
 
   const transak = await createTransakComponent(
     { fetch },

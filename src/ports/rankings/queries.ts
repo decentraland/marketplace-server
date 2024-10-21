@@ -1,4 +1,4 @@
-import BN from 'bn.js'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import {
   getUniqueCollectorsFromCollectorsDayData,
   getUniqueCreatorsFromCreatorsDayData,
@@ -21,54 +21,41 @@ import {
 
 export const MAX_RESULTS = 1000
 
-export const getItemsDayDataFragment = () => `
-  fragment itemsDayDataFragment on ItemsDayData {
-    id
-    sales
-    volume
-  }
-`
-
-export const getItemsTotalFragment = () => `
-  fragment itemsDayDataFragment on Item {
-    id
-    sales
-    volume
-  }
-`
-
 function getQueryParams(entity: RankingEntity, filters: RankingsFilters) {
   const { from, category, rarity, sortBy } = filters
-  const where: string[] = []
+  const conditions: SQLStatement[] = []
 
   if (entity === RankingEntity.WEARABLES) {
-    where.push('searchEmoteCategory: null')
+    conditions.push(SQL`searchEmoteCategory IS NULL`)
   } else if (entity === RankingEntity.EMOTES) {
-    where.push('searchWearableCategory: null')
+    conditions.push(SQL`searchWearableCategory IS NULL`)
   }
 
   if (category) {
-    where.push(entity === RankingEntity.WEARABLES ? `searchWearableCategory: ${category}` : `searchEmoteCategory: ${category}`)
+    conditions.push(entity === RankingEntity.WEARABLES ? SQL`searchWearableCategory = ${category}` : SQL`searchEmoteCategory = ${category}`)
   }
+
   if (entity === RankingEntity.CREATORS) {
-    where.push('sales_gt: 0')
+    conditions.push(SQL`sales > 0`)
     if (from === 0) {
-      where.push('collections_gt: 0')
+      conditions.push(SQL`collections > 0`)
     }
   } else if (entity === RankingEntity.COLLECTORS) {
-    where.push('purchases_gt: 0')
+    conditions.push(SQL`purchases > 0`)
   }
+
   if (rarity) {
     if (from === 0) {
       // if it fetches the Item entity
-      where.push(`rarity: "${rarity}"`)
+      conditions.push(SQL`rarity = ${rarity}`)
     } else {
-      where.push(`searchRarity: "${rarity}"`)
+      conditions.push(SQL`searchRarity = ${rarity}`)
     }
   }
   if (from) {
-    where.push(`date_gte: ${Math.round(from / 1000)}`)
+    conditions.push(SQL`date >= ${Math.round(from / 1000)}`)
   }
+  
   let orderBy = 'volume'
   let orderDirection = 'desc'
   switch (sortBy) {
@@ -96,6 +83,18 @@ function getQueryParams(entity: RankingEntity, filters: RankingsFilters) {
       }
       break
   }
+
+  const where = SQL``
+  // const whereComplete = where.map(condition => finalWhere.append(condition))
+
+  conditions.forEach((condition, index) => {
+    if (condition) {
+      where.append(condition)
+      if (conditions[index + 1]) {
+        where.append(SQL` AND `)
+      }
+    }
+  })
 
   return { where, orderBy, orderDirection }
 }
@@ -129,27 +128,20 @@ export function getItemsDayDataQuery(entity: RankingEntity, filters: RankingsFil
   const { where, orderBy, orderDirection } = getQueryParams(entity, filters)
 
   return filters.from === 0
-    ? `query ItemsDayTotalData{
-        rankings: items(
-          ${filters.first ? `first: ${filters.first}` : ''}
-          orderBy: ${orderBy}, 
-          orderDirection: ${orderDirection},
-          where: { ${where.join('\n')} }) {
-            ...itemsDayDataFragment
-        }
-      }
-      ${getItemsTotalFragment()}
+    ? SQL`
+      SELECT id, sales, volume
+      FROM items
+      WHERE `.append(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      ${filters.first ? SQL`LIMIT ${filters.first}` : SQL``}
     `
-    : `query ItemsDayData {
-        rankings: itemsDayDatas(orderBy: ${orderBy}, 
-          first: ${MAX_RESULTS},
-          skip: ${MAX_RESULTS * page}
-          orderDirection: ${orderDirection}, 
-          where: { ${where.join('\n')} }) {
-          ...itemsDayDataFragment
-        }
-      }
-      ${getItemsDayDataFragment()}
+    : SQL`
+      SELECT id, sales, volume
+      FROM items_day_data
+      WHERE ${SQL.join(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      LIMIT ${MAX_RESULTS}
+      OFFSET ${MAX_RESULTS * page}
     `
 }
 
@@ -177,98 +169,46 @@ export function getTimestampFromTimeframe(timeframe: ItemsDayDataTimeframe) {
 }
 
 // Creators
-export const getCreatorsDayDataFragment = () => `
-  fragment creatorsDayDataFragment on AccountsDayData {
-    id
-    sales
-    earned
-    uniqueCollectionsSales
-    uniqueCollectorsTotal
-  }
-`
-
-export const getCreatorsTotalFragment = () => `
-  fragment creatorsDayDataFragment on Account {
-    id
-    sales: primarySales
-    earned: primarySalesEarned
-    uniqueCollectionsSales: collections
-    uniqueCollectorsTotal
-  }
-`
-
 export function getCreatorsDayDataQuery(filters: RankingsFilters, page = 0) {
   const { where, orderBy, orderDirection } = getQueryParams(RankingEntity.CREATORS, filters)
 
   return filters.from === 0
-    ? `query CreatorsTotalDayData{
-        rankings: accounts(
-          ${filters.first ? `first: ${filters.first}` : ''}
-          orderBy: ${orderBy}, 
-          orderDirection: ${orderDirection},
-          where: { ${where.join('\n')} }) {
-            ...creatorsDayDataFragment
-        }
-      }
-      ${getCreatorsTotalFragment()}`
-    : `query AccountsDayData {
-        rankings: accountsDayDatas(orderBy: ${orderBy}, 
-          first: ${MAX_RESULTS},
-          skip: ${MAX_RESULTS * page}
-          orderDirection: ${orderDirection}, 
-          where: { ${where.join('\n')} }) {
-          ...creatorsDayDataFragment
-        }
-      }
-      ${getCreatorsDayDataFragment()}
+    ? SQL`
+      SELECT id, sales, earned, unique_collections_sales, unique_collectors_total
+      FROM accounts
+      WHERE ${SQL.join(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      ${filters.first ? SQL`LIMIT ${filters.first}` : SQL``}
+    `
+    : SQL`
+      SELECT id, sales, earned, unique_collections_sales, unique_collectors_total
+      FROM accounts_day_data
+      WHERE ${SQL.join(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      LIMIT ${MAX_RESULTS}
+      OFFSET ${MAX_RESULTS * page}
     `
 }
 
 // Collectors
-export const getCollectorsDayDataFragment = () => `
-  fragment collectorsDayDataFragment on AccountsDayData {
-    id
-    purchases
-    spent
-    uniqueAndMythicItems
-    creatorsSupportedTotal
-  }
-`
-
-export const getCollectorsTotalFragment = () => `
-  fragment collectorsDayDataFragment on Account {
-    id
-    purchases
-    spent
-    uniqueAndMythicItems
-    creatorsSupportedTotal
-  }
-`
-
 export function getCollectorsDayDataQuery(filters: RankingsFilters, page = 0) {
   const { where, orderBy, orderDirection } = getQueryParams(RankingEntity.COLLECTORS, filters)
 
   return filters.from === 0
-    ? `query CollectorsTotalDayData{
-        rankings: accounts(
-          ${filters.first ? `first: ${filters.first}` : ''}
-          orderBy: ${orderBy}, 
-          orderDirection: ${orderDirection},
-          where: { ${where.join('\n')} }) {
-            ...collectorsDayDataFragment
-        }
-      }
-      ${getCollectorsTotalFragment()}`
-    : `query AccountsDayData {
-        rankings: accountsDayDatas(orderBy: ${orderBy}, 
-          first: ${MAX_RESULTS},
-          skip: ${MAX_RESULTS * page}
-          orderDirection: ${orderDirection}, 
-          where: { ${where.join('\n')} }) {
-          ...collectorsDayDataFragment
-        }
-      }
-      ${getCollectorsDayDataFragment()}
+    ? SQL`
+      SELECT id, purchases, spent, unique_and_mythic_items, creators_supported_total
+      FROM accounts
+      WHERE ${SQL.join(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      ${filters.first ? SQL`LIMIT ${filters.first}` : SQL``}
+    `
+    : SQL`
+      SELECT id, purchases, spent, unique_and_mythic_items, creators_supported_total
+      FROM accounts_day_data
+      WHERE ${SQL.join(where, ' AND ')}
+      ORDER BY ${orderBy} ${orderDirection}
+      LIMIT ${MAX_RESULTS}
+      OFFSET ${MAX_RESULTS * page}
     `
 }
 
