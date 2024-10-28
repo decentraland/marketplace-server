@@ -76,7 +76,6 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       })
       const duplicateOrder = await client.query(query)
 
-      console.log('duplicateOrder: ', duplicateOrder)
       if (duplicateOrder.rowCount > 0) {
         throw new DuplicateNFTOrderError()
       }

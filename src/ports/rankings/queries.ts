@@ -60,29 +60,24 @@ function getQueryParams(entity: RankingEntity, filters: RankingsFilters) {
   }
 
   let orderBy = 'volume'
-  let orderDirection = 'desc'
+  const orderDirection = 'desc'
   switch (sortBy) {
     case RankingsSortBy.MOST_SALES:
       if (entity === RankingEntity.COLLECTORS) {
         orderBy = 'purchases'
-        orderDirection = 'desc'
       } else if (from === 0 && entity === RankingEntity.CREATORS) {
         orderBy = 'primary_sales'
-        orderDirection = 'desc'
       } else {
         orderBy = 'sales'
-        orderDirection = 'desc'
       }
       break
     case RankingsSortBy.MOST_VOLUME:
       if (entity === RankingEntity.COLLECTORS) {
         // for accounts the field is "spent"
         orderBy = 'spent'
-        orderDirection = 'desc'
       } else if (entity === RankingEntity.CREATORS) {
         // for accounts the field is "earned"
         orderBy = from === 0 ? 'primary_sales_earned' : 'earned'
-        orderDirection = 'desc'
       }
       break
   }

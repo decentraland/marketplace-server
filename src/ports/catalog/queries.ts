@@ -362,7 +362,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
     filters.urns?.length ? getUrnsWhere(filters) : undefined,
-    filters.network ? getUrnsWhere(filters) : undefined
+    filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
   const result = SQL`WHERE items.search_is_collection_approved = true `
@@ -604,7 +604,7 @@ const getTradesJoin = () => {
           FROM unified_trades
             WHERE status = 'open'
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
-          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text -- AND items.available > 0
+          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text
   `
 }
 
