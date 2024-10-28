@@ -68,16 +68,12 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
-      console.log('trade.sent[0].contractAddress: ', trade.sent[0].contractAddress)
-      console.log('(trade.sent[0] as ERC721TradeAsset).tokenId: ', (trade.sent[0] as ERC721TradeAsset).tokenId)
       const query = getNFTsQuery({
         contractAddresses: [trade.sent[0].contractAddress],
         tokenId: (trade.sent[0] as ERC721TradeAsset).tokenId,
         network: trade.network,
         isOnSale: true
       })
-      console.log('query: ', query.text);
-      console.log('values: ', query.values);
       const duplicateOrder = await client.query(query)
 
       console.log('duplicateOrder: ', duplicateOrder)
