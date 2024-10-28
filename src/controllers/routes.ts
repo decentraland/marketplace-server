@@ -12,6 +12,7 @@ import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
+import { getRankingsHandler } from './handlers/rankings-handler'
 import { getSalesHandler } from './handlers/sales-handler'
 import { getStatsHandler } from './handlers/stats-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
@@ -19,7 +20,6 @@ import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
-import { getRankingsHandler } from './handlers/rankings-handler'
 
 const FIVE_MINUTES = 5 * 60 * 1000
 

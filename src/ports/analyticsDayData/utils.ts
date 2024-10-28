@@ -1,9 +1,5 @@
 import { AnalyticsDayData, AnalyticsDayDataFilters } from '@dcl/schemas'
-import {
-  AnalyticsDayDataFragment,
-  AnalyticsTimeframe,
-  RentalsAnalyticsDayDataFragment,
-} from './types'
+import { AnalyticsDayDataFragment, AnalyticsTimeframe, RentalsAnalyticsDayDataFragment } from './types'
 
 export const getAnalyticsDayDataFragment = () => `
   fragment analyticsDayDataFragment on AnalyticsDayData {
@@ -56,9 +52,7 @@ export function getAnalyticsTotalDataQuery() {
   `
 }
 
-export function mapAnalyticsFragment(
-  fragment: AnalyticsDayDataFragment
-): AnalyticsDayData {
+export function mapAnalyticsFragment(fragment: AnalyticsDayDataFragment): AnalyticsDayData {
   // The data returned from the collections/marketplace subgraphs is identical to the one that will be returned by the nft-server.
   // This means that there is no need to map it, just return the same values.
   return fragment
@@ -92,14 +86,10 @@ export function getTimestampFromTimeframe(timeframe: AnalyticsTimeframe) {
 
 // Rentals
 
-export function getRentalsAnalyticsDayDataQuery({
-  from,
-}: AnalyticsDayDataFilters) {
+export function getRentalsAnalyticsDayDataQuery({ from }: AnalyticsDayDataFilters) {
   return `
     query AnalyticsDayData {
-      analytics: analyticsDayDatas${
-        from ? `(where:{date_gt: ${Math.round(from / 1000)}})` : ''
-      } {
+      analytics: analyticsDayDatas${from ? `(where:{date_gt: ${Math.round(from / 1000)}})` : ''} {
         id
         date
         volume
@@ -123,9 +113,7 @@ export function getRentalsAnalyticsTotalDataQuery() {
   `
 }
 
-export function mapRentalsAnalyticsFragment(
-  fragment: RentalsAnalyticsDayDataFragment
-): AnalyticsDayData {
+export function mapRentalsAnalyticsFragment(fragment: RentalsAnalyticsDayDataFragment): AnalyticsDayData {
   return {
     // Non rentals subgraphs bring this data from an entity with id 'all'
     // In order to merge the data correctly, we need to set the id to 'all' for the rentals subgraph data as well.
@@ -135,6 +123,6 @@ export function mapRentalsAnalyticsFragment(
     sales: 0,
     volume: fragment.volume,
     creatorsEarnings: fragment.lessorEarnings,
-    daoEarnings: fragment.feeCollectorEarnings,
+    daoEarnings: fragment.feeCollectorEarnings
   }
 }

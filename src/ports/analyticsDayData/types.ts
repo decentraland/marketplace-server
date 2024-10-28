@@ -4,7 +4,7 @@ export enum AnalyticsTimeframe {
   DAY = 'day',
   WEEK = 'week',
   MONTH = 'month',
-  ALL = 'all',
+  ALL = 'all'
 }
 
 export interface IAnalyticsDayDataComponent {

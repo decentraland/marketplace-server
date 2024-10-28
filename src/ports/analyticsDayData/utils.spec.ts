@@ -1,9 +1,6 @@
 import { AnalyticsDayDataFilters } from '@dcl/schemas'
 import { RentalsAnalyticsDayDataFragment } from './types'
-import {
-  getRentalsAnalyticsDayDataQuery,
-  mapRentalsAnalyticsFragment,
-} from './utils'
+import { getRentalsAnalyticsDayDataQuery, mapRentalsAnalyticsFragment } from './utils'
 
 describe('mapRentalsAnalyticsFragment', () => {
   let fragment: RentalsAnalyticsDayDataFragment
@@ -14,7 +11,7 @@ describe('mapRentalsAnalyticsFragment', () => {
       date: 123,
       volume: '123',
       lessorEarnings: '123',
-      feeCollectorEarnings: '123',
+      feeCollectorEarnings: '123'
     }
   })
 
@@ -22,7 +19,7 @@ describe('mapRentalsAnalyticsFragment', () => {
     beforeEach(() => {
       fragment = {
         ...fragment,
-        id: 'analytics-total-data',
+        id: 'analytics-total-data'
       }
     })
 
@@ -44,7 +41,7 @@ describe('mapRentalsAnalyticsFragment', () => {
       sales: 0,
       volume: fragment.volume,
       creatorsEarnings: fragment.lessorEarnings,
-      daoEarnings: fragment.feeCollectorEarnings,
+      daoEarnings: fragment.feeCollectorEarnings
     })
   })
 })
@@ -59,36 +56,30 @@ describe('getRentalsAnalyticsDayDataQuery', () => {
   describe('when from is a number > than 0', () => {
     beforeEach(() => {
       filters = {
-        from: 1,
+        from: 1
       }
     })
 
     it('should add a "where" to the query', () => {
-      expect(getRentalsAnalyticsDayDataQuery(filters)).toContain(
-        '(where:{date_gt: 0})'
-      )
+      expect(getRentalsAnalyticsDayDataQuery(filters)).toContain('(where:{date_gt: 0})')
     })
   })
 
   describe('when from is undefined', () => {
     it('should not add a "where" to the query', () => {
-      expect(getRentalsAnalyticsDayDataQuery(filters)).not.toContain(
-        '(where:{date_gt: 0})'
-      )
+      expect(getRentalsAnalyticsDayDataQuery(filters)).not.toContain('(where:{date_gt: 0})')
     })
   })
 
   describe('when from is 0', () => {
     beforeEach(() => {
       filters = {
-        from: 0,
+        from: 0
       }
     })
 
     it('should not add a "where" to the query', () => {
-      expect(getRentalsAnalyticsDayDataQuery(filters)).not.toContain(
-        '(where:{date_gt: 0})'
-      )
+      expect(getRentalsAnalyticsDayDataQuery(filters)).not.toContain('(where:{date_gt: 0})')
     })
   })
 })
