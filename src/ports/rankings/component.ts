@@ -1,48 +1,16 @@
-import { Network } from '@dcl/schemas'
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
-import { FetchOptions } from '../merger/types'
-import {
-  IItemsDayDataComponent,
-  RankingEntity,
-  RankingFragment,
-  RankingsFilters,
-  RankingsSortBy,
-} from './types'
-import {
-  consolidateRankingResults,
-  getRankingQuery,
-  MAX_RESULTS,
-  sortRankResults,
-} from './utils'
+import { AppComponents } from '../../types'
+import { consolidateRankingResults, getRankingQuery, sortRankResults } from './queries'
+import { IItemsDayDataComponent, RankingEntity, RankingFragment, RankingsFilters } from './types'
 
-export function createRankingsComponent(options: {
-  subgraph: ISubgraphComponent
-  network: Network
-}): IItemsDayDataComponent {
-  const { subgraph, network } = options
-
-  function isValid(network: Network, filters: RankingsFilters) {
-    return (
-      // Querying a different network to the component's one is not valid
-      !filters.network || filters.network === network
-    )
-  }
+export function createRankingsComponent(components: Pick<AppComponents, 'dappsDatabase'>): IItemsDayDataComponent {
+  const { dappsDatabase } = components
 
   async function fetchRanking(entity: RankingEntity, filters: RankingsFilters) {
     const isFetchingAllTimeResults = filters.from === 0
-    let page = 0
-    let rankingFragments: RankingFragment[] = []
-    while (true) {
-      const query = getRankingQuery(entity, filters, page++)
-      const { rankings: fragments } = await subgraph.query<{
-        rankings: RankingFragment[]
-      }>(query)
-      rankingFragments = [...rankingFragments, ...fragments]
-      if (fragments.length < MAX_RESULTS) {
-        break
-      }
-    }
-    const results = consolidateRankingResults(entity, rankingFragments, filters)
+    const query = getRankingQuery(entity, filters)
+    const dbResponse = await dappsDatabase.query<RankingFragment>(query)
+
+    const results = consolidateRankingResults(entity, dbResponse.rows, filters)
     const sortedResults = isFetchingAllTimeResults
       ? Object.values(results)
       : sortRankResults(entity, Object.values(results), filters.sortBy)
@@ -50,27 +18,11 @@ export function createRankingsComponent(options: {
     return sortedResults.slice(0, filters.first)
   }
 
-  async function fetch(
-    entity: RankingEntity,
-    filters: FetchOptions<RankingsFilters, RankingsSortBy>
-  ) {
-    if (!isValid(network, filters)) {
-      return []
-    }
-
+  async function fetch(entity: RankingEntity, filters: RankingsFilters) {
     return fetchRanking(entity, filters)
   }
 
-  async function count(entity: RankingEntity, filters: RankingsFilters) {
-    if (!isValid(network, filters)) {
-      return 0
-    }
-    const ranking = await fetchRanking(entity, filters)
-    return ranking.length
-  }
-
   return {
-    fetch,
-    count,
+    fetch
   }
 }

@@ -19,6 +19,7 @@ import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
+import { getRankingsHandler } from './handlers/rankings-handler'
 
 const FIVE_MINUTES = 5 * 60 * 1000
 
@@ -108,6 +109,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/prices', getPricesHandler)
   router.get('/v1/trendings', getTrendingsHandler)
   router.get('/v1/stats/:category/:stat', getStatsHandler)
+  router.get('/v1/rankings/:entity/:timeframe', getRankingsHandler)
 
   setupFavoritesRouter(router, { components })
 

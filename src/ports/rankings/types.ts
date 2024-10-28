@@ -71,5 +71,4 @@ export enum RankingEntity {
 
 export interface IItemsDayDataComponent {
   fetch(entity: RankingEntity, filters: RankingsFilters): Promise<RankingEntityResponse[]>
-  count(entity: RankingEntity, filters: RankingsFilters): Promise<number>
 }
