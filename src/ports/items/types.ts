@@ -47,7 +47,7 @@ export type DBItem = {
   has_geometry?: boolean
   first_listed_at: Date
   network: Network.MATIC | Network.ETHEREUM | SquidNetwork
-  search_is_store_item: boolean
+  search_is_store_minter: boolean
   trade_id?: string
   trade_beneficiary?: string
   trade_expires_at?: Date

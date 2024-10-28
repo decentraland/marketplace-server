@@ -29,8 +29,10 @@ import { createPricesComponents } from '../src/ports/prices'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
+import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
+import { createTrendingsComponent } from '../src/ports/trendings/component'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -116,6 +118,8 @@ async function initComponents(): Promise<TestComponents> {
   })
 
   const transak = createTransakComponent({ fetch }, { apiURL: '', apiKey: '', apiSecret: '' })
+  const stats = await createStatsComponent({ dappsDatabase })
+  const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
 
   return {
     config,
@@ -145,7 +149,9 @@ async function initComponents(): Promise<TestComponents> {
     rentals,
     sales,
     prices,
-    transak
+    transak,
+    stats,
+    trendings
   }
 }
 

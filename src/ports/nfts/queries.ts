@@ -167,8 +167,13 @@ export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
       return SQL` ORDER BY created_at DESC `
   }
 }
-
-export function getNFTsQuery(nftFilters: GetNFTsFilters = {}) {
+/**
+ * Returns a query to fetch NFTs
+ * @param nftFilters Filters to apply to the query
+ * @param uncapped If true, the query will not limit the number of results
+ * @returns The query to fetch NFTs
+ */
+export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
   return SQL`
     SELECT
       COUNT(*) OVER() as count,
@@ -241,7 +246,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}) {
     )
     .append(getNFTWhereStatement(nftFilters))
     .append(getNFTsSortByStatement(nftFilters.sortBy))
-    .append(getNFTLimitAndOffsetStatement(nftFilters))
+    .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
 }
 
 export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, network: Network) {
