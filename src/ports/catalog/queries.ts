@@ -138,9 +138,9 @@ const getSearchCTEs = (filters: CatalogQueryFilters) => {
 
 const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]
 
-const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
+export const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
 
-export function getOrderBy(filters: CatalogFilters) {
+export function getOrderBy(filters: CatalogFilters, isV2 = false) {
   const { sortBy, sortDirection, isOnSale, search, ids } = filters
   const sortByParam = sortBy ?? CatalogSortBy.NEWEST
   const sortDirectionParam = sortDirection ?? CatalogSortDirection.DESC
@@ -163,7 +163,13 @@ export function getOrderBy(filters: CatalogFilters) {
       sortByQuery.append(SQL`max_price desc \n`)
       break
     case CatalogSortBy.RECENTLY_LISTED:
-      sortByQuery.append(SQL`GREATEST(max_order_created_at, first_listed_at) desc \n`)
+      isV2
+        ? sortByQuery.append(SQL`
+              GREATEST(GREATEST(
+                COALESCE(ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 0), 
+                COALESCE(nfts_with_orders.max_order_created_at, 0)
+              ), first_listed_at) desc \n`)
+        : sortByQuery.append(SQL`GREATEST(max_order_created_at, first_listed_at) desc \n`)
       break
     case CatalogSortBy.RECENTLY_SOLD:
       sortByQuery.append(SQL`sold_at desc \n`)
@@ -185,10 +191,10 @@ export const addQueryPagination = (query: SQLStatement, filters: CatalogQueryFil
   }
 }
 
-export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters) => {
+export const addQuerySort = (query: SQLStatement, filters: CatalogQueryFilters, isV2 = false) => {
   const { sortBy, sortDirection } = filters
   if (sortBy && sortDirection) {
-    query.append(getOrderBy(filters))
+    query.append(getOrderBy(filters, isV2))
   }
 }
 
@@ -306,6 +312,10 @@ export const getOnlyListingsWhere = () => {
   return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
 }
 
+export const getOnlyListingsWhereWithTrades = () => {
+  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
+}
+
 export const getOnlyMintingWhere = () => {
   return SQL`items.search_is_store_minter = true AND available > 0`
 }
@@ -326,6 +336,10 @@ export const getUrnsWhere = (filters: CatalogFilters) => {
   return SQL`items.urn = ANY(${filters.urns})`
 }
 
+export const getNetworkWhere = (filters: CatalogFilters) => {
+  return SQL`items.network = ${filters.network}`
+}
+
 export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
@@ -342,12 +356,13 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
-    filters.onlyListing ? getOnlyListingsWhere() : undefined,
+    filters.onlyListing ? (isV2 ? getOnlyListingsWhereWithTrades() : getOnlyListingsWhere()) : undefined,
     filters.onlyMinting ? getOnlyMintingWhere() : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
-    filters.urns?.length ? getUrnsWhere(filters) : undefined
+    filters.urns?.length ? getUrnsWhere(filters) : undefined,
+    filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
   const result = SQL`WHERE items.search_is_collection_approved = true `
@@ -589,7 +604,7 @@ const getTradesJoin = () => {
           FROM unified_trades
             WHERE status = 'open'
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
-          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text AND items.available > 0
+          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text
   `
 }
 
@@ -701,7 +716,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
       .append(getCollectionsQueryWhere(filters, true))
   )
 
-  addQuerySort(query, filters)
+  addQuerySort(query, filters, true)
   addQueryPagination(query, filters)
   return query
 }

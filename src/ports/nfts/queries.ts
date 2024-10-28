@@ -11,6 +11,7 @@ import {
   WearableGender
 } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
+import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
@@ -106,7 +107,12 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
     ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice})`
     : null
-  const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR nft.search_order_status = ${ListingStatus.OPEN}) ` : null
+  const FILTER_BY_ON_SALE = nftFilters.isOnSale
+    ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
+        MAX_ORDER_TIMESTAMP
+      ).append(` 
+                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())) )) `)
+    : null
   const FITLER_BANNED_NAMES =
     nftFilters.bannedNames && nftFilters.bannedNames.length
       ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `

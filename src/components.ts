@@ -21,6 +21,7 @@ import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
 import { createPricesComponents } from './ports/prices'
+import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
 import { createSchemaValidatorComponent } from './ports/schema-validator'
@@ -107,6 +108,7 @@ export async function initComponents(): Promise<AppComponents> {
   const prices = await createPricesComponents({ dappsDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
   const stats = await createStatsComponent({ dappsDatabase })
+  const rankings = await createRankingsComponent({ dappsDatabase })
 
   const transak = await createTransakComponent(
     { fetch },
@@ -149,6 +151,7 @@ export async function initComponents(): Promise<AppComponents> {
     prices,
     trendings,
     transak,
-    stats
+    stats,
+    rankings
   }
 }
