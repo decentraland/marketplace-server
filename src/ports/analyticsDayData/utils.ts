@@ -55,7 +55,6 @@ export function getAnalyticsTotalDataQuery(): SQLStatement {
 }
 
 export function mapAnalyticsFragment(fragment: AnalyticsDayDataFragment): AnalyticsDayData {
-  // No mapping is needed; return the fragment directly as AnalyticsDayData
   return { ...fragment, creatorsEarnings: fragment.creators_earnings, daoEarnings: fragment.dao_earnings }
 }
 
