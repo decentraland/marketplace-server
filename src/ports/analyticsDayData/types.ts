@@ -16,14 +16,6 @@ export type AnalyticsDayDataFragment = {
   date: number
   sales: number
   volume: string
-  creatorsEarnings: string
-  daoEarnings: string
-}
-
-export type RentalsAnalyticsDayDataFragment = {
-  id: string
-  date: number
-  volume: string
-  lessorEarnings: string
-  feeCollectorEarnings: string
+  creators_earnings: string
+  dao_earnings: string
 }
