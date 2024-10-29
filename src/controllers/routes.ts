@@ -18,6 +18,7 @@ import { getStatsHandler } from './handlers/stats-handler'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
 import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
+import { getVolumeHandler } from './handlers/volume-handler'
 import { createWertSignerHandler } from './handlers/wert-signer-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
@@ -110,6 +111,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/trendings', getTrendingsHandler)
   router.get('/v1/stats/:category/:stat', getStatsHandler)
   router.get('/v1/rankings/:entity/:timeframe', getRankingsHandler)
+  router.get('/v1/volume/:timeframe', getVolumeHandler)
 
   setupFavoritesRouter(router, { components })
 
