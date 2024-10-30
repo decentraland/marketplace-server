@@ -6,6 +6,7 @@ import { createSubgraphComponent } from '@well-known-components/thegraph-compone
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
+import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
 import { createBalanceComponent } from './ports/balance/component'
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
@@ -29,6 +30,7 @@ import { createStatsComponent } from './ports/stats/component'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
 import { createTrendingsComponent } from './ports/trendings/component'
+import { createVolumeComponent } from './ports/volume/component'
 import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
 
@@ -109,6 +111,8 @@ export async function initComponents(): Promise<AppComponents> {
   const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
   const stats = await createStatsComponent({ dappsDatabase })
   const rankings = await createRankingsComponent({ dappsDatabase })
+  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase })
+  const volumes = await createVolumeComponent({ analyticsData })
 
   const transak = await createTransakComponent(
     { fetch },
@@ -152,6 +156,8 @@ export async function initComponents(): Promise<AppComponents> {
     trendings,
     transak,
     stats,
-    rankings
+    rankings,
+    analyticsData,
+    volumes
   }
 }

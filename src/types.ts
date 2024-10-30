@@ -8,6 +8,7 @@ import type {
 } from '@well-known-components/interfaces'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBalanceComponent } from './ports/balance/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
@@ -31,6 +32,7 @@ import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
+import { IVolumeComponent } from './ports/volume/types'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -69,6 +71,8 @@ export type BaseComponents = {
   prices: IPricesComponent
   stats: IStatsComponent
   rankings: IItemsDayDataComponent
+  volumes: IVolumeComponent
+  analyticsData: IAnalyticsDayDataComponent
 }
 
 // components used in runtime

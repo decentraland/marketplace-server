@@ -1,53 +1,18 @@
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
-import { Network, AnalyticsDayDataFilters, AnalyticsDayData } from '@dcl/schemas'
-import { IAnalyticsDayDataComponent } from './types'
+import { AnalyticsDayDataFilters } from '@dcl/schemas'
+import { AppComponents } from '../../types'
+import { AnalyticsDayDataFragment, IAnalyticsDayDataComponent } from './types'
+import { getAnalyticsDayDataQuery, getAnalyticsTotalDataQuery, mapAnalyticsFragment } from './utils'
 
-export function createAnalyticsDayDataComponent<T>(options: {
-  subgraph: ISubgraphComponent
-  network: Network
-  getAnalyticsDayDataQuery: (filters: AnalyticsDayDataFilters) => string
-  getAnalyticsTotalDataQuery: () => string
-  mapAnalyticsFragment: (fragment: T) => AnalyticsDayData
-}): IAnalyticsDayDataComponent {
-  const { subgraph, network, getAnalyticsDayDataQuery, getAnalyticsTotalDataQuery, mapAnalyticsFragment } = options
+export function createAnalyticsDayDataComponent(components: Pick<AppComponents, 'dappsDatabase'>): IAnalyticsDayDataComponent {
+  const { dappsDatabase } = components
 
-  function isValid(network: Network, filters: AnalyticsDayDataFilters) {
-    return (
-      // Querying a different network to the component's one is not valid
-      !filters.network || filters.network === network
-    )
-  }
-
-  async function fetch(filters: AnalyticsDayDataFilters) {
-    if (!isValid(network, filters)) {
-      return []
-    }
-
+  async function fetch(filters: AnalyticsDayDataFilters & { first: number }) {
     const query = filters.from === 0 ? getAnalyticsTotalDataQuery() : getAnalyticsDayDataQuery(filters)
-
-    const { analytics: fragments } = await subgraph.query<{
-      analytics: T[]
-    }>(query)
-    console.log('query: ', query)
-
-    return fragments.map(mapAnalyticsFragment)
-  }
-
-  async function count(filters: AnalyticsDayDataFilters) {
-    if (!isValid(network, filters)) {
-      return 0
-    }
-
-    const query = filters.from === 0 ? getAnalyticsTotalDataQuery() : getAnalyticsDayDataQuery(filters)
-    const { analytics: fragments } = await subgraph.query<{
-      analytics: T[]
-    }>(query)
-
-    return fragments.length
+    const analytics = await dappsDatabase.query<AnalyticsDayDataFragment>(query)
+    return analytics.rows.map(mapAnalyticsFragment)
   }
 
   return {
-    fetch,
-    count
+    fetch
   }
 }

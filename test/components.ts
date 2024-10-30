@@ -10,6 +10,7 @@ import { createSubgraphComponent } from '@well-known-components/thegraph-compone
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
+import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBalanceComponent } from '../src/ports/balance/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
@@ -34,6 +35,7 @@ import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
+import { createVolumeComponent } from '../src/ports/volume/component'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -122,6 +124,8 @@ async function initComponents(): Promise<TestComponents> {
   const stats = await createStatsComponent({ dappsDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
   const rankings = await createRankingsComponent({ dappsDatabase })
+  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase })
+  const volumes = await createVolumeComponent({ analyticsData })
 
   return {
     config,
@@ -154,7 +158,9 @@ async function initComponents(): Promise<TestComponents> {
     transak,
     stats,
     trendings,
-    rankings
+    rankings,
+    analyticsData,
+    volumes
   }
 }
 
