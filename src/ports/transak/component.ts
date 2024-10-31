@@ -40,18 +40,27 @@ export function createTransakComponent(
    * @param orderId - Transak Order ID.
    */
   async function refreshAccessToken(): Promise<string> {
-    const res = await fetch.fetch(`${apiURL}/v2/refresh-token`, {
-      method: 'POST',
-      headers: { 'api-secret': apiSecret, accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        apiKey
+    try {
+      const res = await fetch.fetch(`${apiURL}/v2/refresh-token`, {
+        method: 'POST',
+        headers: { 'api-secret': apiSecret, accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ apiKey })
       })
-    })
 
-    const bodyRes: { data: { accessToken: string; expiresAt: number } } = await res.json()
+      if (!res.ok) {
+        throw new Error(`HTTP error! Status: ${res.status}`)
+      }
 
-    accessTokenExpiresAt = bodyRes.data.expiresAt
-    return bodyRes.data.accessToken
+      const bodyRes: { data: { accessToken: string; expiresAt: number } } = await res.json()
+      console.log('bodyRes: ', bodyRes)
+
+      accessTokenExpiresAt = bodyRes.data.expiresAt
+      return bodyRes.data.accessToken
+    } catch (error) {
+      console.error('Error refreshing access token:', error)
+      // You can rethrow the error or return a fallback value if necessary
+      throw error
+    }
   }
 
   return {
