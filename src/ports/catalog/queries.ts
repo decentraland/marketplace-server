@@ -386,9 +386,9 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
 /** At the moment, the UI just needs the Owners count when listing the NOT ON SALE items, so to optimize the query, let's JOIN only in that case since it's an expensive operation */
 const getOwnersJoin = () => {
   return SQL` LEFT JOIN (
-          SELECT item, COUNT(distinct owner) as owners_count FROM `
+          SELECT item_id, COUNT(distinct owner_id) as owners_count FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
-    .append('.nft as nfts GROUP BY nfts.item) AS nfts ON nfts.item = items.id')
+    .append('.nft as nfts GROUP BY nfts.item_id) AS nfts ON nfts.item_id = items.id')
 }
 
 const MAX_NUMERIC_NUMBER = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
