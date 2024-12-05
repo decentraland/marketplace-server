@@ -65,7 +65,6 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   }
 
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` LOWER(nft.category) = LOWER(${nftFilters.category}) ` : null
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` LOWER(account.address) = LOWER(${nftFilters.owner}) ` : null
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` nft.token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(nft.item_id) = LOWER(${nftFilters.itemId}) ` : null
   const FILTER_BY_NETWORK = nftFilters.network ? SQL` nft.network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
@@ -120,7 +119,6 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,
-    FILTER_BY_OWNER,
     FILTER_BY_TOKEN_ID,
     FILTER_BY_ITEM_ID,
     FILTER_BY_NETWORK,
@@ -173,86 +171,205 @@ export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
       return SQL` ORDER BY created_at DESC `
   }
 }
-/**
- * Returns a query to fetch NFTs
- * @param nftFilters Filters to apply to the query
- * @param uncapped If true, the query will not limit the number of results
- * @returns The query to fetch NFTs
- */
-export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
+
+function getFilteredNFTCTE(nftFilters: GetNFTsFilters): SQLStatement {
+  const FILTER_BY_OWNER = nftFilters.owner
+    ? SQL` WHERE owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLowerCase()}) `
+    : SQL``
+
   return SQL`
+    WITH filtered_nft AS (
+      SELECT *
+      FROM squid_marketplace.nft
+    `.append(FILTER_BY_OWNER).append(`
+    )
+  `)
+}
+
+function getFilteredEstateCTE(): SQLStatement {
+  return SQL`
+    , filtered_estate AS (
+      SELECT
+        est.id,
+        est.token_id,
+        est.size,
+        est.data_id,
+        ARRAY_AGG(
+          JSON_BUILD_OBJECT('x', est_parcel.x, 'y', est_parcel.y)
+        ) AS estate_parcels
+      FROM
+        squid_marketplace.estate est
+      LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
+      GROUP BY
+        est.id, est.token_id, est.size, est.data_id
+    )
+  `
+}
+
+function getParcelEstateDataCTE(): SQLStatement {
+  return SQL`
+    , parcel_estate_data AS (
+      SELECT
+        par.*,
+        par_est.token_id AS parcel_estate_token_id,
+        est_data.name AS parcel_estate_name
+      FROM
+        squid_marketplace.parcel par
+      LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
+      LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+    )
+  `
+}
+
+function getTradesCTE(): SQLStatement {
+  return SQL`
+    , trades AS (
+      SELECT
+        t.id,
+        t.created_at,
+        t.signer,
+        t.expires_at,
+        t.checks,
+        t.network,
+        t.chain_id,
+        COUNT(*) OVER() as count,
+        json_object_agg(assets_with_values.direction, json_build_object(
+          'contract_address', assets_with_values.contract_address,
+          'direction', assets_with_values.direction,
+          'beneficiary', assets_with_values.beneficiary,
+          'extra', assets_with_values.extra,
+          'token_id', assets_with_values.token_id, 
+          'item_id', assets_with_values.item_id,
+          'amount', assets_with_values.amount,
+          'creator', assets_with_values.creator,
+          'owner', assets_with_values.owner,
+          'category', assets_with_values.category,
+          'nft_id', assets_with_values.nft_id,
+          'issued_id', assets_with_values.issued_id,
+          'nft_name', assets_with_values.nft_name
+        )) as assets,
+        CASE
+          WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+          WHEN (
+            (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
+            OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+          ) THEN 'cancelled'
+          WHEN (t.expires_at < now()::timestamptz(3)) THEN 'cancelled'
+          WHEN (
+            (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
+            OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+          ) THEN 'cancelled'
+          WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then 'sold'
+        ELSE 'open'
+        END AS status
+      FROM marketplace.trades as t
+      JOIN (
+        SELECT
+          ta.trade_id,
+          ta.contract_address,
+          ta.direction,
+          ta.beneficiary,
+          ta.extra,
+          erc721_asset.token_id,
+          coalesce(item_asset.item_id, nft.item_blockchain_id::text) as item_id,
+          erc20_asset.amount,
+          item.creator,
+          account.address as owner,
+          nft.category,
+          nft.id as nft_id,
+          nft.issued_id as issued_id,
+          nft.name as nft_name
+        FROM marketplace.trade_assets as ta 
+        LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
+        LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
+        LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
+        LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
+        LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+        LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
+      ) as assets_with_values ON t.id = assets_with_values.trade_id
+      LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
+      LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+      LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('0x2d6b3508f9aca32d2550f92b2addba932e73c1ff','0x540fb08edb56aae562864b390542c97f562825ba')) as contract_signature_index ON t.network = contract_signature_index.network
+      WHERE t.type = 'public_nft_order'
+      GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+    )
+  `
+}
+
+export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
+  return getFilteredNFTCTE(nftFilters)
+    .append(getFilteredEstateCTE())
+    .append(getParcelEstateDataCTE())
+    .append(getTradesCTE())
+    .append(
+      SQL`
     SELECT
-      COUNT(*) OVER() as count,
+      COUNT(*) OVER() AS count,
       nft.id,
       nft.contract_address,
       nft.token_id,
       nft.network,
       nft.created_at,
-      nft.token_uri as url,
+      nft.token_uri AS url,
       nft.updated_at,
       nft.sold_at,
       nft.urn,
       COALESCE(nft.search_order_price, (trades.assets -> 'received' ->> 'amount')::numeric(78)) as price,
-      account.address as owner,
+      account.address AS owner,
       nft.image,
       nft.issued_id,
-      item.blockchain_id as item_id,
+      item.blockchain_id AS item_id,
       nft.category,
-      coalesce (wearable.rarity, emote.rarity) as rarity,
-      coalesce (wearable.name, emote.name, land_data."name", ens.subdomain) as name,
+      COALESCE(wearable.rarity, emote.rarity) AS rarity,
+      COALESCE(
+        wearable.name,
+        emote.name,
+        land_data."name",
+        ens.subdomain
+      ) AS name,
       parcel.x,
       parcel.y,
       ens.subdomain,
       wearable.body_shapes,
-      wearable.category as wearable_category,
-      emote.category as emote_category,
+      wearable.category AS wearable_category,
+      emote.category AS emote_category,
       nft.item_type,
       emote.loop,
       emote.has_sound,
       emote.has_geometry,
       estate.estate_parcels,
-      estate.size as size,
+      estate.size AS size,
       parcel.parcel_estate_token_id,
       parcel.parcel_estate_name,
-      parcel.estate_id as parcel_estate_id,
-      coalesce (wearable.description, emote.description, land_data.description) as description,
-      coalesce (to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at,
-      trades.assets
+      parcel.estate_id AS parcel_estate_id,
+      COALESCE(
+        wearable.description,
+        emote.description,
+        land_data.description
+      ) AS description
     FROM
-      squid_marketplace.nft nft
-    LEFT JOIN squid_marketplace.metadata metadata on
-      nft.metadata_id = metadata.id
-    LEFT JOIN squid_marketplace.wearable wearable on
-      metadata.wearable_id = wearable.id
-    LEFT JOIN squid_marketplace.emote emote on
-      metadata.emote_id = emote.id
-    LEFT JOIN (
-      SELECT par.*, par_est.token_id as parcel_estate_token_id, est_data.name as parcel_estate_name
-      FROM squid_marketplace.parcel par
-      LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
-      LEFT JOIN squid_marketplace.data est_data on par_est.data_id = est_data.id
-    ) as parcel on nft.id = parcel.id
-    LEFT JOIN (
-      SELECT est.id, est.token_id, est.size, est.data_id, array_agg(json_build_object('x', est_parcel.x, 'y', est_parcel.y)) as estate_parcels
-      FROM squid_marketplace.estate est
-      LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
-      GROUP BY est.id, est.token_id, est.size, est.data_id
-    ) as estate on nft.id = estate.id
-    LEFT JOIN squid_marketplace.data land_data on (estate.data_id  = land_data.id or parcel.id = land_data.id)
-    LEFT JOIN squid_marketplace.ens ens on ens.id = nft.ens_id 
-    LEFT JOIN squid_marketplace.account account on nft.owner_id = account.id
-    LEFT JOIN squid_marketplace.item item on item.id = nft.item_id
-  `
-    .append(
-      ` LEFT JOIN (${getTradesForTypeQuery(
-        TradeType.PUBLIC_NFT_ORDER
-      )}) as trades ON trades.assets -> 'sent' ->> 'token_id' = nft.token_id::text AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = '${
-        ListingStatus.OPEN
-      }' AND trades.signer = account.address`
+      filtered_nft nft
+    LEFT JOIN squid_marketplace.metadata metadata ON nft.metadata_id = metadata.id
+    LEFT JOIN squid_marketplace.wearable wearable ON metadata.wearable_id = wearable.id
+    LEFT JOIN squid_marketplace.emote emote ON metadata.emote_id = emote.id
+    LEFT JOIN parcel_estate_data parcel ON nft.id = parcel.id
+    LEFT JOIN filtered_estate estate ON nft.id = estate.id
+    LEFT JOIN squid_marketplace.data land_data ON (
+      estate.data_id = land_data.id OR parcel.id = land_data.id
     )
-    .append(getNFTWhereStatement(nftFilters))
-    .append(getNFTsSortByStatement(nftFilters.sortBy))
-    .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
+    LEFT JOIN squid_marketplace.ens ens ON ens.id = nft.ens_id
+    LEFT JOIN squid_marketplace.account account ON nft.owner_id = account.id
+    LEFT JOIN squid_marketplace.item item ON item.id = nft.item_id
+    LEFT JOIN trades ON trades.assets -> 'sent' ->> 'token_id' = nft.token_id::text AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = 'open' AND trades.signer = account.address
+    `
+        .append(getNFTWhereStatement(nftFilters))
+        .append(
+          SQL`
+    ORDER BY
+      nft.created_at DESC
+  `.append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
+        )
+    )
 }
 
 export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, network: Network) {
