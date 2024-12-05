@@ -1,19 +1,8 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import {
-  EmotePlayMode,
-  GenderFilterOption,
-  ListingStatus,
-  Network,
-  NFTCategory,
-  NFTSortBy,
-  Rarity,
-  TradeType,
-  WearableGender
-} from '@dcl/schemas'
+import { EmotePlayMode, GenderFilterOption, ListingStatus, Network, NFTCategory, NFTSortBy, Rarity, WearableGender } from '@dcl/schemas'
 import { getDBNetworks } from '../../utils'
 import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
-import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 import { GetNFTsFilters } from './types'
 
