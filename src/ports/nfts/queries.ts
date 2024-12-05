@@ -48,131 +48,73 @@ function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
   return SQL` (nft.search_wearable_rarity = ANY (${rarities}) OR nft.search_emote_rarity = ANY (${rarities})) `
 }
 
-function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
-  if (!nftFilters) {
-    return SQL``
-  }
+function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
+  // Define each filter condition separately
+  const FILTER_BY_OWNER = nftFilters.owner
+    ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
+    : null
 
-  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` LOWER(nft.category) = LOWER(${nftFilters.category}) ` : null
-  const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` nft.token_id = ${nftFilters.tokenId} ` : null
-  const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(nft.item_id) = LOWER(${nftFilters.itemId}) ` : null
-  const FILTER_BY_NETWORK = nftFilters.network ? SQL` nft.network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
-  const FILTER_BY_HAS_SOUND = nftFilters.emoteHasSound ? SQL` emote.has_sound = true ` : null
-  const FILTER_BY_HAS_GEOMETRY = nftFilters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
-  const FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize
-    ? SQL` estate.size >= ${nftFilters.minEstateSize} `
-    : SQL` (estate.size IS NULL OR estate.size > 0) `
-  const FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
-  const FILTER_BY_WEARABLE_CATEGORY = nftFilters.wearableCategory ? SQL` wearable.category = ${nftFilters.wearableCategory} ` : null
-  const FILTER_BY_EMOTE_CATEGORY = nftFilters.emoteCategory ? SQL` emote.category = ${nftFilters.emoteCategory} ` : null
-  const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` nft.search_is_wearable_head = true ` : null
-  const FILTER_BY_LAND = nftFilters.isLand ? SQL` nft.search_is_land = true ` : null
-  const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` nft.search_is_wearable_accessory = true ` : null
-  const FILTER_BY_WEARABLE_SMART = nftFilters.isWearableSmart ? SQL` nft.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
-  const FILTER_BY_CONTRACT_ADDRESS =
-    nftFilters.contractAddresses && nftFilters.contractAddresses.length
-      ? SQL` nft.contract_address = ANY (${nftFilters.contractAddresses}) `
-      : null
-  const FILTER_BY_TEXT = nftFilters.search ? SQL` nft.search_text % ${nftFilters.search} ` : null
-  const FILTER_BY_MIN_DISTANCE_TO_PLAZA = nftFilters.minDistanceToPlaza
-    ? SQL` nft.search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
-    : null
-  const FILTER_BY_MAX_DISTANCE_TO_PLAZA = nftFilters.maxDistanceToPlaza
-    ? SQL` nft.search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
-    : null
-  const FILTER_BY_ADJACENT_TO_ROAD = nftFilters.adjacentToRoad ? SQL` nft.search_adjacent_to_road = true ` : null
-  const FILTER_BY_EMOTE_PLAY_MODE = getEmotePlayModeWhereStatement(nftFilters.emotePlayMode)
-  const FILTER_BY_EMOTE_GENDERS = getGenderWhereStatement(true, nftFilters.emoteGenders)
-  const FILTER_BY_WEARABLE_GENDER = getGenderWhereStatement(false, nftFilters.wearableGenders)
-  const creators = nftFilters.creator && (Array.isArray(nftFilters.creator) ? nftFilters.creator : [nftFilters.creator])
-  const FILTER_BY_CREATOR =
-    creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
-  const FILTER_BY_ID = nftFilters.ids && nftFilters.ids.length ? SQL` nft.id = ANY (${nftFilters.ids}) ` : null
-  const FITLER_BY_RARITY = getRarityWhereStatement(nftFilters.itemRarities)
-  const FILTER_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice})`
-    : null
-  const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice})`
-    : null
-  const FILTER_BY_ON_SALE = nftFilters.isOnSale
-    ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
-        MAX_ORDER_TIMESTAMP
-      ).append(` 
-                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())) )) `)
-    : null
-  const FITLER_BANNED_NAMES =
-    nftFilters.bannedNames && nftFilters.bannedNames.length
-      ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `
-      : null
+  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` LOWER(category) = LOWER(${nftFilters.category}) ` : null
 
-  return getWhereStatementFromFilters([
+  const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
+
+  const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
+
+  const FILTER_BY_NETWORK = nftFilters.network ? SQL` network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
+
+  const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` search_is_wearable_head = true ` : null
+
+  const FILTER_BY_LAND = nftFilters.isLand ? SQL` search_is_land = true ` : null
+
+  const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` search_is_wearable_accessory = true ` : null
+
+  const FILTER_BY_SMART_WEARABLE = nftFilters.isWearableSmart ? SQL` item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
+
+  const FILTER_BY_CONTRACT_ADDRESSES = nftFilters.contractAddresses?.length
+    ? SQL` contract_address = ANY (${nftFilters.contractAddresses}) `
+    : null
+
+  const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
+
+  const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
+    ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
+    : null
+
+  const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
+    ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
+    : null
+
+  const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
+
+  const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
+
+  const whereClause = getWhereStatementFromFilters([
+    FILTER_BY_OWNER,
     FILTER_BY_CATEGORY,
     FILTER_BY_TOKEN_ID,
     FILTER_BY_ITEM_ID,
     FILTER_BY_NETWORK,
-    FILTER_BY_HAS_SOUND,
-    FILTER_BY_HAS_GEOMETRY,
-    FILTER_MIN_ESTATE_SIZE,
-    FILTER_MAX_ESTATE_SIZE,
-    FILTER_BY_EMOTE_CATEGORY,
-    FILTER_BY_WEARABLE_CATEGORY,
     FILTER_BY_WEARABLE_HEAD,
     FILTER_BY_LAND,
     FILTER_BY_WEARABLE_ACCESSORY,
-    FILTER_BY_WEARABLE_SMART,
-    FILTER_BY_CONTRACT_ADDRESS,
-    FILTER_BY_TEXT,
-    FILTER_BY_MIN_DISTANCE_TO_PLAZA,
-    FILTER_BY_MAX_DISTANCE_TO_PLAZA,
-    FILTER_BY_ADJACENT_TO_ROAD,
-    FILTER_BY_EMOTE_PLAY_MODE,
-    FILTER_BY_EMOTE_GENDERS,
-    FILTER_BY_WEARABLE_GENDER,
-    FILTER_BY_CREATOR,
-    FILTER_BY_ID,
-    FITLER_BY_RARITY,
-    FILTER_BY_MIN_PRICE,
-    FILTER_BY_MAX_PRICE,
-    FILTER_BY_ON_SALE,
-    FITLER_BANNED_NAMES
+    FILTER_BY_SMART_WEARABLE,
+    FILTER_BY_CONTRACT_ADDRESSES,
+    FILTER_BY_SEARCH,
+    FILTER_BY_MIN_PLAZA_DISTANCE,
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_ROAD_ADJACENT,
+    FILTER_BY_IDS
   ])
-}
-
-function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
-  const limit = nftFilters?.first ? nftFilters.first : 100
-  const offset = nftFilters?.skip ? nftFilters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
-}
-
-export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
-  switch (sortBy) {
-    case NFTSortBy.NAME:
-      return SQL` ORDER BY name ASC `
-    case NFTSortBy.NEWEST:
-      return SQL` ORDER BY created_at DESC `
-    case NFTSortBy.RECENTLY_LISTED:
-      return SQL` ORDER BY order_created_at DESC `
-    case NFTSortBy.RECENTLY_SOLD:
-      return SQL` ORDER BY sold_at DESC `
-    default:
-      return SQL` ORDER BY created_at DESC `
-  }
-}
-
-function getFilteredNFTCTE(nftFilters: GetNFTsFilters): SQLStatement {
-  const FILTER_BY_OWNER = nftFilters.owner
-    ? SQL` WHERE owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLowerCase()}) `
-    : SQL``
 
   return SQL`
     WITH filtered_nft AS (
       SELECT *
       FROM squid_marketplace.nft
-    `.append(FILTER_BY_OWNER).append(`
-    )
-  `)
+    `
+    .append(whereClause)
+    .append(getNFTsSortByStatement(nftFilters.sortBy))
+    .append(uncapped || nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
+    .append(SQL`)`)
 }
 
 function getFilteredEstateCTE(): SQLStatement {
@@ -285,8 +227,36 @@ function getTradesCTE(): SQLStatement {
   `
 }
 
+function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
+  const limit = nftFilters?.first ? nftFilters.first : 100
+  const offset = nftFilters?.skip ? nftFilters.skip : 0
+
+  return SQL` LIMIT ${limit} OFFSET ${offset} `
+}
+
+export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
+  console.log('sortBy', sortBy)
+  switch (sortBy) {
+    case NFTSortBy.NAME:
+      return SQL` ORDER BY name ASC `
+    case NFTSortBy.NEWEST:
+      return SQL` ORDER BY created_at DESC `
+    case NFTSortBy.RECENTLY_SOLD:
+      return SQL` ORDER BY sold_at DESC `
+    default:
+      return SQL``
+  }
+}
+
+export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
+  if (sortBy === NFTSortBy.RECENTLY_LISTED) {
+    return SQL` ORDER BY order_created_at DESC `
+  }
+  return SQL``
+}
+
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
-  return getFilteredNFTCTE(nftFilters)
+  return getFilteredNFTCTE(nftFilters, uncapped)
     .append(getFilteredEstateCTE())
     .append(getParcelEstateDataCTE())
     .append(getTradesCTE())
@@ -335,7 +305,8 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false):
         wearable.description,
         emote.description,
         land_data.description
-      ) AS description
+      ) AS description,
+       coalesce (to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
     FROM
       filtered_nft nft
     LEFT JOIN squid_marketplace.metadata metadata ON nft.metadata_id = metadata.id
@@ -352,15 +323,68 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false):
     LEFT JOIN trades ON trades.assets -> 'sent' ->> 'token_id' = nft.token_id::text AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = 'open' AND trades.signer = account.address
     `
         .append(getNFTWhereStatement(nftFilters))
-        .append(
-          SQL`
-    ORDER BY
-      nft.created_at DESC
-  `.append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
-        )
+        .append(getMainQuerySortByStatement(nftFilters.sortBy))
+        .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
     )
 }
 
 export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, network: Network) {
   return getNFTsQuery({ tokenId, network, contractAddresses: [contractAddress] })
+}
+
+function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
+  if (!nftFilters) {
+    return SQL``
+  }
+
+  // Keep only filters that need JOINed tables
+  const FILTER_BY_HAS_SOUND = nftFilters.emoteHasSound ? SQL` emote.has_sound = true ` : null
+  const FILTER_BY_HAS_GEOMETRY = nftFilters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
+  const FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize
+    ? SQL` estate.size >= ${nftFilters.minEstateSize} `
+    : SQL` (estate.size IS NULL OR estate.size > 0) `
+  const FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
+  const FILTER_BY_WEARABLE_CATEGORY = nftFilters.wearableCategory ? SQL` wearable.category = ${nftFilters.wearableCategory} ` : null
+  const FILTER_BY_EMOTE_CATEGORY = nftFilters.emoteCategory ? SQL` emote.category = ${nftFilters.emoteCategory} ` : null
+  const FILTER_BY_EMOTE_PLAY_MODE = getEmotePlayModeWhereStatement(nftFilters.emotePlayMode)
+  const FILTER_BY_EMOTE_GENDERS = getGenderWhereStatement(true, nftFilters.emoteGenders)
+  const FILTER_BY_WEARABLE_GENDER = getGenderWhereStatement(false, nftFilters.wearableGenders)
+  const creators = nftFilters.creator && (Array.isArray(nftFilters.creator) ? nftFilters.creator : [nftFilters.creator])
+  const FILTER_BY_CREATOR =
+    creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
+  const FITLER_BY_RARITY = getRarityWhereStatement(nftFilters.itemRarities)
+  const FILTER_BY_MIN_PRICE = nftFilters.minPrice
+    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice})`
+    : null
+  const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
+    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice})`
+    : null
+  const FILTER_BY_ON_SALE = nftFilters.isOnSale
+    ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
+        MAX_ORDER_TIMESTAMP
+      ).append(` 
+                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())) )) `)
+    : null
+  const FITLER_BANNED_NAMES =
+    nftFilters.bannedNames && nftFilters.bannedNames.length
+      ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `
+      : null
+
+  return getWhereStatementFromFilters([
+    FILTER_BY_HAS_SOUND,
+    FILTER_BY_HAS_GEOMETRY,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_BY_EMOTE_CATEGORY,
+    FILTER_BY_WEARABLE_CATEGORY,
+    FILTER_BY_EMOTE_PLAY_MODE,
+    FILTER_BY_EMOTE_GENDERS,
+    FILTER_BY_WEARABLE_GENDER,
+    FILTER_BY_CREATOR,
+    FITLER_BY_RARITY,
+    FILTER_BY_MIN_PRICE,
+    FILTER_BY_MAX_PRICE,
+    FILTER_BY_ON_SALE,
+    FITLER_BANNED_NAMES
+  ])
 }
