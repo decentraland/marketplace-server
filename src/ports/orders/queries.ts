@@ -35,7 +35,7 @@ function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
 export function getTradesOrdersQuery(): string {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  
+
   return `
     SELECT
       id::text,
@@ -92,8 +92,8 @@ export function getLegacyOrdersQuery(): string {
 }
 
 export interface OrderQueries {
-  orderTradesQuery: SQLStatement;
-  legacyOrdersQuery: SQLStatement;
+  orderTradesQuery: SQLStatement
+  legacyOrdersQuery: SQLStatement
 }
 
 export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: string[] }): OrderQueries {
@@ -126,10 +126,7 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
     FILTER_NOT_EXPIRED
   ])
 
-  const commonQueryParts = SQL``
-    .append(FILTERS)
-    .append(getOrdersSortByStatement(filters))
-    .append(getOrdersLimitAndOffsetStatement(filters))
+  const commonQueryParts = SQL``.append(FILTERS).append(getOrdersSortByStatement(filters)).append(getOrdersLimitAndOffsetStatement(filters))
 
   const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
@@ -155,8 +152,12 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
 
   return SQL`
     SELECT *, COUNT(*) OVER() as count FROM (
-      (`.append(orderTradesQuery).append(SQL`)
+      (`
+    .append(orderTradesQuery)
+    .append(
+      SQL`)
       UNION ALL
       (`.append(legacyOrdersQuery).append(SQL`)
-    ) as combined_orders`))
+    ) as combined_orders`)
+    )
 }
