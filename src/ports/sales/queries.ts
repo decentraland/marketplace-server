@@ -296,13 +296,11 @@ export function getSalesQuery(filters: SaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
   const TRADE_SALES = SQL`(`.append(getTradeSalesQuery(filters)).append(SQL` ) as trade_sales `)
 
-  return (
-    SQL`SELECT *, COUNT(*) OVER() as count`
-      .append(SQL` FROM `)
-      .append(LEGACY_SALES)
-      .append(SQL` NATURAL FULL OUTER JOIN `)
-      .append(TRADE_SALES)
-      .append(getSalesSortByStatement(filters.sortBy))
-      .append(getSalesLimitAndOffsetStatement(filters))
-  )
+  return SQL`SELECT *, COUNT(*) OVER() as count`
+    .append(SQL` FROM `)
+    .append(LEGACY_SALES)
+    .append(SQL` NATURAL FULL OUTER JOIN `)
+    .append(TRADE_SALES)
+    .append(getSalesSortByStatement(filters.sortBy))
+    .append(getSalesLimitAndOffsetStatement(filters))
 }
