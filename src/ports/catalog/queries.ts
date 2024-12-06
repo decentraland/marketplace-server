@@ -693,16 +693,8 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             SQL`.order AS orders 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at < `
+                AND orders.expires_normalized > NOW() `
           )
-          .append(MAX_ORDER_TIMESTAMP)
-      )
-      .append(
-        ` 
-                AND ((LENGTH(orders.expires_at::text) = 13 AND TO_TIMESTAMP(orders.expires_at / 1000.0) > NOW())
-                      OR
-                    (LENGTH(orders.expires_at::text) = 10 AND TO_TIMESTAMP(orders.expires_at) > NOW()))
-                `
       )
       .append(getOrderRangePriceWhere(filters))
       .append(

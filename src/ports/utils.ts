@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 
-export function getWhereStatementFromFilters(filters: (SQLStatement | null)[]): SQLStatement {
+export function getWhereStatementFromFilters(filters: (SQLStatement | null)[], isHaving = false): SQLStatement {
   return (
     filters.reduce((acc, filter) => {
       if (filter === null) {
@@ -8,7 +8,7 @@ export function getWhereStatementFromFilters(filters: (SQLStatement | null)[]): 
       }
 
       if (acc === null) {
-        return SQL` WHERE `.append(filter)
+        return SQL` `.append(isHaving ? SQL` HAVING ` : SQL` WHERE `).append(filter)
       }
 
       return acc.append(SQL` AND `).append(filter)

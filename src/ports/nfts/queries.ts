@@ -256,6 +256,11 @@ export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
 }
 
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
+  // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
+  if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
+    return getRecentlyListedNFTsCTE(nftFilters)
+  }
+
   return getFilteredNFTCTE(nftFilters, uncapped)
     .append(getFilteredEstateCTE())
     .append(getParcelEstateDataCTE())
@@ -363,7 +368,9 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
         MAX_ORDER_TIMESTAMP
       ).append(` 
-                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())) )) `)
+                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
+                      OR
+                    (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())))) `)
     : null
   const FITLER_BANNED_NAMES =
     nftFilters.bannedNames && nftFilters.bannedNames.length
@@ -387,4 +394,184 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     FILTER_BY_ON_SALE,
     FITLER_BANNED_NAMES
   ])
+}
+
+function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
+  const FILTER_BY_OWNER = nftFilters.owner
+    ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
+    : null
+  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLowerCase()} ` : null
+  const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
+  const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
+  const FILTER_BY_NETWORK = nftFilters.network ? SQL` network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
+  const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` search_is_wearable_head = true ` : null
+  const FILTER_BY_LAND = nftFilters.isLand ? SQL` search_is_land = true ` : null
+  const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` search_is_wearable_accessory = true ` : null
+  const FILTER_BY_SMART_WEARABLE = nftFilters.isWearableSmart ? SQL` item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
+  const FILTER_BY_CONTRACT_ADDRESSES = nftFilters.contractAddresses?.length
+    ? SQL` contract_address = ANY (${nftFilters.contractAddresses}) `
+    : null
+  const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
+  const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
+    ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
+    : null
+  const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
+    ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
+    : null
+  const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
+  const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
+
+  const FILTER_BY_ON_SALE = nftFilters.isOnSale
+    ? SQL` (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(MAX_ORDER_TIMESTAMP).append(` 
+                AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
+                      OR
+                    (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())) )`)
+    : null
+
+  const filters = [
+    FILTER_BY_OWNER,
+    FILTER_BY_CATEGORY,
+    FILTER_BY_TOKEN_ID,
+    FILTER_BY_ITEM_ID,
+    FILTER_BY_NETWORK,
+    FILTER_BY_WEARABLE_HEAD,
+    FILTER_BY_LAND,
+    FILTER_BY_WEARABLE_ACCESSORY,
+    FILTER_BY_SMART_WEARABLE,
+    FILTER_BY_CONTRACT_ADDRESSES,
+    FILTER_BY_SEARCH,
+    FILTER_BY_MIN_PLAZA_DISTANCE,
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_ROAD_ADJACENT,
+    FILTER_BY_IDS
+  ]
+
+  const whereClauseForNFTsWithOrders = getWhereStatementFromFilters([...filters, FILTER_BY_ON_SALE])
+  const whereClauseForNFTsWithTrades = getWhereStatementFromFilters([...filters, SQL`nft.id IN (SELECT nft_id FROM recent_trade_nft_ids)`])
+
+  return SQL`
+    WITH trades AS (
+      SELECT
+        t.id AS trade_id,
+        t.created_at AS trade_created_at,
+        json_object_agg(
+          assets_with_values.direction,
+          json_build_object(
+            'contract_address', assets_with_values.contract_address,
+            'direction', assets_with_values.direction,
+            'beneficiary', assets_with_values.beneficiary,
+            'extra', assets_with_values.extra,
+            'token_id', assets_with_values.token_id, 
+            'item_id', assets_with_values.item_id,
+            'amount', assets_with_values.amount,
+            'creator', assets_with_values.creator,
+            'owner', assets_with_values.owner,
+            'category', assets_with_values.category,
+            'nft_id', assets_with_values.nft_id,
+            'issued_id', assets_with_values.issued_id,
+            'nft_name', assets_with_values.nft_name
+          )
+        ) AS assets
+      FROM marketplace.trades t
+      JOIN (
+        SELECT
+          ta.trade_id,
+          ta.contract_address,
+          ta.direction,
+          ta.beneficiary,
+          ta.extra,
+          erc721_asset.token_id,
+          COALESCE(item_asset.item_id, nft.item_blockchain_id::TEXT) AS item_id,
+          erc20_asset.amount,
+          item.creator,
+          account.address AS owner,
+          nft.category,
+          nft.id AS nft_id,
+          nft.issued_id AS issued_id,
+          nft.name AS nft_name
+        FROM marketplace.trade_assets ta
+        LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
+        LEFT JOIN marketplace.trade_assets_erc20 erc20_asset ON ta.id = erc20_asset.asset_id
+        LEFT JOIN marketplace.trade_assets_item item_asset ON ta.id = item_asset.asset_id
+        LEFT JOIN squid_marketplace.item item ON ta.contract_address = item.collection_id
+          AND item_asset.item_id = item.blockchain_id::TEXT
+        LEFT JOIN squid_marketplace.nft nft ON ta.contract_address = nft.contract_address
+          AND erc721_asset.token_id = nft.token_id::TEXT
+        LEFT JOIN squid_marketplace.account account ON account.id = nft.owner_id
+      ) assets_with_values ON t.id = assets_with_values.trade_id
+      WHERE t.type = 'public_nft_order'
+      GROUP BY t.id, t.created_at
+    ),
+    recent_trade_nft_ids AS (
+      SELECT DISTINCT ON (assets_with_values.nft_id)
+        assets_with_values.nft_id,
+        t.created_at
+      FROM marketplace.trades t
+      JOIN (
+        SELECT
+          ta.trade_id,
+          nft.id AS nft_id
+        FROM marketplace.trade_assets ta
+        LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
+        LEFT JOIN squid_marketplace.nft nft ON (
+          ta.contract_address = nft.contract_address
+          AND erc721_asset.token_id = nft.token_id::TEXT
+        )
+        WHERE nft.category = 'wearable'
+      ) assets_with_values ON t.id = assets_with_values.trade_id
+      WHERE t.type = 'public_nft_order'
+      ORDER BY assets_with_values.nft_id, t.created_at DESC
+    ),
+    nfts_with_trades AS (
+      SELECT 
+        nft.*,
+        trades.trade_created_at
+      FROM squid_marketplace.nft nft
+      LEFT JOIN trades ON (
+        trades.assets -> 'sent' ->> 'token_id' = nft.token_id::TEXT
+        AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
+      )
+            `
+    .append(whereClauseForNFTsWithTrades)
+    .append(
+      SQL`
+      GROUP BY nft.id, trades.trade_created_at
+    ),
+    nfts_with_orders AS (
+      SELECT *,
+      NULL::timestamp AS trade_created_at
+      FROM squid_marketplace.nft
+      `
+        .append(whereClauseForNFTsWithOrders)
+        .append(
+          SQL`
+      ORDER BY search_order_created_at DESC NULLS LAST `
+            .append(getNFTLimitAndOffsetStatement(nftFilters))
+            .append(
+              SQL` 
+    )
+    SELECT *
+    FROM (
+      SELECT 
+        *,
+        COALESCE(
+          TO_TIMESTAMP(search_order_created_at / 1000.0), -- Convert numeric to timestamp
+          trade_created_at
+        ) AS sort_field
+      FROM nfts_with_trades
+      UNION ALL
+      SELECT 
+        *,
+        COALESCE(
+          TO_TIMESTAMP(search_order_created_at / 1000.0),
+          trade_created_at
+        ) AS sort_field
+      FROM nfts_with_orders
+    ) combined
+    ORDER BY sort_field DESC
+    `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+    `)
+            )
+        )
+    )
 }
