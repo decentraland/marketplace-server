@@ -24,40 +24,6 @@ function getSalesSortByStatement(sortBy?: SaleSortBy) {
   }
 }
 
-function getSalesWhereStatement(filters: SaleFilters): SQLStatement {
-  if (!filters) {
-    return SQL``
-  }
-
-  const FILTER_BY_TYPE = filters.type ? SQL` type = ${filters.type} ` : null
-  const FILTER_BY_BUYER = filters.buyer ? SQL` buyer = ${filters.buyer} ` : null
-  const FILTER_BY_SELLER = filters.seller ? SQL` seller = ${filters.seller.toLowerCase()} ` : null
-  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` contract_address = ${filters.contractAddress.toLowerCase()} ` : null
-  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
-  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY (${getDBNetworks(filters.network)}) ` : null
-  const FILTER_BY_MIN_PRICE = filters.minPrice ? SQL` price >= ${filters.minPrice} ` : null
-  const FILTER_BY_MAX_PRICE = filters.maxPrice ? SQL` price <= ${filters.maxPrice} ` : null
-  const FILTER_BY_CATEGORY = filters.categories && filters.categories.length ? SQL` category = ANY (${filters.categories}) ` : null
-  const FILTER_FROM_TIMESTAMP = filters.from ? SQL` timestamp >= ${filters.from} ` : null
-  const FILTER_TO_TIMESTAMP = filters.to ? SQL` timestamp <= ${filters.to} ` : null
-
-  return getWhereStatementFromFilters([
-    FILTER_BY_TYPE,
-    FILTER_BY_BUYER,
-    FILTER_BY_SELLER,
-    FILTER_BY_CONTRACT_ADDRESS,
-    FILTER_BY_ITEM_ID,
-    FILTER_BY_TOKEN_ID,
-    FILTER_BY_NETWORK,
-    FILTER_BY_MIN_PRICE,
-    FILTER_BY_MAX_PRICE,
-    FILTER_BY_CATEGORY,
-    FILTER_FROM_TIMESTAMP,
-    FILTER_TO_TIMESTAMP
-  ])
-}
-
 function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
   const FILTER_BY_TYPE = filters.type ? SQL` type = ${filters.type} ` : null
   const FILTER_BY_BUYER = filters.buyer ? SQL` buyer = ${filters.buyer} ` : null
