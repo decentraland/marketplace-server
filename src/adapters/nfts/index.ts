@@ -79,7 +79,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     name: dbNFT.name || capitalize(dbNFT.category),
     network: getNetwork(dbNFT.network),
     openRentalId: null,
-    owner: dbNFT.owner_id?.split('-')[0] || '', // the owner_id is the account address plus '-' + network. 
+    owner: dbNFT.owner_id?.split('-')[0] || '', // the owner_id is the account address plus '-' + network.
     tokenId: dbNFT.token_id,
     soldAt: 0, // TODO: Calculate sold at
     updatedAt: fromSecondsToMilliseconds(Number(dbNFT.updated_at)), // Convert to ms
