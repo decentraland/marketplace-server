@@ -42,6 +42,7 @@ export type DBNFT = {
   sold_at: number
   urn: string
   owner: string
+  owner_id?: string
   image: string
   issued_id: string
   item_id: string

@@ -35,15 +35,14 @@ function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
 export function getTradesOrdersQuery(): string {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
+
   return `
     SELECT
       id::text,
-      id as trade_id,
+      id::text as trade_id,
       CASE
         WHEN LOWER(network) = 'matic' then '${marketplacePolygon.address}'
-      ELSE '${marketplaceEthereum.address}'
+        ELSE '${marketplaceEthereum.address}'
       END AS marketplace_address,
       assets -> 'sent' ->> 'category' as category,
       assets -> 'sent' ->> 'contract_address' as nft_address,
@@ -54,6 +53,9 @@ export function getTradesOrdersQuery(): string {
       assets -> 'sent' ->> 'nft_id' as nft_id,
       assets -> 'sent' ->> 'nft_name' as nft_name,
       assets -> 'sent' ->> 'owner' as owner,
+      '' as buyer,
+      '' as tx_hash,
+      0 as block_number,
       status,
       EXTRACT(EPOCH FROM created_at) as created_at,
       EXTRACT(EPOCH FROM created_at) as updated_at,
@@ -66,32 +68,36 @@ export function getLegacyOrdersQuery(): string {
   return `
     SELECT
       ord.id::text,
+      '' as trade_id,
       ord.marketplace_address,
       ord.category,
       ord.nft_address,
       ord.token_id,
-      ord.tx_hash,
+      ord.price,
+      ord.item_id,
+      nft.issued_id,
+      ord.nft_id,
+      nft.name as nft_name,
       ord.owner,
       ord.buyer,
-      ord.price,
-      ord.status,
+      ord.tx_hash,
       ord.block_number,
+      ord.status,
       ord.created_at,
       ord.updated_at,
       ord.expires_at,
-      ord.nft_id,
-      ord.network,
-      ord.item_id,
-      nft.issued_id,
-      nft.name as nft_name
+      ord.network
     FROM squid_marketplace."order" ord
     JOIN squid_marketplace."nft" nft ON ord.nft_id = nft.id`
 }
 
-export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
-  const ORDER_TRADES = ` (${getTradesOrdersQuery()}) as order_trades `
-  const LEGACY_ORDERS = ` (${getLegacyOrdersQuery()}) as legacy_orders`
+export interface OrderQueries {
+  orderTradesQuery: SQLStatement
+  legacyOrdersQuery: SQLStatement
+}
 
+export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: string[] }): OrderQueries {
+  // Common filter conditions
   const FILTER_BY_MARKETPLACE_ADDRESS = filters.marketplaceAddress
     ? SQL` LOWER(marketplace_address) = LOWER(${filters.marketplaceAddress}) `
     : null
@@ -120,12 +126,38 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
     FILTER_NOT_EXPIRED
   ])
 
-  return SQL`SELECT *, COUNT(*) OVER() as count`
-    .append(SQL` FROM `)
-    .append(ORDER_TRADES)
-    .append(SQL` NATURAL FULL OUTER JOIN `)
-    .append(LEGACY_ORDERS)
-    .append(FILTERS)
-    .append(getOrdersSortByStatement(filters))
-    .append(getOrdersLimitAndOffsetStatement(filters))
+  const commonQueryParts = SQL``.append(FILTERS).append(getOrdersSortByStatement(filters)).append(getOrdersLimitAndOffsetStatement(filters))
+
+  const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+    .append(SQL`FROM (`)
+    .append(getTradesOrdersQuery())
+    .append(SQL`) as order_trades`)
+    .append(commonQueryParts)
+
+  const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+    .append(SQL`FROM (`)
+    .append(getLegacyOrdersQuery())
+    .append(SQL`) as legacy_orders`)
+    .append(commonQueryParts)
+
+  return {
+    orderTradesQuery,
+    legacyOrdersQuery
+  }
+}
+
+// The original getOrdersQuery can now use the new function if needed
+export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
+  const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
+
+  return SQL`
+    SELECT *, COUNT(*) OVER() as count FROM (
+      (`
+    .append(orderTradesQuery)
+    .append(
+      SQL`)
+      UNION ALL
+      (`.append(legacyOrdersQuery).append(SQL`)
+    ) as combined_orders`)
+    )
 }

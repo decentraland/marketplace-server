@@ -568,7 +568,7 @@ const getTradesCTE = () => {
         LEFT JOIN (
           SELECT *
           FROM squid_trades.signature_index signature_index
-          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address}', '${marketplacePolygon.address}')
+          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}', '${marketplacePolygon.address.toLocaleLowerCase()}')
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
@@ -693,16 +693,8 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             SQL`.order AS orders 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at < `
+                AND orders.expires_normalized > NOW() `
           )
-          .append(MAX_ORDER_TIMESTAMP)
-      )
-      .append(
-        ` 
-                AND ((LENGTH(orders.expires_at::text) = 13 AND TO_TIMESTAMP(orders.expires_at / 1000.0) > NOW())
-                      OR
-                    (LENGTH(orders.expires_at::text) = 10 AND TO_TIMESTAMP(orders.expires_at) > NOW()))
-                `
       )
       .append(getOrderRangePriceWhere(filters))
       .append(
