@@ -107,7 +107,7 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
+  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
