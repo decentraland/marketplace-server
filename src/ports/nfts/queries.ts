@@ -87,12 +87,8 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
   const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
 
   const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
-  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` nft.search_order_price >= ${nftFilters.minPrice}`
-    : null
-  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}`
-    : null
+  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice ? SQL` nft.search_order_price >= ${nftFilters.minPrice}` : null
+  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}` : null
 
   const whereClause = getWhereStatementFromFilters([
     FILTER_BY_OWNER,
@@ -374,8 +370,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale
     ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
-      MAX_ORDER_TIMESTAMP
-    ).append(` 
+        MAX_ORDER_TIMESTAMP
+      ).append(` 
                 AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
                       OR
                     (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())))) `)
@@ -436,12 +432,8 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
                     (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())) )`)
     : null
 
-  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` nft.search_order_price >= ${nftFilters.minPrice}`
-    : null
-  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}`
-    : null
+  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice ? SQL` nft.search_order_price >= ${nftFilters.minPrice}` : null
+  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}` : null
 
   const FILTER_TRADES_BY_MIN_PRICE = nftFilters.minPrice
     ? SQL` trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice}`
@@ -469,7 +461,12 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
   ]
 
   const whereClauseForTradeNFTsIds = getWhereStatementFromFilters([...filters, FILTER_TRADES_BY_MIN_PRICE, FILTER_TRADES_BY_MAX_PRICE])
-  const whereClauseForNFTsWithOrders = getWhereStatementFromFilters([...filters, FILTER_BY_ON_SALE, FILTER_NFT_BY_MIN_PRICE, FILTER_NFT_BY_MAX_PRICE])
+  const whereClauseForNFTsWithOrders = getWhereStatementFromFilters([
+    ...filters,
+    FILTER_BY_ON_SALE,
+    FILTER_NFT_BY_MIN_PRICE,
+    FILTER_NFT_BY_MAX_PRICE
+  ])
   const whereClauseForNFTsWithTrades = getWhereStatementFromFilters([...filters, SQL`nft.id IN (SELECT nft_id FROM recent_trade_nft_ids)`])
 
   return SQL`
@@ -540,7 +537,10 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
           ta.contract_address = nft.contract_address
           AND erc721_asset.token_id = nft.token_id::TEXT
         )
-        `.append(whereClauseForTradeNFTsIds).append(SQL`
+        `
+    .append(whereClauseForTradeNFTsIds)
+    .append(
+      SQL`
       ) assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'public_nft_order'
       ORDER BY assets_with_values.nft_id, t.created_at DESC
@@ -557,10 +557,13 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
         AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
       )
             `
-    .append(whereClauseForNFTsWithTrades)
-    .append(
-      SQL`
-      ORDER BY trades.trade_created_at DESC `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+        .append(whereClauseForNFTsWithTrades)
+        .append(
+          SQL`
+      ORDER BY trades.trade_created_at DESC `
+            .append(getNFTLimitAndOffsetStatement(nftFilters))
+            .append(
+              SQL`
     ),
     nfts_with_orders AS (
       SELECT *,
@@ -569,13 +572,13 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
       'order' AS reason
       FROM squid_marketplace.nft
       `
-        .append(whereClauseForNFTsWithOrders)
-        .append(
-          SQL`
+                .append(whereClauseForNFTsWithOrders)
+                .append(
+                  SQL`
       ORDER BY search_order_created_at DESC NULLS LAST `
-            .append(getNFTLimitAndOffsetStatement(nftFilters))
-            .append(
-              SQL` 
+                    .append(getNFTLimitAndOffsetStatement(nftFilters))
+                    .append(
+                      SQL` 
     )
     SELECT
       combined.id,
@@ -652,9 +655,9 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
     ORDER BY sort_field DESC
     `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     `)
+                    )
+                )
             )
         )
-      )
     )
-  )
 }
