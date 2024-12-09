@@ -107,12 +107,13 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
-  const FILTERS = getWhereStatementFromFilters([
+  const COMMON_FILTERS = [
     FILTER_BY_MARKETPLACE_ADDRESS,
     FILTER_BY_OWNER,
     FILTER_BY_BUYER,
@@ -120,24 +121,25 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
     FILTER_BY_TOKEN_ID,
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
-    FILTER_BY_ITEM_ID,
     FILTER_BY_NFT_NAME,
     FILTER_BY_NFT_ID,
     FILTER_NOT_EXPIRED
-  ])
+  ]
 
-  const commonQueryParts = SQL``.append(FILTERS).append(getOrdersSortByStatement(filters)).append(getOrdersLimitAndOffsetStatement(filters))
+  const commonQueryParts = getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters))
 
   const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
     .append(getTradesOrdersQuery())
     .append(SQL`) as order_trades`)
+    .append(getWhereStatementFromFilters([...COMMON_FILTERS, FILTER_TRADE_BY_ITEM_ID]))
     .append(commonQueryParts)
 
   const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
     .append(SQL`) as legacy_orders`)
+    .append(getWhereStatementFromFilters([...COMMON_FILTERS, FILTER_ORDER_BY_ITEM_ID]))
     .append(commonQueryParts)
 
   return {
