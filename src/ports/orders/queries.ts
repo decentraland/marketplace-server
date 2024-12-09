@@ -32,6 +32,17 @@ function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
+function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
+  const finalLimit = filters?.first ? filters.first : 100
+  const finalOffset = filters?.skip ? filters.skip : 0
+
+  // For inner queries, we need to fetch enough records to account for the final offset
+  // and potential records from the other UNION part
+  const innerLimit = finalLimit + finalOffset
+
+  return SQL` LIMIT ${innerLimit}`
+}
+
 export function getTradesOrdersQuery(): string {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
@@ -96,8 +107,7 @@ export interface OrderQueries {
   legacyOrdersQuery: SQLStatement
 }
 
-export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: string[] }): OrderQueries {
-  // Common filter conditions
+function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }) {
   const FILTER_BY_MARKETPLACE_ADDRESS = filters.marketplaceAddress
     ? SQL` LOWER(marketplace_address) = LOWER(${filters.marketplaceAddress}) `
     : null
@@ -107,12 +117,13 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
-  const FILTERS = getWhereStatementFromFilters([
+  const COMMON_FILTERS = [
     FILTER_BY_MARKETPLACE_ADDRESS,
     FILTER_BY_OWNER,
     FILTER_BY_BUYER,
@@ -120,24 +131,33 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
     FILTER_BY_TOKEN_ID,
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
-    FILTER_BY_ITEM_ID,
     FILTER_BY_NFT_NAME,
     FILTER_BY_NFT_ID,
     FILTER_NOT_EXPIRED
-  ])
+  ]
+  return {
+    orders: [...COMMON_FILTERS, FILTER_ORDER_BY_ITEM_ID],
+    trades: [...COMMON_FILTERS, FILTER_TRADE_BY_ITEM_ID]
+  }
+}
 
-  const commonQueryParts = SQL``.append(FILTERS).append(getOrdersSortByStatement(filters)).append(getOrdersLimitAndOffsetStatement(filters))
+export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: string[] }): OrderQueries {
+  const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
+
+  const commonQueryParts = getOrdersSortByStatement(filters).append(getInnerOrdersLimitAndOffsetStatement(filters))
 
   const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
     .append(getTradesOrdersQuery())
     .append(SQL`) as order_trades`)
+    .append(getWhereStatementFromFilters(tradesFilters))
     .append(commonQueryParts)
 
   const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
     .append(SQL`) as legacy_orders`)
+    .append(getWhereStatementFromFilters(ordersFilters))
     .append(commonQueryParts)
 
   return {
@@ -159,5 +179,57 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
       UNION ALL
       (`.append(legacyOrdersQuery).append(SQL`)
     ) as combined_orders`)
+    )
+    .append(getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters)))
+}
+
+export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
+  // const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
+  const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
+
+  return SQL`
+    WITH aggregated_counts AS (
+      SELECT 
+        SUM(COALESCE(trades_count, 0)) AS total_trades,
+        SUM(COALESCE(orders_count, 0)) AS total_orders
+      FROM (
+        -- Trades Count
+        SELECT COUNT(*) AS trades_count, 
+               NULL::bigint AS orders_count
+        FROM (
+          SELECT *, 
+                 COUNT(*) OVER() AS trades_count
+          FROM (
+            `
+    .append(getTradesOrdersQuery())
+    .append(
+      SQL`
+          ) AS trades_filtered
+          `
+        .append(getWhereStatementFromFilters(tradesFilters))
+        .append(
+          SQL`
+        ) AS trades_final
+        
+        UNION ALL
+        
+        -- Orders Count
+        SELECT NULL::bigint AS trades_count, 
+               COUNT(*) AS orders_count
+        FROM (
+          SELECT id
+          FROM   squid_marketplace."order"
+          `.append(getWhereStatementFromFilters(ordersFilters)).append(SQL`
+        ) AS orders_filtered
+      ) AS counts_combined
+    )
+    SELECT *,
+           (SELECT total_trades + total_orders FROM aggregated_counts) AS count
+    FROM (
+      SELECT *
+      FROM   aggregated_counts
+    ) AS combined_counts
+  `)
+        )
     )
 }
