@@ -219,7 +219,7 @@ function getTradesCTE(): SQLStatement {
         LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
         LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
         LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-        LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+        LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
         LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
       ) as assets_with_values ON t.id = assets_with_values.trade_id
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
@@ -565,12 +565,21 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
             .append(
               SQL`
     ),
+    filtered_orders AS (
+      SELECT nft_id
+      FROM squid_marketplace."order"
+      WHERE status = 'open' AND expires_normalized > NOW()
+      ORDER BY expires_normalized DESC NULLS LAST
+      LIMIT 24
+    ),
     nfts_with_orders AS (
-      SELECT *,
-      NULL::timestamp AS trade_created_at,
-      NULL::json AS trade_assets,
-      'order' AS reason
+      SELECT 
+        nft.*,
+        NULL::timestamp AS trade_created_at,
+        NULL::json AS trade_assets,
+        'order' AS reason
       FROM squid_marketplace.nft
+      JOIN filtered_orders ON nft.id = filtered_orders.nft_id
       `
                 .append(whereClauseForNFTsWithOrders)
                 .append(
