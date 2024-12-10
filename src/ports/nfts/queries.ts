@@ -241,7 +241,6 @@ function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
 }
 
 export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
-  console.log('sortBy', sortBy)
   switch (sortBy) {
     case NFTSortBy.NAME:
       return SQL` ORDER BY name ASC `
