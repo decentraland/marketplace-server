@@ -23,9 +23,6 @@ import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
   const minPrice = params.getString('minPrice')
-  const isOnSale = params.getBoolean('isOnSale') ? params.getString('isOnSale') === 'true' : undefined
-  console.log('params.getBoolean', params.getBoolean('isOnSale'));
-  console.log('isOnSale: ', isOnSale);
   return {
     category: params.getValue<NFTCategory>('category', NFTCategory),
     creator: params.getList('creator'),
