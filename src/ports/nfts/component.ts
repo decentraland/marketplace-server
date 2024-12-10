@@ -27,13 +27,11 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
 
     const listsServer = await config.requireString('DCL_LISTS_SERVER')
     const nftFilters = await getNFTFilters(filters, listsServer, rentals)
-    const nfts = await pg.query<DBNFT>(getNFTsQuery(nftFilters))
+    const nftsQuery = getNFTsQuery(nftFilters)
+    const nfts = await pg.query<DBNFT>(nftsQuery)
     const nftIds = nfts.rows.map(nft => nft.id)
     const query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN })
-    console.log('query', query.text)
-    console.log('query', query.values)
     const orders = await pg.query<DBOrder>(query)
-    console.log('orders', orders.rows)
 
     const landNftIds = nfts.rows
       .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
