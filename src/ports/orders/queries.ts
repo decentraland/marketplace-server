@@ -3,6 +3,7 @@ import { OrderFilters, OrderSortBy, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
+import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -121,7 +122,11 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
-  const FILTER_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
+  const FILTER_NOT_EXPIRED = SQL` expires_at < `.append(MAX_ORDER_TIMESTAMP).append(
+    SQL` AND ((LENGTH(expires_at::text) = 13 AND TO_TIMESTAMP(expires_at / 1000.0) > NOW())
+                      OR
+              (LENGTH(expires_at::text) = 10 AND TO_TIMESTAMP(expires_at) > NOW())) `
+  )
 
   const COMMON_FILTERS = [
     FILTER_BY_MARKETPLACE_ADDRESS,
