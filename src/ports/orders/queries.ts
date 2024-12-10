@@ -138,7 +138,7 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
     FILTER_BY_NFT_NAME,
-    FILTER_BY_NFT_ID,
+    FILTER_BY_NFT_ID
   ]
   return {
     orders: [...COMMON_FILTERS, FILTER_ORDER_BY_ITEM_ID, FILTER_ORDER_NOT_EXPIRED],
