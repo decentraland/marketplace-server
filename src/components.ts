@@ -35,7 +35,7 @@ import { createWertSigner } from './ports/wert-signer/component'
 import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
-const fiveMinutes = 15 * 60 * 1000
+const fiveMinutes = 5 * 60 * 1000
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
