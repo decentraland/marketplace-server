@@ -86,11 +86,11 @@ export async function createCatalogComponent(
     const client = await database.getPool().connect()
     try {
       const query = SQL`
-        REFRESH MATERIALIZED VIEW CONCURRENTLY `
+        REFRESH MATERIALIZED VIEW `
         .append(BUILDER_SERVER_TABLE_SCHEMA)
         .append(
           SQL`.mv_builder_server_items;
-        REFRESH MATERIALIZED VIEW CONCURRENTLY `
+        REFRESH MATERIALIZED VIEW `
         )
         .append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items_utility;
       `)
