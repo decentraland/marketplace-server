@@ -78,7 +78,6 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
 }
 
 const getNFTCTE = (filters: SaleFilters) => {
-  console.log('filters', filters)
   const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` contract_address = ${filters.contractAddress.toLowerCase()} ` : null
   const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
