@@ -255,10 +255,18 @@ export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
 }
 
 export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
-  if (sortBy === NFTSortBy.RECENTLY_LISTED) {
-    return SQL` ORDER BY order_created_at DESC `
+  switch (sortBy) {
+    case NFTSortBy.RECENTLY_LISTED:
+      return SQL` ORDER BY order_created_at DESC `
+    case NFTSortBy.NAME:
+      return SQL` ORDER BY name ASC `
+    case NFTSortBy.NEWEST:
+      return SQL` ORDER BY created_at DESC `
+    case NFTSortBy.RECENTLY_SOLD:
+      return SQL` ORDER BY sold_at DESC `
+    default:
+      return SQL``
   }
-  return SQL``
 }
 
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
@@ -372,8 +380,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale
     ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
-        MAX_ORDER_TIMESTAMP
-      ).append(` 
+      MAX_ORDER_TIMESTAMP
+    ).append(` 
                 AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
                       OR
                     (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())))) `)
