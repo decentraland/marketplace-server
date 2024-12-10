@@ -4,8 +4,8 @@ import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
-import { getWhereStatementFromFilters } from '../utils'
 import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
+import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
   switch (filters.sortBy) {
