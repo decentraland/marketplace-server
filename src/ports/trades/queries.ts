@@ -163,7 +163,7 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
-    WHERE t.type = '${type} '
+    WHERE t.type = '${type}'
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
 }
