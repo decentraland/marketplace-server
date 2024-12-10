@@ -380,8 +380,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale
     ? SQL` (trades.id IS NOT NULL OR (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(
-      MAX_ORDER_TIMESTAMP
-    ).append(` 
+        MAX_ORDER_TIMESTAMP
+      ).append(` 
                 AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
                       OR
                     (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())))) `)
