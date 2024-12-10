@@ -24,7 +24,7 @@ function getSalesSortByStatement(sortBy?: SaleSortBy) {
   }
 }
 
-function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
+function getLegacySalesQueryWhereStatement(filters: SaleFilters): SQLStatement {
   const FILTER_BY_TYPE = filters.type ? SQL` type = ${filters.type} ` : null
   const FILTER_BY_BUYER = filters.buyer ? SQL` buyer = ${filters.buyer} ` : null
   const FILTER_BY_SELLER = filters.seller ? SQL` seller = ${filters.seller.toLowerCase()} ` : null
@@ -40,7 +40,7 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
   const FILTER_FROM_TIMESTAMP = filters.from ? SQL` (timestamp * 1000) >= ${filters.from} ` : null
   const FILTER_TO_TIMESTAMP = filters.to ? SQL` (timestamp * 1000) <= ${filters.to} ` : null
 
-  const where = getWhereStatementFromFilters([
+  return getWhereStatementFromFilters([
     FILTER_BY_TYPE,
     FILTER_BY_BUYER,
     FILTER_BY_SELLER,
@@ -54,7 +54,9 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
     FILTER_FROM_TIMESTAMP,
     FILTER_TO_TIMESTAMP
   ])
+}
 
+function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
   return SQL`
     SELECT
       id,
@@ -71,9 +73,8 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
       search_category as category
     FROM squid_marketplace.sale
     `
-    .append(where)
+    .append(getLegacySalesQueryWhereStatement(filters))
     .append(getSalesLimitAndOffsetStatement(filters))
-  // .append(SQL` LIMIT ${filters.first} OFFSET ${filters.skip} `)
 }
 
 function getTradeSalesQuery(filters: SaleFilters): SQLStatement {
@@ -234,15 +235,21 @@ function getTradeSalesQuery(filters: SaleFilters): SQLStatement {
       LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
       LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
       LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+      LEFT JOIN `
+                                              .append(
+                                                filters.contractAddress && filters.tokenId ? SQL`filtered_nfts` : SQL`squid_marketplace.nft`
+                                              )
+                                              .append(
+                                                SQL` as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
       LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
     ) as assets_with_values ON trade.id = assets_with_values.trade_id    
     `
-                                              .append(where)
-                                              .append(
-                                                SQL` GROUP BY trade_status.id, trade_status.timestamp, trade_status.network, trade_status.tx_hash, trade_status.sent_beneficiary, trade_status.received_beneficiary, trade.type `
+                                                  .append(where)
+                                                  .append(
+                                                    SQL` GROUP BY trade_status.id, trade_status.timestamp, trade_status.network, trade_status.tx_hash, trade_status.sent_beneficiary, trade_status.received_beneficiary, trade.type `
+                                                  )
+                                                  .append(having)
                                               )
-                                              .append(having)
                                           )
                                         )
                                     )
@@ -258,15 +265,42 @@ function getTradeSalesQuery(filters: SaleFilters): SQLStatement {
     )
 }
 
+const getNFTCTE = (filters: SaleFilters) => {
+  console.log('filters', filters)
+  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` contract_address = ${filters.contractAddress.toLowerCase()} ` : null
+  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
+  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
+  const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY (${getDBNetworks(filters.network)}) ` : null
+  const FILTER_BY_CATEGORY = filters.categories && filters.categories.length ? SQL` category = ANY (${filters.categories}) ` : null
+
+  const where = getWhereStatementFromFilters([
+    FILTER_BY_CONTRACT_ADDRESS,
+    FILTER_BY_ITEM_ID,
+    FILTER_BY_TOKEN_ID,
+    FILTER_BY_NETWORK,
+    FILTER_BY_CATEGORY
+  ])
+
+  return SQL`
+      WITH filtered_nfts AS (
+        SELECT *
+        FROM squid_marketplace.nft
+        `.append(where).append(SQL`
+      )
+    `)
+}
+
 export function getSalesQuery(filters: SaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
   const TRADE_SALES = SQL`(`.append(getTradeSalesQuery(filters)).append(SQL` ) as trade_sales `)
 
-  return SQL`SELECT *, COUNT(*) OVER() as count`
-    .append(SQL` FROM `)
-    .append(LEGACY_SALES)
-    .append(SQL` NATURAL FULL OUTER JOIN `)
-    .append(TRADE_SALES)
-    .append(getSalesSortByStatement(filters.sortBy))
-    .append(getSalesLimitAndOffsetStatement(filters))
+  return getNFTCTE(filters).append(
+    SQL`SELECT *, COUNT(*) OVER() as count`
+      .append(SQL` FROM `)
+      .append(LEGACY_SALES)
+      .append(SQL` NATURAL FULL OUTER JOIN `)
+      .append(TRADE_SALES)
+      .append(getSalesSortByStatement(filters.sortBy))
+      .append(getSalesLimitAndOffsetStatement(filters))
+  )
 }
