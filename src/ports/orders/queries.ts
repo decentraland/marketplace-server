@@ -122,11 +122,12 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
-  const FILTER_NOT_EXPIRED = SQL` expires_at < `.append(MAX_ORDER_TIMESTAMP).append(
+  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at < `.append(MAX_ORDER_TIMESTAMP).append(
     SQL` AND ((LENGTH(expires_at::text) = 13 AND TO_TIMESTAMP(expires_at / 1000.0) > NOW())
                       OR
               (LENGTH(expires_at::text) = 10 AND TO_TIMESTAMP(expires_at) > NOW())) `
   )
+  const FILTER_TRADE_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
   const COMMON_FILTERS = [
     FILTER_BY_MARKETPLACE_ADDRESS,
@@ -137,12 +138,11 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
     FILTER_BY_NFT_NAME,
-    FILTER_BY_NFT_ID,
-    FILTER_NOT_EXPIRED
+    FILTER_BY_NFT_ID
   ]
   return {
-    orders: [...COMMON_FILTERS, FILTER_ORDER_BY_ITEM_ID],
-    trades: [...COMMON_FILTERS, FILTER_TRADE_BY_ITEM_ID]
+    orders: [...COMMON_FILTERS, FILTER_ORDER_BY_ITEM_ID, FILTER_ORDER_NOT_EXPIRED],
+    trades: [...COMMON_FILTERS, FILTER_TRADE_BY_ITEM_ID, FILTER_TRADE_NOT_EXPIRED]
   }
 }
 
