@@ -4,7 +4,7 @@ import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
 import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
-import { getTradesForTypeQuery } from '../trades/queries'
+import { getTradesForTypeQueryWithFilters } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
@@ -44,17 +44,23 @@ function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
   return SQL` LIMIT ${innerLimit}`
 }
 
-export function getTradesOrdersQuery(): string {
+export function getTradesOrdersQuery(filters: OrderFilters): SQLStatement {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
 
-  return `
+  return SQL`
     SELECT
       id::text,
       id::text as trade_id,
       CASE
-        WHEN LOWER(network) = 'matic' then '${marketplacePolygon.address}'
-        ELSE '${marketplaceEthereum.address}'
+        WHEN LOWER(network) = 'matic' then '`
+    .append(marketplacePolygon.address)
+    .append(
+      SQL`'
+        ELSE '`
+        .append(marketplaceEthereum.address)
+        .append(
+          SQL`'
       END AS marketplace_address,
       assets -> 'sent' ->> 'category' as category,
       assets -> 'sent' ->> 'contract_address' as nft_address,
@@ -73,7 +79,11 @@ export function getTradesOrdersQuery(): string {
       EXTRACT(EPOCH FROM created_at) as updated_at,
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
-    FROM (${getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER)}) as trades`
+    FROM (`
+            .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner }))
+            .append(SQL`) as trades`)
+        )
+    )
 }
 
 export function getLegacyOrdersQuery(): string {
@@ -153,7 +163,7 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
 
   const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
-    .append(getTradesOrdersQuery())
+    .append(getTradesOrdersQuery(filters))
     .append(SQL`) as order_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
     .append(commonQueryParts)
@@ -206,7 +216,7 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
                  COUNT(*) OVER() AS trades_count
           FROM (
             `
-    .append(getTradesOrdersQuery())
+    .append(getTradesOrdersQuery(filters))
     .append(
       SQL`
           ) AS trades_filtered

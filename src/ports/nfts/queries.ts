@@ -123,7 +123,7 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     .append(SQL`)`)
 }
 
-function getFilteredEstateCTE(): SQLStatement {
+function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
   return SQL`
     , filtered_estate AS (
       SELECT
@@ -137,13 +137,18 @@ function getFilteredEstateCTE(): SQLStatement {
       FROM
         squid_marketplace.estate est
       LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
+      `.append(
+    filters.owner
+      ? SQL` WHERE est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
+      : SQL``
+  ).append(SQL`
       GROUP BY
         est.id, est.token_id, est.size, est.data_id
-    )
-  `
+      )
+  `)
 }
 
-function getParcelEstateDataCTE(): SQLStatement {
+function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
   return SQL`
     , parcel_estate_data AS (
       SELECT
@@ -154,11 +159,16 @@ function getParcelEstateDataCTE(): SQLStatement {
         squid_marketplace.parcel par
       LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
       LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+      `.append(
+    filters.owner
+      ? SQL`WHERE par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
+      : SQL``
+  ).append(SQL`
     )
-  `
+  `)
 }
 
-function getTradesCTE(): SQLStatement {
+function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
   return SQL`
     , trades AS (
       SELECT
@@ -227,10 +237,11 @@ function getTradesCTE(): SQLStatement {
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
       LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('0x2d6b3508f9aca32d2550f92b2addba932e73c1ff','0x540fb08edb56aae562864b390542c97f562825ba')) as contract_signature_index ON t.network = contract_signature_index.network
-      WHERE t.type = 'public_nft_order'
+      WHERE t.type = 'public_nft_order' `.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLocaleLowerCase()} ` : SQL``)
+    .append(SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
     )
-  `
+  `)
 }
 
 function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
@@ -275,9 +286,9 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false):
   }
 
   return getFilteredNFTCTE(nftFilters, uncapped)
-    .append(getFilteredEstateCTE())
-    .append(getParcelEstateDataCTE())
-    .append(getTradesCTE())
+    .append(getFilteredEstateCTE(nftFilters))
+    .append(getParcelEstateDataCTE(nftFilters))
+    .append(getTradesCTE(nftFilters))
     .append(
       SQL`
     SELECT

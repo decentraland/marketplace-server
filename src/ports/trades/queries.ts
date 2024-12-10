@@ -1,6 +1,6 @@
 import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType } from '@dcl/schemas'
+import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 
@@ -163,9 +163,95 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
-    WHERE t.type = '${type}'
+    WHERE t.type = '${type} '
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
+}
+
+export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters) {
+  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
+  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  return SQL`
+    SELECT
+      t.id,
+      t.created_at,
+      t.signer,
+      t.expires_at,
+      t.checks,
+      t.network,
+      t.chain_id,
+      COUNT(*) OVER() as count,
+      json_object_agg(assets_with_values.direction, json_build_object(
+        'contract_address', assets_with_values.contract_address,
+        'direction', assets_with_values.direction,
+        'beneficiary', assets_with_values.beneficiary,
+        'extra', assets_with_values.extra,
+        'token_id', assets_with_values.token_id, 
+        'item_id', assets_with_values.item_id,
+        'amount', assets_with_values.amount,
+        'creator', assets_with_values.creator,
+        'owner', assets_with_values.owner,
+        'category', assets_with_values.category,
+        'nft_id', assets_with_values.nft_id,
+        'issued_id', assets_with_values.issued_id,
+        'nft_name', assets_with_values.nft_name
+      )) as assets,
+      CASE
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+        WHEN (
+          (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
+          OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+        ) THEN 'cancelled'
+        WHEN (t.expires_at < now()::timestamptz(3)) THEN 'cancelled'
+        WHEN (
+          (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
+          OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+        ) THEN 'cancelled'
+        WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then 'sold'
+      ELSE 'open'
+      END AS status
+    FROM marketplace.trades as t
+    JOIN (
+      SELECT
+        ta.trade_id,
+        ta.contract_address,
+        ta.direction,
+        ta.beneficiary,
+        ta.extra,
+        erc721_asset.token_id,
+        coalesce(item_asset.item_id, nft.item_blockchain_id::text) as item_id,
+        erc20_asset.amount,
+        item.creator,
+        account.address as owner,
+        nft.category,
+        nft.id as nft_id,
+        nft.issued_id as issued_id,
+        nft.name as nft_name
+      FROM marketplace.trade_assets as ta 
+      LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
+      LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
+      LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
+      LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
+      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+      LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
+    ) as assets_with_values ON t.id = assets_with_values.trade_id
+    LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
+    LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('`
+    .append(marketplaceEthereum.address.toLowerCase())
+    .append(SQL`'`)
+    .append(
+      SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
+        SQL`')) as contract_signature_index ON t.network = contract_signature_index.network
+    WHERE t.type = '`
+          .append(type)
+          .append(
+            SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
+    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+  `)
+          )
+      )
+    )
 }
 
 export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: string) {
