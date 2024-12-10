@@ -255,10 +255,18 @@ export function getNFTsSortByStatement(sortBy?: NFTSortBy) {
 }
 
 export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
-  if (sortBy === NFTSortBy.RECENTLY_LISTED) {
-    return SQL` ORDER BY order_created_at DESC `
+  switch (sortBy) {
+    case NFTSortBy.RECENTLY_LISTED:
+      return SQL` ORDER BY order_created_at DESC `
+    case NFTSortBy.NAME:
+      return SQL` ORDER BY name ASC `
+    case NFTSortBy.NEWEST:
+      return SQL` ORDER BY created_at DESC `
+    case NFTSortBy.RECENTLY_SOLD:
+      return SQL` ORDER BY sold_at DESC `
+    default:
+      return SQL``
   }
-  return SQL``
 }
 
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
