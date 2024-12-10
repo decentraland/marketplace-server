@@ -27,14 +27,14 @@ function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
 }
 
 function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const limit = filters?.first ? filters.first : 100
+  const limit = filters?.first ? filters.first : 1000
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
 function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const finalLimit = filters?.first ? filters.first : 100
+  const finalLimit = filters?.first ? filters.first : 1000
   const finalOffset = filters?.skip ? filters.skip : 0
 
   // For inner queries, we need to fetch enough records to account for the final offset

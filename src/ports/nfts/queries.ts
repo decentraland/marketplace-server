@@ -117,7 +117,9 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     `
     .append(whereClause)
     .append(getNFTsSortByStatement(nftFilters.sortBy))
-    .append(uncapped || nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
+    .append(
+      uncapped || nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED || !!nftFilters.owner ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters)
+    )
     .append(SQL`)`)
 }
 
