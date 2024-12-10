@@ -38,7 +38,7 @@ describe('when querying for bids', () => {
   describe('and the contract address filter is defined', () => {
     it('should add the filter to the query', () => {
       const query = getBidsQuery({ contractAddress: '0x123', offset: 1, limit: 1 })
-      expect(query.text).toContain('LOWER(contract_address) = LOWER($1)')
+      expect(query.text).toContain('contract_address = $1')
       expect(query.values).toEqual(expect.arrayContaining(['0x123']))
     })
   })

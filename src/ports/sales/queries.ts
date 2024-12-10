@@ -74,6 +74,7 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
     FROM squid_marketplace.sale
     `
     .append(getLegacySalesQueryWhereStatement(filters))
+    .append(getSalesSortByStatement(filters.sortBy))
     .append(getSalesLimitAndOffsetStatement(filters))
 }
 
