@@ -31,6 +31,14 @@ beforeEach(async () => {
       })
     })
   })
+  dappsWriteDatabase = createTestPgComponent({
+    getPool: jest.fn().mockReturnValue({
+      connect: () => ({
+        query: dbClientQueryMock,
+        release: dbClientReleaseMock
+      })
+    })
+  })
 
   picks = {
     getPicksStats: jest.fn(),
