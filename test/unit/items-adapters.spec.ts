@@ -30,7 +30,7 @@ beforeEach(() => {
     trade_id: '12',
     wearable_category: WearableCategory.BODY_SHAPE,
     item_type: ItemType.EMOTE_V1,
-    body_shapes: [BodyShape.MALE],
+    wearable_body_shapes: [BodyShape.MALE],
     emote_category: EmoteCategory.DANCE,
     description: 'An emote item',
     rarity: Rarity.COMMON,
@@ -79,7 +79,7 @@ describe('fromDBItemToItem', () => {
     dbItem = {
       ...dbItem,
       item_type: ItemType.WEARABLE_V1,
-      body_shapes: [BodyShape.MALE],
+      wearable_body_shapes: [BodyShape.MALE],
       emote_category: undefined,
       wearable_category: WearableCategory.BODY_SHAPE,
       description: 'A wearable item',
@@ -110,7 +110,7 @@ describe('fromDBItemToItem', () => {
       tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
       data: {
         wearable: {
-          bodyShapes: dbItem.body_shapes,
+          bodyShapes: dbItem.wearable_body_shapes,
           category: dbItem.wearable_category as WearableCategory,
           description: dbItem.description || '',
           rarity: dbItem.rarity,
@@ -151,7 +151,7 @@ describe('fromDBItemToItem', () => {
       tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
       data: {
         emote: {
-          bodyShapes: dbItem.body_shapes,
+          bodyShapes: dbItem.wearable_body_shapes,
           category: dbItem.emote_category as EmoteCategory,
           description: dbItem.description || '',
           rarity: dbItem.rarity,
@@ -174,7 +174,7 @@ describe('getDataFromDBItem', () => {
     dbItem = {
       ...dbItem,
       item_type: ItemType.WEARABLE_V1,
-      body_shapes: [BodyShape.FEMALE],
+      wearable_body_shapes: [BodyShape.FEMALE],
       wearable_category: WearableCategory.UPPER_BODY,
       description: 'A wearable item',
       rarity: Rarity.RARE,
@@ -183,7 +183,7 @@ describe('getDataFromDBItem', () => {
     const result = getDataFromDBItem(dbItem)
     expect(result).toEqual({
       wearable: {
-        bodyShapes: dbItem.body_shapes,
+        bodyShapes: dbItem.wearable_body_shapes,
         category: dbItem.wearable_category,
         description: dbItem.description,
         rarity: dbItem.rarity,
@@ -196,7 +196,7 @@ describe('getDataFromDBItem', () => {
     dbItem = {
       ...dbItem,
       item_type: ItemType.EMOTE_V1,
-      body_shapes: [BodyShape.MALE],
+      wearable_body_shapes: [BodyShape.MALE],
       emote_category: EmoteCategory.DANCE,
       description: 'An emote item',
       rarity: Rarity.COMMON,
@@ -207,7 +207,7 @@ describe('getDataFromDBItem', () => {
     const result = getDataFromDBItem(dbItem)
     expect(result).toEqual({
       emote: {
-        bodyShapes: dbItem.body_shapes,
+        bodyShapes: dbItem.wearable_body_shapes,
         category: dbItem.emote_category,
         description: dbItem.description,
         rarity: dbItem.rarity,
