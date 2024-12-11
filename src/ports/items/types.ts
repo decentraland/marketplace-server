@@ -39,7 +39,8 @@ export type DBItem = {
   sold_at: number
   urn: string
   name: string
-  body_shapes: BodyShape[]
+  wearable_body_shapes?: BodyShape[]
+  emote_body_shapes?: BodyShape[]
   description?: string
   isSmart?: boolean
   loop?: boolean
