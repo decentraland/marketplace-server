@@ -54,7 +54,7 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
     : null
 
-  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` LOWER(category) = LOWER(${nftFilters.category}) ` : null
+  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLocaleLowerCase()} ` : null
 
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
 
@@ -534,9 +534,9 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
         LEFT JOIN marketplace.trade_assets_erc20 erc20_asset ON ta.id = erc20_asset.asset_id
         LEFT JOIN marketplace.trade_assets_item item_asset ON ta.id = item_asset.asset_id
         LEFT JOIN squid_marketplace.item item ON ta.contract_address = item.collection_id
-          AND item_asset.item_id = item.blockchain_id::TEXT
+          AND item_asset.item_id::numeric = item.blockchain_id
         LEFT JOIN squid_marketplace.nft nft ON ta.contract_address = nft.contract_address
-          AND erc721_asset.token_id = nft.token_id::TEXT
+          AND erc721_asset.token_id::numeric = nft.token_id
         LEFT JOIN squid_marketplace.account account ON account.id = nft.owner_id
       ) assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'public_nft_order'
@@ -588,7 +588,19 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
     filtered_orders AS (
       SELECT nft_id
       FROM squid_marketplace."order"
-      WHERE status = 'open' AND expires_normalized > NOW()
+      WHERE 
+        status = 'open' 
+        AND expires_normalized > NOW()
+        `
+                .append(
+                  nftFilters.isLand
+                    ? SQL` AND (category = 'parcel' OR category = 'estate') `
+                    : nftFilters.category
+                    ? SQL` AND category = ${nftFilters.category.toLocaleLowerCase()} `
+                    : SQL``
+                )
+                .append(
+                  SQL`
       ORDER BY expires_normalized DESC NULLS LAST
       LIMIT 24
     ),
@@ -601,13 +613,13 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
       FROM squid_marketplace.nft
       JOIN filtered_orders ON nft.id = filtered_orders.nft_id
       `
-                .append(whereClauseForNFTsWithOrders)
-                .append(
-                  SQL`
-      ORDER BY search_order_created_at DESC NULLS LAST `
-                    .append(getNFTLimitAndOffsetStatement(nftFilters))
+                    .append(whereClauseForNFTsWithOrders)
                     .append(
-                      SQL` 
+                      SQL`
+      ORDER BY search_order_created_at DESC NULLS LAST `
+                        .append(getNFTLimitAndOffsetStatement(nftFilters))
+                        .append(
+                          SQL` 
     )
     SELECT
       combined.id,
@@ -684,6 +696,7 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
     ORDER BY sort_field DESC
     `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     `)
+                        )
                     )
                 )
             )
