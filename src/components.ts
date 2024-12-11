@@ -62,10 +62,18 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
-  const dappsDatabase = await createPgComponent(
+  const dappsWriteDatabase = await createPgComponent(
     { config, logs, metrics },
     {
       dbPrefix: 'DAPPS'
+    }
+  )
+
+  const dappsReadDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'DAPPS_READ',
+      migrations: false
     }
   )
 
@@ -90,7 +98,7 @@ export async function initComponents(): Promise<AppComponents> {
   const schemaValidator = await createSchemaValidatorComponent()
 
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, dappsDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -101,17 +109,17 @@ export async function initComponents(): Promise<AppComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
 
   // catalog
-  const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
-  const trades = await createTradesComponent({ dappsDatabase, eventPublisher, logs })
-  const bids = await createBidsComponents({ dappsDatabase })
-  const nfts = await createNFTsComponent({ dappsDatabase, config, rentals })
-  const orders = await createOrdersComponent({ dappsDatabase })
-  const sales = await createSalesComponents({ dappsDatabase })
-  const prices = await createPricesComponents({ dappsDatabase })
-  const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
-  const stats = await createStatsComponent({ dappsDatabase })
-  const rankings = await createRankingsComponent({ dappsDatabase })
-  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase })
+  const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
+  const trades = await createTradesComponent({ dappsDatabase: dappsReadDatabase, eventPublisher, logs })
+  const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
+  const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
+  const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
+  const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
+  const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
+  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
+  const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
+  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
 
   const transak = await createTransakComponent(
@@ -134,7 +142,8 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
     favoritesDatabase,
-    dappsDatabase,
+    dappsDatabase: dappsReadDatabase,
+    dappsWriteDatabase,
     catalog,
     balances,
     wertSigner,

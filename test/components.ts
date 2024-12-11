@@ -72,10 +72,18 @@ async function initComponents(): Promise<TestComponents> {
     }
   )
 
-  const dappsDatabase = await createPgComponent(
+  const dappsWriteDatabase = await createPgComponent(
     { config, logs, metrics },
     {
       dbPrefix: 'DAPPS'
+    }
+  )
+
+  const dappsReadDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'DAPPS_READ',
+      migrations: false
     }
   )
 
@@ -88,7 +96,7 @@ async function initComponents(): Promise<TestComponents> {
 
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, dappsDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -97,11 +105,11 @@ async function initComponents(): Promise<TestComponents> {
   })
   const access = createAccessComponent({ favoritesDatabase, logs, lists })
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
-  const catalog = await createCatalogComponent({ dappsDatabase, picks }, SEGMENT_WRITE_KEY)
+  const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
-  const trades = createTradesComponent({ dappsDatabase, eventPublisher, logs })
-  const bids = createBidsComponents({ dappsDatabase })
+  const trades = createTradesComponent({ dappsDatabase: dappsReadDatabase, eventPublisher, logs })
+  const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
 
   const rentalsSubgraph = await createSubgraphComponent(
     { logs, config, fetch, metrics },
@@ -110,10 +118,10 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
 
-  const nfts = createNFTsComponent({ dappsDatabase, config, rentals })
-  const orders = createOrdersComponent({ dappsDatabase })
-  const sales = createSalesComponents({ dappsDatabase })
-  const prices = createPricesComponents({ dappsDatabase })
+  const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
+  const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
+  const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
@@ -121,10 +129,10 @@ async function initComponents(): Promise<TestComponents> {
   })
 
   const transak = createTransakComponent({ fetch }, { apiURL: '', apiKey: '', apiSecret: '' })
-  const stats = await createStatsComponent({ dappsDatabase })
-  const trendings = await createTrendingsComponent({ dappsDatabase, items, picks })
-  const rankings = await createRankingsComponent({ dappsDatabase })
-  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase })
+  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
+  const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
+  const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
+  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
 
   return {
@@ -134,7 +142,8 @@ async function initComponents(): Promise<TestComponents> {
     localFetch: await createLocalFetchCompoment(config),
     fetch,
     metrics,
-    dappsDatabase,
+    dappsDatabase: dappsReadDatabase,
+    dappsWriteDatabase,
     favoritesDatabase,
     catalog,
     balances,
