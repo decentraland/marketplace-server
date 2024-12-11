@@ -28,7 +28,8 @@ export async function createPgComponent(
     {
       ...options,
       pool: {
-        connectionString: databaseUrl
+        connectionString: databaseUrl,
+        query_timeout: 120000
       },
       migration: {
         databaseUrl,
