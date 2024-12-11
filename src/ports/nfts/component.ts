@@ -50,7 +50,8 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       if ((error as Error).message === 'Query read timeout') {
         console.error('Query timeout exceeded (2 minutes)', {
           filters,
-          query
+          query: query?.text,
+          values: query?.values
         })
       }
       throw new HttpError("Couldn't fetch nfts with the filters provided", 400)

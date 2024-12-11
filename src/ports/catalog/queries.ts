@@ -529,7 +529,7 @@ const getTradesCTE = () => {
               )
             ) AS assets,
             CASE
-              WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
+              WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
               WHEN t.expires_at < now()::timestamptz(3) THEN '${ListingStatus.CANCELLED}'
               WHEN (
                 (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
@@ -604,7 +604,7 @@ const getTradesJoin = () => {
           FROM unified_trades
             WHERE status = 'open'
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
-          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id = items.blockchain_id::text
+          ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
   `
 }
 
