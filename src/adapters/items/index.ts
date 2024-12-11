@@ -22,7 +22,7 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
   ) {
     return {
       wearable: {
-        bodyShapes: dbItem.body_shapes,
+        bodyShapes: dbItem.wearable_body_shapes || [], // if it's wearable, the field will be defined
         category: dbItem.wearable_category as WearableCategory,
         description: dbItem.description || '',
         rarity: dbItem.rarity,
@@ -33,7 +33,7 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
 
   return {
     emote: {
-      bodyShapes: dbItem.body_shapes,
+      bodyShapes: dbItem.emote_body_shapes || [], // if it's emote, the field will be defined
       category: dbItem.emote_category as EmoteCategory,
       description: dbItem.description || '',
       rarity: dbItem.rarity,
