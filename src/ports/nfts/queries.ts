@@ -161,7 +161,7 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
       LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
       `.append(
     filters.owner
-      ? SQL`WHERE par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
+      ? SQL`WHERE (par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) OR par.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()})) `
       : SQL``
   ).append(SQL`
     )
