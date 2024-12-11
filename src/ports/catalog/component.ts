@@ -13,10 +13,10 @@ import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 const sortByWordSimilarity = (a: { word_similarity: number }, b: { word_similarity: number }) => b.word_similarity - a.word_similarity
 
 export async function createCatalogComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'picks'>,
+  components: Pick<AppComponents, 'dappsDatabase' | 'dappsWriteDatabase' | 'picks'>,
   segmentWriteKey: string
 ): Promise<ICatalogComponent> {
-  const { dappsDatabase: database, picks } = components
+  const { dappsDatabase: dataReadbase, dappsWriteDatabase, picks } = components
 
   async function fetch(
     filters: CatalogOptions,
@@ -25,7 +25,7 @@ export async function createCatalogComponent(
     const { network } = filters
     let catalogItems: Item[] = []
     let total = 0
-    const client = await database.getPool().connect()
+    const client = await dataReadbase.getPool().connect()
     try {
       if (filters.search) {
         const analytics = new Analytics({ writeKey: segmentWriteKey })
@@ -73,7 +73,7 @@ export async function createCatalogComponent(
 
       catalogItems = enhanceItemsWithPicksStats(catalogItems, pickStats.map(fromDBPickStatsToPickStats))
     } catch (e) {
-      if (e instanceof Error && e.message === 'Query read timeout') {
+      if ((e as Error).message === 'Query read timeout') {
         console.error('Query timeout exceeded (2 minutes)', {
           filters
         })
@@ -87,7 +87,7 @@ export async function createCatalogComponent(
   }
 
   async function updateBuilderServerItemsView() {
-    const client = await database.getPool().connect()
+    const client = await dappsWriteDatabase.getPool().connect()
     try {
       const query = SQL`
         REFRESH MATERIALIZED VIEW `

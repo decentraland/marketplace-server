@@ -12,6 +12,7 @@ jest.mock('@segment/analytics-node')
 
 let catalogComponent: ICatalogComponent
 let dappsDatabase: AppComponents['dappsDatabase']
+let dappsWriteDatabase: AppComponents['dappsDatabase']
 let picks: IPicksComponent
 let dbClientQueryMock: jest.Mock
 let dbClientReleaseMock: jest.Mock
@@ -30,6 +31,14 @@ beforeEach(async () => {
       })
     })
   })
+  dappsWriteDatabase = createTestPgComponent({
+    getPool: jest.fn().mockReturnValue({
+      connect: () => ({
+        query: dbClientQueryMock,
+        release: dbClientReleaseMock
+      })
+    })
+  })
 
   picks = {
     getPicksStats: jest.fn(),
@@ -38,7 +47,7 @@ beforeEach(async () => {
   }
 
   segmentWriteKey = 'testSegmentWriteKey'
-  catalogComponent = await createCatalogComponent({ dappsDatabase, picks }, segmentWriteKey)
+  catalogComponent = await createCatalogComponent({ dappsDatabase, dappsWriteDatabase, picks }, segmentWriteKey)
 })
 
 describe('Catalog Component', () => {

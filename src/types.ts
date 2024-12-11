@@ -48,6 +48,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
+  dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
