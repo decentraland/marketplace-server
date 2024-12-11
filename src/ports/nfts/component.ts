@@ -1,5 +1,6 @@
 import { ListingStatus, NFTCategory, NFTFilters, RentalStatus } from '@dcl/schemas'
 import { fromNFTsAndOrdersToNFTsResult } from '../../adapters/nfts'
+import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
 import { getOrdersQuery } from '../orders/queries'
 import { DBOrder } from '../orders/types'
@@ -27,20 +28,34 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
 
     const listsServer = await config.requireString('DCL_LISTS_SERVER')
     const nftFilters = await getNFTFilters(filters, listsServer, rentals)
-    const nftsQuery = getNFTsQuery(nftFilters)
-    const nfts = await pg.query<DBNFT>(nftsQuery)
-    const nftIds = nfts.rows.map(nft => nft.id)
-    const query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner })
-    const orders = await pg.query<DBOrder>(query)
+    const client = await pg.getPool().connect()
+    let query
+    try {
+      query = getNFTsQuery(nftFilters)
+      const nfts = await client.query<DBNFT>(query)
+      const nftIds = nfts.rows.map(nft => nft.id)
+      query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner })
+      const orders = await client.query<DBOrder>(query)
 
-    const landNftIds = nfts.rows
-      .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
-      .map(nft => nft.id)
-    const listings = landNftIds.length ? await rentals.getRentalsListingsOfNFTs(landNftIds, RentalStatus.OPEN) : []
+      const landNftIds = nfts.rows
+        .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
+        .map(nft => nft.id)
+      const listings = landNftIds.length ? await rentals.getRentalsListingsOfNFTs(landNftIds, RentalStatus.OPEN) : []
 
-    return {
-      data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
-      total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
+      return {
+        data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
+        total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
+      }
+    } catch (error) {
+      if ((error as Error).message === 'Query read timeout') {
+        console.error('Query timeout exceeded (2 minutes)', {
+          filters,
+          query
+        })
+      }
+      throw new HttpError("Couldn't fetch nfts with the filters provided", 400)
+    } finally {
+      await client.release()
     }
   }
 
