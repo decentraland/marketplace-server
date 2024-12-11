@@ -74,7 +74,7 @@ export async function createCatalogComponent(
       catalogItems = enhanceItemsWithPicksStats(catalogItems, pickStats.map(fromDBPickStatsToPickStats))
     } catch (e) {
       if (e instanceof Error && e.message === 'Query read timeout') {
-        console.error(`Query timeout exceeded (2 minutes)`, {
+        console.error('Query timeout exceeded (2 minutes)', {
           filters
         })
       }
