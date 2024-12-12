@@ -12,7 +12,7 @@ export function createBidsComponents(components: Pick<AppComponents, 'dappsDatab
 
     return {
       data: result.rows.map(fromDBBidToBid),
-      count: result.rows.length ? Number(result.rows[0].count) : 0
+      count: result.rows.length ? Number(result.rows[0].bids_count) : 0
     }
   }
 

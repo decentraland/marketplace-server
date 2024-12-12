@@ -4,14 +4,16 @@ import { getWhereStatementFromFilters } from '../utils'
 import { getNFTLimitAndOffsetStatement, getTradesCTE } from './queries'
 import { GetNFTsFilters } from './types'
 
-export function getLandNFTsSortBy(sortBy?: NFTSortBy) {
+export function getNFTsSortBy(sortBy?: NFTSortBy) {
   switch (sortBy) {
     case NFTSortBy.NAME:
       return SQL` ORDER BY name ASC `
     case NFTSortBy.NEWEST:
       return SQL` ORDER BY created_at DESC `
     case NFTSortBy.CHEAPEST:
-      return SQL` ORDER BY coalesce(nft.search_order_price, (trades.assets -> 'received' ->> 'amount')::numeric(78)) ASC `
+      return SQL` ORDER BY coalesce((trades.assets -> 'received' ->> 'amount')::numeric(78), nft.search_order_price) ASC `
+    case NFTSortBy.RECENTLY_LISTED:
+      return SQL` ORDER BY GREATEST(to_timestamp(nft.search_order_created_at), trades.created_at) DESC NULLS LAST `
     case NFTSortBy.RECENTLY_SOLD:
       return SQL` ORDER BY sold_at DESC `
     default:
@@ -40,6 +42,17 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR orders.nft_id IS NOT NULL)` : null
 
+  // @TODO DEBUG WHY THIS FILTERS ARE SLOWING DOWN THE QUERY AND ENABLE THEM BACK
+  // const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
+  //   ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
+  //   : null
+
+  // const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
+  //   ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
+  //   : null
+
+  // const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
+
   return getWhereStatementFromFilters([
     FILTER_BY_OWNER,
     FILTER_MIN_ESTATE_SIZE,
@@ -47,6 +60,9 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     FILTER_BY_MIN_PRICE,
     FILTER_BY_MAX_PRICE,
     FILTER_BY_ON_SALE
+    // FILTER_BY_MIN_PLAZA_DISTANCE,
+    // FILTER_BY_MAX_PLAZA_DISTANCE,
+    // FILTER_BY_ROAD_ADJACENT
   ])
 }
 
@@ -123,7 +139,10 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           nft.updated_at,
           nft.sold_at,
           nft.urn,
-          coalesce(nft.search_order_price, (trades.assets -> 'received' ->> 'amount')::numeric(78)) AS price,
+          CASE 
+		        WHEN (trades.assets -> 'received' ->> 'amount') IS NOT NULL THEN (trades.assets -> 'received' ->> 'amount')::numeric(78)
+		        ELSE nft.search_order_price
+		      END AS price,
           nft.owner_id,
           nft.image,
           nft.issued_id,
@@ -143,7 +162,7 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           --        emote.description,
           --        land_data.description
           --      ) AS description,
-          coalesce (to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
+          GREATEST(to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
           FROM
               filtered_land_nfts nft
         LEFT JOIN parcel_estate_data parcel ON nft.id = parcel.id
@@ -158,7 +177,7 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
             `
             .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
             .append(getLANDWhereStatement(nftFilters))
-            .append(getLandNFTsSortBy(sortBy))
+            .append(getNFTsSortBy(sortBy))
             .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`;
             `)
         )

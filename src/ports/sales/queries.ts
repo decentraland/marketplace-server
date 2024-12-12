@@ -71,44 +71,15 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
       network,
       search_category as category
     FROM squid_marketplace.sale
-    `
-    .append(getLegacySalesQueryWhereStatement(filters))
-    .append(getSalesSortByStatement(filters.sortBy))
-    .append(getSalesLimitAndOffsetStatement(filters))
-}
-
-const getNFTCTE = (filters: SaleFilters) => {
-  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` contract_address = ${filters.contractAddress.toLowerCase()} ` : null
-  const FILTER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
-  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY (${getDBNetworks(filters.network)}) ` : null
-  const FILTER_BY_CATEGORY = filters.categories && filters.categories.length ? SQL` category = ANY (${filters.categories}) ` : null
-
-  const where = getWhereStatementFromFilters([
-    FILTER_BY_CONTRACT_ADDRESS,
-    FILTER_BY_ITEM_ID,
-    FILTER_BY_TOKEN_ID,
-    FILTER_BY_NETWORK,
-    FILTER_BY_CATEGORY
-  ])
-
-  return SQL`
-      WITH filtered_nfts AS (
-        SELECT *
-        FROM squid_marketplace.nft
-        `.append(where).append(SQL`
-      )
-    `)
+    `.append(getLegacySalesQueryWhereStatement(filters))
 }
 
 export function getSalesQuery(filters: SaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
 
-  return getNFTCTE(filters).append(
-    SQL`SELECT *, COUNT(*) OVER() as count`
-      .append(SQL` FROM `)
-      .append(LEGACY_SALES)
-      .append(getSalesSortByStatement(filters.sortBy))
-      .append(getSalesLimitAndOffsetStatement(filters))
-  )
+  return SQL`SELECT *, COUNT(*) OVER() as sales_count`
+    .append(SQL` FROM `)
+    .append(LEGACY_SALES)
+    .append(getSalesSortByStatement(filters.sortBy))
+    .append(getSalesLimitAndOffsetStatement(filters))
 }

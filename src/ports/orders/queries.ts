@@ -186,7 +186,7 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
   const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
 
   return SQL`
-    SELECT *, COUNT(*) OVER() as count FROM (
+    SELECT combined_orders.* FROM (
       (`
     .append(orderTradesQuery)
     .append(
