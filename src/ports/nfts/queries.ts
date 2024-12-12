@@ -55,39 +55,26 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
   const FILTER_BY_OWNER = nftFilters.owner
     ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
     : null
-
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLocaleLowerCase()} ` : null
-
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
-
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
-
   const FILTER_BY_NETWORK = nftFilters.network ? SQL` network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
-
   const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` search_is_wearable_head = true ` : null
-
   const FILTER_BY_LAND = nftFilters.isLand ? SQL` search_is_land = true ` : null
-
   const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` search_is_wearable_accessory = true ` : null
-
   const FILTER_BY_SMART_WEARABLE = nftFilters.isWearableSmart ? SQL` item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
-
   const FILTER_BY_CONTRACT_ADDRESSES = nftFilters.contractAddresses?.length
     ? SQL` contract_address = ANY (${nftFilters.contractAddresses}) `
     : null
 
   const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
-
   const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
     ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
     : null
-
   const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
     ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
     : null
-
   const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
-
   const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
   const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice ? SQL` nft.search_order_price >= ${nftFilters.minPrice}` : null
   const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}` : null
@@ -126,6 +113,13 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
 }
 
 function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
+  const FILTER_BY_OWNER = filters.owner
+    ? SQL` est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
+    : SQL``
+  const FILTER_MIN_ESTATE_SIZE = filters.minEstateSize ? SQL` est.size >= ${filters.minEstateSize} ` : SQL` est.size > 0 `
+
+  const FILTER_MAX_ESTATE_SIZE = filters.maxEstateSize ? SQL` est.size <= ${filters.maxEstateSize} ` : null
+
   return SQL`
     , filtered_estate AS (
       SELECT
@@ -139,11 +133,7 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
       FROM
         squid_marketplace.estate est
       LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
-      `.append(
-    filters.owner
-      ? SQL` WHERE est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
-      : SQL``
-  ).append(SQL`
+      `.append(getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_MIN_ESTATE_SIZE, FILTER_MAX_ESTATE_SIZE])).append(SQL`
       GROUP BY
         est.id, est.token_id, est.size, est.data_id
       )
@@ -375,10 +365,6 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   // Keep only filters that need JOINed tables
   const FILTER_BY_HAS_SOUND = nftFilters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = nftFilters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
-  const FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize
-    ? SQL` estate.size >= ${nftFilters.minEstateSize} `
-    : SQL` (estate.size IS NULL OR estate.size > 0) `
-  const FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
   const FILTER_BY_WEARABLE_CATEGORY = nftFilters.wearableCategory ? SQL` wearable.category = ${nftFilters.wearableCategory} ` : null
   const FILTER_BY_EMOTE_CATEGORY = nftFilters.emoteCategory ? SQL` emote.category = ${nftFilters.emoteCategory} ` : null
   const FILTER_BY_EMOTE_PLAY_MODE = getEmotePlayModeWhereStatement(nftFilters.emotePlayMode)
@@ -410,8 +396,6 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   return getWhereStatementFromFilters([
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
-    FILTER_MIN_ESTATE_SIZE,
-    FILTER_MAX_ESTATE_SIZE,
     FILTER_BY_EMOTE_CATEGORY,
     FILTER_BY_WEARABLE_CATEGORY,
     FILTER_BY_EMOTE_PLAY_MODE,
