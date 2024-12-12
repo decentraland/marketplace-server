@@ -116,9 +116,7 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_OWNER = filters.owner
     ? SQL` est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
     : SQL``
-  const FILTER_MIN_ESTATE_SIZE = filters.minEstateSize
-    ? SQL` est.size >= ${filters.minEstateSize} `
-    : SQL` (est.size IS NULL OR est.size > 0) `
+  const FILTER_MIN_ESTATE_SIZE = filters.minEstateSize ? SQL` est.size >= ${filters.minEstateSize} ` : SQL` est.size > 0 `
 
   const FILTER_MAX_ESTATE_SIZE = filters.maxEstateSize ? SQL` est.size <= ${filters.maxEstateSize} ` : null
 
