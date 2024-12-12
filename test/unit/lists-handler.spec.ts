@@ -709,7 +709,7 @@ describe('when getting the lists', () => {
         }
       ]
       getListsMock.mockResolvedValueOnce(dbLists)
-      url = new URL('http://localhost/v1/lists?sortBy=name&sortDirection=asc&itemId=anItemId&q=aName')
+      url = new URL('http://localhost/v1/lists?sortBy=name&sortDirection=asc&itemId=1&q=aName')
       result = getListsHandler({ url, components, verification })
     })
 
@@ -736,7 +736,7 @@ describe('when getting the lists', () => {
         limit: 100,
         sortBy: ListSortBy.NAME,
         sortDirection: ListSortDirection.ASC,
-        itemId: 'anItemId',
+        itemId: '1',
         q: 'aName'
       })
     })

@@ -72,7 +72,7 @@ describe('when calling getNotificationEventForTrade function', () => {
         {
           assetType: TradeAssetType.ERC721,
           contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-          tokenId: 'atokenid',
+          tokenId: '100',
           extra: '0x',
           beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
         }
@@ -92,7 +92,7 @@ describe('when calling getNotificationEventForTrade function', () => {
             {
               assetType: TradeAssetType.ERC721,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              tokenId: 'atokenid',
+              tokenId: '100',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -163,7 +163,7 @@ describe('when calling getNotificationEventForTrade function', () => {
             {
               assetType: TradeAssetType.COLLECTION_ITEM,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              itemId: 'anItemId',
+              itemId: '1',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -274,7 +274,7 @@ describe('when validating trade by type', () => {
         {
           assetType: TradeAssetType.ERC721,
           contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-          tokenId: 'atokenid',
+          tokenId: '100',
           extra: '0x',
           beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
         }
@@ -293,7 +293,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x'
           }
         ]
@@ -351,7 +351,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           },
@@ -388,7 +388,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.COLLECTION_ITEM,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-            itemId: 'anitemid',
+            itemId: '1',
             extra: '0x'
           }
         ]
@@ -405,7 +405,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenId',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x123'
           }
@@ -446,7 +446,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           },
@@ -481,7 +481,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x'
           }
         ]
@@ -504,7 +504,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-            tokenId: 'atokenId',
+            tokenId: '100',
             extra: '0x'
           }
         ]
@@ -521,7 +521,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenId',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x123'
           }
@@ -562,7 +562,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           },
@@ -597,7 +597,7 @@ describe('when validating trade by type', () => {
           {
             assetType: TradeAssetType.COLLECTION_ITEM,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-            itemId: 'anitemid',
+            itemId: '1',
             extra: '0x'
           }
         ]
