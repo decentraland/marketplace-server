@@ -31,7 +31,7 @@ describe('when fetching bids', () => {
     beforeEach(() => {
       bids = [
         {
-          count: 10,
+          bids_count: 10,
           trade_id: '1',
           price: '10',
           token_id: '1',
@@ -54,7 +54,7 @@ describe('when fetching bids', () => {
     })
 
     it('should return the bids with the count', async () => {
-      expect(await bidsComponent.getBids({ limit: 1, offset: 0 })).toEqual({ data: [fromDBBidToBid(bids[0])], count: bids[0].count })
+      expect(await bidsComponent.getBids({ limit: 1, offset: 0 })).toEqual({ data: [fromDBBidToBid(bids[0])], count: bids[0].bids_count })
     })
   })
 })
