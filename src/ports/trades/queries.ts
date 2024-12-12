@@ -156,8 +156,8 @@ export function getTradesForTypeQuery(type: TradeType) {
       LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
       LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
       LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
-      LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+      LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
+      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
       LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
@@ -231,8 +231,8 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
       LEFT JOIN marketplace.trade_assets_erc721 as erc721_asset ON ta.id = erc721_asset.asset_id
       LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
       LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
-      LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id = item.blockchain_id::text)
-      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id = nft.token_id::text)
+      LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
+      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
       LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
