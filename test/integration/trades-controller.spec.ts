@@ -59,7 +59,7 @@ test('trades controller', function ({ components }) {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           }
@@ -75,7 +75,7 @@ test('trades controller', function ({ components }) {
             {
               assetType: TradeAssetType.ERC721,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              tokenId: 'atokenid',
+              tokenId: '100',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -166,7 +166,7 @@ test('trades controller', function ({ components }) {
             {
               assetType: TradeAssetType.COLLECTION_ITEM,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              itemId: 'anItemId',
+              itemId: '1',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -328,7 +328,7 @@ test('trades controller', function ({ components }) {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           }

@@ -53,7 +53,7 @@ describe('when transforming DB retrieved pick stats into pick stats', () => {
   let dbPickStats: DBPickStats
   beforeEach(() => {
     dbPickStats = {
-      item_id: 'anItemId',
+      item_id: '1',
       count: '1000'
     }
   })

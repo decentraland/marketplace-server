@@ -108,7 +108,7 @@ async function initComponents(): Promise<TestComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
-  const trades = createTradesComponent({ dappsDatabase: dappsReadDatabase, eventPublisher, logs })
+  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
 
   const rentalsSubgraph = await createSubgraphComponent(
