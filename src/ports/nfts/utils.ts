@@ -30,7 +30,7 @@ export async function getNFTFilters(filters: NFTFilters, listsServer: string, re
 
   // TODO: check filter by owner
   if (shouldFetchRentalListings) {
-    const listings = await rentals.getRentalsListings(filters)
+    const listings = await rentals.getRentalsListings({ ...filters, first: 1000 }) // TODO: workdaround for the time being since we need all ids with rentals
     filters.ids = listings.data.results.map(rentalListing => rentalListing.nftId)
   }
 
