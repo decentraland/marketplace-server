@@ -4,6 +4,7 @@ import { getDBNetworks } from '../../utils'
 import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
 import { getWhereStatementFromFilters } from '../utils'
+import { getLANDs } from './landQueries'
 import { GetNFTsFilters } from './types'
 
 function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlayMode[] | undefined): SQLStatement | null {
@@ -168,7 +169,7 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
   `)
 }
 
-function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
+export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
   return SQL`
     , trades AS (
       SELECT
@@ -244,7 +245,7 @@ function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
   `)
 }
 
-function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
+export function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
   const limit = nftFilters?.first ? nftFilters.first : 100
   const offset = nftFilters?.skip ? nftFilters.skip : 0
 
@@ -283,6 +284,8 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false):
   // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
   if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
     return getRecentlyListedNFTsCTE(nftFilters)
+  } else if (nftFilters.isLand) {
+    return getLANDs(nftFilters)
   }
 
   return getFilteredNFTCTE(nftFilters, uncapped)
