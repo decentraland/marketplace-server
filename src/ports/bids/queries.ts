@@ -87,7 +87,7 @@ export function getBidsQuery(options: GetBidsParameters) {
     FILTER_NOT_EXPIRED
   ])
 
-  return SQL`SELECT *, COUNT(*) OVER() as count`
+  return SQL`SELECT *, COUNT(*) OVER() as bids_count`
     .append(SQL` FROM `)
     .append(BID_TRADES)
     .append(SQL` NATURAL FULL OUTER JOIN `)

@@ -5,7 +5,7 @@ export type IBidsComponent = {
   getBids(options: GetBidsParameters): Promise<{ data: Bid[]; count: number }>
 }
 
-export type WithCount<T> = T & { count: number }
+type WithCount<T> = T & { bids_count: number }
 
 export type DBNetwork = SquidNetwork | Network.ETHEREUM | Network.MATIC
 

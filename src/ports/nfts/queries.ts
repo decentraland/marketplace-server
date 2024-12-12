@@ -4,6 +4,7 @@ import { getDBNetworks } from '../../utils'
 import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
 import { getWhereStatementFromFilters } from '../utils'
+import { getENSs } from './ensQueries'
 import { getLANDs } from './landQueries'
 import { GetNFTsFilters } from './types'
 
@@ -282,10 +283,12 @@ export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
 
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
   // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
-  if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
-    return getRecentlyListedNFTsCTE(nftFilters)
-  } else if (nftFilters.isLand) {
+  if (nftFilters.isLand) {
     return getLANDs(nftFilters)
+  } else if (nftFilters.category === NFTCategory.ENS) {
+    return getENSs(nftFilters)
+  } else if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
+    return getRecentlyListedNFTsCTE(nftFilters)
   }
 
   return getFilteredNFTCTE(nftFilters, uncapped)
