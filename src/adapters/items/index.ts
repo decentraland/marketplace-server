@@ -50,7 +50,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     id: dbItem.id,
     name: dbItem.name,
     thumbnail: dbItem.image,
-    url: `/contracts/${dbItem.contract_address}/tokens/${dbItem.item_id}`,
+    url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
     category: getCategoryFromDBItem(dbItem),
     contractAddress: dbItem.contract_address,
     itemId: dbItem.item_id,
