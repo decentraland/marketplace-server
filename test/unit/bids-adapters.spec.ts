@@ -10,7 +10,7 @@ describe('when adapting a db bid to a bid', () => {
     describe('and the bid is for an nft', () => {
       beforeEach(() => {
         dbBid = {
-          count: 10,
+          bids_count: 10,
           trade_id: '1',
           price: '10',
           token_id: 'token-id',
@@ -54,7 +54,7 @@ describe('when adapting a db bid to a bid', () => {
     describe('and the bid is for an item', () => {
       beforeEach(() => {
         dbBid = {
-          count: 10,
+          bids_count: 10,
           trade_id: '1',
           price: '10',
           token_id: null,
@@ -101,7 +101,7 @@ describe('when adapting a db bid to a bid', () => {
 
     beforeEach(() => {
       dbBid = {
-        count: 10,
+        bids_count: 10,
         trade_id: null,
         price: '10',
         token_id: 'token-id',
