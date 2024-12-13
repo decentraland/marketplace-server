@@ -69,10 +69,10 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
   const { sortBy, isOnSale, ids, owner } = nftFilters
   const NFT_OWNER_FILTER = owner
-    ? SQL`nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '0x98ba03c0a238f2ab7ec2bfe6be0de913c3b51abc')`
+    ? SQL`nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '${owner.toLocaleLowerCase()}')`
     : null
   const ESTATE_OWNER_FILTER = owner
-    ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '0x98ba03c0a238f2ab7ec2bfe6be0de913c3b51abc')`
+    ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '${owner.toLocaleLowerCase()}')`
     : null
   return SQL`
       WITH filtered_land_nfts AS (
