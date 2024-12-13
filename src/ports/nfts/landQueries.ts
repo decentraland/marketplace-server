@@ -67,12 +67,19 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 }
 
 export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
-  const { sortBy, isOnSale, ids } = nftFilters
+  const { sortBy, isOnSale, ids, owner } = nftFilters
+  const NFT_OWNER_FILTER = owner
+    ? SQL`nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '${owner.toLocaleLowerCase()}')`
+    : null
+  const ESTATE_OWNER_FILTER = owner
+    ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = '${owner.toLocaleLowerCase()}')`
+    : null
   return SQL`
       WITH filtered_land_nfts AS (
           SELECT *
           FROM squid_marketplace.nft
-          WHERE  search_is_land = true `
+          `
+    .append(getWhereStatementFromFilters([SQL`search_is_land = true`, NFT_OWNER_FILTER]))
     .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
     .append(
       SQL`
@@ -88,6 +95,10 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
         FROM
           squid_marketplace.estate est
           LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
+        `
+        .append(getWhereStatementFromFilters([ESTATE_OWNER_FILTER]))
+        .append(
+          SQL`
         GROUP BY
           est.id,
           est.token_id,
@@ -105,14 +116,14 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
             LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
         )
         `
-        .append(getTradesCTE(nftFilters))
-        .append(
-          SQL`
+            .append(getTradesCTE(nftFilters))
+            .append(
+              SQL`
         `
-        )
-        .append(
-          isOnSale
-            ? SQL`
+            )
+            .append(
+              isOnSale
+                ? SQL`
         , valid_orders AS (
           SELECT
             o.nft_id,
@@ -124,10 +135,10 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
             o.status = 'open'
             AND o.expires_normalized > now()
         )`
-            : SQL``
-        )
-        .append(
-          SQL`
+                : SQL``
+            )
+            .append(
+              SQL`
         SELECT
           count(*) OVER () AS count,
           nft.id,
@@ -175,11 +186,12 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
             AND trades.status = 'open'
       --    AND trades.signer = account.address
             `
-            .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
-            .append(getLANDWhereStatement(nftFilters))
-            .append(getNFTsSortBy(sortBy))
-            .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`;
+                .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
+                .append(getLANDWhereStatement(nftFilters))
+                .append(getNFTsSortBy(sortBy))
+                .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`;
             `)
+            )
         )
     )
 }
