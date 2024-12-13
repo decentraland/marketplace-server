@@ -2,7 +2,7 @@ import SQL from 'sql-template-strings'
 import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
-import { validateTradeSignature } from '../../logic/trades/utils'
+import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
   InvalidTradeSignatureError,
@@ -12,7 +12,8 @@ import {
   InvalidTradeSignerError,
   TradeNotFoundError,
   EventNotGeneratedError,
-  TradeNotFoundBySignatureError
+  TradeNotFoundBySignatureError,
+  InvalidOwnerError
 } from './errors'
 import {
   getInsertTradeAssetQuery,
@@ -22,7 +23,7 @@ import {
   getTradeAssetsWithValuesByIdQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
-import { getNotificationEventForTrade, validateTradeByType } from './utils'
+import { getNotificationEventForTrade, isERC721TradeAsset, validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
   const { dappsDatabase: pg, eventPublisher, logs } = components
@@ -56,6 +57,11 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     // vaidate signature
     if (!validateTradeSignature(trade, signer)) {
       throw new InvalidTradeSignatureError()
+    }
+
+    // validate right ownership
+    if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.network, trade.chainId))) {
+      throw new InvalidOwnerError()
     }
 
     const insertedTrade = await pg.withTransaction(

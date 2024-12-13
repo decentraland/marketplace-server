@@ -30,6 +30,12 @@ export class InvalidTradeSignatureError extends Error {
   }
 }
 
+export class InvalidOwnerError extends Error {
+  constructor() {
+    super('Invalid owner')
+  }
+}
+
 export class MarketplaceContractNotFound extends Error {
   constructor(public chainId: ChainId, public network: Network) {
     super(`Contract not found for ${chainId} and ${network}`)
