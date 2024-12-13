@@ -128,15 +128,11 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` ord.item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
-  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at < `.append(MAX_ORDER_TIMESTAMP).append(
-    SQL` AND ((LENGTH(expires_at::text) = 13 AND TO_TIMESTAMP(expires_at / 1000.0) > NOW())
-                      OR
-              (LENGTH(expires_at::text) = 10 AND TO_TIMESTAMP(expires_at) > NOW())) `
-  )
+  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_normalized < NOW() `
   const FILTER_TRADE_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
   const COMMON_FILTERS = [
@@ -171,8 +167,8 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
-    .append(SQL`) as legacy_orders`)
     .append(getWhereStatementFromFilters(ordersFilters))
+    .append(SQL`) as legacy_orders`)
     .append(commonQueryParts)
 
   return {
@@ -199,7 +195,6 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): S
 }
 
 export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
-  // const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
   const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
 
   return SQL`
@@ -233,7 +228,7 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
                COUNT(*) AS orders_count
         FROM (
           SELECT id
-          FROM   squid_marketplace."order"
+          FROM   squid_marketplace."order" as ord
           `.append(getWhereStatementFromFilters(ordersFilters)).append(SQL`
         ) AS orders_filtered
       ) AS counts_combined
