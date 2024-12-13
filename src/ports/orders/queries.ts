@@ -3,7 +3,6 @@ import { OrderFilters, OrderSortBy, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
-import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { getTradesForTypeQueryWithFilters } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
