@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { ERC721TradeAsset, Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
+import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
