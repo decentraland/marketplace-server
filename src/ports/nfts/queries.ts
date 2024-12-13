@@ -117,8 +117,10 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
     ? SQL` est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
     : null
   const FILTER_MIN_ESTATE_SIZE = filters.minEstateSize ? SQL` est.size >= ${filters.minEstateSize} ` : SQL` est.size > 0 `
-
   const FILTER_MAX_ESTATE_SIZE = filters.maxEstateSize ? SQL` est.size <= ${filters.maxEstateSize} ` : null
+  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` est.token_id = ${filters.tokenId} ` : null
+
+  const where = getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_MIN_ESTATE_SIZE, FILTER_MAX_ESTATE_SIZE, FILTER_BY_TOKEN_ID])
 
   return SQL`
     , filtered_estate AS (
@@ -133,7 +135,7 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
       FROM
         squid_marketplace.estate est
       LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
-      `.append(getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_MIN_ESTATE_SIZE, FILTER_MAX_ESTATE_SIZE])).append(SQL`
+      `.append(where).append(SQL`
       GROUP BY
         est.id, est.token_id, est.size, est.data_id
       )
@@ -141,6 +143,11 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
 }
 
 function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
+  const FILTER_BY_OWNER = filters.owner
+    ? SQL` (par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) OR par.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()})) `
+    : null
+  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` (par.token_id = ${filters.tokenId} OR par_est.token_id = ${filters.tokenId}) ` : null
+  const where = getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_BY_TOKEN_ID])
   return SQL`
     , parcel_estate_data AS (
       SELECT
@@ -151,16 +158,15 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
         squid_marketplace.parcel par
       LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
       LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
-      `.append(
-    filters.owner
-      ? SQL`WHERE (par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) OR par.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()})) `
-      : SQL``
-  ).append(SQL`
-    )
+      `.append(where).append(SQL`
+      )
   `)
 }
 
 export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
+  const FILTER_BY_OWNER = filters.owner ? SQL` t.signer = ${filters.owner.toLocaleLowerCase()} ` : null
+  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` (assets_with_values.nft_id = ${filters.tokenId}) ` : null
+  const where = getWhereStatementFromFilters([SQL`t.type = 'public_nft_order'`, FILTER_BY_OWNER, FILTER_BY_TOKEN_ID])
   return SQL`
     , trades AS (
       SELECT
@@ -229,8 +235,7 @@ export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
       LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('0x2d6b3508f9aca32d2550f92b2addba932e73c1ff','0x540fb08edb56aae562864b390542c97f562825ba')) as contract_signature_index ON t.network = contract_signature_index.network
-      WHERE t.type = 'public_nft_order' `.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLocaleLowerCase()} ` : SQL``)
-    .append(SQL`
+      `.append(where).append(SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
     )
   `)
