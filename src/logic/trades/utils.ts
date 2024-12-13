@@ -1,6 +1,16 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { TypedDataField, hexlify, TypedDataDomain, verifyTypedData, toBeArray, toUtf8Bytes, zeroPadValue } from 'ethers'
-import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import {
+  Contract,
+  TypedDataField,
+  hexlify,
+  TypedDataDomain,
+  verifyTypedData,
+  toBeArray,
+  toUtf8Bytes,
+  zeroPadValue,
+  JsonRpcProvider
+} from 'ethers'
+import { ChainId, ERC721TradeAsset, Network, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
@@ -108,4 +118,35 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
   }
 
   return verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
+}
+
+export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset {
+  return (asset as ERC721TradeAsset).tokenId !== undefined
+}
+
+async function getContractOwner(contractAddress: string, tokenId: string, network: Network, chainId: ChainId): Promise<string> {
+  const abi = ['function ownerOf(uint256 tokenId) view returns (address)']
+  const RPC_URL = `https://rpc.decentraland.org/${
+    network === Network.ETHEREUM
+      ? chainId === ChainId.ETHEREUM_MAINNET
+        ? 'mainnet'
+        : 'sepolia'
+      : chainId === ChainId.MATIC_MAINNET
+      ? 'polygon'
+      : 'amoy'
+  }`
+  const provider = new JsonRpcProvider(RPC_URL)
+  const contract = new Contract(contractAddress, abi, provider)
+  return await contract.ownerOf(tokenId)
+}
+
+export async function validateAssetOwnership(
+  asset: ERC721TradeAsset,
+  signer: string,
+  network: Network,
+  chainId: ChainId
+): Promise<boolean> {
+  const { contractAddress, tokenId } = asset
+  const blockchainOwner = await getContractOwner(contractAddress, tokenId, network, chainId)
+  return blockchainOwner.toLowerCase() === signer.toLowerCase()
 }
