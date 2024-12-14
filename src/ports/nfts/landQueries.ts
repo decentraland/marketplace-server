@@ -30,10 +30,6 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_OWNER = nftFilters.owner
     ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
     : null
-  const FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize
-    ? SQL` estate.size >= ${nftFilters.minEstateSize} `
-    : SQL` (estate.size IS NULL OR estate.size > 0) `
-  const FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
   const FILTER_BY_MIN_PRICE = nftFilters.minPrice
     ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice})`
     : null
@@ -55,8 +51,6 @@ function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 
   return getWhereStatementFromFilters([
     FILTER_BY_OWNER,
-    FILTER_MIN_ESTATE_SIZE,
-    FILTER_MAX_ESTATE_SIZE,
     FILTER_BY_MIN_PRICE,
     FILTER_BY_MAX_PRICE,
     FILTER_BY_ON_SALE
@@ -74,6 +68,10 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
   const ESTATE_OWNER_FILTER = owner
     ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
     : null
+
+  const ESTATE_FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize ? SQL` est.size >= ${nftFilters.minEstateSize} ` : SQL` est.size > 0 `
+  const ESTATE_FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
+
   return SQL`
       WITH filtered_land_nfts AS (
           SELECT *
@@ -96,7 +94,7 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           squid_marketplace.estate est
           LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
         `
-        .append(getWhereStatementFromFilters([ESTATE_OWNER_FILTER]))
+        .append(getWhereStatementFromFilters([ESTATE_OWNER_FILTER, ESTATE_FILTER_MIN_ESTATE_SIZE, ESTATE_FILTER_MAX_ESTATE_SIZE]))
         .append(
           SQL`
         GROUP BY
