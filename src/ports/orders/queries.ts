@@ -43,7 +43,7 @@ function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
   return SQL` LIMIT ${innerLimit}`
 }
 
-export function getTradesOrdersQuery(filters: OrderFilters): SQLStatement {
+export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
 
@@ -79,7 +79,7 @@ export function getTradesOrdersQuery(filters: OrderFilters): SQLStatement {
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (`
-            .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner }))
+            .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner, ids: filters.nftIds }))
             .append(SQL`) as trades`)
         )
     )
