@@ -77,7 +77,9 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           SELECT *
           FROM squid_marketplace.nft
           `
-    .append(getWhereStatementFromFilters([SQL`search_is_land = true`, SQL` search_estate_size > 0`, NFT_OWNER_FILTER]))
+    .append(
+      getWhereStatementFromFilters([SQL`search_is_land = true`, NFT_OWNER_FILTER ? SQL` search_estate_size > 0` : null, NFT_OWNER_FILTER])
+    )
     .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
     .append(
       SQL`
