@@ -65,9 +65,9 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
   const NFT_OWNER_FILTER = owner
     ? SQL`nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
     : null
-  const ESTATE_OWNER_FILTER = owner
-    ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
-    : null
+  // const ESTATE_OWNER_FILTER = owner
+  //   ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
+  //   : null
 
   const ESTATE_FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize ? SQL` est.size >= ${nftFilters.minEstateSize} ` : SQL` est.size > 0 `
   const ESTATE_FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
@@ -77,7 +77,7 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           SELECT *
           FROM squid_marketplace.nft
           `
-    .append(getWhereStatementFromFilters([SQL`search_is_land = true`, NFT_OWNER_FILTER]))
+    .append(getWhereStatementFromFilters([SQL`search_is_land = true`, SQL` search_estate_size > 0`, NFT_OWNER_FILTER]))
     .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
     .append(
       SQL`
@@ -94,7 +94,7 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           squid_marketplace.estate est
           LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
         `
-        .append(getWhereStatementFromFilters([ESTATE_OWNER_FILTER, ESTATE_FILTER_MIN_ESTATE_SIZE, ESTATE_FILTER_MAX_ESTATE_SIZE]))
+        .append(getWhereStatementFromFilters([ESTATE_FILTER_MIN_ESTATE_SIZE, ESTATE_FILTER_MAX_ESTATE_SIZE]))
         .append(
           SQL`
         GROUP BY

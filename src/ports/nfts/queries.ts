@@ -96,7 +96,8 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     FILTER_BY_ROAD_ADJACENT,
     FILTER_BY_IDS,
     FILTER_NFT_BY_MIN_PRICE,
-    FILTER_NFT_BY_MAX_PRICE
+    FILTER_NFT_BY_MAX_PRICE,
+    SQL`nft.search_estate_size > 0`
   ])
 
   return SQL`
@@ -113,14 +114,20 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
 }
 
 function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
-  const FILTER_BY_OWNER = filters.owner
-    ? SQL` est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
-    : null
+  // we need to fix the squid estate owner id first
+  // const FILTER_BY_OWNER = filters.owner
+  //   ? SQL` est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) `
+  //   : null
   const FILTER_MIN_ESTATE_SIZE = filters.minEstateSize ? SQL` est.size >= ${filters.minEstateSize} ` : SQL` est.size > 0 `
   const FILTER_MAX_ESTATE_SIZE = filters.maxEstateSize ? SQL` est.size <= ${filters.maxEstateSize} ` : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` est.token_id = ${filters.tokenId} ` : null
 
-  const where = getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_MIN_ESTATE_SIZE, FILTER_MAX_ESTATE_SIZE, FILTER_BY_TOKEN_ID])
+  const where = getWhereStatementFromFilters([
+    // FILTER_BY_OWNER,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_BY_TOKEN_ID
+  ])
 
   return SQL`
     , filtered_estate AS (
@@ -143,11 +150,14 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
 }
 
 function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
-  const FILTER_BY_OWNER = filters.owner
-    ? SQL` (par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) OR par.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()})) `
-    : null
+  // const FILTER_BY_OWNER = filters.owner
+  //   ? SQL` (par_est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()}) OR par.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${filters.owner.toLocaleLowerCase()})) `
+  //   : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` (par.token_id = ${filters.tokenId} OR par_est.token_id = ${filters.tokenId}) ` : null
-  const where = getWhereStatementFromFilters([FILTER_BY_OWNER, FILTER_BY_TOKEN_ID])
+  const where = getWhereStatementFromFilters([
+    // FILTER_BY_OWNER,
+    FILTER_BY_TOKEN_ID
+  ])
   return SQL`
     , parcel_estate_data AS (
       SELECT
@@ -156,7 +166,7 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
         est_data.name AS parcel_estate_name
       FROM
         squid_marketplace.parcel par
-      LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
+      LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id AND par_est.size > 0
       LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
       `.append(where).append(SQL`
       )
@@ -350,7 +360,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false):
     LEFT JOIN squid_marketplace.ens ens ON ens.id = nft.ens_id
     LEFT JOIN squid_marketplace.account account ON nft.owner_id = account.id
     LEFT JOIN squid_marketplace.item item ON item.id = nft.item_id
-    LEFT JOIN trades ON trades.assets -> 'sent' ->> 'token_id' = nft.token_id::text AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = 'open' AND trades.signer = account.address
+    LEFT JOIN trades ON (trades.assets -> 'sent' ->> 'token_id')::numeric = nft.token_id AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = 'open' AND trades.signer = account.address
     `
         .append(getNFTWhereStatement(nftFilters))
         .append(getMainQuerySortByStatement(nftFilters.sortBy))
