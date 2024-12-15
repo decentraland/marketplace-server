@@ -168,7 +168,7 @@ export function getTradesForTypeQuery(type: TradeType) {
   `
 }
 
-export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters) {
+export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   return SQL`
@@ -232,25 +232,29 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
       LEFT JOIN marketplace.trade_assets_erc20 as erc20_asset ON ta.id = erc20_asset.asset_id
       LEFT JOIN marketplace.trade_assets_item as item_asset ON ta.id = item_asset.asset_id
       LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
-      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
+      LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id) `
+    .append(filters.nftIds ? SQL` AND nft.id = ANY(${filters.nftIds})` : SQL``)
+    .append(
+      SQL`
       LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('`
-    .append(marketplaceEthereum.address.toLowerCase())
-    .append(SQL`'`)
-    .append(
-      SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
-        SQL`')) as contract_signature_index ON t.network = contract_signature_index.network
+        .append(marketplaceEthereum.address.toLowerCase())
+        .append(SQL`'`)
+        .append(
+          SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
+            SQL`')) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '`
-          .append(type)
-          .append(
-            SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
+              .append(type)
+              .append(
+                SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `)
+              )
           )
-      )
+        )
     )
 }
 
