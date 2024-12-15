@@ -97,7 +97,9 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     FILTER_BY_IDS,
     FILTER_NFT_BY_MIN_PRICE,
     FILTER_NFT_BY_MAX_PRICE,
-    SQL`nft.search_estate_size > 0`
+    nftFilters.isLand || nftFilters.category === NFTCategory.PARCEL || nftFilters.category === NFTCategory.ESTATE
+      ? SQL`nft.search_estate_size > 0 `
+      : null
   ])
 
   return SQL`
