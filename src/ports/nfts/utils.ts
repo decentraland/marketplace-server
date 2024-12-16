@@ -36,3 +36,7 @@ export async function getNFTFilters(filters: NFTFilters, listsServer: string, re
 
   return { ...filters, bannedNames }
 }
+
+export function fixUrn(urn: string) {
+  return urn.replace('mainnet', 'ethereum')
+}

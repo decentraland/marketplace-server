@@ -2,6 +2,7 @@ import { EmoteCategory, Item, NFTCategory, WearableCategory } from '@dcl/schemas
 import { isAddressZero } from '../../logic/address'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { DBItem, ItemType } from '../../ports/items'
+import { fixUrn } from '../../ports/nfts/utils'
 
 export function getCategoryFromDBItem(dbItem: DBItem): NFTCategory {
   if (
@@ -49,7 +50,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
   return {
     id: dbItem.id,
     name: dbItem.name,
-    thumbnail: dbItem.image,
+    thumbnail: fixUrn(dbItem.image),
     url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
     category: getCategoryFromDBItem(dbItem),
     contractAddress: dbItem.contract_address,
@@ -68,7 +69,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     data: getDataFromDBItem(dbItem),
     network: getNetwork(dbItem.network),
     chainId: getNetworkChainId(dbItem.network),
-    urn: dbItem.urn,
+    urn: fixUrn(dbItem.urn),
     firstListedAt: dbItem.first_listed_at?.getTime(),
     tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     picks: { count: 0 }, // TODO: check this

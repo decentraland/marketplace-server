@@ -4,6 +4,7 @@ import { fromSecondsToMilliseconds } from '../../logic/date'
 import { capitalize } from '../../logic/strings'
 import { ItemType } from '../../ports/items'
 import { DBNFT, NFTResult } from '../../ports/nfts/types'
+import { fixUrn } from '../../ports/nfts/utils'
 import { DBOrder } from '../../ports/orders/types'
 import { fromDBOrderToOrder } from '../orders'
 
@@ -73,7 +74,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     createdAt: fromSecondsToMilliseconds(Number(dbNFT.created_at)),
     data: getDataFromDBNFT(dbNFT),
     id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
-    image: dbNFT.image || '',
+    image: fixUrn(dbNFT.image || ''),
     issuedId: dbNFT.issued_id,
     itemId: dbNFT.item_id,
     name: dbNFT.name || capitalize(dbNFT.category),
@@ -84,7 +85,7 @@ export function fromDBNFTToNFT(dbNFT: DBNFT): NFT {
     soldAt: 0, // TODO: Calculate sold at
     updatedAt: fromSecondsToMilliseconds(Number(dbNFT.updated_at)), // Convert to ms
     url: `/contracts/${dbNFT.contract_address}/tokens/${dbNFT.token_id}`,
-    urn: dbNFT.urn || undefined
+    urn: dbNFT.urn ? fixUrn(dbNFT.urn) : undefined
   }
 }
 
