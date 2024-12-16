@@ -34,7 +34,7 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       query = getNFTsQuery(nftFilters)
       const nfts = await client.query<DBNFT>(query)
       const nftIds = nfts.rows.map(nft => nft.id)
-      query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner })
+      query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner }, 'combined_nft_orders') // Added a specific prefix to track this queries in the logs easily
       const orders = await client.query<DBOrder>(query)
 
       const landNftIds = nfts.rows

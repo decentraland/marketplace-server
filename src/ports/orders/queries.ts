@@ -129,7 +129,6 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
   const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` ord.item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
-  const FILTER_BY_NFT_NAME = filters.nftName ? SQL` LOWER(nft_name) = LOWER(${filters.nftName}) ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_ORDER_NOT_EXPIRED = SQL` expires_normalized > NOW() `
   const FILTER_TRADE_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
@@ -142,7 +141,6 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
     FILTER_BY_TOKEN_ID,
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
-    FILTER_BY_NFT_NAME,
     FILTER_BY_NFT_ID
   ]
   return {
@@ -177,20 +175,29 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
 }
 
 // The original getOrdersQuery can now use the new function if needed
-export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
+export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, prefix = 'combined_orders'): SQLStatement {
   const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
 
   return SQL`
-    SELECT combined_orders.* FROM (
-      (`
-    .append(orderTradesQuery)
+    SELECT `
+    .append(prefix)
     .append(
-      SQL`)
+      SQL`.* FROM (
+      (`
+        .append(orderTradesQuery)
+        .append(
+          SQL`)
       UNION ALL
-      (`.append(legacyOrdersQuery).append(SQL`)
-    ) as combined_orders`)
+      (`
+            .append(legacyOrdersQuery)
+            .append(
+              SQL`)
+    ) as `
+            )
+            .append(prefix)
+            .append(getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters)))
+        )
     )
-    .append(getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters)))
 }
 
 export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
