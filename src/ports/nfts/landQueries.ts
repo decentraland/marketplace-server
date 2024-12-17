@@ -13,7 +13,7 @@ export function getNFTsSortBy(sortBy?: NFTSortBy) {
     case NFTSortBy.CHEAPEST:
       return SQL` ORDER BY price ASC `
     case NFTSortBy.RECENTLY_LISTED:
-      return SQL` ORDER BY created_at DESC NULLS LAST `
+      return SQL` ORDER BY order_created_at DESC NULLS LAST `
     case NFTSortBy.RECENTLY_SOLD:
       return SQL` ORDER BY sold_at DESC `
     default:
