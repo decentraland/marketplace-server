@@ -11,9 +11,9 @@ export function getNFTsSortBy(sortBy?: NFTSortBy) {
     case NFTSortBy.NEWEST:
       return SQL` ORDER BY created_at DESC `
     case NFTSortBy.CHEAPEST:
-      return SQL` ORDER BY coalesce((trades.assets -> 'received' ->> 'amount')::numeric(78), nft.search_order_price) ASC `
+      return SQL` ORDER BY price ASC `
     case NFTSortBy.RECENTLY_LISTED:
-      return SQL` ORDER BY GREATEST(to_timestamp(nft.search_order_created_at), trades.created_at) DESC NULLS LAST `
+      return SQL` ORDER BY created_at DESC NULLS LAST `
     case NFTSortBy.RECENTLY_SOLD:
       return SQL` ORDER BY sold_at DESC `
     default:
@@ -21,126 +21,290 @@ export function getNFTsSortBy(sortBy?: NFTSortBy) {
   }
 }
 
-function getLANDWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
-  if (!nftFilters) {
-    return SQL``
-  }
-
-  // Keep only filters that need JOINed tables
-  const FILTER_BY_OWNER = nftFilters.owner
-    ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
+function getAllLANDWheres(filters: GetNFTsFilters) {
+  const { owner, minDistanceToPlaza, maxDistanceToPlaza, adjacentToRoad, minEstateSize, maxEstateSize, minPrice, maxPrice, ids, search } =
+    filters
+  const FILTER_BY_OWNER = owner
+    ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) `
     : null
-  const FILTER_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice})`
+  const FILTER_BY_MIN_PRICE = minPrice
+    ? SQL` (nft.search_order_price >= ${minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice})`
     : null
-  const FILTER_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice})`
+  const FILTER_BY_MIN_TRADE_PRICE = minPrice ? SQL` (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice}` : null
+  const FILTER_BY_MIN_ORDER_PRICE = minPrice ? SQL` nft.search_order_price >= ${minPrice}` : null
+  const FILTER_BY_MAX_PRICE = maxPrice
+    ? SQL` (nft.search_order_price <= ${maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice})`
     : null
-  const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR orders.nft_id IS NOT NULL)` : null
+  const FILTER_BY_MAX_TRADE_PRICE = maxPrice ? SQL` (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice}` : null
+  const FILTER_BY_MAX_ORDER_PRICE = maxPrice ? SQL` nft.search_order_price <= ${maxPrice}` : null
+  const FILTER_BY_MIN_PLAZA_DISTANCE = minDistanceToPlaza ? SQL` search_distance_to_plaza >= ${minDistanceToPlaza} ` : null
+  const FILTER_BY_MAX_PLAZA_DISTANCE = maxDistanceToPlaza ? SQL` search_distance_to_plaza <= ${maxDistanceToPlaza} ` : null
+  const FILTER_BY_ROAD_ADJACENT = adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
+  const FILTER_MIN_ESTATE_SIZE = minEstateSize ? SQL` search_estate_size >= ${minEstateSize} ` : SQL` search_estate_size > 0 `
+  const FILTER_MAX_ESTATE_SIZE = maxEstateSize ? SQL` search_estate_size <= ${maxEstateSize} ` : null
+  const FILTER_BY_IDS = ids?.length ? SQL` id = ANY (${ids}) ` : null
+  const FILTER_BY_SEARCH = search ? SQL` search_text % ${search} ` : null
+  const FILTER_CATEGORY = filters.category ? SQL`category = ${filters.category}` : null
 
-  // @TODO DEBUG WHY THIS FILTERS ARE SLOWING DOWN THE QUERY AND ENABLE THEM BACK
-  // const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
-  //   ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
-  //   : null
-
-  // const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
-  //   ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
-  //   : null
-
-  // const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
-
-  return getWhereStatementFromFilters([
+  return {
     FILTER_BY_OWNER,
     FILTER_BY_MIN_PRICE,
     FILTER_BY_MAX_PRICE,
-    FILTER_BY_ON_SALE
-    // FILTER_BY_MIN_PLAZA_DISTANCE,
-    // FILTER_BY_MAX_PLAZA_DISTANCE,
-    // FILTER_BY_ROAD_ADJACENT
-  ])
+    FILTER_BY_MIN_ORDER_PRICE,
+    FILTER_BY_MAX_ORDER_PRICE,
+    FILTER_BY_MIN_TRADE_PRICE,
+    FILTER_BY_MAX_TRADE_PRICE,
+    FILTER_BY_MIN_PLAZA_DISTANCE,
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_ROAD_ADJACENT,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_BY_IDS,
+    FILTER_BY_SEARCH,
+    FILTER_CATEGORY
+  }
 }
 
-export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
-  const { sortBy, isOnSale, ids, owner } = nftFilters
-  const NFT_OWNER_FILTER = owner
-    ? SQL`nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
+function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
+  const FILTER_IS_ON_SALE = filters.isOnSale
+    ? SQL`nft.active_order_id IS NOT NULL AND o.status = 'open' AND o.expires_normalized > NOW()`
     : null
-  // const ESTATE_OWNER_FILTER = owner
-  //   ? SQL`est.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()})`
-  //   : null
 
-  const ESTATE_FILTER_MIN_ESTATE_SIZE = nftFilters.minEstateSize ? SQL` est.size >= ${nftFilters.minEstateSize} ` : SQL` est.size > 0 `
-  const ESTATE_FILTER_MAX_ESTATE_SIZE = nftFilters.maxEstateSize ? SQL` estate.size <= ${nftFilters.maxEstateSize} ` : null
+  const {
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_SEARCH,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_BY_MIN_ORDER_PRICE,
+    FILTER_BY_MAX_ORDER_PRICE
+  } = getAllLANDWheres(filters)
+
+  const where = getWhereStatementFromFilters([
+    SQL`nft.search_is_land = TRUE`,
+    filters.category ? SQL`nft.category = ${filters.category}` : null,
+    FILTER_IS_ON_SALE,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_SEARCH,
+    FILTER_BY_MIN_ORDER_PRICE,
+    FILTER_BY_MAX_ORDER_PRICE
+  ])
 
   return SQL`
-      WITH filtered_land_nfts AS (
-          SELECT *
-          FROM squid_marketplace.nft
-          `
-    .append(
-      getWhereStatementFromFilters([SQL`search_is_land = true`, NFT_OWNER_FILTER ? SQL` search_estate_size > 0` : null, NFT_OWNER_FILTER])
+    WITH open_orders_nfts AS (
+      SELECT 
+          nft.id AS nft_id,
+          o.price,
+          to_timestamp(o.created_at) AS order_created_at
+      FROM squid_marketplace.nft nft
+      JOIN squid_marketplace."order" o ON nft.active_order_id = o.id
+      `.append(where).append(SQL`
+      )
+  `)
+}
+
+function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
+  const { FILTER_BY_MIN_TRADE_PRICE, FILTER_BY_MAX_TRADE_PRICE } = getAllLANDWheres(filters)
+  const where = getWhereStatementFromFilters([
+    SQL`trades.status = 'open'
+        AND (((assets->'sent'->>'nft_id') IS NOT NULL)
+          OR ((assets->'received'->>'nft_id') IS NOT NULL))
+        AND (((assets->'received'->>'amount') IS NOT NULL)
+          OR ((assets->'sent'->>'amount') IS NOT NULL))`,
+    FILTER_BY_MIN_TRADE_PRICE,
+    FILTER_BY_MAX_TRADE_PRICE
+  ])
+  return SQL`
+    , open_trades AS (
+      SELECT
+        COALESCE((assets->'received'->>'amount')::numeric(78),
+                (assets->'sent'->>'amount')::numeric(78)) AS price,
+        COALESCE((assets->'sent'->>'nft_id'),
+                (assets->'received'->>'nft_id')) AS nft_id,
+        trades.created_at AS trade_created_at
+      FROM trades
+      `.append(where).append(SQL`
     )
-    .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
+  `)
+}
+
+export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
+  return getOpenOrderNFTsCTE(filters)
+    .append(getTradesCTE(filters))
+    .append(getOpenTradesCTE(filters))
     .append(
       SQL`
-          ORDER BY created_at 
-      ), 
-      filtered_estate AS (
-          SELECT
-            est.id,
-            est.token_id,
-            est.size,
-            est.data_id,
-            array_agg(json_build_object('x', est_parcel.x, 'y', est_parcel.y)) AS estate_parcels
-        FROM
-          squid_marketplace.estate est
-          LEFT JOIN squid_marketplace.parcel est_parcel ON est.id = est_parcel.estate_id
-        `
-        .append(getWhereStatementFromFilters([ESTATE_FILTER_MIN_ESTATE_SIZE, ESTATE_FILTER_MAX_ESTATE_SIZE]))
+      , combined AS (
+          SELECT nft_id, price, order_created_at AS created_at FROM open_orders_nfts
+          UNION
+          SELECT nft_id, price, trade_created_at AS created_at FROM open_trades
+        ),
+        top_nfts AS (
+          SELECT 
+              COUNT(*) OVER () AS count,
+              nft.id,
+              nft.contract_address,
+              nft.token_id,
+              nft.network,
+              nft.created_at,
+              nft.token_uri AS url,
+              nft.updated_at,
+              nft.sold_at,
+              nft.urn,
+              combined.price,
+              nft.owner_id,
+              nft.image,
+              nft.issued_id,
+              nft.category,
+              nft.name,
+              nft.item_type,
+              GREATEST(to_timestamp(nft.search_order_created_at), combined.created_at) AS order_created_at
+          FROM combined
+          JOIN squid_marketplace.nft nft ON nft.id = combined.nft_id
+          WHERE nft.search_is_land = TRUE
+            AND (nft.search_estate_size > 0 OR nft.search_estate_size IS NULL)
+            `
+        .append(filters.category ? SQL` AND nft.category = ${filters.category}` : SQL``)
         .append(
           SQL`
-        GROUP BY
-          est.id,
-          est.token_id,
-          est.size,
-          est.data_id
-        ),
-        parcel_estate_data AS (
-          SELECT
-            par.*,
-            par_est.token_id AS parcel_estate_token_id,
-            est_data.name AS parcel_estate_name
-          FROM
-            squid_marketplace.parcel par
-            LEFT JOIN squid_marketplace.estate par_est ON par.estate_id = par_est.id
-            LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+          `
+            .append(getNFTsSortBy(filters.sortBy))
+            .append(getNFTLimitAndOffsetStatement(filters))
+            .append(
+              SQL`
+      )
+      SELECT 
+        top_nfts.count,
+        top_nfts.id,
+        top_nfts.contract_address,
+        top_nfts.token_id,
+        top_nfts.network,
+        top_nfts.created_at,
+        top_nfts.url,
+        top_nfts.updated_at,
+        top_nfts.sold_at,
+        top_nfts.urn,
+        top_nfts.price,
+        top_nfts.owner_id,
+        top_nfts.image,
+        top_nfts.issued_id,
+        top_nfts.category,
+        top_nfts.name,
+        top_nfts.item_type,
+        parcel_data.x,
+        parcel_data.y,
+        estate_data.estate_parcels,
+        estate_data.size,
+        parcel_data.parcel_estate_token_id,
+        parcel_data.parcel_estate_name,
+        parcel_data.estate_id AS parcel_estate_id,
+        top_nfts.order_created_at
+      FROM top_nfts
+      LEFT JOIN LATERAL (
+          SELECT p.x,
+                p.y,
+                p.estate_id,
+                par_est.token_id AS parcel_estate_token_id,
+                est_data.name AS parcel_estate_name
+          FROM squid_marketplace.parcel p
+          LEFT JOIN squid_marketplace.estate par_est ON p.estate_id = par_est.id
+          LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+          WHERE p.id = top_nfts.id
+          LIMIT 1
+      ) parcel_data ON TRUE
+      LEFT JOIN LATERAL (
+          SELECT est.size,
+                array_agg(json_build_object('x', ep.x, 'y', ep.y)) AS estate_parcels
+          FROM squid_marketplace.estate est
+          LEFT JOIN squid_marketplace.parcel ep ON est.id = ep.estate_id
+          WHERE est.size > 0
+            AND est.id = top_nfts.id
+          GROUP BY est.size
+          LIMIT 1
+      ) estate_data ON TRUE
+       
+      `
+            )
+            .append(getNFTsSortBy(filters.sortBy))
+            .append(SQL``)
         )
+    )
+}
+
+// @TODO DEBUG WHY THIS FILTERS ARE SLOWING DOWN THE QUERY AND ENABLE THEM BACK
+
+export function getAllLANDsQuery(filters: GetNFTsFilters) {
+  const { sortBy } = filters
+  const {
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_MAX_ORDER_PRICE,
+    FILTER_BY_MIN_PLAZA_DISTANCE,
+    FILTER_BY_MIN_ORDER_PRICE,
+    FILTER_BY_OWNER,
+    FILTER_BY_ROAD_ADJACENT,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_MIN_ESTATE_SIZE,
+    // FILTER_BY_IDS, //@TODO check this ones out
+    FILTER_BY_SEARCH,
+    FILTER_CATEGORY
+  } = getAllLANDWheres(filters)
+
+  const topNFTsWhere = [
+    SQL`search_is_land = TRUE`,
+    FILTER_BY_OWNER,
+    FILTER_BY_MIN_ORDER_PRICE,
+    FILTER_BY_MAX_ORDER_PRICE,
+    FILTER_MIN_ESTATE_SIZE,
+    FILTER_MAX_ESTATE_SIZE,
+    FILTER_BY_MIN_PLAZA_DISTANCE,
+    FILTER_BY_MAX_PLAZA_DISTANCE,
+    FILTER_BY_ROAD_ADJACENT,
+    FILTER_CATEGORY,
+    FILTER_BY_SEARCH
+  ]
+
+  return SQL`
+    WITH land_count AS (
+      SELECT count(*) AS total_count
+      FROM squid_marketplace.nft
+      `
+    .append(getWhereStatementFromFilters(topNFTsWhere))
+    .append(
+      SQL`
+    ),
+    top_land AS (
+        SELECT id
+        FROM squid_marketplace.nft
         `
-            .append(getTradesCTE(nftFilters))
+        .append(getWhereStatementFromFilters(topNFTsWhere))
+        .append(getNFTsSortBy(sortBy))
+        .append(getNFTLimitAndOffsetStatement(filters))
+        .append(
+          SQL`
+    ),
+    open_orders_nfts AS (
+        SELECT 
+            nft.id AS nft_id,
+            o.price,
+            to_timestamp(o.created_at) AS order_created_at
+        FROM top_land
+        JOIN squid_marketplace.nft nft ON nft.id = top_land.id
+        JOIN squid_marketplace."order" o ON nft.active_order_id = o.id
+        WHERE o.status = 'open'
+          AND o.expires_normalized > NOW()
+    )`
+            .append(getTradesCTE(filters))
+            .append(getOpenTradesCTE(filters))
             .append(
               SQL`
-        `
-            )
-            .append(
-              isOnSale
-                ? SQL`
-        , valid_orders AS (
-          SELECT
-            o.nft_id,
-            o.status,
-            o.expires_normalized
-          FROM
-            squid_marketplace.order o
-          WHERE
-            o.status = 'open'
-            AND o.expires_normalized > now()
-        )`
-                : SQL``
-            )
-            .append(
-              SQL`
-        SELECT
-          count(*) OVER () AS count,
+      , combined AS (
+          SELECT nft_id, price, order_created_at AS created_at FROM open_orders_nfts
+          UNION
+          SELECT nft_id, price, trade_created_at AS created_at FROM open_trades
+      )
+      SELECT 
+          land_count.total_count AS count,
           nft.id,
           nft.contract_address,
           nft.token_id,
@@ -150,47 +314,50 @@ export function getLANDs(nftFilters: GetNFTsFilters): SQLStatement {
           nft.updated_at,
           nft.sold_at,
           nft.urn,
-          CASE 
-		        WHEN (trades.assets -> 'received' ->> 'amount') IS NOT NULL THEN (trades.assets -> 'received' ->> 'amount')::numeric(78)
-		        ELSE nft.search_order_price
-		      END AS price,
+          combined.price,
           nft.owner_id,
           nft.image,
           nft.issued_id,
-          -- item.blockchain_id AS item_id,
           nft.category,
           nft.name,
-          parcel.x,
-          parcel.y,
           nft.item_type,
-          estate.estate_parcels,
-          estate.size AS size,
-          parcel.parcel_estate_token_id,
-          parcel.parcel_estate_name,
-          parcel.estate_id AS parcel_estate_id,
-          --      COALESCE(
-          --        wearable.description,
-          --        emote.description,
-          --        land_data.description
-          --      ) AS description,
-          GREATEST(to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
-          FROM
-              filtered_land_nfts nft
-        LEFT JOIN parcel_estate_data parcel ON nft.id = parcel.id
-        LEFT JOIN filtered_estate estate ON nft.id = estate.id
-        --    LEFT JOIN squid_marketplace.data land_data ON (
-        --      estate.data_id = land_data.id OR parcel.id = land_data.id
-        --    )
-        LEFT JOIN trades ON (trades.assets -> 'sent' ->> 'token_id')::numeric = nft.token_id
-            AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
-            AND trades.status = 'open'
-      --    AND trades.signer = account.address
-            `
-                .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
-                .append(getLANDWhereStatement(nftFilters))
+          parcel_data.x,
+          parcel_data.y,
+          estate_data.estate_parcels,
+          estate_data.size,
+          parcel_data.parcel_estate_token_id,
+          parcel_data.parcel_estate_name,
+          parcel_data.estate_id AS parcel_estate_id,
+          GREATEST(to_timestamp(nft.search_order_created_at), combined.created_at) AS order_created_at
+      FROM top_land
+      CROSS JOIN land_count
+      JOIN squid_marketplace.nft nft ON nft.id = top_land.id
+      LEFT JOIN combined ON top_land.id = combined.nft_id
+      LEFT JOIN LATERAL (
+          SELECT p.x,
+                p.y,
+                p.estate_id,
+                par_est.token_id AS parcel_estate_token_id,
+                est_data.name AS parcel_estate_name
+          FROM squid_marketplace.parcel p
+          LEFT JOIN squid_marketplace.estate par_est ON p.estate_id = par_est.id
+          LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+          WHERE p.id = top_land.id
+          LIMIT 1
+      ) parcel_data ON TRUE
+      LEFT JOIN LATERAL (
+          SELECT est.size,
+                array_agg(json_build_object('x', ep.x, 'y', ep.y)) AS estate_parcels
+          FROM squid_marketplace.estate est
+          LEFT JOIN squid_marketplace.parcel ep ON est.id = ep.estate_id
+          WHERE est.size > 0
+            AND est.id = top_land.id
+          GROUP BY est.size
+          LIMIT 1
+      ) estate_data ON TRUE
+      `
                 .append(getNFTsSortBy(sortBy))
-                .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`;
-            `)
+                .append(SQL``)
             )
         )
     )

@@ -5,7 +5,7 @@ import { MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
 import { getWhereStatementFromFilters } from '../utils'
 import { getENSs } from './ensQueries'
-import { getLANDs } from './landQueries'
+import { getAllLANDsQuery, getLandsOnSaleQuery } from './landQueries'
 import { GetNFTsFilters } from './types'
 
 function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlayMode[] | undefined): SQLStatement | null {
@@ -290,8 +290,8 @@ export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
 
 export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
   // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
-  if (nftFilters.isLand) {
-    return getLANDs(nftFilters)
+  if (nftFilters.isLand || nftFilters.category === NFTCategory.PARCEL || nftFilters.category === NFTCategory.ESTATE) {
+    return nftFilters.isOnSale ? getLandsOnSaleQuery(nftFilters) : getAllLANDsQuery(nftFilters)
   } else if (nftFilters.category === NFTCategory.ENS) {
     return getENSs(nftFilters)
   } else if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
