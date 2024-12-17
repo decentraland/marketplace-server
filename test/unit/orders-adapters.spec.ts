@@ -1,5 +1,6 @@
 import { ListingStatus, Network, NFTCategory, Order } from '@dcl/schemas'
 import { fromDBOrderToOrder } from '../../src/adapters/orders'
+import { fromSecondsToMilliseconds } from '../../src/logic/date'
 import { DBOrder } from '../../src/ports/orders/types'
 import { SquidNetwork } from '../../src/types'
 
@@ -14,7 +15,7 @@ describe('fromDBOrderToOrder', () => {
       buyer: '0xdef',
       price: '100',
       status: ListingStatus.OPEN,
-      expires_at: Date.now() / 1000,
+      expires_at: Math.round(Date.now() / 1000),
       created_at: Date.now() / 1000,
       updated_at: Date.now() / 1000,
       network: SquidNetwork.ETHEREUM,
@@ -36,8 +37,8 @@ describe('fromDBOrderToOrder', () => {
       price: '100',
       status: ListingStatus.OPEN,
       expiresAt: dbOrder.expires_at,
-      createdAt: dbOrder.created_at * 1000,
-      updatedAt: dbOrder.updated_at * 1000,
+      createdAt: fromSecondsToMilliseconds(dbOrder.created_at),
+      updatedAt: fromSecondsToMilliseconds(dbOrder.updated_at),
       network: Network.ETHEREUM,
       chainId: 1,
       issuedId: 'abc123',
