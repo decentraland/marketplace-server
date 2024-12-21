@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { HDNodeWallet, TypedDataDomain, Wallet, zeroPadValue, toBeArray, hexlify, toUtf8Bytes } from 'ethers'
+import { HDNodeWallet, TypedDataDomain, Wallet, zeroPadValue, toBeArray } from 'ethers'
 import { ChainId, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../../src/logic/date'
@@ -82,13 +82,13 @@ describe('when verifying the trade signature', () => {
         assetType: asset.assetType,
         contractAddress: asset.contractAddress,
         value: getValueFromTradeAsset(asset),
-        extra: hexlify(toUtf8Bytes(asset.extra))
+        extra: asset.extra
       })),
       received: trade.received.map(asset => ({
         assetType: asset.assetType,
         contractAddress: asset.contractAddress,
         value: getValueFromTradeAsset(asset),
-        extra: hexlify(toUtf8Bytes(asset.extra)),
+        extra: asset.extra,
         beneficiary: asset.beneficiary
       }))
     }
