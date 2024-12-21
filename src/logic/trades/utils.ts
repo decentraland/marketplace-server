@@ -72,8 +72,8 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
   const domain: TypedDataDomain = {
     name: offChainMarketplaceContract.name,
     version: offChainMarketplaceContract.version,
-    salt: SALT,
-    verifyingContract: offChainMarketplaceContract.address
+    verifyingContract: offChainMarketplaceContract.address,
+    salt: SALT
   }
 
   const values = {
