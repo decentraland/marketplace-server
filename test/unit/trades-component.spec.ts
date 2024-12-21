@@ -70,7 +70,7 @@ describe('when adding a new trade', () => {
           assetType: TradeAssetType.ERC20,
           contractAddress: '0xabcdef',
           amount: '2',
-          extra: ''
+          extra: '0x'
         }
       ],
       received: [
@@ -78,7 +78,7 @@ describe('when adding a new trade', () => {
           assetType: TradeAssetType.ERC721,
           contractAddress: '0x789abc',
           tokenId: '1',
-          extra: '',
+          extra: '0x',
           beneficiary: '0x9876543210'
         }
       ]
@@ -335,7 +335,7 @@ describe('when getting a trade', () => {
             assetType: TradeAssetType.ERC20,
             contractAddress: '0xabcdef',
             amount: '2',
-            extra: ''
+            extra: '0x'
           }
         ],
         received: [
@@ -343,7 +343,7 @@ describe('when getting a trade', () => {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x789abc',
             tokenId: '1',
-            extra: '',
+            extra: '0x',
             beneficiary: '0x9876543210'
           }
         ]
