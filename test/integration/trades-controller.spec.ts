@@ -1,7 +1,18 @@
 import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
-import { Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { CollectionItemTradeAsset, ERC20TradeAsset, ERC721TradeAsset, TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { Authenticator } from '@dcl/crypto'
+import {
+  Network,
+  TradeAssetType,
+  TradeCreation,
+  TradeType,
+  CollectionItemTradeAsset,
+  ERC20TradeAsset,
+  ERC721TradeAsset,
+  TradeAssetDirection,
+  ChainId
+} from '@dcl/schemas'
+import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -10,6 +21,8 @@ import { getSignedFetchRequest } from '../utils'
 test('trades controller', function ({ components }) {
   beforeEach(() => {
     jest.spyOn(tradeUtils, 'validateTradeSignature').mockImplementation(() => true)
+    jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
+    jest.spyOn(chainIdUtils, 'getPolygonChainId').mockReturnValue(ChainId.MATIC_AMOY)
   })
 
   describe('when inserting a bid', () => {
@@ -46,7 +59,7 @@ test('trades controller', function ({ components }) {
           {
             assetType: TradeAssetType.ERC721,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-            tokenId: 'atokenid',
+            tokenId: '100',
             extra: '0x',
             beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
           }
@@ -62,7 +75,7 @@ test('trades controller', function ({ components }) {
             {
               assetType: TradeAssetType.ERC721,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              tokenId: 'atokenid',
+              tokenId: '100',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -73,13 +86,14 @@ test('trades controller', function ({ components }) {
         beforeEach(async () => {
           const { localFetch } = components
           const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-            intent: 'dcl:marketplace:create-trade',
+            intent: 'dcl:create-trade',
             signer: 'dcl:marketplace'
           })
           signer = signedRequest.identity.realAccount.address.toLowerCase()
           bid = {
             ...bid,
-            signer
+            signer,
+            signature: Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
           }
           response = await localFetch.fetch('/v1/trades', {
             method: signedRequest.method,
@@ -136,9 +150,8 @@ test('trades controller', function ({ components }) {
 
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
-          const { signature, ...responseBid } = bid
           expect(await response.json()).toEqual({
-            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
             ok: true
           })
         })
@@ -153,7 +166,7 @@ test('trades controller', function ({ components }) {
             {
               assetType: TradeAssetType.COLLECTION_ITEM,
               contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
-              itemId: 'anItemId',
+              itemId: '1',
               extra: '0x',
               beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
             }
@@ -165,13 +178,14 @@ test('trades controller', function ({ components }) {
         beforeEach(async () => {
           const { localFetch } = components
           const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-            intent: 'dcl:marketplace:create-trade',
+            intent: 'dcl:create-trade',
             signer: 'dcl:marketplace'
           })
           signer = signedRequest.identity.realAccount.address.toLowerCase()
           bid = {
             ...bid,
-            signer
+            signer,
+            signature: Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
           }
           response = await localFetch.fetch('/v1/trades', {
             method: signedRequest.method,
@@ -228,9 +242,8 @@ test('trades controller', function ({ components }) {
 
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
-          const { signature, ...responseBid } = bid
           expect(await response.json()).toEqual({
-            data: { ...responseBid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
             ok: true
           })
         })
@@ -241,18 +254,28 @@ test('trades controller', function ({ components }) {
       beforeEach(async () => {
         const { localFetch } = components
         const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-          intent: 'dcl:marketplace:create-trade',
+          intent: 'dcl:create-trade',
           signer: 'dcl:marketplace'
         })
         signer = signedRequest.identity.realAccount.address.toLowerCase()
+        const signature = Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
+
         await localFetch.fetch('/v1/trades', {
           method: 'POST',
-          body: JSON.stringify({ ...bid, signer }),
+          body: JSON.stringify({
+            ...bid,
+            signer,
+            signature
+          }),
           headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
         })
         response = await localFetch.fetch('/v1/trades', {
           method: 'POST',
-          body: JSON.stringify({ ...bid, signer }),
+          body: JSON.stringify({
+            ...bid,
+            signer,
+            signature
+          }),
           headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
         })
       })
@@ -263,6 +286,71 @@ test('trades controller', function ({ components }) {
           message: 'There is already a bid with the same parameters',
           ok: false
         })
+      })
+    })
+  })
+
+  describe('when getting a trade', () => {
+    let trade: TradeCreation
+    let response: Response
+
+    beforeEach(async () => {
+      const { localFetch } = components
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      trade = {
+        signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            extra: '0x',
+            amount: '100'
+          }
+        ],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            tokenId: '100',
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+      const createdTradeResponse = await localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify(trade),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+      const createdTrade = (await createdTradeResponse.json()).data
+      response = await localFetch.fetch(`/v1/trades/${createdTrade.id}`, {
+        method: 'GET',
+        headers: signedRequest.headers
+      })
+    })
+
+    it('should return 200 status with trade body', async () => {
+      expect(response.status).toEqual(StatusCode.OK)
+      expect(await response.json()).toEqual({
+        data: { ...trade, id: expect.any(String), createdAt: expect.any(Number) },
+        ok: true
       })
     })
   })

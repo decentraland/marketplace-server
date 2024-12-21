@@ -1,33 +1,57 @@
-import { ChainId, Network } from '@dcl/schemas'
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import {
+  ChainId,
+  Network,
   ERC20TradeAsset,
   ERC721TradeAsset,
   Trade,
   TradeAssetDirection,
   TradeAssetType,
   TradeCreation,
-  TradeType
-} from '@dcl/schemas/dist/dapps/trade'
+  TradeType,
+  Events,
+  NFTCategory,
+  Rarity,
+  Event
+} from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent, createTradesComponent } from '../../src/ports/trades'
+import { IEventPublisherComponent } from '../../src/ports/events/types'
+import {
+  DBTrade,
+  DBTradeAsset,
+  DBTradeAssetValue,
+  DBTradeAssetWithValue,
+  ITradesComponent,
+  createTradesComponent
+} from '../../src/ports/trades'
+import {
+  InvalidTradeSignatureError,
+  InvalidTradeStructureError,
+  TradeAlreadyExpiredError,
+  TradeEffectiveAfterExpirationError,
+  TradeNotFoundError
+} from '../../src/ports/trades/errors'
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
-import { StatusCode } from '../../src/types'
-import { RequestError } from '../../src/utils'
+import { createTestLogsComponent } from '../components'
 
 let mockTrade: TradeCreation
 let mockSigner: string
 let mockPg: IPgComponent
+let mockEventPublisher: IEventPublisherComponent
 let tradesComponent: ITradesComponent
+let logs: ILoggerComponent
+let publishMessageMock: jest.Mock
 
 describe('when adding a new trade', () => {
   beforeEach(() => {
     mockSigner = '0x1234567890'
     mockTrade = {
       signer: mockSigner,
-      signature: '123123',
+      signature:
+        '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
       type: TradeType.BID,
       network: Network.ETHEREUM,
       chainId: ChainId.ETHEREUM_MAINNET,
@@ -61,7 +85,8 @@ describe('when adding a new trade', () => {
     }
 
     const mockPgClient = {
-      query: jest.fn()
+      query: jest.fn(),
+      release: jest.fn()
     }
     mockPg = {
       getPool: jest.fn().mockReturnValue({
@@ -74,8 +99,18 @@ describe('when adding a new trade', () => {
       streamQuery: jest.fn()
     }
 
+    publishMessageMock = jest.fn()
+
+    mockEventPublisher = {
+      publishMessage: publishMessageMock
+    }
+
+    logs = createTestLogsComponent({
+      getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined })
+    })
+
     jest.clearAllMocks()
-    tradesComponent = createTradesComponent({ dappsDatabase: mockPg })
+    tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
   })
 
   describe('when the expiration date is in the past', () => {
@@ -87,10 +122,8 @@ describe('when adding a new trade', () => {
       }
     })
 
-    it('should throw a RequestError with BAD_REQUEST status code', async () => {
-      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
-        new RequestError(StatusCode.BAD_REQUEST, 'Trade expiration date must be in the future')
-      )
+    it('should throw a TradeAlreadyExpiredError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new TradeAlreadyExpiredError())
     })
   })
 
@@ -101,10 +134,8 @@ describe('when adding a new trade', () => {
         effective: mockTrade.checks.expiration + 1000
       }
     })
-    it('should throw a RequestError with BAD_REQUEST status code', async () => {
-      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
-        new RequestError(StatusCode.BAD_REQUEST, 'Trade should be effective before expiration')
-      )
+    it('should throw a TradeEffectiveAfterExpirationError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new TradeEffectiveAfterExpirationError())
     })
   })
 
@@ -113,10 +144,8 @@ describe('when adding a new trade', () => {
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(false)
     })
 
-    it('should throw a RequestError with BAD_REQUEST status code', async () => {
-      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
-        new RequestError(StatusCode.BAD_REQUEST, `Trade structure is not valid for type ${mockTrade.type}`)
-      )
+    it('should throw an InvalidTradeStructureError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidTradeStructureError(mockTrade.type))
     })
   })
 
@@ -126,10 +155,8 @@ describe('when adding a new trade', () => {
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
     })
 
-    it('should throw a RequestError with BAD_REQUEST status code', async () => {
-      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
-        new RequestError(StatusCode.BAD_REQUEST, 'Invalid signature')
-      )
+    it('should throw an InvalidTradeSignatureError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidTradeSignatureError())
     })
   })
 
@@ -141,6 +168,7 @@ describe('when adding a new trade', () => {
     let insertedReceivedAsset: DBTradeAsset
     let insertedReceivedAssetValue: DBTradeAssetValue
     let response: Trade
+    let event: Event
 
     beforeEach(async () => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
@@ -156,7 +184,8 @@ describe('when adding a new trade', () => {
         created_at: new Date(),
         effective_since: new Date(),
         expires_at: new Date(),
-        signature: '123123',
+        signature:
+          '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
         signer: '0x1234567890',
         type: mockTrade.type
       }
@@ -197,6 +226,27 @@ describe('when adding a new trade', () => {
         .mockResolvedValueOnce({ rows: [insertedSentAssetValue] }) // trade sent asset value insert
         .mockResolvedValueOnce({ rows: [insertedReceivedAssetValue] }) // trade received asset insert
 
+      event = {
+        type: Events.Type.MARKETPLACE,
+        subType: Events.SubType.Marketplace.BID_RECEIVED,
+        key: 'bid-created-1',
+        timestamp: Date.now(),
+        metadata: {
+          address: '0x123',
+          image: 'image.png',
+          seller: '0x123',
+          category: NFTCategory.WEARABLE,
+          rarity: Rarity.COMMON,
+          link: '/account?section=bids',
+          nftName: 'nft name',
+          price: '123123',
+          title: 'Bid Received',
+          description: 'You received a bid of 1 MANA for this nft name.',
+          network: Network.ETHEREUM
+        }
+      }
+      jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(event)
+
       response = await tradesComponent.addTrade(mockTrade, mockSigner)
     })
 
@@ -223,6 +273,139 @@ describe('when adding a new trade', () => {
           { ...insertedReceivedAsset, ...insertedReceivedAssetValue }
         ])
       )
+    })
+
+    it('should send event notification', () => {
+      expect(publishMessageMock).toHaveBeenCalledWith(event)
+    })
+  })
+})
+
+describe('when getting a trade', () => {
+  let tradesComponent: ITradesComponent
+
+  describe('when there is no trade with the given id', () => {
+    beforeEach(() => {
+      const mockPg = {
+        getPool: jest.fn(),
+        withTransaction: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        streamQuery: jest.fn(),
+        query: jest.fn().mockResolvedValue({ rowCount: 0 })
+      }
+
+      mockEventPublisher = {
+        publishMessage: publishMessageMock
+      }
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
+    })
+
+    it('should throw TradeNotFoundError', async () => {
+      expect(async () => await tradesComponent.getTrade('1')).rejects.toThrow(new TradeNotFoundError('1').message)
+    })
+  })
+
+  describe('when there is a trade with the given id', () => {
+    let assets: (DBTrade & DBTradeAssetWithValue)[]
+    let trade: Trade
+
+    beforeEach(() => {
+      trade = {
+        id: '1',
+        createdAt: Date.now(),
+        signer: mockSigner,
+        signature:
+          '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
+        type: TradeType.BID,
+        network: Network.ETHEREUM,
+        chainId: ChainId.ETHEREUM_MAINNET,
+        checks: {
+          expiration: Date.now() + 100000000000,
+          effective: Date.now(),
+          uses: 1,
+          salt: '',
+          allowedRoot: '',
+          contractSignatureIndex: 0,
+          externalChecks: [],
+          signerSignatureIndex: 0
+        },
+        sent: [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0xabcdef',
+            amount: '2',
+            extra: ''
+          }
+        ],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x789abc',
+            tokenId: '1',
+            extra: '',
+            beneficiary: '0x9876543210'
+          }
+        ]
+      }
+
+      assets = [
+        {
+          id: trade.id,
+          signature: trade.signature,
+          chain_id: trade.chainId,
+          network: trade.network,
+          checks: trade.checks,
+          created_at: new Date(trade.createdAt),
+          effective_since: new Date(trade.checks.effective),
+          expires_at: new Date(trade.checks.expiration),
+          signer: trade.signer,
+          type: trade.type,
+          asset_type: TradeAssetType.ERC20,
+          contract_address: trade.sent[0].contractAddress,
+          direction: TradeAssetDirection.SENT,
+          amount: (trade.sent[0] as ERC20TradeAsset).amount,
+          extra: trade.sent[0].extra,
+          trade_id: '1'
+        },
+        {
+          id: trade.id,
+          signature: trade.signature,
+          chain_id: trade.chainId,
+          network: trade.network,
+          checks: trade.checks,
+          created_at: new Date(trade.createdAt),
+          effective_since: new Date(trade.checks.effective),
+          expires_at: new Date(trade.checks.expiration),
+          signer: trade.signer,
+          type: trade.type,
+          asset_type: TradeAssetType.ERC721,
+          contract_address: trade.received[0].contractAddress,
+          direction: TradeAssetDirection.RECEIVED,
+          token_id: (trade.received[0] as ERC721TradeAsset).tokenId,
+          extra: trade.received[0].extra,
+          beneficiary: trade.received[0].beneficiary,
+          trade_id: '1'
+        }
+      ]
+
+      const mockPg = {
+        getPool: jest.fn(),
+        withTransaction: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        streamQuery: jest.fn(),
+        query: jest.fn().mockResolvedValue({ rows: assets, rowCount: 2 })
+      }
+      const mockEventPublisher = {
+        publishMessage: jest.fn()
+      }
+
+      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
+    })
+
+    it('should return trade', async () => {
+      await expect(tradesComponent.getTrade('1')).resolves.toEqual(trade)
     })
   })
 })

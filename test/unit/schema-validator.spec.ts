@@ -28,7 +28,7 @@ beforeEach(async () => {
     config: createConfigComponent({}),
     metrics: createTestMetricsComponent({}),
     favoritesDatabase: createTestPgComponent(),
-    substreamsDatabase: createTestPgComponent(),
+    dappsDatabase: createTestPgComponent(),
     snapshot: createTestSnapshotComponent(),
     schemaValidator: createSchemaValidatorComponent()
   } as unknown as BaseComponents

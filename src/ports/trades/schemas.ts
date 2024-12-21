@@ -1,5 +1,4 @@
-import { JSONSchema, TradeAssetType, TradeAsset, TradeCreation, TradeType } from '@dcl/schemas'
-import { BaseTradeAsset, TradeAssetWithBeneficiary } from '@dcl/schemas/dist/dapps/trade'
+import { JSONSchema, TradeAssetType, TradeAsset, TradeCreation, TradeType, BaseTradeAsset, TradeAssetWithBeneficiary } from '@dcl/schemas'
 
 export const BaseTradeAssetSchema: JSONSchema<BaseTradeAsset> = {
   type: 'object',
@@ -73,7 +72,7 @@ export const TradeCreationSchema: JSONSchema<TradeCreation> = {
     signer: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' },
     network: { type: 'string' },
     chainId: { type: 'number' },
-    type: { type: 'string', enum: [TradeType.BID] }, // for now we only support bids
+    type: { type: 'string', enum: [TradeType.BID, TradeType.PUBLIC_NFT_ORDER, TradeType.PUBLIC_ITEM_ORDER] },
     signature: { type: 'string' },
     checks: {
       type: 'object',

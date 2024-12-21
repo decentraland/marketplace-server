@@ -1,22 +1,33 @@
 import SQL from 'sql-template-strings'
-import { TradeAssetDirection, TradeCreation } from '@dcl/schemas/dist/dapps/trade'
+import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
-import { validateTradeSignature } from '../../logic/trades/utils'
+import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
   InvalidTradeStructureError,
-  InvalidTradeSignerError
+  InvalidTradeSignerError,
+  TradeNotFoundError,
+  EventNotGeneratedError,
+  TradeNotFoundBySignatureError,
+  InvalidOwnerError
 } from './errors'
-import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, ITradesComponent } from './types'
-import { validateTradeByType } from './utils'
+import {
+  getInsertTradeAssetQuery,
+  getInsertTradeAssetValueByTypeQuery,
+  getInsertTradeQuery,
+  getTradeAssetsWithValuesByHashedSignatureQuery,
+  getTradeAssetsWithValuesByIdQuery
+} from './queries'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
+import { getNotificationEventForTrade, isERC721TradeAsset, validateTradeByType } from './utils'
 
-export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase'>): ITradesComponent {
-  const { dappsDatabase: pg } = components
+export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
+  const { dappsDatabase: pg, eventPublisher, logs } = components
+  const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
     const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
@@ -48,7 +59,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidTradeSignatureError()
     }
 
-    return pg.withTransaction(
+    // validate right ownership
+    if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.network, trade.chainId))) {
+      throw new InvalidOwnerError()
+    }
+
+    const insertedTrade = await pg.withTransaction(
       async client => {
         const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
         const assets = await Promise.all(
@@ -71,10 +87,55 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         throw new Error(isErrorWithMessage(e) ? e.message : 'Could not create trade')
       }
     )
+
+    // trigger notification for trade creation
+    try {
+      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED, signer)
+      if (event) {
+        const messageId = await eventPublisher.publishMessage(event)
+        logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
+      }
+    } catch (e) {
+      logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
+    }
+
+    return insertedTrade
+  }
+
+  async function getTrade(id: string) {
+    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByIdQuery(id))
+
+    if (!result.rowCount) {
+      throw new TradeNotFoundError(id)
+    }
+
+    return fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+  }
+
+  async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number, caller: string): Promise<Event> {
+    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature))
+
+    if (!result.rowCount) {
+      throw new TradeNotFoundBySignatureError(hashedSignature)
+    }
+
+    const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED, caller)
+
+    if (!event) {
+      throw new EventNotGeneratedError()
+    }
+
+    return {
+      ...event,
+      timestamp
+    }
   }
 
   return {
     getTrades,
-    addTrade
+    addTrade,
+    getTrade,
+    getTradeAcceptedEvent
   }
 }

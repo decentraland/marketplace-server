@@ -92,6 +92,8 @@ describe('when verifying the trade signature', () => {
         beneficiary: asset.beneficiary
       }))
     }
+
+    trade.signature = await wallet.signTypedData(domain, MARKETPLACE_TRADE_TYPES, values)
   })
 
   describe("and there's no contract with the given chain id", () => {

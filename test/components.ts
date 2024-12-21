@@ -6,22 +6,36 @@ import { ILoggerComponent, ITracerComponent } from '@well-known-components/inter
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent } from '@well-known-components/metrics'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
+import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
+import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBalanceComponent } from '../src/ports/balance/component'
+import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
+import { IEventPublisherComponent } from '../src/ports/events'
 import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
-import { IItemsComponent, createItemsComponent } from '../src/ports/favorites/items'
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
 import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/picks'
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
+import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
+import { createNFTsComponent } from '../src/ports/nfts/component'
+import { createOrdersComponent } from '../src/ports/orders/component'
+import { createPricesComponents } from '../src/ports/prices'
+import { createRankingsComponent } from '../src/ports/rankings/component'
+import { createRentalsComponent } from '../src/ports/rentals/components'
+import { createSalesComponents } from '../src/ports/sales'
 import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
+import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
+import { createTransakComponent } from '../src/ports/transak/component'
+import { createTrendingsComponent } from '../src/ports/trendings/component'
+import { createVolumeComponent } from '../src/ports/volume/component'
 import { createWertSigner } from '../src/ports/wert-signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
@@ -49,13 +63,7 @@ async function initComponents(): Promise<TestComponents> {
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const logs = await createLogComponent({ metrics })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
-
-  const substreamsDatabase = await createPgComponent(
-    { config, logs, metrics },
-    {
-      dbPrefix: 'SUBSTREAMS'
-    }
-  )
+  const eventPublisher: IEventPublisherComponent = { publishMessage: () => Promise.resolve('event') }
 
   const favoritesDatabase = await createPgComponent(
     { config, logs, metrics },
@@ -64,10 +72,18 @@ async function initComponents(): Promise<TestComponents> {
     }
   )
 
-  const dappsDatabase = await createPgComponent(
+  const dappsWriteDatabase = await createPgComponent(
     { config, logs, metrics },
     {
       dbPrefix: 'DAPPS'
+    }
+  )
+
+  const dappsReadDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'DAPPS_READ',
+      migrations: false
     }
   )
 
@@ -80,7 +96,7 @@ async function initComponents(): Promise<TestComponents> {
 
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, substreamsDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -89,16 +105,35 @@ async function initComponents(): Promise<TestComponents> {
   })
   const access = createAccessComponent({ favoritesDatabase, logs, lists })
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
-  const catalog = await createCatalogComponent({ substreamsDatabase, picks }, SEGMENT_WRITE_KEY)
+  const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
   const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
-  const trades = createTradesComponent({ dappsDatabase })
+  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
+  const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
+
+  const rentalsSubgraph = await createSubgraphComponent(
+    { logs, config, fetch, metrics },
+    await config.requireString('RENTALS_SUBGRAPH_URL')
+  )
+  const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
+  const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
+
+  const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
+  const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
+  const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
-  jest.spyOn(substreamsDatabase, 'start').mockResolvedValue(undefined)
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
   })
+
+  const transak = createTransakComponent({ fetch }, { apiURL: '', apiKey: '', apiSecret: '' })
+  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
+  const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
+  const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
+  const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
+  const volumes = await createVolumeComponent({ analyticsData })
 
   return {
     config,
@@ -107,9 +142,9 @@ async function initComponents(): Promise<TestComponents> {
     localFetch: await createLocalFetchCompoment(config),
     fetch,
     metrics,
-    substreamsDatabase,
+    dappsDatabase: dappsReadDatabase,
+    dappsWriteDatabase,
     favoritesDatabase,
-    dappsDatabase,
     catalog,
     balances,
     wertSigner,
@@ -121,7 +156,20 @@ async function initComponents(): Promise<TestComponents> {
     snapshot,
     items,
     schemaValidator,
-    trades
+    bids,
+    trades,
+    eventPublisher,
+    nfts,
+    orders,
+    rentals,
+    sales,
+    prices,
+    transak,
+    stats,
+    trendings,
+    rankings,
+    analyticsData,
+    volumes
   }
 }
 
@@ -197,7 +245,8 @@ export function createTestAccessComponent(
 
 export function createTestItemsComponent({ validateItemExists = jest.fn() }): IItemsComponent {
   return {
-    validateItemExists
+    validateItemExists,
+    getItems: jest.fn()
   }
 }
 

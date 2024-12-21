@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
-import { TradeType } from '@dcl/schemas'
-import { TradeAssetDirection } from '@dcl/schemas/dist/dapps/trade'
+import { TradeType, TradeAssetDirection } from '@dcl/schemas'
 
 export const SCHEMA = 'marketplace'
 
@@ -15,7 +14,7 @@ export const ASSET_DIRECTION_TYPE = 'asset_direction_type'
 export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
-  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID, TradeType.PUBLIC_ORDER])
+  pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID])
 
   pgm.createTable(
     { schema: SCHEMA, name: TRADES_TABLE },
@@ -30,6 +29,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       network: { type: 'text', notNull: true },
       chain_id: { type: 'integer', notNull: true },
       signature: { type: 'text', notNull: true, unique: true },
+      hashed_signature: { type: 'text', notNull: true, unique: true },
       checks: { type: 'jsonb', notNull: true },
       signer: { type: 'varchar(42)', notNull: true },
       type: { type: TRADE_TYPE, notNull: true },
@@ -59,7 +59,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       },
       direction: { type: ASSET_DIRECTION_TYPE, notNull: true },
       asset_type: {
-        type: 'smallint', // (1: ERC20, 2: ERC721, 3: COLLECTION ITEM)
+        type: 'smallint', // (1: ERC20, 2: USD_PEGGED_MANA, 3: ERC721, 4: COLLECTION ITEM)
         notNull: true
       },
       contract_address: { type: 'varchar(42)', notNull: true },

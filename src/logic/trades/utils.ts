@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { TypedDataField, TypedDataDomain, verifyTypedData, toBeArray, zeroPadValue } from 'ethers'
-import { TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { Contract, TypedDataField, TypedDataDomain, verifyTypedData, toBeArray, zeroPadValue, JsonRpcProvider } from 'ethers'
+import { ChainId, ERC721TradeAsset, Network, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
-import { MarketplaceContractNotFound } from '../../ports/trades/errors'
+import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
+import { hasECDSASignatureAValidV } from '../signatures'
 
 export function getValueFromTradeAsset(asset: TradeAsset) {
   switch (asset.assetType) {
@@ -50,12 +51,16 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
   ExternalCheck: [
     { name: 'contractAddress', type: 'address' },
     { name: 'selector', type: 'bytes4' },
-    { name: 'value', type: 'uint256' },
+    { name: 'value', type: 'bytes' },
     { name: 'required', type: 'bool' }
   ]
 }
 
 export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
+  if (!hasECDSASignatureAValidV(trade.signature)) {
+    throw new InvalidECDSASignatureError()
+  }
+
   let offChainMarketplaceContract: ContractData
   try {
     offChainMarketplaceContract = getContract(ContractName.OffChainMarketplace, trade.chainId)
@@ -76,7 +81,7 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       uses: trade.checks.uses,
       expiration: fromMillisecondsToSeconds(trade.checks.expiration),
       effective: fromMillisecondsToSeconds(trade.checks.effective),
-      salt: SALT,
+      salt: zeroPadValue(trade.checks.salt, 32),
       contractSignatureIndex: trade.checks.contractSignatureIndex,
       signerSignatureIndex: trade.checks.signerSignatureIndex,
       allowedRoot: zeroPadValue(trade.checks.allowedRoot, 32),
@@ -106,4 +111,35 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
   }
 
   return verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
+}
+
+export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset {
+  return (asset as ERC721TradeAsset).tokenId !== undefined
+}
+
+async function getContractOwner(contractAddress: string, tokenId: string, network: Network, chainId: ChainId): Promise<string> {
+  const abi = ['function ownerOf(uint256 tokenId) view returns (address)']
+  const RPC_URL = `https://rpc.decentraland.org/${
+    network === Network.ETHEREUM
+      ? chainId === ChainId.ETHEREUM_MAINNET
+        ? 'mainnet'
+        : 'sepolia'
+      : chainId === ChainId.MATIC_MAINNET
+      ? 'polygon'
+      : 'amoy'
+  }`
+  const provider = new JsonRpcProvider(RPC_URL)
+  const contract = new Contract(contractAddress, abi, provider)
+  return await contract.ownerOf(tokenId)
+}
+
+export async function validateAssetOwnership(
+  asset: ERC721TradeAsset,
+  signer: string,
+  network: Network,
+  chainId: ChainId
+): Promise<boolean> {
+  const { contractAddress, tokenId } = asset
+  const blockchainOwner = await getContractOwner(contractAddress, tokenId, network, chainId)
+  return blockchainOwner.toLowerCase() === signer.toLowerCase()
 }

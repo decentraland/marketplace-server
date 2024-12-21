@@ -6,10 +6,10 @@ import { IPgComponent } from './types'
 
 export async function createPgComponent(
   components: createBasePgComponent.NeededComponents,
-  options: { dbPrefix: string } & Options
+  options: { dbPrefix: string; migrations?: boolean } & Options
 ): Promise<IPgComponent & IBaseComponent> {
   const { config, logs, metrics } = components
-  const { dbPrefix } = options
+  const { dbPrefix, migrations = true } = options
   let databaseUrl: string | undefined = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_CONNECTION_STRING`)
   if (!databaseUrl) {
     const dbUser = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_USER`)
@@ -28,16 +28,22 @@ export async function createPgComponent(
     {
       ...options,
       pool: {
-        connectionString: databaseUrl
+        connectionString: databaseUrl,
+        query_timeout: 40000, // 40 seconds,
+        statement_timeout: 40000 // 40 seconds,
       },
-      migration: {
-        databaseUrl,
-        ...(schema ? { schema } : {}),
-        dir: path.resolve(__dirname, `../../migrations/${dbPrefix.toLowerCase()}`),
-        migrationsTable: 'pgmigrations',
-        ignorePattern: '.*\\.map',
-        direction: 'up'
-      }
+      ...(migrations
+        ? {
+            migration: {
+              databaseUrl,
+              ...(schema ? { schema } : {}),
+              dir: path.resolve(__dirname, `../../migrations/${dbPrefix.toLowerCase()}`),
+              migrationsTable: 'pgmigrations',
+              ignorePattern: '.*\\.map',
+              direction: 'up'
+            }
+          }
+        : {})
     }
   )
 

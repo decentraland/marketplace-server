@@ -8,18 +8,31 @@ import type {
 } from '@well-known-components/interfaces'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBalanceComponent } from './ports/balance/types'
+import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
+import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
-import { IItemsComponent } from './ports/favorites/items'
 import { IListsComponents } from './ports/favorites/lists'
 import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
+import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
+import { INFTsComponent } from './ports/nfts/types'
+import { IOrdersComponent } from './ports/orders/types'
+import { IPricesComponent } from './ports/prices'
+import { IItemsDayDataComponent } from './ports/rankings/types'
+import { IRentalsComponent } from './ports/rentals/types'
+import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
+import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades'
+import { ITransakComponent } from './ports/transak/types'
+import { ITrendingsComponent } from './ports/trendings/types'
+import { IVolumeComponent } from './ports/volume/types'
 import { IWertSignerComponent } from './ports/wert-signer/types'
 
 export type GlobalContext = {
@@ -33,12 +46,13 @@ export type BaseComponents = {
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
-  substreamsDatabase: IPgComponent
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
+  dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   balances: IBalanceComponent
   wertSigner: IWertSignerComponent
+  transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent
@@ -48,6 +62,18 @@ export type BaseComponents = {
   access: IAccessComponent
   items: IItemsComponent
   trades: ITradesComponent
+  bids: IBidsComponent
+  eventPublisher: IEventPublisherComponent
+  nfts: INFTsComponent
+  orders: IOrdersComponent
+  rentals: IRentalsComponent
+  sales: ISalesComponent
+  trendings: ITrendingsComponent
+  prices: IPricesComponent
+  stats: IStatsComponent
+  rankings: IItemsDayDataComponent
+  volumes: IVolumeComponent
+  analyticsData: IAnalyticsDayDataComponent
 }
 
 // components used in runtime
@@ -126,4 +152,9 @@ export type HTTPResponse<T> = {
         ok: true
         data?: T
       }
+}
+
+export enum SquidNetwork {
+  ETHEREUM = 'ETHEREUM',
+  POLYGON = 'POLYGON'
 }
