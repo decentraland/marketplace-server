@@ -69,8 +69,18 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
         const assets = await Promise.all(
           [
-            ...trade.sent.map(asset => ({ ...asset, direction: TradeAssetDirection.SENT })),
-            ...trade.received.map(asset => ({ ...asset, direction: TradeAssetDirection.RECEIVED }))
+            ...trade.sent.map(asset => ({
+              ...asset,
+              // '0x' is the default value for extra bytes (0 bytes)
+              extra: asset.extra ? asset.extra : '0x',
+              direction: TradeAssetDirection.SENT
+            })),
+            ...trade.received.map(asset => ({
+              ...asset,
+              // '0x' is the default value for extra bytes (0 bytes)
+              extra: asset.extra ? asset.extra : '0x',
+              direction: TradeAssetDirection.RECEIVED
+            }))
           ].map(async asset => {
             const insertedAsset = await client.query<DBTradeAsset>(
               getInsertTradeAssetQuery(asset, insertedTrade.rows[0].id, asset.direction)
