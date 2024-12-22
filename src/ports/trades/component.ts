@@ -13,7 +13,8 @@ import {
   TradeNotFoundError,
   EventNotGeneratedError,
   TradeNotFoundBySignatureError,
-  InvalidOwnerError
+  InvalidOwnerError,
+  InvalidEstateTrade
 } from './errors'
 import {
   getInsertTradeAssetQuery,
@@ -23,7 +24,7 @@ import {
   getTradeAssetsWithValuesByIdQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
-import { getNotificationEventForTrade, isERC721TradeAsset, validateTradeByType } from './utils'
+import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
   const { dappsDatabase: pg, eventPublisher, logs } = components
@@ -52,6 +53,10 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     // validate trade type
     if (!(await validateTradeByType(trade, pg))) {
       throw new InvalidTradeStructureError(trade.type)
+    }
+    // Validate if estate trade is correct
+    if (isEstateChain(trade.chainId) && !isValidEstateTrade(trade)) {
+      throw new InvalidEstateTrade()
     }
 
     // vaidate signature

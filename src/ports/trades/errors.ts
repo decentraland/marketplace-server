@@ -18,6 +18,18 @@ export class InvalidTradeStructureError extends Error {
   }
 }
 
+export class EstateContractNotFoundForChainId extends Error {
+  constructor(public chainId: ChainId) {
+    super(`Estate contract not found for chainId ${chainId}`)
+  }
+}
+
+export class InvalidEstateTrade extends Error {
+  constructor() {
+    super("The Estate trade is invalid, check for the fingerprint to see if it matches the Estate's one")
+  }
+}
+
 export class InvalidTradeSignerError extends Error {
   constructor() {
     super('Trade and request signer do not match')

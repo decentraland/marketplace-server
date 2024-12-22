@@ -9,15 +9,23 @@ import {
   ERC721TradeAsset,
   CollectionItemTradeAsset,
   ListingStatus,
-  Event
+  Event,
+  ChainId
 } from '@dcl/schemas'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
+import { getMarketplaceContracts } from '../../logic/contracts'
 import { getBidsQuery } from '../bids/queries'
 import { getItemByItemIdQuery, getItemsQuery } from '../items/queries'
 import { DBItem } from '../items/types'
 import { getNftByTokenIdQuery, getNFTsQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
-import { DuplicatedBidError, DuplicateItemOrderError, DuplicateNFTOrderError, InvalidTradeStructureError } from './errors'
+import {
+  DuplicatedBidError,
+  DuplicateItemOrderError,
+  DuplicateNFTOrderError,
+  EstateContractNotFoundForChainId,
+  InvalidTradeStructureError
+} from './errors'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
@@ -32,8 +40,39 @@ export function isCollectionItemTradeAsset(asset: TradeAsset): asset is Collecti
   return asset.assetType === TradeAssetType.COLLECTION_ITEM
 }
 
+function isBytesEmpty(bytes: string): boolean {
+  return bytes === '0x' || bytes === ''
+}
+
+export function isEstateChain(chainId: ChainId): boolean {
+  return chainId !== ChainId.MATIC_AMOY && chainId !== ChainId.MATIC_MAINNET
+}
+
+export function isValidEstateTrade(trade: TradeCreation): boolean {
+  const contracts = getMarketplaceContracts(trade.chainId)
+  const estateContract = contracts.find(contract => contract.name === 'Estates')
+  if (!estateContract) {
+    throw new EstateContractNotFoundForChainId(trade.chainId)
+  }
+
+  // Check if the trade contains an estate with an empty extra field (all estates must have the extra field which is the fingerprint)
+  const isSentEstateTradeWrong = trade.sent.some(
+    asset => asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase() && isBytesEmpty(asset.extra)
+  )
+  const isReceivedEstateTradeWrong = trade.received.some(
+    asset => asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase() && isBytesEmpty(asset.extra)
+  )
+
+  if (isSentEstateTradeWrong || isReceivedEstateTradeWrong) {
+    return false
+  }
+
+  return true
+}
+
 export async function validateTradeByType(trade: TradeCreation, client: IPgComponent): Promise<boolean> {
   const { sent, received, type } = trade
+
   try {
     if (type === TradeType.BID) {
       // validate bid structure

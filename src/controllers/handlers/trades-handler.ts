@@ -13,7 +13,9 @@ import {
   TradeEffectiveAfterExpirationError,
   TradeNotFoundBySignatureError,
   TradeNotFoundError,
-  DuplicateNFTOrderError
+  DuplicateNFTOrderError,
+  InvalidEstateTrade,
+  EstateContractNotFoundForChainId
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
@@ -77,7 +79,9 @@ export async function addTradeHandler(
       e instanceof InvalidTradeStructureError ||
       e instanceof InvalidTradeSignatureError ||
       e instanceof InvalidTradeSignerError ||
-      e instanceof InvalidECDSASignatureError
+      e instanceof InvalidECDSASignatureError ||
+      e instanceof InvalidEstateTrade ||
+      e instanceof EstateContractNotFoundForChainId
     ) {
       return {
         status: StatusCode.BAD_REQUEST,
