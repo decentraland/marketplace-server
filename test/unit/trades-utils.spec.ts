@@ -22,8 +22,8 @@ import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
-import { InvalidTradeStructureError } from '../../src/ports/trades/errors'
-import { getNotificationEventForTrade, validateTradeByType } from '../../src/ports/trades/utils'
+import { EstateContractNotFoundForChainId, InvalidTradeStructureError } from '../../src/ports/trades/errors'
+import { getNotificationEventForTrade, isValidEstateTrade, validateTradeByType } from '../../src/ports/trades/utils'
 import { SquidNetwork } from '../../src/types'
 
 describe('when calling getNotificationEventForTrade function', () => {
@@ -230,6 +230,129 @@ describe('when calling getNotificationEventForTrade function', () => {
   })
 })
 
+describe("when validating the trade to see if it's a correct estate trade", () => {
+  let trade: Trade
+
+  beforeEach(() => {
+    trade = {
+      id: '1',
+      createdAt: Date.now(),
+      signature: '0xsignature',
+      signer: '0xsigner',
+      chainId: ChainId.ETHEREUM_SEPOLIA,
+      type: TradeType.PUBLIC_NFT_ORDER,
+      checks: {
+        effective: Date.now(),
+        expiration: Date.now() + 1000000,
+        allowedRoot: '0x',
+        contractSignatureIndex: 0,
+        signerSignatureIndex: 0,
+        externalChecks: [],
+        salt: '0x',
+        uses: 1
+      },
+      network: Network.ETHEREUM,
+      sent: [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+          tokenId: '100',
+          extra: '0x'
+        }
+      ],
+      received: [
+        {
+          assetType: TradeAssetType.ERC20,
+          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+          extra: '0x',
+          amount: '100',
+          beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+        }
+      ]
+    }
+  })
+
+  describe('and the trade is in a chain that is not supported', () => {
+    beforeEach(() => {
+      trade.chainId = ChainId.AVALANCHE_MAINNET
+    })
+
+    it('should throw the EstateContractNotFoundForChainId error', () => {
+      return expect(() => isValidEstateTrade(trade)).toThrow(new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET))
+    })
+  })
+
+  describe('and the sent asset is an estate without fingerprint', () => {
+    beforeEach(() => {
+      trade.sent = [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x369a7fbe718c870c79f99fb423882e8dd8b20486',
+          tokenId: '100',
+          extra: '0x'
+        }
+      ]
+    })
+
+    it('should return false', () => {
+      expect(isValidEstateTrade(trade)).toBe(false)
+    })
+  })
+
+  describe('and the received asset is an estate without fingerprint', () => {
+    beforeEach(() => {
+      trade.received = [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x369a7fbe718c870c79f99fb423882e8dd8b20486',
+          tokenId: '100',
+          extra: '0x',
+          beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+        }
+      ]
+    })
+
+    it('should return false', () => {
+      expect(isValidEstateTrade(trade)).toBe(false)
+    })
+  })
+
+  describe('and the sent asset is an estate with fingerprint', () => {
+    beforeEach(() => {
+      trade.sent = [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x369a7fbe718c870c79f99fb423882e8dd8b20486',
+          tokenId: '100',
+          extra: '0x123'
+        }
+      ]
+    })
+
+    it('should return true', () => {
+      expect(isValidEstateTrade(trade)).toBe(true)
+    })
+  })
+
+  describe('and the received asset is an estate with fingerprint', () => {
+    beforeEach(() => {
+      trade.received = [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x369a7fbe718c870c79f99fb423882e8dd8b20486',
+          tokenId: '100',
+          extra: '0x123',
+          beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+        }
+      ]
+    })
+
+    it('should return true', () => {
+      expect(isValidEstateTrade(trade)).toBe(true)
+    })
+  })
+})
+
 describe('when validating trade by type', () => {
   let pgClient: IPgComponent
   let queryMock: jest.Mock
@@ -300,7 +423,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -318,7 +441,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -341,7 +464,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -366,13 +489,13 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
     describe('and the trades is correctly defined', () => {
       it('should return true', () => {
-        expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
       })
     })
   })
@@ -395,7 +518,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -413,7 +536,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -436,7 +559,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -461,7 +584,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -488,7 +611,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
       })
     })
   })
@@ -511,7 +634,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -529,7 +652,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -552,7 +675,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -577,7 +700,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -604,7 +727,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
       })
     })
   })

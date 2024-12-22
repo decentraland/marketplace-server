@@ -27,6 +27,7 @@ import {
   createTradesComponent
 } from '../../src/ports/trades'
 import {
+  InvalidEstateTrade,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
@@ -142,6 +143,7 @@ describe('when adding a new trade', () => {
   describe('when the trade structure is not valid for a given type', () => {
     beforeEach(() => {
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(false)
+      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
     })
 
     it('should throw an InvalidTradeStructureError', async () => {
@@ -153,10 +155,24 @@ describe('when adding a new trade', () => {
     beforeEach(() => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(false)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
     })
 
     it('should throw an InvalidTradeSignatureError', async () => {
       await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidTradeSignatureError())
+    })
+  })
+
+  describe('when a estate trade is not valid in the available estate chain ids', () => {
+    beforeEach(() => {
+      mockTrade.chainId = ChainId.ETHEREUM_SEPOLIA
+      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(false)
+    })
+
+    it('should throw an EstateTradeWithoutFingerprintError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidEstateTrade())
     })
   })
 
@@ -173,6 +189,7 @@ describe('when adding a new trade', () => {
     beforeEach(async () => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
       mockPgQuery = jest.fn()
       ;(mockPg.withTransaction as jest.Mock).mockImplementation((fn, _onError) => fn({ query: mockPgQuery }))
 

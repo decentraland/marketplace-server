@@ -1,8 +1,10 @@
 import { Request } from 'node-fetch'
-import { Event, Events, Trade, TradeCreation } from '@dcl/schemas'
+import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
 import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
+  EstateContractNotFoundForChainId,
+  InvalidEstateTrade,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
@@ -86,6 +88,12 @@ describe('when handling the creation of a new trade', () => {
       { errorName: 'TradeEffectiveAfterExpirationError', error: new TradeEffectiveAfterExpirationError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'InvalidTradeStructureError', error: new InvalidTradeStructureError('bid'), code: StatusCode.BAD_REQUEST },
       { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
+      { errorName: 'EstateTradeWithoutFingerprintError', error: new InvalidEstateTrade(), code: StatusCode.BAD_REQUEST },
+      {
+        errorName: 'EstateContractNotFoundForChainId',
+        error: new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET),
+        code: StatusCode.BAD_REQUEST
+      },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
       beforeEach(() => {
