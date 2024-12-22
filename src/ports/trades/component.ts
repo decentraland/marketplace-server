@@ -71,14 +71,10 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
           [
             ...trade.sent.map(asset => ({
               ...asset,
-              // '0x' is the default value for extra bytes (0 bytes)
-              extra: asset.extra ? asset.extra : '0x',
               direction: TradeAssetDirection.SENT
             })),
             ...trade.received.map(asset => ({
               ...asset,
-              // '0x' is the default value for extra bytes (0 bytes)
-              extra: asset.extra ? asset.extra : '0x',
               direction: TradeAssetDirection.RECEIVED
             }))
           ].map(async asset => {
