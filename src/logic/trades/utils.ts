@@ -1,15 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import {
-  Contract,
-  TypedDataField,
-  hexlify,
-  TypedDataDomain,
-  verifyTypedData,
-  toBeArray,
-  toUtf8Bytes,
-  zeroPadValue,
-  JsonRpcProvider
-} from 'ethers'
+import { Contract, TypedDataField, TypedDataDomain, verifyTypedData, toBeArray, zeroPadValue, JsonRpcProvider } from 'ethers'
 import { ChainId, ERC721TradeAsset, Network, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
@@ -98,7 +88,8 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       externalChecks: trade.checks.externalChecks?.map(externalCheck => ({
         contractAddress: externalCheck.contractAddress,
         selector: externalCheck.selector,
-        value: hexlify(toUtf8Bytes(externalCheck.value)),
+        // '0x' is the default value for the value bytes (0 bytes)
+        value: externalCheck.value ? externalCheck.value : '0x',
         required: externalCheck.required
       }))
     },
@@ -106,13 +97,15 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
       value: getValueFromTradeAsset(asset),
-      extra: hexlify(toUtf8Bytes(asset.extra))
+      // '0x' is the default value for extra bytes (0 bytes)
+      extra: asset.extra ? asset.extra : '0x'
     })),
     received: trade.received.map(asset => ({
       assetType: asset.assetType,
       contractAddress: asset.contractAddress,
       value: getValueFromTradeAsset(asset),
-      extra: hexlify(toUtf8Bytes(asset.extra)),
+      // '0x' is the default value for extra bytes (0 bytes)
+      extra: asset.extra ? asset.extra : '0x',
       beneficiary: asset.beneficiary
     }))
   }
