@@ -143,7 +143,7 @@ describe('when adding a new trade', () => {
   describe('when the trade structure is not valid for a given type', () => {
     beforeEach(() => {
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(false)
-      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
     })
 
     it('should throw an InvalidTradeStructureError', async () => {
@@ -155,7 +155,7 @@ describe('when adding a new trade', () => {
     beforeEach(() => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(false)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
-      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
     })
 
     it('should throw an InvalidTradeSignatureError', async () => {
@@ -168,7 +168,7 @@ describe('when adding a new trade', () => {
       mockTrade.chainId = ChainId.ETHEREUM_SEPOLIA
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
-      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(false)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(false)
     })
 
     it('should throw an EstateTradeWithoutFingerprintError', async () => {
@@ -189,7 +189,7 @@ describe('when adding a new trade', () => {
     beforeEach(async () => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
-      jest.spyOn(utils, 'isValidEstateTrade').mockReturnValueOnce(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
       mockPgQuery = jest.fn()
       ;(mockPg.withTransaction as jest.Mock).mockImplementation((fn, _onError) => fn({ query: mockPgQuery }))
 

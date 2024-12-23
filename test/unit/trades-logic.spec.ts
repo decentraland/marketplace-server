@@ -1,10 +1,23 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { HDNodeWallet, TypedDataDomain, Wallet, zeroPadValue, toBeArray } from 'ethers'
+import { HDNodeWallet, TypedDataDomain, Wallet, zeroPadValue, toBeArray, Contract } from 'ethers'
 import { ChainId, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../../src/logic/date'
-import { MARKETPLACE_TRADE_TYPES, getValueFromTradeAsset, validateTradeSignature } from '../../src/logic/trades/utils'
+import {
+  MARKETPLACE_TRADE_TYPES,
+  getValueFromTradeAsset,
+  isEstateFingerprintValid,
+  validateTradeSignature
+} from '../../src/logic/trades/utils'
 import { MarketplaceContractNotFound } from '../../src/ports/trades/errors'
+
+jest.mock('ethers', () => {
+  const originalModule = jest.requireActual('ethers')
+  return {
+    ...originalModule,
+    Contract: jest.fn()
+  }
+})
 
 describe('when verifying the trade signature', () => {
   let chainId: ChainId
@@ -136,6 +149,62 @@ describe('when verifying the trade signature', () => {
 
     it('should return true', () => {
       return expect(validateTradeSignature(trade, signerAddress)).toBe(true)
+    })
+  })
+})
+
+beforeEach(() => {
+  jest.resetAllMocks()
+})
+
+describe('when validating the estate signature', () => {
+  let contractAddress: string
+  let tokenId: string
+  let chainId: ChainId
+  let fingerprint: string
+
+  beforeEach(() => {
+    contractAddress = '0x9d32aac179153a991e832550d9f96441ea27763b'
+    tokenId = '5801'
+    chainId = ChainId.ETHEREUM_MAINNET
+    fingerprint = '0x1234567890'
+  })
+
+  describe('and the chain id is from a not supported chain', () => {
+    beforeEach(() => {
+      chainId = ChainId.AVALANCHE_MAINNET
+    })
+
+    it('should reject with an error', () => {
+      return expect(isEstateFingerprintValid(contractAddress, tokenId, chainId, fingerprint)).rejects.toThrow(Error)
+    })
+  })
+
+  describe('and the fingerprint is the same as the estate fingerprint', () => {
+    beforeEach(() => {
+      ;(Contract as jest.Mock).mockImplementationOnce(() => {
+        return {
+          getFingerprint: () => Promise.resolve(fingerprint)
+        }
+      })
+    })
+
+    it('should return true', () => {
+      return expect(isEstateFingerprintValid(contractAddress, tokenId, chainId, fingerprint)).resolves.toBe(true)
+    })
+  })
+
+  describe('and the fingerprint is different from the estate fingerprint', () => {
+    beforeEach(() => {
+      ;(Contract as jest.Mock).mockImplementationOnce(() => {
+        return {
+          getFingerprint: () => Promise.resolve('0x')
+        }
+      })
+    })
+
+    it('should return false', () => {
+      return expect(isEstateFingerprintValid(contractAddress, tokenId, chainId, fingerprint)).resolves.toBe(false)
     })
   })
 })
