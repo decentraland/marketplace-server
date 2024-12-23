@@ -57,20 +57,18 @@ export async function isValidEstateTrade(trade: TradeCreation): Promise<boolean>
   }
 
   const assets = [...trade.sent, ...trade.received]
-  const areEstatesFingerprintsValid = await Promise.all(
-    assets.map(async asset => {
-      // Only check if the asset is an estate
-      if (asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase()) {
-        return (
-          !isBytesEmpty(asset.extra) &&
-          (await isEstateFingerprintValid(estateContract.address, (asset as ERC721TradeAsset)?.tokenId, trade.chainId, asset.extra))
-        )
-      }
-      return true
-    })
-  )
+  // Checks trades one by one to prevent unnecessary checks. This should be changed when implementing bundles or the cart system.
+  for (const asset of assets) {
+    // Only check if the asset is an estate
+    if (asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase()) {
+      return (
+        !isBytesEmpty(asset.extra) &&
+        (await isEstateFingerprintValid(estateContract.address, (asset as ERC721TradeAsset)?.tokenId, trade.chainId, asset.extra))
+      )
+    }
+  }
 
-  return areEstatesFingerprintsValid.every(Boolean)
+  return true
 }
 
 export async function validateTradeByType(trade: TradeCreation, client: IPgComponent): Promise<boolean> {
