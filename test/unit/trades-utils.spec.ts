@@ -17,6 +17,7 @@ import {
 } from '@dcl/schemas'
 import { getCategoryFromDBItem } from '../../src/adapters/items'
 import * as chainIdUtils from '../../src/logic/chainIds'
+import * as tradeLogicUtils from '../../src/logic/trades/utils'
 import { getItemByItemIdQuery } from '../../src/ports/items/queries'
 import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
@@ -277,12 +278,12 @@ describe("when validating the trade to see if it's a correct estate trade", () =
       trade.chainId = ChainId.AVALANCHE_MAINNET
     })
 
-    it('should throw the EstateContractNotFoundForChainId error', () => {
-      return expect(() => isValidEstateTrade(trade)).toThrow(new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET))
+    it('should reject to throw the EstateContractNotFoundForChainId error', () => {
+      return expect(isValidEstateTrade(trade)).rejects.toThrow(new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET))
     })
   })
 
-  describe('and the sent asset is an estate without fingerprint', () => {
+  describe("and there's a sent asset which is an estate without fingerprint", () => {
     beforeEach(() => {
       trade.sent = [
         {
@@ -295,11 +296,11 @@ describe("when validating the trade to see if it's a correct estate trade", () =
     })
 
     it('should return false', () => {
-      expect(isValidEstateTrade(trade)).toBe(false)
+      return expect(isValidEstateTrade(trade)).resolves.toBe(false)
     })
   })
 
-  describe('and the received asset is an estate without fingerprint', () => {
+  describe("and there's a received asset is an estate without fingerprint", () => {
     beforeEach(() => {
       trade.received = [
         {
@@ -313,7 +314,7 @@ describe("when validating the trade to see if it's a correct estate trade", () =
     })
 
     it('should return false', () => {
-      expect(isValidEstateTrade(trade)).toBe(false)
+      return expect(isValidEstateTrade(trade)).resolves.toBe(false)
     })
   })
 
@@ -329,8 +330,24 @@ describe("when validating the trade to see if it's a correct estate trade", () =
       ]
     })
 
-    it('should return true', () => {
-      expect(isValidEstateTrade(trade)).toBe(true)
+    describe('and the fingerprint is equal than the one in the contract', () => {
+      beforeEach(() => {
+        jest.spyOn(tradeLogicUtils, 'isEstateFingerprintValid').mockResolvedValue(true)
+      })
+
+      it('should return true', () => {
+        return expect(isValidEstateTrade(trade)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the fingerprint is different than the one in the contract', () => {
+      beforeEach(() => {
+        jest.spyOn(tradeLogicUtils, 'isEstateFingerprintValid').mockResolvedValue(false)
+      })
+
+      it('should return false', () => {
+        return expect(isValidEstateTrade(trade)).resolves.toBe(false)
+      })
     })
   })
 
@@ -347,8 +364,24 @@ describe("when validating the trade to see if it's a correct estate trade", () =
       ]
     })
 
-    it('should return true', () => {
-      expect(isValidEstateTrade(trade)).toBe(true)
+    describe('and the fingerprint is equal than the one in the contract', () => {
+      beforeEach(() => {
+        jest.spyOn(tradeLogicUtils, 'isEstateFingerprintValid').mockResolvedValue(true)
+      })
+
+      it('should return true', () => {
+        return expect(isValidEstateTrade(trade)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the fingerprint is different than the one in the contract', () => {
+      beforeEach(() => {
+        jest.spyOn(tradeLogicUtils, 'isEstateFingerprintValid').mockResolvedValue(false)
+      })
+
+      it('should return false', () => {
+        return expect(isValidEstateTrade(trade)).resolves.toBe(false)
+      })
     })
   })
 })

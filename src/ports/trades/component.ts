@@ -55,7 +55,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidTradeStructureError(trade.type)
     }
     // Validate if estate trade is correct
-    if (isEstateChain(trade.chainId) && !isValidEstateTrade(trade)) {
+    if (isEstateChain(trade.chainId) && !(await isValidEstateTrade(trade))) {
       throw new InvalidEstateTrade()
     }
 
@@ -65,7 +65,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     }
 
     // validate right ownership
-    if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.network, trade.chainId))) {
+    if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.chainId))) {
       throw new InvalidOwnerError()
     }
 

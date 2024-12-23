@@ -1,10 +1,31 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { Contract, TypedDataField, TypedDataDomain, verifyTypedData, toBeArray, zeroPadValue, JsonRpcProvider } from 'ethers'
-import { ChainId, ERC721TradeAsset, Network, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
 import { hasECDSASignatureAValidV } from '../signatures'
+
+function getRPCUrlByChainId(chainId: ChainId): string {
+  let rpcPath: string
+  switch (chainId) {
+    case ChainId.ETHEREUM_MAINNET:
+      rpcPath = 'mainnet'
+      break
+    case ChainId.ETHEREUM_SEPOLIA:
+      rpcPath = 'sepolia'
+      break
+    case ChainId.MATIC_MAINNET:
+      rpcPath = 'polygon'
+      break
+    case ChainId.MATIC_AMOY:
+      rpcPath = 'amoy'
+      break
+    default:
+      throw new Error('Unsupported chainId')
+  }
+  return `https://rpc.decentraland.org/${rpcPath}`
+}
 
 export function getValueFromTradeAsset(asset: TradeAsset) {
   switch (asset.assetType) {
@@ -117,29 +138,28 @@ export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset
   return (asset as ERC721TradeAsset).tokenId !== undefined
 }
 
-async function getContractOwner(contractAddress: string, tokenId: string, network: Network, chainId: ChainId): Promise<string> {
+async function getContractOwner(contractAddress: string, tokenId: string, chainId: ChainId): Promise<string> {
   const abi = ['function ownerOf(uint256 tokenId) view returns (address)']
-  const RPC_URL = `https://rpc.decentraland.org/${
-    network === Network.ETHEREUM
-      ? chainId === ChainId.ETHEREUM_MAINNET
-        ? 'mainnet'
-        : 'sepolia'
-      : chainId === ChainId.MATIC_MAINNET
-      ? 'polygon'
-      : 'amoy'
-  }`
-  const provider = new JsonRpcProvider(RPC_URL)
+  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
   const contract = new Contract(contractAddress, abi, provider)
   return await contract.ownerOf(tokenId)
 }
 
-export async function validateAssetOwnership(
-  asset: ERC721TradeAsset,
-  signer: string,
-  network: Network,
-  chainId: ChainId
+export async function isEstateFingerprintValid(
+  contractAddress: string,
+  tokenId: string,
+  chainId: ChainId,
+  fingerprint: string
 ): Promise<boolean> {
+  const abi = ['function getFingerprint(uint256 tokenId) view returns (bytes32)']
+  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
+  const contract = new Contract(contractAddress, abi, provider)
+  const estateFingerprint = await contract.getFingerprint(tokenId)
+  return estateFingerprint === fingerprint
+}
+
+export async function validateAssetOwnership(asset: ERC721TradeAsset, signer: string, chainId: ChainId): Promise<boolean> {
   const { contractAddress, tokenId } = asset
-  const blockchainOwner = await getContractOwner(contractAddress, tokenId, network, chainId)
+  const blockchainOwner = await getContractOwner(contractAddress, tokenId, chainId)
   return blockchainOwner.toLowerCase() === signer.toLowerCase()
 }

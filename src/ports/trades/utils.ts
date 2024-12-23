@@ -14,6 +14,7 @@ import {
 } from '@dcl/schemas'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
 import { getMarketplaceContracts } from '../../logic/contracts'
+import { isEstateFingerprintValid } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
 import { getItemByItemIdQuery, getItemsQuery } from '../items/queries'
 import { DBItem } from '../items/types'
@@ -48,26 +49,28 @@ export function isEstateChain(chainId: ChainId): boolean {
   return chainId !== ChainId.MATIC_AMOY && chainId !== ChainId.MATIC_MAINNET
 }
 
-export function isValidEstateTrade(trade: TradeCreation): boolean {
+export async function isValidEstateTrade(trade: TradeCreation): Promise<boolean> {
   const contracts = getMarketplaceContracts(trade.chainId)
   const estateContract = contracts.find(contract => contract.name === 'Estates')
   if (!estateContract) {
     throw new EstateContractNotFoundForChainId(trade.chainId)
   }
 
-  // Check if the trade contains an estate with an empty extra field (all estates must have the extra field which is the fingerprint)
-  const isSentEstateTradeWrong = trade.sent.some(
-    asset => asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase() && isBytesEmpty(asset.extra)
-  )
-  const isReceivedEstateTradeWrong = trade.received.some(
-    asset => asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase() && isBytesEmpty(asset.extra)
+  const assets = [...trade.sent, ...trade.received]
+  const areEstatesFingerprintsValid = await Promise.all(
+    assets.map(async asset => {
+      // Only check if the asset is an estate
+      if (asset.contractAddress.toLowerCase() === estateContract.address.toLowerCase()) {
+        return (
+          !isBytesEmpty(asset.extra) &&
+          (await isEstateFingerprintValid(estateContract.address, (asset as ERC721TradeAsset)?.tokenId, trade.chainId, asset.extra))
+        )
+      }
+      return true
+    })
   )
 
-  if (isSentEstateTradeWrong || isReceivedEstateTradeWrong) {
-    return false
-  }
-
-  return true
+  return areEstatesFingerprintsValid.every(Boolean)
 }
 
 export async function validateTradeByType(trade: TradeCreation, client: IPgComponent): Promise<boolean> {
