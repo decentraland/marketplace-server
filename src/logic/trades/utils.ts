@@ -155,7 +155,7 @@ export async function isEstateFingerprintValid(
   const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
   const contract = new Contract(contractAddress, abi, provider)
   const estateFingerprint = await contract.getFingerprint(tokenId)
-  return estateFingerprint === fingerprint
+  return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
 }
 
 export async function validateAssetOwnership(asset: ERC721TradeAsset, signer: string, chainId: ChainId): Promise<boolean> {
