@@ -57,9 +57,10 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
     .append(
       SQL`'
         ELSE '`
-        .append(marketplaceEthereum.address)
-        .append(
-          SQL`'
+    )
+    .append(marketplaceEthereum.address)
+    .append(
+      SQL`'
       END AS marketplace_address,
       assets -> 'sent' ->> 'category' as category,
       assets -> 'sent' ->> 'contract_address' as nft_address,
@@ -79,9 +80,8 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (`
-            .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner, ids: filters.nftIds }))
-            .append(SQL`) as trades`)
-        )
+        .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner, ids: filters.nftIds }))
+        .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
     )
 }
 
