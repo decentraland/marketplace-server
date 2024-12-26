@@ -47,7 +47,6 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
         total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
       }
     } catch (error) {
-      console.log('Errrrrorrrr', error)
       if ((error as Error).message === 'Query read timeout') {
         console.error('Query timeout exceeded (2 minutes)', {
           filters,
