@@ -101,8 +101,7 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
             .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
             .append(geENSWhereStatement(nftFilters))
             .append(getNFTsSortBy(sortBy))
-            .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`;
-            `)
+            .append(getNFTLimitAndOffsetStatement(nftFilters))
         )
     )
 }
