@@ -555,6 +555,7 @@ const getTradesCTE = () => {
               erc20_asset.amount,
               item.creator,
               item.available,
+              account.address as nft_owner,
               coalesce(nft.item_blockchain_id::text, item_asset.item_id) as item_id
           FROM marketplace.trade_assets AS ta
           LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset ON ta.id = erc721_asset.asset_id
@@ -562,17 +563,19 @@ const getTradesCTE = () => {
           LEFT JOIN marketplace.trade_assets_item AS item_asset ON ta.id = item_asset.asset_id
           LEFT JOIN squid_marketplace.item AS item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
           LEFT JOIN squid_marketplace.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
+          LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
         LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
         LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
         LEFT JOIN (
           SELECT *
           FROM squid_trades.signature_index signature_index
-          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}', '${marketplacePolygon.address.toLocaleLowerCase()}')
+          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}', '${marketplacePolygon.address.toLowerCase()}')
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
-    )       
+        HAVING t.signer = ALL(ARRAY_AGG(COALESCE(assets_with_values.nft_owner, assets_with_values.creator)) FILTER (WHERE COALESCE(assets_with_values.nft_owner, assets_with_values.creator) IS NOT NULL))
+    )
   `
 }
 
