@@ -112,8 +112,6 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
           OR ((assets->'received'->>'nft_id') IS NOT NULL))
         AND (((assets->'received'->>'amount') IS NOT NULL)
           OR ((assets->'sent'->>'amount') IS NOT NULL))`,
-    // Only include trades where the signer is the owner of the nft, preventing trades from NFTs whose owner has changed
-    SQL`trades.signer = COALESCE((assets->'sent'->>'owner'), (assets->'received'->>'owner'))`,
     FILTER_BY_MIN_TRADE_PRICE,
     FILTER_BY_MAX_TRADE_PRICE
   ])

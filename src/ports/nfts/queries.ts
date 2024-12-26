@@ -175,6 +175,17 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
   `)
 }
 
+/**
+ * Generates a Common Table Expression (CTE) SQL query for public_nft_order trades with optional filtering.
+ *
+ * @param {GetNFTsFilters} filters - Filter options for the trades query
+ *
+ * @returns {SQLStatement} SQL query for trades CTE
+ *
+ * @example
+ * const filters = { owner: '0x123...', tokenId: '1234' };
+ * const tradesCTE = getTradesCTE(filters);
+ */
 export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_OWNER = filters.owner ? SQL` t.signer = ${filters.owner.toLocaleLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` (assets_with_values.nft_id = ${filters.tokenId}) ` : null
@@ -249,6 +260,7 @@ export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('0x2d6b3508f9aca32d2550f92b2addba932e73c1ff','0x540fb08edb56aae562864b390542c97f562825ba')) as contract_signature_index ON t.network = contract_signature_index.network
       `.append(where).append(SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+      HAVING t.signer = ALL(ARRAY_AGG(assets_with_values.owner) FILTER (WHERE assets_with_values.owner IS NOT NULL AND assets_with_values.direction = 'sent'))
     )
   `)
 }
