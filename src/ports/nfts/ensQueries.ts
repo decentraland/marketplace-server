@@ -44,7 +44,7 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
           ORDER BY created_at 
       )
         `
-        .append(getTradesCTE(nftFilters))
+        .append(getTradesCTE(nftFilters, false))
         .append(
           SQL`
         `
@@ -96,6 +96,7 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
           LEFT JOIN trades ON (trades.assets -> 'sent' ->> 'token_id')::numeric = nft.token_id
             AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
             AND trades.status = 'open'
+            AND trades.signer || '-' || nft.network = nft.owner_id
           LEFT JOIN squid_marketplace.ens ens ON ens.id = nft.ens_id
             `
             .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
