@@ -40,7 +40,9 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       const landNftIds = nfts.rows
         .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
         .map(nft => nft.id)
-      const listings = landNftIds.length ? await rentals.getRentalsListingsOfNFTs(landNftIds, RentalStatus.OPEN) : []
+      const listings = landNftIds.length
+        ? await rentals.getRentalsListingsOfNFTs(landNftIds, filters.rentalStatus || RentalStatus.OPEN)
+        : []
 
       return {
         data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),

@@ -188,7 +188,7 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
  * const filters = { owner: '0x123...', tokenId: '1234' };
  * const tradesCTE = getTradesCTE(filters);
  */
-export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
+export function getTradesCTE(filters: GetNFTsFilters, addHavingStatement = true): SQLStatement {
   const FILTER_BY_OWNER = filters.owner ? SQL` t.signer = ${filters.owner.toLocaleLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` (assets_with_values.nft_id = ${filters.tokenId}) ` : null
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
@@ -262,9 +262,20 @@ export function getTradesCTE(filters: GetNFTsFilters): SQLStatement {
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
       LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (${marketplaceEthereum.address.toLowerCase()}, ${marketplacePolygon.address.toLowerCase()})) as contract_signature_index ON t.network = contract_signature_index.network
-      `.append(where).append(SQL`
+      `
+    .append(where)
+    .append(
+      SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+      `
+    )
+    .append(
+      addHavingStatement
+        ? SQL`
       HAVING t.signer = ALL(ARRAY_AGG(assets_with_values.owner) FILTER (WHERE assets_with_values.owner IS NOT NULL AND assets_with_values.direction = 'sent'))
+      `
+        : SQL``
+    ).append(SQL`
     )
   `)
 }

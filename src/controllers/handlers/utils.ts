@@ -24,6 +24,8 @@ export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
   const minPrice = params.getString('minPrice')
   return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
     category: params.getValue<NFTCategory>('category', NFTCategory),
     creator: params.getList('creator'),
     isSoldOut: params.getBoolean('isSoldOut'),
