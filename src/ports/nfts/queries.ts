@@ -315,7 +315,7 @@ export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
   }
 }
 
-export function getNFTsQuery(nftFilters: GetNFTsFilters = {}, uncapped = false): SQLStatement {
+export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: string[] } = {}, uncapped = false): SQLStatement {
   // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
   if (nftFilters.isLand || nftFilters.category === NFTCategory.PARCEL || nftFilters.category === NFTCategory.ESTATE) {
     return nftFilters.isOnSale ? getLandsOnSaleQuery(nftFilters) : getAllLANDsQuery(nftFilters)

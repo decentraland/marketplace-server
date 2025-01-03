@@ -21,12 +21,26 @@ export function getNFTsSortBy(sortBy?: NFTSortBy) {
   }
 }
 
-function getAllLANDWheres(filters: GetNFTsFilters) {
-  const { owner, minDistanceToPlaza, maxDistanceToPlaza, adjacentToRoad, minEstateSize, maxEstateSize, minPrice, maxPrice, ids, search } =
-    filters
-  const FILTER_BY_OWNER = owner
-    ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) `
-    : null
+function getAllLANDWheres(filters: GetNFTsFilters & { rentalAssetsIds?: string[] }) {
+  const {
+    owner,
+    minDistanceToPlaza,
+    maxDistanceToPlaza,
+    adjacentToRoad,
+    minEstateSize,
+    maxEstateSize,
+    minPrice,
+    maxPrice,
+    ids,
+    search,
+    rentalAssetsIds
+  } = filters
+  const FILTER_BY_OWNER =
+    owner && rentalAssetsIds?.length
+      ? SQL` (nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) OR nft.id = ANY(${rentalAssetsIds})) `
+      : owner && !rentalAssetsIds?.length
+      ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) `
+      : null
   const FILTER_BY_MIN_PRICE = minPrice
     ? SQL` (nft.search_order_price >= ${minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice})`
     : null
