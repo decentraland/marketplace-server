@@ -624,7 +624,7 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
       FROM squid_marketplace."order"
       WHERE 
         status = 'open' 
-        AND expires_normalized > NOW()
+        AND expires_at_normalized > NOW()
         `
                 .append(
                   nftFilters.isLand
@@ -635,7 +635,7 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
                 )
                 .append(
                   SQL`
-      ORDER BY expires_normalized DESC NULLS LAST
+      ORDER BY expires_at_normalized DESC NULLS LAST
       LIMIT 24
     ),
     nfts_with_orders AS (

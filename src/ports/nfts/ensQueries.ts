@@ -56,12 +56,12 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
           SELECT
             o.nft_id,
             o.status,
-            o.expires_normalized
+            o.expires_at_normalized
           FROM
             squid_marketplace.order o
           WHERE
             o.status = 'open'
-            AND o.expires_normalized > now()
+            AND o.expires_at_normalized > now()
         )`
             : SQL``
         )
