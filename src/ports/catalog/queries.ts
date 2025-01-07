@@ -696,7 +696,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             SQL`.order AS orders 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner`
+                AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner AND nft.owner_address = orders.owner`
           )
       )
       .append(getOrderRangePriceWhere(filters))
