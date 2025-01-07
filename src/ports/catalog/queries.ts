@@ -693,22 +693,23 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               FROM `
           .append(MARKETPLACE_SQUID_SCHEMA)
           .append(
-            SQL`.order AS orders 
+            SQL`.order AS orders
+            JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft ON orders.nft_id = nft.id 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner AND nft.owner_address = orders.owner`
+                AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner`)
           )
-      )
-      .append(getOrderRangePriceWhere(filters))
-      .append(
-        `
+          .append(getOrderRangePriceWhere(filters))
+          .append(
+            `
                 GROUP BY orders.item_id
               ) AS nfts_with_orders ON nfts_with_orders.item_id = items.id 
               `
+          )
+          .append(getMetadataJoins())
+          .append(getTradesJoin())
+          .append(getCollectionsQueryWhere(filters, true))
       )
-      .append(getMetadataJoins())
-      .append(getTradesJoin())
-      .append(getCollectionsQueryWhere(filters, true))
   )
 
   addQuerySort(query, filters, true)
