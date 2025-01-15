@@ -9,10 +9,10 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     return SQL``
   }
 
-  // Keep only filters that need JOINed tables
-  const FILTER_BY_OWNER = nftFilters.owner
-    ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
-    : null
+  const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
+  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
+
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
   const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
@@ -41,7 +41,6 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
     .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
     .append(
       SQL`
-          ORDER BY created_at 
       )
         `
         .append(getTradesCTE(nftFilters, false))

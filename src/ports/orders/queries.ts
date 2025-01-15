@@ -109,7 +109,7 @@ export function getLegacyOrdersQuery(): string {
       ord.expires_at,
       ord.network
     FROM squid_marketplace."order" ord
-    JOIN squid_marketplace."nft" nft ON ord.nft_id = nft.id AND nft.owner_address = ord.owner`
+    JOIN squid_marketplace."nft" nft ON ord.nft_id = nft.id`
 }
 
 export interface OrderQueries {
