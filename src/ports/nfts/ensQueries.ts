@@ -10,8 +10,7 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   }
 
   const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
-  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress}` : null
 
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null

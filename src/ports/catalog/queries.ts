@@ -661,7 +661,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               offchain_orders.open_item_trade_price,
               `
       .append(
-        filters.isOnSale
+        filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it
           ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,`
           : SQL`items.first_listed_at as first_listed_at,`
       )
