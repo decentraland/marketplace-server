@@ -721,7 +721,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft ON orders.nft_id = nft.id 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at_normalized > NOW()`)
+                AND orders.expires_normalized > NOW()`)
           )
           .append(getOrderRangePriceWhere(filters))
           .append(

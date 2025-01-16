@@ -83,7 +83,7 @@ function getAllLANDWheres(filters: GetNFTsFilters & { rentalAssetsIds?: string[]
 
 function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
   const FILTER_IS_ON_SALE = filters.isOnSale
-    ? SQL`nft.active_order_id IS NOT NULL AND o.status = 'open' AND o.expires_at_normalized > NOW()`
+    ? SQL`nft.active_order_id IS NOT NULL AND o.status = 'open' AND o.expires_normalized > NOW()`
     : null
 
   const {
@@ -308,7 +308,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
         JOIN squid_marketplace.nft nft ON nft.id = top_land.id
         JOIN squid_marketplace."order" o ON nft.active_order_id = o.id
         WHERE o.status = 'open'
-          AND o.expires_at_normalized > NOW()
+          AND o.expires_normalized > NOW()
     )`
             .append(getTradesCTE(filters))
             .append(getOpenTradesCTE(filters))
