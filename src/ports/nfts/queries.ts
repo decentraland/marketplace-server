@@ -53,10 +53,9 @@ function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
 }
 
 function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
-  // Define each filter condition separately
-  const FILTER_BY_OWNER = nftFilters.owner
-    ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
-    : null
+  const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
+  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLocaleLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
@@ -220,6 +219,13 @@ export function getTradesCTE(filters: GetNFTsFilters, addHavingStatement = true)
           'issued_id', assets_with_values.issued_id,
           'nft_name', assets_with_values.nft_name
         )) as assets,
+           /* CASE #1: Single NFT (if you only expect ONE 'sent' per trade) */
+            MAX(assets_with_values.contract_address)
+              FILTER (WHERE assets_with_values.direction = 'sent')
+              AS sent_contract_address,
+            MAX(assets_with_values.token_id)
+              FILTER (WHERE assets_with_values.direction = 'sent')
+              AS sent_token_id,
         CASE
           WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
           WHEN (
@@ -389,7 +395,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
     LEFT JOIN squid_marketplace.ens ens ON ens.id = nft.ens_id
     LEFT JOIN squid_marketplace.account account ON nft.owner_id = account.id
     LEFT JOIN squid_marketplace.item item ON item.id = nft.item_id
-    LEFT JOIN trades ON (trades.assets -> 'sent' ->> 'token_id')::numeric = nft.token_id AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address AND trades.status = 'open' AND trades.signer = account.address
+    LEFT JOIN trades ON trades.sent_contract_address = nft.contract_address AND trades.sent_token_id::numeric = nft.token_id AND trades.status = 'open' AND trades.signer = account.address
     `
         .append(getNFTWhereStatement(nftFilters))
         .append(getMainQuerySortByStatement(nftFilters.sortBy))
@@ -455,9 +461,9 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 }
 
 function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
-  const FILTER_BY_OWNER = nftFilters.owner
-    ? SQL` owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${nftFilters.owner.toLocaleLowerCase()}) `
-    : null
+  const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
+  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null

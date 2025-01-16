@@ -35,11 +35,13 @@ function getAllLANDWheres(filters: GetNFTsFilters & { rentalAssetsIds?: string[]
     search,
     rentalAssetsIds
   } = filters
+  const ownerEthereumAddress = owner ? `${owner.toLocaleLowerCase()}-ETHEREUM` : null
+  const ownerPolygonAddress = owner ? `${owner.toLocaleLowerCase()}-POLYGON` : null
   const FILTER_BY_OWNER =
     owner && rentalAssetsIds?.length
-      ? SQL` (nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) OR nft.id = ANY(${rentalAssetsIds})) `
+      ? SQL` ((nft.owner_id = ${ownerEthereumAddress} OR nft.owner_id = ${ownerPolygonAddress}) OR nft.id = ANY(${rentalAssetsIds})) `
       : owner && !rentalAssetsIds?.length
-      ? SQL` nft.owner_id IN (SELECT id FROM squid_marketplace.account WHERE address = ${owner.toLowerCase()}) `
+      ? SQL` (nft.owner_id = ${ownerEthereumAddress} OR nft.owner_id = ${ownerPolygonAddress}) `
       : null
   const FILTER_BY_MIN_PRICE = minPrice
     ? SQL` (nft.search_order_price >= ${minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice})`

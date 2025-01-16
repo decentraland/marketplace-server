@@ -114,11 +114,28 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 
 const getLatestMetadataCTE = () => {
   return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (wearable_id) wearable_id as item_id, id AS latest_metadata_id, item_type, wearable_id, emote_id
-        FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.metadata
-        ORDER BY wearable_id DESC
+        SELECT DISTINCT ON (wearable_id)
+          CASE 
+            WHEN m.network = 'ETHEREUM' 
+                THEN w.collection || '-' || m.id  -- Use collection + '-' + metadata.id for L1 items
+            ELSE m.wearable_id::text  
+            END AS item_id,
+        m.id AS latest_metadata_id,
+          m.item_type,
+          m.wearable_id,
+          m.emote_id
+        FROM
+          `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.metadata as m
+          JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.wearable AS w
+        ON w.id = m.wearable_id
+        ORDER BY
+          wearable_id DESC
       )
     `)
+    )
 }
 
 const getSearchCTEs = (filters: CatalogQueryFilters) => {
@@ -642,7 +659,14 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               items.network,
               offchain_orders.open_item_trade_id,
               offchain_orders.open_item_trade_price,
-              LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,
+              `
+      .append(
+        filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it
+          ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,`
+          : SQL`items.first_listed_at as first_listed_at,`
+      )
+      .append(
+        SQL`
               items.urn,
               CASE
                 WHEN offchain_orders.min_order_amount_received IS NULL AND nfts_with_orders.min_price IS NULL THEN NULL
@@ -661,7 +685,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
                 ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 
                 nfts_with_orders.max_order_created_at
               ) AS max_order_created_at,`
-
+      )
       .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
       .append(
         `
@@ -697,7 +721,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft ON orders.nft_id = nft.id 
             WHERE 
                 orders.status = 'open' 
-                AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner`)
+                AND orders.expires_at_normalized > NOW()`)
           )
           .append(getOrderRangePriceWhere(filters))
           .append(
