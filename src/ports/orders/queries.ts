@@ -130,7 +130,7 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` ord.item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
-  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at_normalized > NOW() `
+  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_normalized > NOW() `
   const FILTER_TRADE_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
   const COMMON_FILTERS = [
