@@ -603,7 +603,7 @@ const getTradesJoin = () => {
             SELECT 
               COUNT(id),
               COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
-              contract_address_sent,
+              unified_trades.contract_address_sent,
               -- Add both MIN and MAX for order_amount_received
               MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
@@ -611,26 +611,69 @@ const getTradesJoin = () => {
               MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
               assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
               MAX(created_at) AS max_created_at,
-              -- Subquery to get the min_item_created_at from all statuses
-              (
-                SELECT 
-                  MIN(created_at)     
-                  FROM unified_trades ut2
-                WHERE ut2.contract_address_sent = unified_trades.contract_address_sent AND ut2.type = 'public_item_order'
-              ) AS min_item_created_at,
+              m.min_item_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
           FROM unified_trades
+          LEFT JOIN min_item_created m ON m.contract_address_sent = unified_trades.contract_address_sent
             WHERE status = 'open'
-            GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
+            GROUP BY unified_trades.contract_address_sent, (unified_trades.assets -> 'sent' ->> 'item_id'), m.min_item_created_at
           ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
   `
 }
 
+const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
+  return SQL`
+    , nfts_with_orders AS (SELECT 
+      orders.item_id, 
+      COUNT(orders.id) AS orders_listings_count,
+      MIN(orders.price) AS min_price,
+      MAX(orders.price) AS max_price,
+      MAX(orders.created_at) AS max_order_created_at
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.order AS orders
+        WHERE 
+            orders.status = 'open' 
+            AND orders.expires_normalized > NOW()`
+    )
+
+    .append(getOrderRangePriceWhere(filters))
+    .append(
+      `
+    GROUP BY orders.item_id
+    )
+  `
+    )
+}
+
+const getMinItemCreatedAtCTE = () => {
+  return SQL`
+    , min_item_created AS (
+      SELECT
+        contract_address_sent,
+        (assets -> 'sent' ->> 'item_id')::numeric AS item_id_num,
+        min(created_at) AS min_item_created_at
+      FROM
+        unified_trades
+      WHERE
+        type = 'public_item_order'
+      GROUP BY
+        contract_address_sent,
+        (assets -> 'sent' ->> 'item_id')::numeric
+    )
+  `
+}
+
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
-  const query = SQL``.append(getTradesCTE()).append(
-    SQL`
+  const query = SQL``
+    .append(getTradesCTE())
+    .append(getNFTsWithOrdersCTE(filters))
+    .append(getMinItemCreatedAtCTE())
+    .append(
+      SQL`
             SELECT
               COUNT(*) OVER() as total_rows,
               items.id,
@@ -660,13 +703,13 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               offchain_orders.open_item_trade_id,
               offchain_orders.open_item_trade_price,
               `
-      .append(
-        filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it
-          ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,`
-          : SQL`items.first_listed_at as first_listed_at,`
-      )
-      .append(
-        SQL`
+        .append(
+          filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it
+            ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,`
+            : SQL`items.first_listed_at as first_listed_at,`
+        )
+        .append(
+          SQL`
               items.urn,
               CASE
                 WHEN offchain_orders.min_order_amount_received IS NULL AND nfts_with_orders.min_price IS NULL THEN NULL
@@ -685,56 +728,35 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
                 ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 
                 nfts_with_orders.max_order_created_at
               ) AS max_order_created_at,`
-      )
-      .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
-      .append(
-        `
+        )
+        .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
+        .append(
+          `
               nfts_with_orders.max_order_created_at as max_order_created_at,
               `
-      )
-      .append(getMinPriceCaseWithTrades(filters))
-      .append(
-        `,
+        )
+        .append(getMinPriceCaseWithTrades(filters))
+        .append(
+          `,
               `
-      )
-      .append(getMaxPriceCaseWithTrades(filters))
-      .append(
-        SQL`
+        )
+        .append(getMaxPriceCaseWithTrades(filters))
+        .append(
+          SQL`
             FROM `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(SQL`.item AS items`)
-      )
-      .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
-      .append(
-        SQL`
-            LEFT JOIN (
-              SELECT 
-                orders.item_id, 
-                COUNT(orders.id) AS orders_listings_count,
-                MIN(orders.price) AS min_price,
-                MAX(orders.price) AS max_price,
-                MAX(orders.created_at) AS max_order_created_at
-              FROM `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(
-            SQL`.order AS orders
-            JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft ON orders.nft_id = nft.id 
-            WHERE 
-                orders.status = 'open' 
-                AND orders.expires_normalized > NOW()`)
-          )
-          .append(getOrderRangePriceWhere(filters))
-          .append(
-            `
-                GROUP BY orders.item_id
-              ) AS nfts_with_orders ON nfts_with_orders.item_id = items.id 
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(SQL`.item AS items`)
+        )
+        .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
+        .append(
+          SQL`
+            LEFT JOIN nfts_with_orders ON nfts_with_orders.item_id = items.id 
               `
-          )
-          .append(getMetadataJoins())
-          .append(getTradesJoin())
-          .append(getCollectionsQueryWhere(filters, true))
-      )
-  )
+        )
+        .append(getMetadataJoins())
+        .append(getTradesJoin())
+        .append(getCollectionsQueryWhere(filters, true))
+    )
 
   addQuerySort(query, filters, true)
   addQueryPagination(query, filters)
