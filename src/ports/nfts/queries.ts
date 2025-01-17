@@ -194,7 +194,7 @@ export function getTradesCTE(filters: GetNFTsFilters, addHavingStatement = true)
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   const where = getWhereStatementFromFilters([SQL`t.type = 'public_nft_order'`, FILTER_BY_OWNER, FILTER_BY_TOKEN_ID])
   return SQL`
-    , trades AS (
+     trades AS (
       SELECT
         t.id,
         t.created_at,
@@ -264,26 +264,37 @@ export function getTradesCTE(filters: GetNFTsFilters, addHavingStatement = true)
         LEFT JOIN squid_marketplace.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
         LEFT JOIN squid_marketplace.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
         LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
+        `
+    .append(filters.category ? SQL` WHERE nft.category = ${filters.category} ` : SQL``)
+    .append(
+      SQL`
       ) as assets_with_values ON t.id = assets_with_values.trade_id
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
       LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (${marketplaceEthereum.address.toLowerCase()}, ${marketplacePolygon.address.toLowerCase()})) as contract_signature_index ON t.network = contract_signature_index.network
       `
-    .append(where)
-    .append(
-      SQL`
+        .append(where)
+        .append(
+          SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
       `
-    )
-    .append(
-      addHavingStatement
-        ? SQL`
+        )
+        .append(
+          addHavingStatement
+            ? SQL`
       HAVING t.signer = ALL(ARRAY_AGG(assets_with_values.owner) FILTER (WHERE assets_with_values.owner IS NOT NULL AND assets_with_values.direction = 'sent'))
       `
-        : SQL``
-    ).append(SQL`
+            : SQL``
+        )
+        .append(
+          filters.sortBy === NFTSortBy.RECENTLY_LISTED
+            ? SQL`
+          ORDER BY created_at DESC LIMIT ${filters.first} OFFSET ${filters.skip}
+        `
+            : SQL``
+        )
+        .append(SQL`)`)
     )
-  `)
 }
 
 export function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
@@ -328,12 +339,13 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
   } else if (nftFilters.category === NFTCategory.ENS) {
     return getENSs(nftFilters)
   } else if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
-    return getRecentlyListedNFTsCTE(nftFilters)
+    return getRecentlyListedNFTsQuery(nftFilters)
   }
 
   return getFilteredNFTCTE(nftFilters, uncapped)
     .append(getFilteredEstateCTE(nftFilters))
     .append(getParcelEstateDataCTE(nftFilters))
+    .append(SQL`, `)
     .append(getTradesCTE(nftFilters))
     .append(
       SQL`
@@ -460,7 +472,7 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   ])
 }
 
-function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
+function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
   const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
   const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
@@ -529,60 +541,9 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
   ])
   const whereClauseForNFTsWithTrades = getWhereStatementFromFilters([...filters, SQL`nft.id IN (SELECT nft_id FROM recent_trade_nft_ids)`])
 
-  return SQL`
-    WITH trades AS (
-      SELECT
-        t.id AS trade_id,
-        t.created_at AS trade_created_at,
-        json_object_agg(
-          assets_with_values.direction,
-          json_build_object(
-            'contract_address', assets_with_values.contract_address,
-            'direction', assets_with_values.direction,
-            'beneficiary', assets_with_values.beneficiary,
-            'extra', assets_with_values.extra,
-            'token_id', assets_with_values.token_id, 
-            'item_id', assets_with_values.item_id,
-            'amount', assets_with_values.amount,
-            'creator', assets_with_values.creator,
-            'owner', assets_with_values.owner,
-            'category', assets_with_values.category,
-            'nft_id', assets_with_values.nft_id,
-            'issued_id', assets_with_values.issued_id,
-            'nft_name', assets_with_values.nft_name
-          )
-        ) AS assets
-      FROM marketplace.trades t
-      JOIN (
-        SELECT
-          ta.trade_id,
-          ta.contract_address,
-          ta.direction,
-          ta.beneficiary,
-          ta.extra,
-          erc721_asset.token_id,
-          COALESCE(item_asset.item_id, nft.item_blockchain_id::TEXT) AS item_id,
-          erc20_asset.amount,
-          item.creator,
-          account.address AS owner,
-          nft.category,
-          nft.id AS nft_id,
-          nft.issued_id AS issued_id,
-          nft.name AS nft_name
-        FROM marketplace.trade_assets ta
-        LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_erc20 erc20_asset ON ta.id = erc20_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_item item_asset ON ta.id = item_asset.asset_id
-        LEFT JOIN squid_marketplace.item item ON ta.contract_address = item.collection_id
-          AND item_asset.item_id::numeric = item.blockchain_id
-        LEFT JOIN squid_marketplace.nft nft ON ta.contract_address = nft.contract_address
-          AND erc721_asset.token_id::numeric = nft.token_id
-        LEFT JOIN squid_marketplace.account account ON account.id = nft.owner_id
-      ) assets_with_values ON t.id = assets_with_values.trade_id
-      WHERE t.type = 'public_nft_order'
-      GROUP BY t.id, t.created_at
-    ),
-    recent_trade_nft_ids AS (
+  return SQL`WITH`.append(getTradesCTE(nftFilters)).append(
+    SQL`
+    , recent_trade_nft_ids AS (
       SELECT DISTINCT ON (assets_with_values.nft_id)
         assets_with_values.nft_id,
         t.created_at
@@ -598,9 +559,9 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
           AND erc721_asset.token_id::numeric = nft.token_id
         )
         `
-    .append(whereClauseForTradeNFTsIds)
-    .append(
-      SQL`
+      .append(whereClauseForTradeNFTsIds)
+      .append(
+        SQL`
       ) assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'public_nft_order'
       ORDER BY assets_with_values.nft_id, t.created_at DESC
@@ -608,7 +569,7 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
     nfts_with_trades AS (
       SELECT 
         nft.*,
-        trades.trade_created_at,
+        trades.created_at AS trade_created_at,
         trades.assets,
         'trade' AS reason
       FROM squid_marketplace.nft nft
@@ -617,13 +578,13 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
         AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
       )
             `
-        .append(whereClauseForNFTsWithTrades)
-        .append(
-          SQL`
-      ORDER BY trades.trade_created_at DESC `
-            .append(getNFTLimitAndOffsetStatement(nftFilters))
-            .append(
-              SQL`
+          .append(whereClauseForNFTsWithTrades)
+          .append(
+            SQL`
+      ORDER BY trades.created_at DESC `
+              .append(getNFTLimitAndOffsetStatement(nftFilters))
+              .append(
+                SQL`
     ),
     filtered_orders AS (
       SELECT nft_id
@@ -632,15 +593,15 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
         status = 'open' 
         AND expires_normalized > NOW()
         `
-                .append(
-                  nftFilters.isLand
-                    ? SQL` AND (category = 'parcel' OR category = 'estate') `
-                    : nftFilters.category
-                    ? SQL` AND category = ${nftFilters.category.toLocaleLowerCase()} `
-                    : SQL``
-                )
-                .append(
-                  SQL`
+                  .append(
+                    nftFilters.isLand
+                      ? SQL` AND (category = 'parcel' OR category = 'estate') `
+                      : nftFilters.category
+                      ? SQL` AND category = ${nftFilters.category.toLocaleLowerCase()} `
+                      : SQL``
+                  )
+                  .append(
+                    SQL`
       ORDER BY expires_normalized DESC NULLS LAST
       LIMIT 24
     ),
@@ -653,13 +614,13 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
       FROM squid_marketplace.nft
       JOIN filtered_orders ON nft.id = filtered_orders.nft_id
       `
-                    .append(whereClauseForNFTsWithOrders)
-                    .append(
-                      SQL`
+                      .append(whereClauseForNFTsWithOrders)
+                      .append(
+                        SQL`
       ORDER BY search_order_created_at DESC NULLS LAST `
-                        .append(getNFTLimitAndOffsetStatement(nftFilters))
-                        .append(
-                          SQL` 
+                          .append(getNFTLimitAndOffsetStatement(nftFilters))
+                          .append(
+                            SQL` 
     )
     SELECT
       combined.id,
@@ -736,10 +697,11 @@ function getRecentlyListedNFTsCTE(nftFilters: GetNFTsFilters): SQLStatement {
     ORDER BY sort_field DESC
     `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     `)
-                        )
-                    )
-                )
-            )
-        )
-    )
+                          )
+                      )
+                  )
+              )
+          )
+      )
+  )
 }
