@@ -40,7 +40,7 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
     .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
     .append(
       SQL`
-      )
+      ),
         `
         .append(getTradesCTE(nftFilters, false))
         .append(
