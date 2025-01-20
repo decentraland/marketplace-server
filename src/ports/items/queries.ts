@@ -161,23 +161,39 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       trades.expires_at as trade_expires_at,
       trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
-      squid_marketplace.item item
-    LEFT JOIN squid_marketplace.metadata metadata on
+      `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item item
+    LEFT JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.metadata metadata on
       item.metadata_id = metadata.id
-    LEFT JOIN squid_marketplace.wearable wearable on
+    LEFT JOIN `
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`.wearable wearable on
       metadata.wearable_id = wearable.id
-    LEFT JOIN squid_marketplace.emote emote on
+    LEFT JOIN `
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.emote emote on
       metadata.emote_id = emote.id
   `
-    .append(
-      ` LEFT JOIN (${getTradesForTypeQuery(
-        TradeType.PUBLIC_ITEM_ORDER
-      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
-        ListingStatus.OPEN
-      }' `
+                    .append(
+                      ` LEFT JOIN (${getTradesForTypeQuery(
+                        TradeType.PUBLIC_ITEM_ORDER
+                      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
+                        ListingStatus.OPEN
+                      }' `
+                    )
+                    .append(getItemsWhereStatement(filters))
+                    .append(getItemsLimitAndOffsetStatement(filters))
+                )
+            )
+        )
     )
-    .append(getItemsWhereStatement(filters))
-    .append(getItemsLimitAndOffsetStatement(filters))
 }
 
 export function getUtilityByItem(contractAddress: string, itemId: string) {
@@ -185,10 +201,14 @@ export function getUtilityByItem(contractAddress: string, itemId: string) {
     SELECT
       utility
     FROM
-      squid_marketplace.item
+      `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item
     LEFT JOIN marketplace.mv_builder_server_items_utility ON item.id = mv_builder_server_items_utility.item_id
     WHERE item.collection_id = ${contractAddress} AND blockchain_id = ${itemId}
   `
+    )
 }
 
 export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
