@@ -147,6 +147,7 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
 
 export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
   return getOpenOrderNFTsCTE(filters)
+    .append(SQL`,`)
     .append(getTradesCTE(filters))
     .append(getOpenTradesCTE(filters))
     .append(
@@ -310,6 +311,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
         WHERE o.status = 'open'
           AND o.expires_normalized > NOW()
     )`
+            .append(SQL`,`)
             .append(getTradesCTE(filters))
             .append(getOpenTradesCTE(filters))
             .append(
