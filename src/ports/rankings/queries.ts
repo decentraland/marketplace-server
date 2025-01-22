@@ -1,5 +1,6 @@
 import BN from 'bn.js'
 import SQL, { SQLStatement } from 'sql-template-strings'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import {
   getUniqueCollectorsFromCollectorsDayData,
   getUniqueCreatorsFromCreatorsDayData,
@@ -19,7 +20,6 @@ import {
   CollectorsDayDataFragment,
   CreatorsDayDataFragment
 } from './types'
-import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 
 export const MAX_RESULTS = 1000
 
