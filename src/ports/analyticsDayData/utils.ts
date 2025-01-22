@@ -1,8 +1,10 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { AnalyticsDayData, AnalyticsDayDataFilters } from '@dcl/schemas'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { AnalyticsDayDataFragment, AnalyticsTimeframe } from './types'
 
-export const getAnalyticsDayDataFragment = (): SQLStatement => SQL`
+export const getAnalyticsDayDataFragment = (): SQLStatement =>
+  SQL`
   SELECT 
     id,
     date,
@@ -10,19 +12,20 @@ export const getAnalyticsDayDataFragment = (): SQLStatement => SQL`
     volume,
     creators_earnings,
     dao_earnings
-  FROM squid_marketplace.analytics_day_data
-`
+  FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.analytics_day_data
+`)
 
-export const getAnalyticsTotalDataFragment = (): SQLStatement => SQL`
+export const getAnalyticsTotalDataFragment = (): SQLStatement =>
+  SQL`
   SELECT 
     id,
     SUM(sales) AS sales,
     SUM(volume) AS volume,
     SUM(creators_earnings),
     SUM(dao_earnings)
-  FROM squid_marketplace.analytics_day_data
+  FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.analytics_day_data
   GROUP BY id
-`
+`)
 
 export function getAnalyticsDayDataQuery(filters: AnalyticsDayDataFilters): SQLStatement {
   const query = SQL`
@@ -33,8 +36,9 @@ export function getAnalyticsDayDataQuery(filters: AnalyticsDayDataFilters): SQLS
       volume,
       creators_earnings,
       dao_earnings
-    FROM squid_marketplace.analytics_day_data
-  `
+    FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.analytics_day_data
+  `)
+
   if (filters.from) {
     query.append(SQL` WHERE date > ${Math.round(filters.from / 1000)}`)
   }
@@ -49,9 +53,9 @@ export function getAnalyticsTotalDataQuery(): SQLStatement {
       SUM(volume) AS volume,
       SUM(creators_earnings),
       SUM(dao_earnings)
-    FROM squid_marketplace.analytics_day_data
+    FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.analytics_day_data
     GROUP BY id
-  `
+  `)
 }
 
 export function mapAnalyticsFragment(fragment: AnalyticsDayDataFragment): AnalyticsDayData {
