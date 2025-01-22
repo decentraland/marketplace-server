@@ -582,6 +582,10 @@ const getTradesCTE = () => {
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
+         AND (
+          assets_with_values.direction != 'sent'
+          OR lower(assets_with_values.nft_owner) = lower(t.signer)
+        )
         LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
         LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
         LEFT JOIN (
@@ -591,7 +595,6 @@ const getTradesCTE = () => {
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
-        HAVING t.signer = ALL(ARRAY_AGG(COALESCE(assets_with_values.nft_owner, assets_with_values.creator)) FILTER (WHERE COALESCE(assets_with_values.nft_owner, assets_with_values.creator) IS NOT NULL))
     )
   `
 }
@@ -637,9 +640,17 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       SQL`.order AS orders
         WHERE 
             orders.status = 'open' 
-            AND orders.expires_at_normalized > NOW() AND nft.owner_address = orders.owner`
+            AND orders.expires_at_normalized > NOW()`
     )
 
+    .append(
+      filters.sortBy === CatalogSortBy.NEWEST
+        ? SQL` AND orders.item_id IN (
+                SELECT id::text
+                FROM top_n_items
+          )`
+        : SQL``
+    )
     .append(getOrderRangePriceWhere(filters))
     .append(
       `
@@ -667,9 +678,26 @@ const getMinItemCreatedAtCTE = () => {
   `
 }
 
+const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
+  if (filters.sortBy === CatalogSortBy.NEWEST) {
+    const limit = filters.first ?? 10
+    const offset = filters.skip ?? 0
+    return SQL`
+      , top_n_items AS (
+        SELECT * FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item AS items
+        ORDER BY items.available DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      )
+    `)
+  }
+  return SQL``
+}
+
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
   const query = SQL``
     .append(getTradesCTE())
+    .append(getTopNItemsCTE(filters))
     .append(getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
     .append(
@@ -742,10 +770,12 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
         )
         .append(getMaxPriceCaseWithTrades(filters))
         .append(
-          SQL`
+          filters.sortBy === CatalogSortBy.NEWEST
+            ? SQL`FROM top_n_items as items`
+            : SQL`
             FROM `
-            .append(MARKETPLACE_SQUID_SCHEMA)
-            .append(SQL`.item AS items`)
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(SQL`.item AS items`)
         )
         .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
         .append(
