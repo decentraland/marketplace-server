@@ -19,6 +19,7 @@ import {
   CollectorsDayDataFragment,
   CreatorsDayDataFragment
 } from './types'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 
 export const MAX_RESULTS = 1000
 
@@ -141,18 +142,22 @@ export function getItemsDayDataQuery(entity: RankingEntity, filters: RankingsFil
         )
     : SQL`
       SELECT id, sales, volume
-      FROM squid_marketplace.items_day_data
-      WHERE `
-        .append(where)
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
         .append(
-          SQL`
+          SQL`.items_day_data
+      WHERE `
+            .append(where)
+            .append(
+              SQL`
       ORDER BY `
-            .append(orderBy)
-            .append(SQL` `)
-            .append(orderDirection).append(SQL`
+                .append(orderBy)
+                .append(SQL` `)
+                .append(orderDirection).append(SQL`
       LIMIT ${MAX_RESULTS}
       OFFSET ${MAX_RESULTS * page}
     `)
+            )
         )
 }
 

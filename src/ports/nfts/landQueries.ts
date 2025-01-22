@@ -1,5 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { NFTSortBy } from '@dcl/schemas'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTLimitAndOffsetStatement, getTradesCTE } from './queries'
 import { GetNFTsFilters } from './types'
@@ -113,11 +114,19 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
           nft.id AS nft_id,
           o.price,
           to_timestamp(o.created_at) AS order_created_at
-      FROM squid_marketplace.nft nft
-      JOIN squid_marketplace."order" o ON nft.active_order_id = o.id
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft nft
+      JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`."order" o ON nft.active_order_id = o.id
       `.append(where).append(SQL`
       )
   `)
+        )
+    )
 }
 
 function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
@@ -178,10 +187,14 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
               nft.item_type,
               GREATEST(to_timestamp(nft.search_order_created_at), combined.created_at) AS order_created_at
           FROM combined
-          JOIN squid_marketplace.nft nft ON nft.id = combined.nft_id
+          JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.nft nft ON nft.id = combined.nft_id
           WHERE nft.search_is_land = TRUE
             AND (nft.search_estate_size > 0 OR nft.search_estate_size IS NULL)
             `
+        )
         .append(filters.category ? SQL` AND nft.category = ${filters.category}` : SQL``)
         .append(
           SQL`
@@ -224,17 +237,33 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
                 p.estate_id,
                 par_est.token_id AS parcel_estate_token_id,
                 est_data.name AS parcel_estate_name
-          FROM squid_marketplace.parcel p
-          LEFT JOIN squid_marketplace.estate par_est ON p.estate_id = par_est.id
-          LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+          FROM `
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.parcel p
+          LEFT JOIN `
+                )
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.estate par_est ON p.estate_id = par_est.id
+          LEFT JOIN `
+                    .append(MARKETPLACE_SQUID_SCHEMA)
+                    .append(
+                      SQL`.data est_data ON par_est.data_id = est_data.id
           WHERE p.id = top_nfts.id
           LIMIT 1
       ) parcel_data ON TRUE
       LEFT JOIN LATERAL (
           SELECT est.size,
                 array_agg(json_build_object('x', ep.x, 'y', ep.y)) AS estate_parcels
-          FROM squid_marketplace.estate est
-          LEFT JOIN squid_marketplace.parcel ep ON est.id = ep.estate_id
+          FROM `
+                        .append(MARKETPLACE_SQUID_SCHEMA)
+                        .append(
+                          SQL`.estate est
+          LEFT JOIN `
+                            .append(MARKETPLACE_SQUID_SCHEMA)
+                            .append(
+                              SQL`.parcel ep ON est.id = ep.estate_id
           WHERE est.size > 0
             AND est.id = top_nfts.id
           GROUP BY est.size
@@ -242,9 +271,13 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
       ) estate_data ON TRUE
        
       `
+                            )
+                            .append(getNFTsSortBy(filters.sortBy))
+                            .append(SQL``)
+                        )
+                    )
+                )
             )
-            .append(getNFTsSortBy(filters.sortBy))
-            .append(SQL``)
         )
     )
 }
@@ -284,16 +317,24 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
   return SQL`
     WITH land_count AS (
       SELECT count(*) AS total_count
-      FROM squid_marketplace.nft
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft
       `
+    )
     .append(getWhereStatementFromFilters(topNFTsWhere))
     .append(
       SQL`
     ),
     top_land AS (
         SELECT id
-        FROM squid_marketplace.nft
+        FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.nft
         `
+        )
         .append(getWhereStatementFromFilters(topNFTsWhere))
         .append(getNFTsSortBy(sortBy))
         .append(getNFTLimitAndOffsetStatement(filters))
@@ -306,11 +347,15 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
             o.price,
             to_timestamp(o.created_at) AS order_created_at
         FROM top_land
-        JOIN squid_marketplace.nft nft ON nft.id = top_land.id
-        JOIN squid_marketplace."order" o ON nft.active_order_id = o.id
+        JOIN `
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`.nft nft ON nft.id = top_land.id
+        JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`."order" o ON nft.active_order_id = o.id
         WHERE o.status = 'open'
           AND o.expires_at_normalized > NOW()
-    )`
+    )`)
+            )
             .append(SQL`,`)
             .append(getTradesCTE(filters))
             .append(getOpenTradesCTE(filters))
@@ -349,7 +394,10 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
           GREATEST(to_timestamp(nft.search_order_created_at), combined.created_at) AS order_created_at
       FROM top_land
       CROSS JOIN land_count
-      JOIN squid_marketplace.nft nft ON nft.id = top_land.id
+      JOIN `
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.nft nft ON nft.id = top_land.id
       LEFT JOIN combined ON top_land.id = combined.nft_id
       LEFT JOIN LATERAL (
           SELECT p.x,
@@ -357,25 +405,46 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
                 p.estate_id,
                 par_est.token_id AS parcel_estate_token_id,
                 est_data.name AS parcel_estate_name
-          FROM squid_marketplace.parcel p
-          LEFT JOIN squid_marketplace.estate par_est ON p.estate_id = par_est.id
-          LEFT JOIN squid_marketplace.data est_data ON par_est.data_id = est_data.id
+          FROM `
+                    .append(MARKETPLACE_SQUID_SCHEMA)
+                    .append(
+                      SQL`.parcel p
+          LEFT JOIN `
+                        .append(MARKETPLACE_SQUID_SCHEMA)
+                        .append(
+                          SQL`.estate par_est ON p.estate_id = par_est.id
+          LEFT JOIN `
+                            .append(MARKETPLACE_SQUID_SCHEMA)
+                            .append(
+                              SQL`.data est_data ON par_est.data_id = est_data.id
           WHERE p.id = top_land.id
           LIMIT 1
       ) parcel_data ON TRUE
       LEFT JOIN LATERAL (
           SELECT est.size,
                 array_agg(json_build_object('x', ep.x, 'y', ep.y)) AS estate_parcels
-          FROM squid_marketplace.estate est
-          LEFT JOIN squid_marketplace.parcel ep ON est.id = ep.estate_id
+          FROM `
+                                .append(MARKETPLACE_SQUID_SCHEMA)
+                                .append(
+                                  SQL`.estate est
+          LEFT JOIN `
+                                    .append(MARKETPLACE_SQUID_SCHEMA)
+                                    .append(
+                                      SQL`.parcel ep ON est.id = ep.estate_id
           WHERE est.size > 0
             AND est.id = top_land.id
           GROUP BY est.size
           LIMIT 1
       ) estate_data ON TRUE
       `
-                .append(getNFTsSortBy(sortBy))
-                .append(SQL``)
+                                        .append(getNFTsSortBy(sortBy))
+                                        .append(SQL``)
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
             )
         )
     )

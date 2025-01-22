@@ -1,4 +1,5 @@
 import SQL from 'sql-template-strings'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { TrendingFilters } from './types'
 
 export function getTrendingSalesQuery(filters: TrendingFilters) {
@@ -9,8 +10,12 @@ export function getTrendingSalesQuery(filters: TrendingFilters) {
       search_item_id, 
       search_contract_address, 
       COUNT(*) OVER() AS total_count 
-    FROM squid_marketplace.sale 
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale 
   `
+    )
 
   if (from) {
     const fromTimestamp = Math.round(from / 1000)
