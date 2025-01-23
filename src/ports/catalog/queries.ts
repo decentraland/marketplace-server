@@ -522,7 +522,26 @@ const getTradesCTE = () => {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   return `
-      WITH unified_trades AS (
+      WITH trades_owner_ok AS (
+        SELECT
+          t.id
+        FROM
+          marketplace.trades t
+          JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
+          -- The key part: join trade_assets_erc721 so we can get the token_id
+          LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
+          -- Then join nft using (nft.token_id = erc721_asset.token_id::numeric)
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft ON (ta.contract_address = nft.contract_address
+              AND ta.direction = 'sent'
+              AND nft.token_id = erc721_asset.token_id::numeric)
+        WHERE
+          t.type IN ('public_item_order', 'public_nft_order')
+        GROUP BY
+          t.id
+        HAVING
+          bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
+      ),
+      unified_trades AS (
         SELECT 
             t.id,
             t.created_at,
@@ -560,6 +579,7 @@ const getTradesCTE = () => {
             ELSE '${ListingStatus.OPEN}'
             END AS status
         FROM marketplace.trades AS t
+        JOIN trades_owner_ok ok ON t.id = ok.id
         JOIN (
           SELECT 
               ta.id, 
@@ -582,10 +602,6 @@ const getTradesCTE = () => {
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
-         AND (
-          assets_with_values.direction != 'sent'
-          OR lower(assets_with_values.nft_owner) = lower(t.signer)
-        )
         LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
         LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
         LEFT JOIN (
@@ -593,9 +609,7 @@ const getTradesCTE = () => {
           FROM squid_trades.signature_index signature_index
           WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}', '${marketplacePolygon.address.toLowerCase()}')
         ) AS contract_signature_index ON t.network = contract_signature_index.network
-        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${
-    TradeType.PUBLIC_NFT_ORDER
-  }' AND assets_with_values.direction = 'sent'
+        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
     )
   `
