@@ -57,7 +57,12 @@ async function testEndpoint(endpoint, category) {
     
     // Test production endpoint
     const prodStart = performance.now()
-    const prodResponse = await fetch(prodUrl)
+    const prodResponse = await fetch(prodUrl, {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    })
     const prodEnd = performance.now()
     const prodDuration = (prodEnd - prodStart)
 
