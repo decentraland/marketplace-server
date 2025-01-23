@@ -593,7 +593,9 @@ const getTradesCTE = () => {
           FROM squid_trades.signature_index signature_index
           WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}', '${marketplacePolygon.address.toLowerCase()}')
         ) AS contract_signature_index ON t.network = contract_signature_index.network
-        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
+        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${
+    TradeType.PUBLIC_NFT_ORDER
+  }' AND assets_with_values.direction = 'sent'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
     )
   `
@@ -627,7 +629,8 @@ const getTradesJoin = () => {
 }
 
 const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
-  return SQL`
+  return (
+    SQL`
     , nfts_with_orders AS (SELECT 
       orders.item_id, 
       COUNT(orders.id) AS orders_listings_count,
@@ -635,29 +638,30 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       MAX(orders.price) AS max_price,
       MAX(orders.created_at) AS max_order_created_at
     FROM `
-    .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(
-      SQL`.order AS orders
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.order AS orders
         WHERE 
             orders.status = 'open' 
             AND orders.expires_at_normalized > NOW()`
-    )
-
-    .append(
-      filters.sortBy === CatalogSortBy.NEWEST
-        ? SQL` AND orders.item_id IN (
+      )
+      // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
+      .append(
+        filters.sortBy === CatalogSortBy.NEWEST
+          ? SQL` AND orders.item_id IN (
                 SELECT id::text
                 FROM top_n_items
           )`
-        : SQL``
-    )
-    .append(getOrderRangePriceWhere(filters))
-    .append(
-      `
+          : SQL``
+      )
+      .append(getOrderRangePriceWhere(filters))
+      .append(
+        `
     GROUP BY orders.item_id
     )
   `
-    )
+      )
+  )
 }
 
 const getMinItemCreatedAtCTE = () => {
