@@ -1,4 +1,5 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTsSortBy } from './landQueries'
 import { getNFTLimitAndOffsetStatement, getTradesCTE } from './queries'
@@ -35,36 +36,39 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
   return SQL`
       WITH filtered_ens_nfts AS (
           SELECT *
-          FROM squid_marketplace.nft
-          WHERE  category = 'ens' `
-    .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
+          FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
     .append(
-      SQL`
-      ),
-        `
-        .append(getTradesCTE(nftFilters, false))
+      SQL`.nft
+          WHERE  category = 'ens' `
+        .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
         .append(
           SQL`
+      ),
         `
-        )
-        .append(
-          isOnSale
-            ? SQL`
+            .append(getTradesCTE(nftFilters, false))
+            .append(
+              SQL`
+        `
+            )
+            .append(
+              isOnSale
+                ? SQL`
         , valid_orders AS (
           SELECT
             o.nft_id,
             o.status,
             o.expires_at_normalized
           FROM
-            squid_marketplace.order o
+            `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order o
           WHERE
             o.status = 'open'
             AND o.expires_at_normalized > now()
-        )`
-            : SQL``
-        )
-        .append(
-          SQL`
+        )`)
+                : SQL``
+            )
+            .append(
+              SQL`
         SELECT
           count(*) OVER () AS count,
           nft.id,
@@ -95,12 +99,17 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
             AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
             AND trades.status = 'open'
             AND trades.signer || '-' || nft.network = nft.owner_id
-          LEFT JOIN squid_marketplace.ens ens ON ens.id = nft.ens_id
+          LEFT JOIN `
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.ens ens ON ens.id = nft.ens_id
             `
-            .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
-            .append(geENSWhereStatement(nftFilters))
-            .append(getNFTsSortBy(sortBy))
-            .append(getNFTLimitAndOffsetStatement(nftFilters))
+                    .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
+                    .append(geENSWhereStatement(nftFilters))
+                    .append(getNFTsSortBy(sortBy))
+                    .append(getNFTLimitAndOffsetStatement(nftFilters))
+                )
+            )
         )
     )
 }

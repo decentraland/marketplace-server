@@ -622,7 +622,7 @@ const getTradesJoin = () => {
             SELECT 
               COUNT(id),
               COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
-              unified_trades.contract_address_sent,
+              contract_address_sent,
               -- Add both MIN and MAX for order_amount_received
               MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
@@ -630,14 +630,19 @@ const getTradesJoin = () => {
               MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
               assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
               MAX(created_at) AS max_created_at,
-              m.min_item_created_at,
+              -- Subquery to get the min_item_created_at from all statuses
+              (
+                SELECT 
+                  MIN(created_at)     
+                  FROM unified_trades ut2
+                WHERE ut2.contract_address_sent = unified_trades.contract_address_sent AND ut2.type = 'public_item_order'
+              ) AS min_item_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
           FROM unified_trades
-          LEFT JOIN min_item_created m ON m.contract_address_sent = unified_trades.contract_address_sent
             WHERE status = 'open'
-            GROUP BY unified_trades.contract_address_sent, (unified_trades.assets -> 'sent' ->> 'item_id'), m.min_item_created_at
+            GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
           ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
   `
 }
@@ -661,7 +666,7 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       )
       // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
       .append(
-        filters.sortBy === CatalogSortBy.NEWEST
+        filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
           ? SQL` AND orders.item_id IN (
                 SELECT id::text
                 FROM top_n_items
@@ -678,36 +683,22 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
   )
 }
 
-const getMinItemCreatedAtCTE = () => {
-  return SQL`
-    , min_item_created AS (
-      SELECT
-        contract_address_sent,
-        (assets -> 'sent' ->> 'item_id')::numeric AS item_id_num,
-        min(created_at) AS min_item_created_at
-      FROM
-        unified_trades
-      WHERE
-        type = 'public_item_order'
-      GROUP BY
-        contract_address_sent,
-        (assets -> 'sent' ->> 'item_id')::numeric
-    )
-  `
-}
-
 const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
-  if (filters.sortBy === CatalogSortBy.NEWEST) {
+  if (filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)) {
     const limit = filters.first ?? 10
     const offset = filters.skip ?? 0
     return SQL`
       , top_n_items AS (
-        SELECT * FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item AS items
-        ORDER BY items.available DESC
+        SELECT * FROM `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item AS items
+        ORDER BY items.`.append(filters.sortBy === CatalogSortBy.NEWEST ? 'first_listed_at' : 'sold_at').append(SQL` DESC
         LIMIT ${limit}
         OFFSET ${offset}
       )
     `)
+      )
   }
   return SQL``
 }
@@ -717,7 +708,6 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
     .append(getTradesCTE())
     .append(getTopNItemsCTE(filters))
     .append(getNFTsWithOrdersCTE(filters))
-    .append(getMinItemCreatedAtCTE())
     .append(
       SQL`
             SELECT
@@ -788,7 +778,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
         )
         .append(getMaxPriceCaseWithTrades(filters))
         .append(
-          filters.sortBy === CatalogSortBy.NEWEST
+          filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
             ? SQL`FROM top_n_items as items`
             : SQL`
             FROM `
