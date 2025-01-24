@@ -11,7 +11,7 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   }
 
   const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress}` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` nft.owner_id = ${ownerEthereumAddress}` : null
 
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
@@ -31,7 +31,7 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   ])
 }
 
-export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
+export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
   const { sortBy, isOnSale, ids } = nftFilters
   return SQL`
       WITH filtered_ens_nfts AS (
@@ -106,8 +106,8 @@ export function getENSs(nftFilters: GetNFTsFilters): SQLStatement {
             `
                     .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
                     .append(geENSWhereStatement(nftFilters))
-                    .append(getNFTsSortBy(sortBy))
-                    .append(getNFTLimitAndOffsetStatement(nftFilters))
+                    .append(sortBy ? getNFTsSortBy(sortBy) : SQL``)
+                    .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
                 )
             )
         )

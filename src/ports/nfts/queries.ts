@@ -376,7 +376,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
   if (nftFilters.isLand || nftFilters.category === NFTCategory.PARCEL || nftFilters.category === NFTCategory.ESTATE) {
     return nftFilters.isOnSale ? getLandsOnSaleQuery(nftFilters) : getAllLANDsQuery(nftFilters)
   } else if (nftFilters.category === NFTCategory.ENS) {
-    return getENSs(nftFilters)
+    return getENSs(nftFilters, uncapped)
   } else if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
     return getRecentlyListedNFTsQuery(nftFilters)
   }
