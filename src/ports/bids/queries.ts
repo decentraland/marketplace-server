@@ -1,5 +1,6 @@
 import SQL from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
@@ -59,7 +60,7 @@ export function getLegacyBidsQuery(): string {
       network,
       token_id::text,
       nft_address as contract_address
-    FROM squid_marketplace.bid
+    FROM ${MARKETPLACE_SQUID_SCHEMA}.bid
   `
 }
 

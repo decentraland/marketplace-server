@@ -1,5 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { SaleFilters, SaleSortBy } from '@dcl/schemas'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -70,8 +71,12 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
       tx_hash,
       network,
       search_category as category
-    FROM squid_marketplace.sale
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale
     `.append(getLegacySalesQueryWhereStatement(filters))
+    )
 }
 
 export function getSalesQuery(filters: SaleFilters = {}) {

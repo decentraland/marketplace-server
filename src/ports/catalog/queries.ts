@@ -522,7 +522,26 @@ const getTradesCTE = () => {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   return `
-      WITH unified_trades AS (
+      WITH trades_owner_ok AS (
+        SELECT
+          t.id
+        FROM
+          marketplace.trades t
+          JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
+          -- The key part: join trade_assets_erc721 so we can get the token_id
+          LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
+          -- Then join nft using (nft.token_id = erc721_asset.token_id::numeric)
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft ON (ta.contract_address = nft.contract_address
+              AND ta.direction = 'sent'
+              AND nft.token_id = erc721_asset.token_id::numeric)
+        WHERE
+          t.type IN ('public_item_order', 'public_nft_order')
+        GROUP BY
+          t.id
+        HAVING
+          bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
+      ),
+      unified_trades AS (
         SELECT 
             t.id,
             t.created_at,
@@ -560,6 +579,7 @@ const getTradesCTE = () => {
             ELSE '${ListingStatus.OPEN}'
             END AS status
         FROM marketplace.trades AS t
+        JOIN trades_owner_ok ok ON t.id = ok.id
         JOIN (
           SELECT 
               ta.id, 
@@ -578,9 +598,9 @@ const getTradesCTE = () => {
           LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset ON ta.id = erc721_asset.asset_id
           LEFT JOIN marketplace.trade_assets_erc20 AS erc20_asset ON ta.id = erc20_asset.asset_id
           LEFT JOIN marketplace.trade_assets_item AS item_asset ON ta.id = item_asset.asset_id
-          LEFT JOIN squid_marketplace.item AS item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
-          LEFT JOIN squid_marketplace.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
-          LEFT JOIN squid_marketplace.account as account ON (account.id = nft.owner_id)
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item AS item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
         LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
         LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
@@ -591,7 +611,6 @@ const getTradesCTE = () => {
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
-        HAVING t.signer = ALL(ARRAY_AGG(COALESCE(assets_with_values.nft_owner, assets_with_values.creator)) FILTER (WHERE COALESCE(assets_with_values.nft_owner, assets_with_values.creator) IS NOT NULL))
     )
   `
 }
@@ -624,7 +643,8 @@ const getTradesJoin = () => {
 }
 
 const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
-  return SQL`
+  return (
+    SQL`
     , nfts_with_orders AS (SELECT 
       orders.item_id, 
       COUNT(orders.id) AS orders_listings_count,
@@ -632,21 +652,30 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       MAX(orders.price) AS max_price,
       MAX(orders.created_at) AS max_order_created_at
     FROM `
-    .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(
-      SQL`.order AS orders
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.order AS orders
         WHERE 
             orders.status = 'open' 
-            AND orders.expires_normalized > NOW()`
-    )
-
-    .append(getOrderRangePriceWhere(filters))
-    .append(
-      `
+            AND orders.expires_at_normalized > NOW()`
+      )
+      // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
+      .append(
+        filters.sortBy === CatalogSortBy.NEWEST
+          ? SQL` AND orders.item_id IN (
+                SELECT id::text
+                FROM top_n_items
+          )`
+          : SQL``
+      )
+      .append(getOrderRangePriceWhere(filters))
+      .append(
+        `
     GROUP BY orders.item_id
     )
   `
-    )
+      )
+  )
 }
 
 const getMinItemCreatedAtCTE = () => {
@@ -667,9 +696,26 @@ const getMinItemCreatedAtCTE = () => {
   `
 }
 
+const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
+  if (filters.sortBy === CatalogSortBy.NEWEST) {
+    const limit = filters.first ?? 10
+    const offset = filters.skip ?? 0
+    return SQL`
+      , top_n_items AS (
+        SELECT * FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item AS items
+        ORDER BY items.available DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      )
+    `)
+  }
+  return SQL``
+}
+
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
   const query = SQL``
     .append(getTradesCTE())
+    .append(getTopNItemsCTE(filters))
     .append(getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
     .append(
@@ -742,10 +788,12 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
         )
         .append(getMaxPriceCaseWithTrades(filters))
         .append(
-          SQL`
+          filters.sortBy === CatalogSortBy.NEWEST
+            ? SQL`FROM top_n_items as items`
+            : SQL`
             FROM `
-            .append(MARKETPLACE_SQUID_SCHEMA)
-            .append(SQL`.item AS items`)
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(SQL`.item AS items`)
         )
         .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
         .append(

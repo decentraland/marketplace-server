@@ -1,6 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { OrderFilters, OrderSortBy, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
+import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQueryWithFilters } from '../trades/queries'
@@ -108,8 +109,8 @@ export function getLegacyOrdersQuery(): string {
       ord.updated_at,
       ord.expires_at,
       ord.network
-    FROM squid_marketplace."order" ord
-    JOIN squid_marketplace."nft" nft ON ord.nft_id = nft.id`
+    FROM ${MARKETPLACE_SQUID_SCHEMA}."order" ord
+    JOIN ${MARKETPLACE_SQUID_SCHEMA}."nft" nft ON ord.nft_id = nft.id AND nft.owner_address = ord.owner`
 }
 
 export interface OrderQueries {
@@ -130,7 +131,7 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` ord.item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
-  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_normalized > NOW() `
+  const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at_normalized > NOW() `
   const FILTER_TRADE_NOT_EXPIRED = SQL` expires_at > EXTRACT(EPOCH FROM now()::timestamptz(3)) `
 
   const COMMON_FILTERS = [
@@ -234,7 +235,10 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
                COUNT(*) AS orders_count
         FROM (
           SELECT id
-          FROM   squid_marketplace."order" as ord
+          FROM `
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`."order" as ord
           `.append(getWhereStatementFromFilters(ordersFilters)).append(SQL`
         ) AS orders_filtered
       ) AS counts_combined
@@ -246,6 +250,7 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
       FROM   aggregated_counts
     ) AS combined_counts
   `)
+            )
         )
     )
 }
