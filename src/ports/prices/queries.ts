@@ -11,7 +11,7 @@ export function getPricesQuery(filters: PriceFilters) {
       ...fromPriceFiltersToNFTFilters(filters),
       isOnSale: true
     }
-    return SQL`SELECT price FROM (`.append(getNFTsQuery(nftFilters)).append(SQL`) as nfts`)
+    return SQL`SELECT price FROM (`.append(getNFTsQuery({ ...nftFilters, sortBy: undefined })).append(SQL`) as nfts`)
   }
 
   const catalogFilters = {
