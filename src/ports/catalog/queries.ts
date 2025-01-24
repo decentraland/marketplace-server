@@ -661,7 +661,7 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       )
       // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
       .append(
-        filters.sortBy === CatalogSortBy.NEWEST
+        filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
           ? SQL` AND orders.item_id IN (
                 SELECT id::text
                 FROM top_n_items
@@ -697,17 +697,21 @@ const getMinItemCreatedAtCTE = () => {
 }
 
 const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
-  if (filters.sortBy === CatalogSortBy.NEWEST) {
+  if (filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)) {
     const limit = filters.first ?? 10
     const offset = filters.skip ?? 0
     return SQL`
       , top_n_items AS (
-        SELECT * FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item AS items
-        ORDER BY items.available DESC
+        SELECT * FROM `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item AS items
+        ORDER BY items.`.append(filters.sortBy === CatalogSortBy.NEWEST ? 'first_listed_at' : 'sold_at').append(SQL` DESC
         LIMIT ${limit}
         OFFSET ${offset}
       )
     `)
+      )
   }
   return SQL``
 }
@@ -788,7 +792,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
         )
         .append(getMaxPriceCaseWithTrades(filters))
         .append(
-          filters.sortBy === CatalogSortBy.NEWEST
+          filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
             ? SQL`FROM top_n_items as items`
             : SQL`
             FROM `
