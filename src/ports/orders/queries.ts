@@ -128,7 +128,9 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  const FILTER_ORDER_BY_ITEM_ID = filters.itemId ? SQL` ord.item_id = ${`${filters.contractAddress}-${filters.itemId}`} ` : null
+  // L1 item_ids are in the format of 0x32b7495895264ac9d0b12d32afd435453458b1c6-cw_casinovisor_hat
+  const itemId = filters.itemId ? (filters.itemId.includes('-') ? filters.itemId : `${filters.contractAddress}-${filters.itemId}`) : null
+  const FILTER_ORDER_BY_ITEM_ID = itemId ? SQL` ord.item_id = ${itemId} ` : null
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at_normalized > NOW() `

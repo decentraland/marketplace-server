@@ -300,37 +300,35 @@ export function getTradesCTE(filters: GetNFTsFilters, addHavingStatement = true)
             .append(MARKETPLACE_SQUID_SCHEMA)
             .append(
               SQL`.account as account ON (account.id = nft.owner_id)
-        `
-                .append(filters.category ? SQL` WHERE nft.category = ${filters.category} ` : SQL``)
-                .append(
-                  SQL`
+        `.append(
+                SQL`
       ) as assets_with_values ON t.id = assets_with_values.trade_id
       LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
       LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
       LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (${marketplaceEthereum.address.toLowerCase()}, ${marketplacePolygon.address.toLowerCase()})) as contract_signature_index ON t.network = contract_signature_index.network
       `
-                    .append(where)
-                    .append(
-                      SQL`
+                  .append(where)
+                  .append(
+                    SQL`
       GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
       `
-                    )
-                    .append(
-                      addHavingStatement
-                        ? SQL`
+                  )
+                  .append(
+                    addHavingStatement
+                      ? SQL`
       HAVING t.signer = ALL(ARRAY_AGG(assets_with_values.owner) FILTER (WHERE assets_with_values.owner IS NOT NULL AND assets_with_values.direction = 'sent'))
       `
-                        : SQL``
-                    )
-                    .append(
-                      filters.sortBy === NFTSortBy.RECENTLY_LISTED
-                        ? SQL`
+                      : SQL``
+                  )
+                  .append(
+                    filters.sortBy === NFTSortBy.RECENTLY_LISTED
+                      ? SQL`
           ORDER BY created_at DESC LIMIT ${filters.first} OFFSET ${filters.skip}
         `
-                        : SQL``
-                    )
-                    .append(SQL`)`)
-                )
+                      : SQL``
+                  )
+                  .append(SQL`)`)
+              )
             )
         )
     )
