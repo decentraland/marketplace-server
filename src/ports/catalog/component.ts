@@ -6,6 +6,7 @@ import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
+import { formatQueryForLogging } from '../utils'
 import { getCollectionsItemsCatalogQuery, getCollectionsItemsCatalogQueryWithTrades, getItemIdsBySearchTextQuery } from './queries'
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
@@ -26,6 +27,7 @@ export async function createCatalogComponent(
     let catalogItems: Item[] = []
     let total = 0
     const client = await dataReadbase.getPool().connect()
+    let query
     try {
       if (filters.search) {
         const analytics = new Analytics({ writeKey: segmentWriteKey })
@@ -59,7 +61,7 @@ export async function createCatalogComponent(
           return { data: [], total: 0 }
         }
       }
-      const query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
+      query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
       const results = await client.query<CollectionsItemDBResult>(query)
       catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
       total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
@@ -73,10 +75,15 @@ export async function createCatalogComponent(
 
       catalogItems = enhanceItemsWithPicksStats(catalogItems, pickStats.map(fromDBPickStatsToPickStats))
     } catch (e) {
+      console.error(e)
       if ((e as Error).message === 'Query read timeout') {
-        console.error('Query timeout exceeded (2 minutes)', {
-          filters
-        })
+        const errorInfo = {
+          filters: JSON.stringify(filters),
+          query: query?.text ? formatQueryForLogging(query.text) : undefined,
+          values: query?.values
+        }
+        console.error('Catalog Query timeout exceeded')
+        console.dir(errorInfo, { depth: null, maxStringLength: null })
       }
       throw new HttpError("Couldn't fetch the catalog with the filters provided", 400)
     } finally {
