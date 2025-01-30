@@ -1,5 +1,6 @@
 import { ListingStatus, NFTCategory, NFTFilters, RentalStatus } from '@dcl/schemas'
 import { fromNFTsAndOrdersToNFTsResult } from '../../adapters/nfts'
+import { formatQueryForLogging } from '../../controllers/handlers/utils'
 import { getEthereumChainId } from '../../logic/chainIds'
 import { getMarketplaceContracts } from '../../logic/contracts'
 import { HttpError } from '../../logic/http/response'
@@ -74,11 +75,13 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       }
     } catch (error) {
       if ((error as Error).message === 'Query read timeout') {
-        console.error('Query timeout exceeded (2 minutes)', {
-          filters,
-          query: query?.text,
+        const errorInfo = {
+          filters: JSON.stringify(filters),
+          query: query?.text ? formatQueryForLogging(query.text) : undefined,
           values: query?.values
-        })
+        }
+        console.error('NFT Query timeout exceeded')
+        console.dir(errorInfo, { depth: null, maxStringLength: null })
       }
       throw new HttpError("Couldn't fetch nfts with the filters provided", 400)
     } finally {

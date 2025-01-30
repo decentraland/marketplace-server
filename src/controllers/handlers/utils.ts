@@ -12,7 +12,6 @@ import {
   RentalStatus,
   WearableCategory,
   OrderSortBy,
-  ListingStatus,
   SaleFilters,
   SaleSortBy,
   SaleType
