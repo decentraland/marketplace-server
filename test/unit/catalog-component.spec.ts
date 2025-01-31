@@ -90,7 +90,10 @@ describe('Catalog Component', () => {
           ]
         })
         dbClientQueryMock.mockResolvedValueOnce({
-          rows: items.map(item => ({ ...item, total: items.length }))
+          rows: items.map(item => ({ ...item }))
+        })
+        dbClientQueryMock.mockResolvedValueOnce({
+          rows: [{ total: items.length }]
         })
         ;(Analytics as jest.Mock).mockImplementation(() => {
           return {
