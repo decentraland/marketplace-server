@@ -703,6 +703,27 @@ const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
   return SQL``
 }
 
+export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
+  return SQL``
+    .append(getTradesCTE())
+    .append(getNFTsWithOrdersCTE(filters))
+    .append(
+      SQL`
+        SELECT COUNT(*) as total
+        FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.item AS items`)
+    .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
+    .append(
+      SQL`
+        LEFT JOIN nfts_with_orders ON nfts_with_orders.item_id = items.id`
+    )
+    .append(getMetadataJoins())
+    .append(getTradesJoin())
+    .append(getCollectionsQueryWhere(filters, true))
+}
+
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
   const query = SQL``
     .append(getTradesCTE())
@@ -711,7 +732,6 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
     .append(
       SQL`
             SELECT
-              COUNT(*) OVER() as total_rows,
               items.id,
               items.blockchain_id,
               items.search_is_collection_approved,

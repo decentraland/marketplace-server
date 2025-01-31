@@ -7,7 +7,12 @@ import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
 import { formatQueryForLogging } from '../utils'
-import { getCollectionsItemsCatalogQuery, getCollectionsItemsCatalogQueryWithTrades, getItemIdsBySearchTextQuery } from './queries'
+import {
+  getCollectionsItemsCatalogQuery,
+  getCollectionsItemsCatalogQueryWithTrades,
+  getCollectionsItemsCountQuery,
+  getItemIdsBySearchTextQuery
+} from './queries'
 import { CatalogOptions, CollectionsItemDBResult, ICatalogComponent } from './types'
 import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 
@@ -62,9 +67,13 @@ export async function createCatalogComponent(
         }
       }
       query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
-      const results = await client.query<CollectionsItemDBResult>(query)
-      catalogItems = results.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
-      total = results.rows[0]?.total ?? results.rows[0]?.total_rows ?? 0
+      const totalQuery = getCollectionsItemsCountQuery(filters)
+      const [items, totalItems] = await Promise.all([
+        client.query<CollectionsItemDBResult>(query),
+        client.query<{ total: number }>(totalQuery)
+      ])
+      catalogItems = items.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
+      total = totalItems.rows[0]?.total ?? 0
 
       const pickStats = await picks.getPicksStats(
         catalogItems.map(({ id }) => id),
