@@ -10,8 +10,6 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
   const { dappsDatabase } = dbComponent
   const { itemId, contractAddress, isStoreMinterSet } = options
   const client = await dappsDatabase.getPool().connect()
-  // collection id
-  // metadata id
 
   try {
     await client.query(`
