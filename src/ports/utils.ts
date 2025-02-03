@@ -15,3 +15,17 @@ export function getWhereStatementFromFilters(filters: (SQLStatement | null)[], i
     }, null) || SQL``
   )
 }
+
+/**
+ * Formats a SQL query into a single line for logging purposes
+ * @param query The SQL query text
+ * @returns The formatted query in a single line
+ */
+export function formatQueryForLogging(query: string): string {
+  return query
+    .replace(/\s+/g, ' ') // Replace multiple spaces/newlines with single space
+    .replace(/\( /g, '(') // Remove space after opening parenthesis
+    .replace(/ \)/g, ')') // Remove space before closing parenthesis
+    .replace(/ ,/g, ',') // Remove space before comma
+    .trim()
+}

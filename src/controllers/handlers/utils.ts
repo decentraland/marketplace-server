@@ -12,7 +12,6 @@ import {
   RentalStatus,
   WearableCategory,
   OrderSortBy,
-  ListingStatus,
   SaleFilters,
   SaleSortBy,
   SaleType
@@ -107,7 +106,7 @@ export const getOrdersParams = (params: Params): OrderFilters => {
     buyer: params.getValue('buyer'),
     contractAddress: params.getValue('contractAddress'),
     tokenId: params.getValue('tokenId'),
-    status: params.getValue<ListingStatus>('status', ListingStatus),
+    status: params.getValue('status'),
     network: params.getValue<Network>('network', Network),
     itemId: params.getValue('itemId'),
     nftName: params.getValue('nftName')
