@@ -1,8 +1,9 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTsSortBy } from './landQueries'
-import { getNFTLimitAndOffsetStatement, getTradesCTE } from './queries'
+import { getNFTLimitAndOffsetStatement } from './queries'
 import { GetNFTsFilters } from './types'
 
 function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
@@ -33,24 +34,25 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 
 export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
   const { sortBy, isOnSale, ids } = nftFilters
-  return SQL`
-      WITH filtered_ens_nfts AS (
+  return getTradesCTE({
+    cteName: 'trades',
+    sortBy: nftFilters.sortBy,
+    first: nftFilters.first,
+    skip: nftFilters.skip
+  })
+    .append(
+      SQL`
+      , filtered_ens_nfts AS (
           SELECT *
-          FROM `
-    .append(MARKETPLACE_SQUID_SCHEMA)
+          FROM `.append(MARKETPLACE_SQUID_SCHEMA)
+    )
     .append(
       SQL`.nft
           WHERE  category = 'ens' `
         .append(ids ? SQL` AND id = ANY(${ids}) ` : SQL``)
         .append(
           SQL`
-      ),
-        `
-            .append(getTradesCTE(nftFilters, false))
-            .append(
-              SQL`
-        `
-            )
+      )`
             .append(
               isOnSale
                 ? SQL`

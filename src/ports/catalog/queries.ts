@@ -8,6 +8,7 @@ import {
   GenderFilterOption,
   ListingStatus,
   NFTCategory,
+  NFTSortBy,
   Network,
   TradeType,
   WearableCategory
@@ -518,10 +519,22 @@ LEFT JOIN (
     )
 }
 
-const getTradesCTE = () => {
+export const getTradesCTE = ({
+  cteName,
+  category,
+  sortBy,
+  first,
+  skip
+}: {
+  cteName?: string
+  category?: NFTCategory | EmoteCategory
+  sortBy?: CatalogSortBy | NFTSortBy
+  first?: number
+  skip?: number
+} = {}) => {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  return `
+  const CTE = SQL`
       WITH trades_owner_ok AS (
         SELECT
           t.id
@@ -531,21 +544,33 @@ const getTradesCTE = () => {
           -- The key part: join trade_assets_erc721 so we can get the token_id
           LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
           -- Then join nft using (nft.token_id = erc721_asset.token_id::numeric)
-          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft ON (ta.contract_address = nft.contract_address
+          LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft nft ON (ta.contract_address = nft.contract_address
               AND ta.direction = 'sent'
               AND nft.token_id = erc721_asset.token_id::numeric)
         WHERE
           t.type IN ('public_item_order', 'public_nft_order')
+          `.append(category ? SQL`AND nft.category = ${category}` : SQL``)
+    )
+    .append(
+      SQL`
         GROUP BY
           t.id
         HAVING
           bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
-      ),
-      unified_trades AS (
+      )`
+        .append(
+          SQL`,
+      `
+        )
+        .append(cteName ?? 'unified_trades').append(` AS (
         SELECT 
             t.id,
             t.created_at,
             t.type,
+            t.signer,
             -- Select the contract address from the row where direction is 'sent'
             MAX(CASE WHEN assets_with_values.direction = 'sent' THEN assets_with_values.contract_address END) AS contract_address_sent,
             -- MAX(assets_with_values.amount) AS amount_received,
@@ -564,6 +589,13 @@ const getTradesCTE = () => {
                 'creator', assets_with_values.creator
               )
             ) AS assets,
+             /* CASE #1: Single NFT (if you only expect ONE 'sent' per trade) */
+            MAX(assets_with_values.contract_address)
+              FILTER (WHERE assets_with_values.direction = 'sent')
+              AS sent_contract_address,
+            MAX(assets_with_values.token_id)
+              FILTER (WHERE assets_with_values.direction = 'sent')
+              AS sent_token_id,
             CASE
               WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
               WHEN t.expires_at < now()::timestamptz(3) THEN '${ListingStatus.CANCELLED}'
@@ -611,8 +643,12 @@ const getTradesCTE = () => {
         ) AS contract_signature_index ON t.network = contract_signature_index.network
         WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+  `)
     )
-  `
+  return SQL``
+    .append(CTE)
+    .append(sortBy === NFTSortBy.RECENTLY_LISTED ? SQL`ORDER BY created_at DESC LIMIT ${first} OFFSET ${skip}` : SQL``)
+    .append(SQL`)`)
 }
 
 const getTradesJoin = () => {
@@ -630,13 +666,6 @@ const getTradesJoin = () => {
               MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
               assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
               MAX(created_at) AS max_created_at,
-              -- Subquery to get the min_item_created_at from all statuses
-              (
-                SELECT 
-                  MIN(created_at)     
-                  FROM unified_trades ut2
-                WHERE ut2.contract_address_sent = unified_trades.contract_address_sent AND ut2.type = 'public_item_order'
-              ) AS min_item_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
@@ -644,6 +673,9 @@ const getTradesJoin = () => {
             WHERE status = 'open'
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
           ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
+            LEFT JOIN ut_min_item 
+  ON offchain_orders.contract_address_sent = ut_min_item.contract_address_sent
+     AND offchain_orders.item_id = ut_min_item.item_id
   `
 }
 
@@ -703,10 +735,25 @@ const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
   return SQL``
 }
 
+const getMinItemCreatedAtCTE = () => {
+  return SQL`
+    , ut_min_item AS (
+      SELECT 
+        contract_address_sent,
+        (assets -> 'sent' ->> 'item_id') AS item_id,
+        MIN(created_at) AS min_item_created_at
+      FROM unified_trades
+      WHERE type = 'public_item_order'
+      GROUP BY contract_address_sent, (assets -> 'sent' ->> 'item_id')
+    )
+  `
+}
+
 export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   return SQL``
     .append(getTradesCTE())
     .append(getNFTsWithOrdersCTE(filters))
+    .append(getMinItemCreatedAtCTE())
     .append(
       SQL`
         SELECT COUNT(*) as total
@@ -729,6 +776,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
     .append(getTradesCTE())
     .append(getTopNItemsCTE(filters))
     .append(getNFTsWithOrdersCTE(filters))
+    .append(getMinItemCreatedAtCTE())
     .append(
       SQL`
             SELECT
@@ -761,7 +809,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               `
         .append(
           filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it
-            ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM offchain_orders.min_item_created_at))) as first_listed_at,`
+            ? SQL`LEAST(items.first_listed_at, ROUND(EXTRACT(EPOCH FROM ut_min_item.min_item_created_at))) as first_listed_at,`
             : SQL`items.first_listed_at as first_listed_at,`
         )
         .append(
