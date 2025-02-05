@@ -1,8 +1,9 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { NFTSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
-import { getNFTLimitAndOffsetStatement, getTradesCTE } from './queries'
+import { getNFTLimitAndOffsetStatement } from './queries'
 import { GetNFTsFilters } from './types'
 
 export function getNFTsSortBy(sortBy?: NFTSortBy) {
@@ -109,7 +110,7 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
   ])
 
   return SQL`
-    WITH open_orders_nfts AS (
+    open_orders_nfts AS (
       SELECT 
           nft.id AS nft_id,
           o.price,
@@ -132,7 +133,7 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
 function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
   const { FILTER_BY_MIN_TRADE_PRICE, FILTER_BY_MAX_TRADE_PRICE } = getAllLANDWheres(filters)
   const where = getWhereStatementFromFilters([
-    SQL`trades.status = 'open'
+    SQL`unified_trades.status = 'open'
         AND (((assets->'sent'->>'nft_id') IS NOT NULL)
           OR ((assets->'received'->>'nft_id') IS NOT NULL))
         AND (((assets->'received'->>'amount') IS NOT NULL)
@@ -147,17 +148,17 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
                 (assets->'sent'->>'amount')::numeric(78)) AS price,
         COALESCE((assets->'sent'->>'nft_id'),
                 (assets->'received'->>'nft_id')) AS nft_id,
-        trades.created_at AS trade_created_at
-      FROM trades
+        unified_trades.created_at AS trade_created_at
+      FROM unified_trades
       `.append(where).append(SQL`
     )
   `)
 }
 
 export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
-  return getOpenOrderNFTsCTE(filters)
+  return getTradesCTE(filters)
     .append(SQL`,`)
-    .append(getTradesCTE(filters))
+    .append(getOpenOrderNFTsCTE(filters))
     .append(getOpenTradesCTE(filters))
     .append(
       SQL`
@@ -314,32 +315,33 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_BY_SEARCH
   ]
 
-  return SQL`
-    WITH land_count AS (
+  return getTradesCTE(filters).append(
+    SQL`
+    , land_count AS (
       SELECT count(*) AS total_count
       FROM `
-    .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(
-      SQL`.nft
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.nft
       `
-    )
-    .append(getWhereStatementFromFilters(topNFTsWhere))
-    .append(
-      SQL`
+      )
+      .append(getWhereStatementFromFilters(topNFTsWhere))
+      .append(
+        SQL`
     ),
     top_land AS (
         SELECT id
         FROM `
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.nft
+          .append(MARKETPLACE_SQUID_SCHEMA)
+          .append(
+            SQL`.nft
         `
-        )
-        .append(getWhereStatementFromFilters(topNFTsWhere))
-        .append(getNFTsSortBy(sortBy))
-        .append(getNFTLimitAndOffsetStatement(filters))
-        .append(
-          SQL`
+          )
+          .append(getWhereStatementFromFilters(topNFTsWhere))
+          .append(getNFTsSortBy(sortBy))
+          .append(getNFTLimitAndOffsetStatement(filters))
+          .append(
+            SQL`
     ),
     open_orders_nfts AS (
         SELECT 
@@ -348,19 +350,17 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
             to_timestamp(o.created_at) AS order_created_at
         FROM top_land
         JOIN `
-            .append(MARKETPLACE_SQUID_SCHEMA)
-            .append(
-              SQL`.nft nft ON nft.id = top_land.id
+              .append(MARKETPLACE_SQUID_SCHEMA)
+              .append(
+                SQL`.nft nft ON nft.id = top_land.id
         JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`."order" o ON nft.active_order_id = o.id
         WHERE o.status = 'open'
           AND o.expires_at_normalized > NOW()
-    )`)
-            )
-            .append(SQL`,`)
-            .append(getTradesCTE(filters))
-            .append(getOpenTradesCTE(filters))
-            .append(
-              SQL`
+    ) `)
+              )
+              .append(getOpenTradesCTE(filters))
+              .append(
+                SQL`
       , combined AS (
           SELECT nft_id, price, order_created_at AS created_at FROM open_orders_nfts
           UNION
@@ -395,9 +395,9 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
       FROM top_land
       CROSS JOIN land_count
       JOIN `
-                .append(MARKETPLACE_SQUID_SCHEMA)
-                .append(
-                  SQL`.nft nft ON nft.id = top_land.id
+                  .append(MARKETPLACE_SQUID_SCHEMA)
+                  .append(
+                    SQL`.nft nft ON nft.id = top_land.id
       LEFT JOIN combined ON top_land.id = combined.nft_id
       LEFT JOIN LATERAL (
           SELECT p.x,
@@ -406,17 +406,17 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
                 par_est.token_id AS parcel_estate_token_id,
                 est_data.name AS parcel_estate_name
           FROM `
-                    .append(MARKETPLACE_SQUID_SCHEMA)
-                    .append(
-                      SQL`.parcel p
+                      .append(MARKETPLACE_SQUID_SCHEMA)
+                      .append(
+                        SQL`.parcel p
           LEFT JOIN `
-                        .append(MARKETPLACE_SQUID_SCHEMA)
-                        .append(
-                          SQL`.estate par_est ON p.estate_id = par_est.id
+                          .append(MARKETPLACE_SQUID_SCHEMA)
+                          .append(
+                            SQL`.estate par_est ON p.estate_id = par_est.id
           LEFT JOIN `
-                            .append(MARKETPLACE_SQUID_SCHEMA)
-                            .append(
-                              SQL`.data est_data ON par_est.data_id = est_data.id
+                              .append(MARKETPLACE_SQUID_SCHEMA)
+                              .append(
+                                SQL`.data est_data ON par_est.data_id = est_data.id
           WHERE p.id = top_land.id
           LIMIT 1
       ) parcel_data ON TRUE
@@ -424,28 +424,29 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
           SELECT est.size,
                 array_agg(json_build_object('x', ep.x, 'y', ep.y)) AS estate_parcels
           FROM `
-                                .append(MARKETPLACE_SQUID_SCHEMA)
-                                .append(
-                                  SQL`.estate est
+                                  .append(MARKETPLACE_SQUID_SCHEMA)
+                                  .append(
+                                    SQL`.estate est
           LEFT JOIN `
-                                    .append(MARKETPLACE_SQUID_SCHEMA)
-                                    .append(
-                                      SQL`.parcel ep ON est.id = ep.estate_id
+                                      .append(MARKETPLACE_SQUID_SCHEMA)
+                                      .append(
+                                        SQL`.parcel ep ON est.id = ep.estate_id
           WHERE est.size > 0
             AND est.id = top_land.id
           GROUP BY est.size
           LIMIT 1
       ) estate_data ON TRUE
       `
-                                        .append(getNFTsSortBy(sortBy))
-                                        .append(SQL``)
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        )
-    )
+                                          .append(getNFTsSortBy(sortBy))
+                                          .append(SQL``)
+                                      )
+                                  )
+                              )
+                          )
+                      )
+                  )
+              )
+          )
+      )
+  )
 }
