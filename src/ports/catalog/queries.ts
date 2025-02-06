@@ -583,10 +583,15 @@ export const getTradesCTE = ({
                 'direction', assets_with_values.direction,
                 'beneficiary', assets_with_values.beneficiary,
                 'extra', assets_with_values.extra,
-                'token_id', assets_with_values.token_id,
+                'token_id', assets_with_values.token_id, 
                 'item_id', assets_with_values.item_id,
                 'amount', assets_with_values.amount,
-                'creator', assets_with_values.creator
+                'creator', assets_with_values.creator,
+                'owner', assets_with_values.nft_owner,
+                'category', assets_with_values.category,
+                'nft_id', assets_with_values.nft_id,
+                'issued_id', assets_with_values.issued_id,
+                'nft_name', assets_with_values.nft_name
               )
             ) AS assets,
              /* CASE #1: Single NFT (if you only expect ONE 'sent' per trade) */
@@ -624,7 +629,11 @@ export const getTradesCTE = ({
               erc20_asset.amount,
               item.creator,
               item.available,
-              account.address as nft_owner,
+              nft.owner_address as nft_owner,
+              nft.category,
+              nft.id as nft_id,
+              nft.issued_id as issued_id,
+              nft.name as nft_name,
               coalesce(nft.item_blockchain_id::text, item_asset.item_id) as item_id
           FROM marketplace.trade_assets AS ta
           LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset ON ta.id = erc721_asset.asset_id
@@ -632,7 +641,6 @@ export const getTradesCTE = ({
           LEFT JOIN marketplace.trade_assets_item AS item_asset ON ta.id = item_asset.asset_id
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item AS item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
-          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
         LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
         LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
