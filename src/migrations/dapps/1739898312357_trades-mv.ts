@@ -57,6 +57,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
         MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
         MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
+        MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
 
         CASE
             WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
@@ -170,41 +171,6 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     FOR EACH STATEMENT
     EXECUTE FUNCTION refresh_trades_mv();
 
-    -------------------------------------------------------------------------------
-    -- marketplace.trade_assets
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_trade_assets
-    AFTER INSERT OR UPDATE OR DELETE
-    ON marketplace.trade_assets
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
-
-    -------------------------------------------------------------------------------
-    -- marketplace.trade_assets_erc721
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_trade_assets_erc721
-    AFTER INSERT OR UPDATE OR DELETE
-    ON marketplace.trade_assets_erc721
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
-
-    -------------------------------------------------------------------------------
-    -- marketplace.trade_assets_erc20
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_trade_assets_erc20
-    AFTER INSERT OR UPDATE OR DELETE
-    ON marketplace.trade_assets_erc20
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
-
-    -------------------------------------------------------------------------------
-    -- marketplace.trade_assets_item
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_trade_assets_item
-    AFTER INSERT OR UPDATE OR DELETE
-    ON marketplace.trade_assets_item
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
 
     -------------------------------------------------------------------------------
     -- squid_marketplace.nft
@@ -245,15 +211,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
+  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades')
+  pgm.sql(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft`)
+  pgm.sql(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item`)
+  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade')
+  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index')
   pgm.dropMaterializedView(materializedViewName)
-  pgm.dropTrigger('marketplace.trades', 'refresh_trades_mv_on_trades')
   pgm.dropFunction('refresh_trades_mv', [])
-  pgm.dropTrigger('marketplace.trade_assets', 'refresh_trades_mv_on_trade_assets')
-  pgm.dropTrigger('marketplace.trade_assets_erc721', 'refresh_trades_mv_on_trade_assets_erc721')
-  pgm.dropTrigger('marketplace.trade_assets_erc20', 'refresh_trades_mv_on_trade_assets_erc20')
-  pgm.dropTrigger('marketplace.trade_assets_item', 'refresh_trades_mv_on_trade_assets_item')
-  pgm.dropTrigger(`${MARKETPLACE_SQUID_SCHEMA}.nft`, 'refresh_trades_mv_on_nft')
-  pgm.dropTrigger(`${MARKETPLACE_SQUID_SCHEMA}.item`, 'refresh_trades_mv_on_item')
-  pgm.dropTrigger('squid_trades.trade', 'refresh_trades_mv_on_squid_trades_trade')
-  pgm.dropTrigger('squid_trades.signature_index', 'refresh_trades_mv_on_signature_index')
 }
