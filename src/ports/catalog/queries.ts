@@ -6,16 +6,12 @@ import {
   EmoteCategory,
   EmotePlayMode,
   GenderFilterOption,
-  ListingStatus,
   NFTCategory,
   NFTSortBy,
   Network,
-  TradeType,
   WearableCategory
 } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
