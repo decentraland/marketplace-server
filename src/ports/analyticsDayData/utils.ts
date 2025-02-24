@@ -49,10 +49,10 @@ export function getAnalyticsTotalDataQuery(): SQLStatement {
   return SQL`
     SELECT 
       id,
-      SUM(sales) AS sales,
-      SUM(volume) AS volume,
-      SUM(creators_earnings),
-      SUM(dao_earnings)
+      SUM(sales) as sales,
+      SUM(volume) as volume,
+      SUM(creators_earnings) as creators_earnings,
+      SUM(dao_earnings) as dao_earnings
     FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.analytics_day_data
     GROUP BY id
   `)

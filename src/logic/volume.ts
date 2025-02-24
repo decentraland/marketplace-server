@@ -11,7 +11,7 @@ export function getAccumulatedAnalyticsData(days: AnalyticsDayData[]) {
 
   return days.reduce(
     (acc, day) => ({
-      sales: acc.sales + day.sales,
+      sales: acc.sales + Number(day.sales),
       volume: new BN(acc.volume).add(new BN(day.volume)).toString(),
       creatorsEarnings: new BN(acc.creatorsEarnings).add(new BN(day.creatorsEarnings)).toString(),
       daoEarnings: new BN(acc.daoEarnings).add(new BN(day.daoEarnings)).toString()
