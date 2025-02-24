@@ -155,7 +155,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         LANGUAGE plpgsql
         AS $$
         BEGIN
-        REFRESH MATERIALIZED VIEW CONCURRENTLY ${materializedViewName};
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_trades.${materializedViewName};
         RETURN NULL;
     END;
     $$;
