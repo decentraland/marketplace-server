@@ -1,4 +1,5 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
+import { NFTCategory } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
@@ -38,7 +39,8 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
     cteName: 'trades',
     sortBy: nftFilters.sortBy,
     first: nftFilters.first,
-    skip: nftFilters.skip
+    skip: nftFilters.skip,
+    category: NFTCategory.ENS
   })
     .append(
       SQL`
@@ -72,7 +74,6 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
             .append(
               SQL`
         SELECT
-          count(*) OVER () AS count,
           nft.id,
           nft.contract_address,
           nft.token_id,
@@ -97,10 +98,7 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
           GREATEST(to_timestamp(nft.search_order_created_at), trades.created_at) as order_created_at
           FROM
               filtered_ens_nfts nft
-          LEFT JOIN trades ON (trades.assets -> 'sent' ->> 'token_id')::numeric = nft.token_id
-            AND trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
-            AND trades.status = 'open'
-            AND trades.signer || '-' || nft.network = nft.owner_id
+          LEFT JOIN trades ON trades.sent_contract_address = nft.contract_address AND trades.sent_token_id::numeric = nft.token_id AND trades.status = 'open'
           LEFT JOIN `
                 .append(MARKETPLACE_SQUID_SCHEMA)
                 .append(
@@ -114,4 +112,40 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
             )
         )
     )
+}
+
+export const getENSsCount = (nftFilters: GetNFTsFilters) => {
+  return nftFilters.isOnSale
+    ? SQL`
+      SELECT count(*) AS total
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.nft nft
+      WHERE 
+          nft.category = 'ens'
+          AND (
+              EXISTS (
+                  SELECT 1
+                  FROM marketplace.mv_trades t
+                  WHERE t.status = 'open'
+                    AND t.sent_nft_category = 'ens'
+                    AND t.sent_contract_address = nft.contract_address
+                    AND t.sent_token_id::numeric = nft.token_id
+              )
+              OR 
+              EXISTS (
+                  SELECT 1
+                  FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`."order" o
+                  WHERE o.status = 'open'
+                    AND o.expires_at_normalized > now()
+                    AND o.nft_id = nft.id
+              )
+          );
+      `)
+        )
+    : SQL`
+    SELECT count(*) AS total
+    FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft nft
+    WHERE nft.category = 'ens'`)
 }
