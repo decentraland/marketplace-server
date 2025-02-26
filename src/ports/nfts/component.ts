@@ -7,6 +7,7 @@ import { AppComponents } from '../../types'
 import { getOrdersQuery } from '../orders/queries'
 import { DBOrder } from '../orders/types'
 import { formatQueryForLogging } from '../utils'
+import { getENSsCount } from './ensQueries'
 import { InvalidSearchByTenantAndOwnerError, InvalidTokenIdError, MissingContractAddressParamError } from './errors'
 import { getNFTsQuery } from './queries'
 import { DBNFT, INFTsComponent } from './types'
@@ -56,8 +57,12 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
           asset => `${asset.contractAddress === estateContract?.address ? 'estate' : 'parcel'}-${asset.contractAddress}-${asset.tokenId}`
         )
       }
+
       query = getNFTsQuery({ ...nftFilters, rentalAssetsIds })
-      const nfts = await client.query<DBNFT>(query)
+      const [nfts, total] =
+        nftFilters.category === NFTCategory.ENS
+          ? await Promise.all([client.query<DBNFT>(query), client.query<{ total: number }>(getENSsCount(nftFilters))])
+          : await Promise.all([client.query<DBNFT>(query), Promise.resolve()])
       const nftIds = nfts.rows.map(nft => nft.id)
       query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner }, 'combined_nft_orders') // Added a specific prefix to track this queries in the logs easily
       const orders = await client.query<DBOrder>(query)
@@ -71,7 +76,7 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
 
       return {
         data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
-        total: nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
+        total: total ? total.rows[0]?.total ?? 0 : nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
       }
     } catch (error) {
       if ((error as Error).message === 'Query read timeout') {
