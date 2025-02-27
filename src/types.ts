@@ -29,7 +29,7 @@ import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
 import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { IStatsComponent } from './ports/stats/types'
-import { ITradesComponent } from './ports/trades'
+import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
 import { IVolumeComponent } from './ports/volume/types'
@@ -109,7 +109,8 @@ export enum StatusCode {
   LOCKED = 423,
   CONFLICT = 409,
   ERROR = 500,
-  UNPROCESSABLE_CONTENT = 422
+  UNPROCESSABLE_CONTENT = 422,
+  INTERNAL_SERVER_ERROR = 500
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

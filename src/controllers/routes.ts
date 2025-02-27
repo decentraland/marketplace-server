@@ -1,5 +1,6 @@
 import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { GlobalContext } from '../types'
 import { createBalanceHandler } from './handlers/balance-handler'
@@ -15,7 +16,13 @@ import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
 import { getSalesHandler } from './handlers/sales-handler'
 import { getStatsHandler } from './handlers/stats-handler'
-import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler, getTradesHandler } from './handlers/trades-handler'
+import {
+  addTradeHandler,
+  getTradeAcceptedEventHandler,
+  getTradeHandler,
+  getTradesHandler,
+  recreateTradesMaterializedViewHandler
+} from './handlers/trades-handler'
 import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { getVolumeHandler } from './handlers/volume-handler'
@@ -112,6 +119,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/stats/:category/:stat', getStatsHandler)
   router.get('/v1/rankings/:entity/:timeframe', getRankingsHandler)
   router.get('/v1/volume/:timeframe', getVolumeHandler)
+  router.post('/v1/trades/materialized-view/recreate', createTradesViewAuthMiddleware(), recreateTradesMaterializedViewHandler)
 
   setupFavoritesRouter(router, { components })
 
