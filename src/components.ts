@@ -47,7 +47,7 @@ export async function initComponents(): Promise<AppComponents> {
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
-  const logs = await createLogComponent({ metrics })
+  const logs = await createLogComponent({ metrics, tracer })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent({ tracer })
