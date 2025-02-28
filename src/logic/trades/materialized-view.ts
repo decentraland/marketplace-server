@@ -14,6 +14,20 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   try {
     await client.query('BEGIN')
 
+    // Create role if not exists
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mv_trades_owner') THEN
+          CREATE ROLE mv_trades_owner NOLOGIN;
+        END IF;
+      END
+      $$;
+      
+      -- Grant the role to the database user
+      GRANT mv_trades_owner TO CURRENT_USER;
+    `)
+
     // Drop triggers
     await client.query('DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades')
     await client.query(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft`)
@@ -73,7 +87,7 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
           MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
           MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
-
+          MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
           CASE
               WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
               WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
@@ -163,8 +177,20 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           si_signer.index;
     `)
 
-    // Create index
+    // Create primary index
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_trades_id ON marketplace.${TRADES_MV_NAME} (id)`)
+
+    // Create additional indexes for performance optimization
+    // Status and type - improves queries filtering by open trades and specific trade types
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_status_type ON marketplace.${TRADES_MV_NAME} (status, type)`)
+    // Creation date - optimizes queries sorting by recently listed
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_created_at ON marketplace.${TRADES_MV_NAME} (created_at DESC)`)
+    // Category - improves queries filtering by NFT category
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_category ON marketplace.${TRADES_MV_NAME} (sent_nft_category)`)
+    // Contract and token - optimizes joins with NFT tables
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
+    )
 
     // Create refresh function
     await client.query(`
@@ -211,6 +237,9 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       FOR EACH STATEMENT
       EXECUTE FUNCTION refresh_trades_mv();
     `)
+
+    // Set the owner of the materialized view
+    await client.query(`ALTER MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} OWNER TO mv_trades_owner;`)
 
     await client.query('COMMIT')
   } catch (error) {

@@ -11,6 +11,21 @@ export const shorthands: ColumnDefinitions | undefined = undefined
 export async function up(pgm: MigrationBuilder): Promise<void> {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+
+  // Create role if not exists
+  pgm.sql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mv_trades_owner') THEN
+        CREATE ROLE mv_trades_owner NOLOGIN;
+      END IF;
+    END
+    $$;
+    
+    -- Grant the role to the database user
+    GRANT mv_trades_owner TO dapps_marketplace_user;
+  `)
+
   pgm.createMaterializedView(
     materializedViewName,
     { ifNotExists: true },
@@ -58,6 +73,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
         MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
         MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
+        MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
 
         CASE
             WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
@@ -149,6 +165,19 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     `
   )
   pgm.addIndex(materializedViewName, ['id'], { name: 'idx_mv_trades_id', unique: true, ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['status', 'type'], { name: 'idx_mv_trades_status_type', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['created_at'], { name: 'idx_mv_trades_created_at', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['sent_nft_category'], { name: 'idx_mv_trades_category', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['contract_address_sent', 'sent_token_id'], {
+    name: 'idx_mv_trades_contract_token',
+    ifNotExists: true
+  })
+
+  // Set the owner of the materialized view
+  pgm.sql(`
+    ALTER MATERIALIZED VIEW marketplace.${materializedViewName} OWNER TO mv_trades_owner;
+  `)
+
   pgm.sql(`
     CREATE OR REPLACE FUNCTION refresh_trades_mv()
         RETURNS TRIGGER
@@ -216,6 +245,30 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
   pgm.sql(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item`)
   pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade')
   pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index')
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_item_id')
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_contract_token')
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_category')
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_created_at')
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_status_type')
   pgm.dropMaterializedView(materializedViewName)
   pgm.dropFunction('refresh_trades_mv', [])
+  // Attempt to revoke permissions and drop role if possible
+  pgm.sql(`
+    -- Revoke permissions from the database user
+    REVOKE mv_trades_owner FROM dapps_marketplace_user;
+    
+    -- Try to drop the role if it's not being used elsewhere
+    DO $$
+    BEGIN
+      -- Check if the role is not being used by other objects
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_roles r ON r.oid = c.relowner
+        WHERE r.rolname = 'mv_trades_owner' AND c.relname != '${materializedViewName}'
+      ) THEN
+        DROP ROLE IF EXISTS mv_trades_owner;
+      END IF;
+    END
+    $$;
+  `)
 }

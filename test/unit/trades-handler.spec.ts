@@ -347,58 +347,64 @@ describe('when handling the retrieval of a trade accepted event', () => {
     })
   })
 
-  describe('recreateTradesMaterializedViewHandler', () => {
-    it('should recreate the materialized view successfully', async () => {
-      const recreateMaterializedViewMock = jest.fn().mockResolvedValue(undefined)
-      const mockTrades = {
-        recreateMaterializedView: recreateMaterializedViewMock
-      }
+  describe('when handling a materialized view recreation request', () => {
+    let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/materialized-view/recreate'>, 'components'>
+    let recreateMaterializedViewMock: jest.Mock
 
-      const context = {
+    beforeEach(() => {
+      recreateMaterializedViewMock = jest.fn()
+      context = {
         components: {
-          trades: mockTrades
+          trades: {
+            recreateMaterializedView: recreateMaterializedViewMock,
+            getTrades: jest.fn(),
+            addTrade: jest.fn(),
+            getTrade: jest.fn(),
+            getTradeAcceptedEvent: jest.fn()
+          }
         }
       }
-
-      const result = await recreateTradesMaterializedViewHandler(
-        context as unknown as Pick<HandlerContextWithPath<'trades', '/v1/trades/materialized-view/recreate'>, 'components'>
-      )
-
-      expect(result).toEqual({
-        status: StatusCode.OK,
-        body: {
-          ok: true,
-          message: 'Materialized view recreated successfully'
-        }
-      })
-      expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
     })
 
-    it('should handle errors when recreating the materialized view', async () => {
-      const error = new Error('Test error')
-      const recreateMaterializedViewMock = jest.fn().mockRejectedValue(error)
-      const mockTrades = {
-        recreateMaterializedView: recreateMaterializedViewMock
-      }
-
-      const context = {
-        components: {
-          trades: mockTrades
-        }
-      }
-
-      const result = await recreateTradesMaterializedViewHandler(
-        context as unknown as Pick<HandlerContextWithPath<'trades', '/v1/trades/materialized-view/recreate'>, 'components'>
-      )
-
-      expect(result).toEqual({
-        status: StatusCode.INTERNAL_SERVER_ERROR,
-        body: {
-          ok: false,
-          message: 'Test error'
-        }
+    describe('and the recreation is successful', () => {
+      beforeEach(() => {
+        recreateMaterializedViewMock.mockResolvedValue(undefined)
       })
-      expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
+
+      it('should respond with a 200 status code', async () => {
+        const result = await recreateTradesMaterializedViewHandler(context)
+
+        expect(result).toEqual({
+          status: StatusCode.OK,
+          body: {
+            ok: true,
+            message: 'Materialized view recreated successfully'
+          }
+        })
+        expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    describe('and the recreation fails', () => {
+      let error: Error
+
+      beforeEach(() => {
+        error = new Error('Test error')
+        recreateMaterializedViewMock.mockRejectedValue(error)
+      })
+
+      it('should respond with a 500 status code', async () => {
+        const result = await recreateTradesMaterializedViewHandler(context)
+
+        expect(result).toEqual({
+          status: StatusCode.INTERNAL_SERVER_ERROR,
+          body: {
+            ok: false,
+            message: 'Test error'
+          }
+        })
+        expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
+      })
     })
   })
 })
