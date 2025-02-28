@@ -203,3 +203,31 @@ export async function getTradeAcceptedEventHandler(
     }
   }
 }
+
+export async function recreateTradesMaterializedViewHandler(
+  context: Pick<HandlerContextWithPath<'trades', '/v1/trades/materialized-view/recreate'>, 'components'>
+) {
+  try {
+    const {
+      components: { trades }
+    } = context
+
+    await trades.recreateMaterializedView()
+
+    return {
+      status: StatusCode.OK,
+      body: {
+        ok: true,
+        message: 'Materialized view recreated successfully'
+      }
+    }
+  } catch (e) {
+    return {
+      status: StatusCode.INTERNAL_SERVER_ERROR,
+      body: {
+        ok: false,
+        message: isErrorWithMessage(e) ? e.message : 'Could not recreate materialized view'
+      }
+    }
+  }
+}

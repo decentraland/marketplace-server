@@ -2,6 +2,7 @@ import SQL from 'sql-template-strings'
 import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
+import { recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
@@ -137,10 +138,15 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
     }
   }
 
+  async function recreateMaterializedView() {
+    await recreateTradesMaterializedView(pg)
+  }
+
   return {
     getTrades,
     addTrade,
     getTrade,
-    getTradeAcceptedEvent
+    getTradeAcceptedEvent,
+    recreateMaterializedView
   }
 }

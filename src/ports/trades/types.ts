@@ -5,6 +5,7 @@ export type ITradesComponent = {
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
   getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>
+  recreateMaterializedView(): Promise<void>
 }
 
 export enum TradeEvent {
