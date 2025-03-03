@@ -14,32 +14,48 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   try {
     await client.query('BEGIN')
 
-    // Create role if not exists
+    // Drop triggers with exception handling
     await client.query(`
       DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mv_trades_owner') THEN
-          CREATE ROLE mv_trades_owner NOLOGIN;
-        END IF;
+        BEGIN
+          DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades;
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_trades';
+        END;
+
+        BEGIN
+          DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft;
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_nft';
+        END;
+
+        BEGIN
+          DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item;
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_item';
+        END;
+
+        BEGIN
+          DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade;
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_squid_trades_trade';
+        END;
+
+        BEGIN
+          DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index;
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_signature_index';
+        END;
       END
       $$;
-      
-      -- Grant the role to the database user
-      GRANT mv_trades_owner TO CURRENT_USER;
     `)
-
-    // Drop triggers
-    await client.query('DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades')
-    await client.query(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft`)
-    await client.query(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item`)
-    await client.query('DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade')
-    await client.query('DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index')
 
     // Drop materialized view
     await client.query(`DROP MATERIALIZED VIEW IF EXISTS marketplace.${TRADES_MV_NAME}`)
 
     // Drop function
-    await client.query('DROP FUNCTION IF EXISTS refresh_trades_mv()')
+    await client.query('DROP FUNCTION IF EXISTS refresh_trades_mv() CASCADE')
 
     // Create materialized view
     await client.query(`
@@ -205,37 +221,61 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       $$;
     `)
 
-    // Create triggers
+    // Create triggers with exception handling
     await client.query(`
-      CREATE TRIGGER refresh_trades_mv_on_trades
-      AFTER INSERT OR UPDATE OR DELETE
-      ON marketplace.trades
-      FOR EACH STATEMENT
-      EXECUTE FUNCTION refresh_trades_mv();
+      DO $$
+      BEGIN
+        BEGIN
+          CREATE TRIGGER refresh_trades_mv_on_trades
+          AFTER INSERT OR UPDATE OR DELETE
+          ON marketplace.trades
+          FOR EACH STATEMENT
+          EXECUTE FUNCTION refresh_trades_mv();
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_trades';
+        END;
 
-      CREATE TRIGGER refresh_trades_mv_on_nft
-      AFTER INSERT OR UPDATE OR DELETE
-      ON ${MARKETPLACE_SQUID_SCHEMA}.nft
-      FOR EACH STATEMENT
-      EXECUTE FUNCTION refresh_trades_mv();
+        BEGIN
+          CREATE TRIGGER refresh_trades_mv_on_nft
+          AFTER INSERT OR UPDATE OR DELETE
+          ON ${MARKETPLACE_SQUID_SCHEMA}.nft
+          FOR EACH STATEMENT
+          EXECUTE FUNCTION refresh_trades_mv();
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_nft';
+        END;
 
-      CREATE TRIGGER refresh_trades_mv_on_item
-      AFTER INSERT OR UPDATE OR DELETE
-      ON ${MARKETPLACE_SQUID_SCHEMA}.item
-      FOR EACH STATEMENT
-      EXECUTE FUNCTION refresh_trades_mv();
+        BEGIN
+          CREATE TRIGGER refresh_trades_mv_on_item
+          AFTER INSERT OR UPDATE OR DELETE
+          ON ${MARKETPLACE_SQUID_SCHEMA}.item
+          FOR EACH STATEMENT
+          EXECUTE FUNCTION refresh_trades_mv();
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_item';
+        END;
 
-      CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
-      AFTER INSERT OR UPDATE OR DELETE
-      ON squid_trades.trade
-      FOR EACH STATEMENT
-      EXECUTE FUNCTION refresh_trades_mv();
+        BEGIN
+          CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
+          AFTER INSERT OR UPDATE OR DELETE
+          ON squid_trades.trade
+          FOR EACH STATEMENT
+          EXECUTE FUNCTION refresh_trades_mv();
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_squid_trades_trade';
+        END;
 
-      CREATE TRIGGER refresh_trades_mv_on_signature_index
-      AFTER INSERT OR UPDATE OR DELETE
-      ON squid_trades.signature_index
-      FOR EACH STATEMENT
-      EXECUTE FUNCTION refresh_trades_mv();
+        BEGIN
+          CREATE TRIGGER refresh_trades_mv_on_signature_index
+          AFTER INSERT OR UPDATE OR DELETE
+          ON squid_trades.signature_index
+          FOR EACH STATEMENT
+          EXECUTE FUNCTION refresh_trades_mv();
+        EXCEPTION WHEN insufficient_privilege THEN
+          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_signature_index';
+        END;
+      END
+      $$;
     `)
 
     // Set the owner of the materialized view
