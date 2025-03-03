@@ -13,7 +13,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON SCHEMA squid_trades TO testuser;
 
     CREATE ROLE mv_trades_owner NOLOGIN;
-    GRANT mv_trades_owner TO dapps_marketplace_user;
+    GRANT mv_trades_owner TO testuser;
     GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
     GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
 
