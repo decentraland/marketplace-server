@@ -12,6 +12,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON SCHEMA squid_marketplace TO testuser;
     GRANT ALL PRIVILEGES ON SCHEMA squid_trades TO testuser;
 
+    CREATE ROLE mv_trades_owner NOLOGIN;
+    GRANT mv_trades_owner TO dapps_marketplace_user;
+    GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
+    GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
+
     -- SET UP EXTENSIONS
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "postgres_fdw";
