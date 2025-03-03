@@ -46,14 +46,14 @@ function getAllLANDWheres(filters: GetNFTsFilters & { rentalAssetsIds?: string[]
       ? SQL` (nft.owner_id = ${ownerEthereumAddress} OR nft.owner_id = ${ownerPolygonAddress}) `
       : null
   const FILTER_BY_MIN_PRICE = minPrice
-    ? SQL` (nft.search_order_price >= ${minPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice})`
+    ? SQL` (nft.search_order_price >= ${minPrice} OR (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice})`
     : null
-  const FILTER_BY_MIN_TRADE_PRICE = minPrice ? SQL` (trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice}` : null
+  const FILTER_BY_MIN_TRADE_PRICE = minPrice ? SQL` (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${minPrice}` : null
   const FILTER_BY_MIN_ORDER_PRICE = minPrice ? SQL` nft.search_order_price >= ${minPrice}` : null
   const FILTER_BY_MAX_PRICE = maxPrice
-    ? SQL` (nft.search_order_price <= ${maxPrice} OR (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice})`
+    ? SQL` (nft.search_order_price <= ${maxPrice} OR (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice})`
     : null
-  const FILTER_BY_MAX_TRADE_PRICE = maxPrice ? SQL` (trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice}` : null
+  const FILTER_BY_MAX_TRADE_PRICE = maxPrice ? SQL` (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${maxPrice}` : null
   const FILTER_BY_MAX_ORDER_PRICE = maxPrice ? SQL` nft.search_order_price <= ${maxPrice}` : null
   const FILTER_BY_MIN_PLAZA_DISTANCE = minDistanceToPlaza ? SQL` search_distance_to_plaza >= ${minDistanceToPlaza} ` : null
   const FILTER_BY_MAX_PLAZA_DISTANCE = maxDistanceToPlaza ? SQL` search_distance_to_plaza <= ${maxDistanceToPlaza} ` : null
