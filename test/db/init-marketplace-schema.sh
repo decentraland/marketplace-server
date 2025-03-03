@@ -17,6 +17,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
     GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
     GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;
+    GRANT ALL PRIVILEGES ON SCHEMA squid_marketplace TO mv_trades_owner;
 
     -- SET UP EXTENSIONS
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
