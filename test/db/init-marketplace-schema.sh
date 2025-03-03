@@ -1,16 +1,15 @@
 #!/bin/bash
 set -e
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-	CREATE SCHEMA marketplace;
-    CREATE SCHEMA squid_marketplace;
-    CREATE SCHEMA squid_trades;
-    
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL    
     -- CREATE THE ROLE AND ASSIGN IT TO THE PREVIOUSLY CREATED DB
     CREATE ROLE testuser WITH LOGIN PASSWORD 'testpassword';
-    GRANT ALL PRIVILEGES ON SCHEMA marketplace TO testuser;
-    GRANT ALL PRIVILEGES ON SCHEMA squid_marketplace TO testuser;
-    GRANT ALL PRIVILEGES ON SCHEMA squid_trades TO testuser;
+
+
+    SET ROLE testuser;
+    CREATE SCHEMA marketplace;
+    CREATE SCHEMA squid_marketplace;
+    CREATE SCHEMA squid_trades;
 
     CREATE ROLE mv_trades_owner NOLOGIN;
     GRANT mv_trades_owner TO testuser;
