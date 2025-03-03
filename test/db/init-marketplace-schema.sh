@@ -6,12 +6,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE SCHEMA squid_marketplace;
     CREATE SCHEMA squid_trades;
 
-    CREATE ROLE mv_trades_owner NOLOGIN;
-    GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
-    GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
-    GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;
-    GRANT ALL PRIVILEGES ON SCHEMA squid_marketplace TO mv_trades_owner;
-
     -- SET UP EXTENSIONS
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "postgres_fdw";
@@ -482,141 +476,13 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     );
     CREATE INDEX "IDX_f011ccea27833b0628a7532834" ON squid_marketplace."wearable" ("owner_id");
 
-
-    CREATE MATERIALIZED VIEW marketplace.mv_trades AS
-    WITH trades_owner_ok AS (
-        SELECT t.id
-        FROM marketplace.trades t
-        JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
-        LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
-        LEFT JOIN squid_marketplace.nft nft
-        ON  ta.contract_address = nft.contract_address
-        AND ta.direction = 'sent'
-        AND nft.token_id = erc721_asset.token_id::numeric
-        WHERE t.type IN ('public_item_order', 'public_nft_order')
-        GROUP BY t.id
-        HAVING bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
-    )
-    SELECT
-        t.id,
-        t.created_at,
-        t.type,
-        t.signer,
-
-        -- Keep all the SELECT logic from your `unified_trades` CTE
-        MAX(CASE WHEN av.direction = 'sent'     THEN av.contract_address END) AS contract_address_sent,
-        MAX(CASE WHEN av.direction = 'received' THEN av.amount END)          AS amount_received,
-        MAX(CASE WHEN av.direction = 'sent'     THEN av.available END)       AS available,
-        json_object_agg(
-            av.direction,
-            json_build_object(
-                'contract_address', av.contract_address,
-                'direction',        av.direction,
-                'beneficiary',      av.beneficiary,
-                'extra',            av.extra,
-                'token_id',         av.token_id,
-                'item_id',          av.item_id,
-                'amount',           av.amount,
-                'creator',          av.creator,
-                'owner',            av.nft_owner,
-                'category',         av.category,
-                'nft_id',           av.nft_id,
-                'issued_id',        av.issued_id,
-                'nft_name',         av.nft_name
-            )
-        ) AS assets,
-
-        MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
-        MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
-
-        CASE
-            WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
-            WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
-            WHEN (
-                (si_signer.index IS NOT NULL
-                    AND si_signer.index != (t.checks ->> 'signerSignatureIndex')::int)
-                OR (si_signer.index IS NULL
-                    AND (t.checks ->> 'signerSignatureIndex')::int != 0)
-                )
-                                                                                    THEN 'cancelled'
-            WHEN (
-                (si_contract.index IS NOT NULL
-                    AND si_contract.index != (t.checks ->> 'contractSignatureIndex')::int)
-                OR (si_contract.index IS NULL
-                    AND (t.checks ->> 'contractSignatureIndex')::int != 0)
-                )
-                                                                                    THEN 'cancelled'
-            WHEN COUNT(CASE WHEN st.action = 'executed' THEN 1 END)
-                >= (t.checks ->> 'uses')::int                                       THEN 'sold'
-            ELSE 'open'
-        END AS status
-
-    FROM marketplace.trades      AS t
-    JOIN trades_owner_ok         AS ok
-    ON t.id = ok.id
-
-    JOIN (
-        SELECT
-            ta.id,
-            ta.trade_id,
-            ta.contract_address,
-            ta.direction,
-            ta.beneficiary,
-            ta.extra,
-            erc721_asset.token_id,
-            erc20_asset.amount,
-            item.creator,
-            item.available,
-            nft.owner_address      AS nft_owner,
-            nft.category,
-            nft.id                AS nft_id,
-            nft.issued_id         AS issued_id,
-            nft.name             AS nft_name,
-            coalesce(nft.item_blockchain_id::text, item_asset.item_id) AS item_id
-        FROM marketplace.trade_assets AS ta
-        LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset
-            ON ta.id = erc721_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_erc20 AS erc20_asset
-            ON ta.id = erc20_asset.asset_id
-        LEFT JOIN marketplace.trade_assets_item AS item_asset
-            ON ta.id = item_asset.asset_id
-        LEFT JOIN squid_marketplace.item AS item
-            ON ta.contract_address = item.collection_id
-            AND item_asset.item_id::numeric = item.blockchain_id
-        LEFT JOIN squid_marketplace.nft AS nft
-            ON ta.contract_address = nft.contract_address
-            AND erc721_asset.token_id::numeric = nft.token_id
-    ) AS av
-    ON t.id = av.trade_id
-
-    LEFT JOIN squid_trades.trade AS st
-    ON st.signature = t.hashed_signature
-
-    LEFT JOIN squid_trades.signature_index AS si_signer
-    ON LOWER(si_signer.address) = LOWER(t.signer)
-
-    LEFT JOIN (
-        SELECT *
-        FROM squid_trades.signature_index idx
-        WHERE LOWER(idx.address) IN (
-            '0x2d6b3508f9aca32d2550f92b2addba932e73c1ff',
-            '0x540fb08edb56aae562864b390542c97f562825ba'
-        )
-    ) AS si_contract
-    ON t.network = si_contract.network
-
-    WHERE t.type IN ('public_item_order', 'public_nft_order')
-    GROUP BY
-        t.id,
-        t.type,
-        t.created_at,
-        t.network,
-        t.chain_id,
-        t.signer,
-        t.checks,
-        si_contract.index,
-        si_signer.index;
-
-    CREATE INDEX idx_mv_trades_id ON marketplace.mv_trades (id);
+    CREATE ROLE mv_trades_owner NOLOGIN;
+    GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
+    GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
+    GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;
+    GRANT ALL PRIVILEGES ON SCHEMA squid_marketplace TO mv_trades_owner;
+    GRANT ALL PRIVILEGES ON SCHEMA marketplace TO mv_trades_owner;
+    GRANT SELECT ON ALL TABLES IN SCHEMA squid_trades TO mv_trades_owner;
+    GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace TO mv_trades_owner;
 
 EOSQL
