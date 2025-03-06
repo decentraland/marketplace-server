@@ -171,7 +171,11 @@ export function getOrderBy(filters: CatalogFilters, isV2 = false) {
   }
   switch (sortByParam) {
     case CatalogSortBy.NEWEST:
-      sortByQuery.append(SQL`first_listed_at desc NULLS last \n`)
+      sortByQuery.append(SQL`
+        GREATEST(
+          COALESCE(ROUND(EXTRACT(EPOCH FROM offchain_orders.item_first_listed_at)), 0),
+          first_listed_at
+        ) desc nulls LAST \n`)
       break
     case CatalogSortBy.MOST_EXPENSIVE:
       sortByQuery.append(SQL`max_price desc \n`)
@@ -558,6 +562,7 @@ const getTradesJoin = () => {
               MAX(created_at) AS max_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
+              MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
           FROM unified_trades
             WHERE status = 'open'
