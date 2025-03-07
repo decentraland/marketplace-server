@@ -190,20 +190,36 @@ export function getCreatorsDayDataQuery(filters: RankingsFilters, page = 0) {
 
   return filters.from === 0
     ? SQL`
-      SELECT id, sales, earned, unique_collections_sales, unique_collectors_total
-      FROM accounts
-      WHERE `.append(where).append(SQL`
-      ORDER BY ${orderBy} ${orderDirection}
+      SELECT id, sales, earned, unique_collections_sales as "uniqueCollectionsSales", unique_collectors_total as "uniqueCollectorsTotal"
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.accounts
+      WHERE `
+            .append(where)
+            .append(
+              SQL`
+      ORDER BY ${orderBy}`.append(orderDirection).append(SQL`
       ${filters.first ? SQL`LIMIT ${filters.first}` : SQL``}
     `)
+            )
+        )
     : SQL`
-      SELECT id, sales, earned, unique_collections_sales, unique_collectors_total
-      FROM accounts_day_data
-      WHERE `.append(where).append(SQL`
-      ORDER BY ${orderBy} ${orderDirection}
+      SELECT id, sales, earned, unique_collections_sales as "uniqueCollectionsSales", unique_collectors_total as "uniqueCollectorsTotal"
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.accounts_day_data
+      WHERE `
+            .append(where)
+            .append(
+              SQL`
+      ORDER BY ${orderBy}`.append(orderDirection).append(SQL`
       LIMIT ${MAX_RESULTS}
       OFFSET ${MAX_RESULTS * page}
     `)
+            )
+        )
 }
 
 // Collectors
@@ -212,20 +228,36 @@ export function getCollectorsDayDataQuery(filters: RankingsFilters, page = 0) {
 
   return filters.from === 0
     ? SQL`
-      SELECT id, purchases, spent, unique_and_mythic_items, creators_supported_total
-      FROM accounts
-      WHERE `.append(where).append(SQL`
-      ORDER BY ${orderBy} ${orderDirection}
+      SELECT id, purchases, spent, unique_and_mythic_items as "uniqueAndMythicItems", creators_supported_total as "creatorsSupportedTotal"
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.accounts
+      WHERE `
+            .append(where)
+            .append(
+              SQL`
+      ORDER BY ${orderBy} `.append(orderDirection).append(SQL`
       ${filters.first ? SQL`LIMIT ${filters.first}` : SQL``}
     `)
+            )
+        )
     : SQL`
-      SELECT id, purchases, spent, unique_and_mythic_items, creators_supported_total
-      FROM accounts_day_data
-      WHERE `.append(where).append(SQL`
-      ORDER BY ${orderBy} ${orderDirection}
+      SELECT id, purchases, spent, unique_and_mythic_items as "uniqueAndMythicItems", creators_supported_total as "creatorsSupportedTotal"
+      FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.accounts_day_data
+      WHERE `
+            .append(where)
+            .append(
+              SQL`
+      ORDER BY ${orderBy} `.append(orderDirection).append(SQL`
       LIMIT ${MAX_RESULTS}
       OFFSET ${MAX_RESULTS * page}
     `)
+            )
+        )
 }
 
 export function sortRankResults(
