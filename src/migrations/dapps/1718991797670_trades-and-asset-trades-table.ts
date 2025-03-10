@@ -110,6 +110,16 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       item_id: { type: 'text', notNull: true }
     }
   )
+
+  // pgm.sql('GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;')
+  pgm.sql(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mv_trades_owner') THEN
+        EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner';
+      END IF;
+    END $$;
+`)
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {

@@ -1,6 +1,11 @@
 import { Request } from 'node-fetch'
 import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
-import { addTradeHandler, getTradeAcceptedEventHandler, getTradeHandler } from '../../src/controllers/handlers/trades-handler'
+import {
+  addTradeHandler,
+  getTradeAcceptedEventHandler,
+  getTradeHandler,
+  recreateTradesMaterializedViewHandler
+} from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
   EstateContractNotFoundForChainId,
@@ -27,6 +32,7 @@ describe('when handling the creation of a new trade', () => {
       },
       components: {
         trades: {
+          recreateMaterializedView: jest.fn().mockResolvedValue({}),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
           addTrade: jest.fn().mockResolvedValue({}),
           getTrade: jest.fn().mockResolvedValue({} as Trade),
@@ -157,6 +163,7 @@ describe('when handling the retrieval of a trade', () => {
         },
         components: {
           trades: {
+            recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockResolvedValue(trade),
@@ -191,6 +198,7 @@ describe('when handling the retrieval of a trade', () => {
         },
         components: {
           trades: {
+            recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
@@ -226,6 +234,7 @@ describe('when handling the retrieval of a trade', () => {
         },
         components: {
           trades: {
+            recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
@@ -258,6 +267,7 @@ describe('when handling the retrieval of a trade accepted event', () => {
       url: new URL('http://test.com/v1/trades/asignature/accept'),
       components: {
         trades: {
+          recreateMaterializedView: jest.fn().mockResolvedValue({}),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
           addTrade: jest.fn().mockResolvedValue({}),
           getTrade: jest.fn().mockResolvedValue({}),
@@ -333,6 +343,67 @@ describe('when handling the retrieval of a trade accepted event', () => {
           ok: true,
           data: event
         }
+      })
+    })
+  })
+
+  describe('when handling a materialized view recreation request', () => {
+    let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/materialized-view/recreate'>, 'components'>
+    let recreateMaterializedViewMock: jest.Mock
+
+    beforeEach(() => {
+      recreateMaterializedViewMock = jest.fn()
+      context = {
+        components: {
+          trades: {
+            recreateMaterializedView: recreateMaterializedViewMock,
+            getTrades: jest.fn(),
+            addTrade: jest.fn(),
+            getTrade: jest.fn(),
+            getTradeAcceptedEvent: jest.fn()
+          }
+        }
+      }
+    })
+
+    describe('and the recreation is successful', () => {
+      beforeEach(() => {
+        recreateMaterializedViewMock.mockResolvedValue(undefined)
+      })
+
+      it('should respond with a 200 status code', async () => {
+        const result = await recreateTradesMaterializedViewHandler(context)
+
+        expect(result).toEqual({
+          status: StatusCode.OK,
+          body: {
+            ok: true,
+            message: 'Materialized view recreated successfully'
+          }
+        })
+        expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    describe('and the recreation fails', () => {
+      let error: Error
+
+      beforeEach(() => {
+        error = new Error('Test error')
+        recreateMaterializedViewMock.mockRejectedValue(error)
+      })
+
+      it('should respond with a 500 status code', async () => {
+        const result = await recreateTradesMaterializedViewHandler(context)
+
+        expect(result).toEqual({
+          status: StatusCode.INTERNAL_SERVER_ERROR,
+          body: {
+            ok: false,
+            message: 'Test error'
+          }
+        })
+        expect(recreateMaterializedViewMock).toHaveBeenCalledTimes(1)
       })
     })
   })

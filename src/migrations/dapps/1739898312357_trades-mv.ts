@@ -11,10 +11,8 @@ export const shorthands: ColumnDefinitions | undefined = undefined
 export async function up(pgm: MigrationBuilder): Promise<void> {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  pgm.createMaterializedView(
-    materializedViewName,
-    { ifNotExists: true },
-    `
+
+  const viewSQL = `
     WITH trades_owner_ok AS (
         SELECT t.id
         FROM marketplace.trades t
@@ -58,6 +56,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
         MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
         MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
+        MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
 
         CASE
             WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
@@ -147,8 +146,23 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         si_contract.index,
         si_signer.index;
     `
-  )
+
+  pgm.createMaterializedView(materializedViewName, { ifNotExists: true }, viewSQL)
   pgm.addIndex(materializedViewName, ['id'], { name: 'idx_mv_trades_id', unique: true, ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['status', 'type'], { name: 'idx_mv_trades_status_type', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['created_at'], { name: 'idx_mv_trades_created_at', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['sent_nft_category'], { name: 'idx_mv_trades_category', ifNotExists: true })
+  pgm.addIndex(materializedViewName, ['contract_address_sent', 'sent_token_id'], {
+    name: 'idx_mv_trades_contract_token',
+    ifNotExists: true
+  })
+
+  // Set the owner of the materialized view
+  pgm.sql(`
+    ALTER MATERIALIZED VIEW marketplace.${materializedViewName} OWNER TO mv_trades_owner;
+  `)
+
+  // Create refresh function
   pgm.sql(`
     CREATE OR REPLACE FUNCTION refresh_trades_mv()
         RETURNS TRIGGER
@@ -161,61 +175,108 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     $$;
   `)
 
+  // Create triggers with exception handling
   pgm.sql(`
-    -------------------------------------------------------------------------------
-    -- marketplace.trades
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_trades
-    AFTER INSERT OR UPDATE OR DELETE
-    ON marketplace.trades
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
+    DO $$
+    BEGIN
+      BEGIN
+        CREATE TRIGGER refresh_trades_mv_on_trades
+        AFTER INSERT OR UPDATE OR DELETE
+        ON marketplace.trades
+        FOR EACH STATEMENT
+        EXECUTE FUNCTION refresh_trades_mv();
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_trades';
+      END;
 
+      BEGIN
+        CREATE TRIGGER refresh_trades_mv_on_nft
+        AFTER INSERT OR UPDATE OR DELETE
+        ON ${MARKETPLACE_SQUID_SCHEMA}.nft
+        FOR EACH STATEMENT
+        EXECUTE FUNCTION refresh_trades_mv();
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_nft';
+      END;
 
-    -------------------------------------------------------------------------------
-    -- squid_marketplace.nft
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_nft
-    AFTER INSERT OR UPDATE OR DELETE
-    ON ${MARKETPLACE_SQUID_SCHEMA}.nft
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
+      BEGIN
+        CREATE TRIGGER refresh_trades_mv_on_item
+        AFTER INSERT OR UPDATE OR DELETE
+        ON ${MARKETPLACE_SQUID_SCHEMA}.item
+        FOR EACH STATEMENT
+        EXECUTE FUNCTION refresh_trades_mv();
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_item';
+      END;
 
-    -------------------------------------------------------------------------------
-    -- squid_marketplace.item
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_item
-    AFTER INSERT OR UPDATE OR DELETE
-    ON ${MARKETPLACE_SQUID_SCHEMA}.item
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
+      BEGIN
+        CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
+        AFTER INSERT OR UPDATE OR DELETE
+        ON squid_trades.trade
+        FOR EACH STATEMENT
+        EXECUTE FUNCTION refresh_trades_mv();
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_squid_trades_trade';
+      END;
 
-    -------------------------------------------------------------------------------
-    -- squid_trades.trade
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
-    AFTER INSERT OR UPDATE OR DELETE
-    ON squid_trades.trade
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
-
-    -------------------------------------------------------------------------------
-    -- squid_trades.signature_index
-    -------------------------------------------------------------------------------
-    CREATE TRIGGER refresh_trades_mv_on_signature_index
-    AFTER INSERT OR UPDATE OR DELETE
-    ON squid_trades.signature_index
-    FOR EACH STATEMENT
-    EXECUTE FUNCTION refresh_trades_mv();
-    `)
+      BEGIN
+        CREATE TRIGGER refresh_trades_mv_on_signature_index
+        AFTER INSERT OR UPDATE OR DELETE
+        ON squid_trades.signature_index
+        FOR EACH STATEMENT
+        EXECUTE FUNCTION refresh_trades_mv();
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_signature_index';
+      END;
+    END
+    $$;
+  `)
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
-  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades')
-  pgm.sql(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft`)
-  pgm.sql(`DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item`)
-  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade')
-  pgm.sql('DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index')
-  pgm.dropMaterializedView(materializedViewName)
-  pgm.dropFunction('refresh_trades_mv', [])
+  // Usar bloques DO para manejar excepciones al eliminar triggers
+  pgm.sql(`
+    DO $$
+    BEGIN
+      BEGIN
+        DROP TRIGGER IF EXISTS refresh_trades_mv_on_trades ON marketplace.trades;
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_trades';
+      END;
+
+      BEGIN
+        DROP TRIGGER IF EXISTS refresh_trades_mv_on_nft ON ${MARKETPLACE_SQUID_SCHEMA}.nft;
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_nft';
+      END;
+
+      BEGIN
+        DROP TRIGGER IF EXISTS refresh_trades_mv_on_item ON ${MARKETPLACE_SQUID_SCHEMA}.item;
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_item';
+      END;
+
+      BEGIN
+        DROP TRIGGER IF EXISTS refresh_trades_mv_on_squid_trades_trade ON squid_trades.trade;
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_squid_trades_trade';
+      END;
+
+      BEGIN
+        DROP TRIGGER IF EXISTS refresh_trades_mv_on_signature_index ON squid_trades.signature_index;
+      EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'Insufficient privileges to drop trigger refresh_trades_mv_on_signature_index';
+      END;
+    END
+    $$;
+  `)
+
+  // Continuar con el resto de las operaciones que sí tienen permisos
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_item_id', { ifExists: true })
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_contract_token', { ifExists: true })
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_category', { ifExists: true })
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_created_at', { ifExists: true })
+  pgm.dropIndex(materializedViewName, 'idx_mv_trades_status_type', { ifExists: true })
+  pgm.dropMaterializedView(materializedViewName, { ifExists: true })
+  pgm.dropFunction('refresh_trades_mv', [], { ifExists: true, cascade: true })
 }
