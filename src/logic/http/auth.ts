@@ -6,7 +6,7 @@ export async function validateApiToken(
   apiTokenHeaderName = 'x-api-token'
 ): Promise<boolean> {
   const { config } = context.components
-  const expectedApiToken = await config.getString('TRADES_API_TOKEN')
+  const expectedApiToken = await config.getString('MARKETPLACE_SERVER_TRADES_API_TOKEN')
 
   if (!expectedApiToken) {
     return false
