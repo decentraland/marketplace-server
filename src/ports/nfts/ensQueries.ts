@@ -130,6 +130,7 @@ export const getENSsCount = (nftFilters: GetNFTsFilters) => {
           SQL`.nft nft 
           WHERE 
           nft.category = 'ens'`
+            .append(nftFilters.owner ? SQL` AND nft.owner_address = ${nftFilters.owner}` : SQL``)
             .append(nftFilters.search ? SQL` AND nft.search_text % ${nftFilters.search}` : SQL``)
             .append(nftFilters.tokenId ? SQL` AND nft.token_id = ${nftFilters.tokenId}` : SQL``)
             .append(
