@@ -197,6 +197,7 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
             `
         )
         .append(filters.category ? SQL` AND nft.category = ${filters.category}` : SQL``)
+        .append(filters.owner ? SQL` AND nft.owner_address = ${filters.owner}` : SQL``)
         .append(
           SQL`
           `
