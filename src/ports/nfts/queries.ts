@@ -52,9 +52,7 @@ function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
 }
 
 function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
-  const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
-  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_address = ${nftFilters.owner} ` : null
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLocaleLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
@@ -411,9 +409,7 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
 }
 
 function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
-  const ownerEthereumAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-ETHEREUM` : null
-  const ownerPolygonAddress = nftFilters.owner ? `${nftFilters.owner.toLocaleLowerCase()}-POLYGON` : null
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_id = ${ownerEthereumAddress} OR owner_id = ${ownerPolygonAddress} ` : null
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_address = ${nftFilters.owner} ` : null
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLowerCase()} ` : null
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
