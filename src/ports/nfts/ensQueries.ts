@@ -18,11 +18,16 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
   const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
   const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
-  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice ? SQL` nft.search_order_price >= ${nftFilters.minPrice}` : null
-  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}` : null
+  const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice
+    ? SQL` (nft.search_order_price >= ${nftFilters.minPrice} OR trades.amount_received >= ${nftFilters.minPrice})`
+    : null
+  const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice
+    ? SQL` (nft.search_order_price <= ${nftFilters.maxPrice} OR trades.amount_received <= ${nftFilters.maxPrice})`
+    : null
   const FILTER_BY_ON_SALE = nftFilters.isOnSale ? SQL` (trades.id IS NOT NULL OR orders.nft_id IS NOT NULL)` : null
 
   return getWhereStatementFromFilters([
+    SQL` nft.category = 'ens' `,
     FILTER_BY_OWNER,
     FILTER_BY_TOKEN_ID,
     FILTER_BY_SEARCH,
@@ -115,15 +120,20 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
 }
 
 export const getENSsCount = (nftFilters: GetNFTsFilters) => {
-  return nftFilters.isOnSale
+  const where = geENSWhereStatement({ ...nftFilters, category: NFTCategory.ENS, isOnSale: false })
+  const query = nftFilters.isOnSale
     ? SQL`
       SELECT count(*) AS total
       FROM `
         .append(MARKETPLACE_SQUID_SCHEMA)
         .append(
-          SQL`.nft nft
-      WHERE 
-          nft.category = 'ens'
+          SQL`.nft nft 
+          WHERE 
+          nft.category = 'ens'`
+            .append(nftFilters.search ? SQL` AND nft.search_text % ${nftFilters.search}` : SQL``)
+            .append(nftFilters.tokenId ? SQL` AND nft.token_id = ${nftFilters.tokenId}` : SQL``)
+            .append(
+              SQL`
           AND (
               EXISTS (
                   SELECT 1
@@ -132,6 +142,11 @@ export const getENSsCount = (nftFilters: GetNFTsFilters) => {
                     AND t.sent_nft_category = 'ens'
                     AND t.sent_contract_address = nft.contract_address
                     AND t.sent_token_id::numeric = nft.token_id
+                    `
+                .append(nftFilters.minPrice ? SQL` AND t.amount_received >= ${nftFilters.minPrice}` : SQL``)
+                .append(nftFilters.maxPrice ? SQL` AND t.amount_received <= ${nftFilters.maxPrice}` : SQL``)
+                .append(
+                  SQL`
               )
               OR 
               EXISTS (
@@ -143,9 +158,15 @@ export const getENSsCount = (nftFilters: GetNFTsFilters) => {
               )
           );
       `)
+                )
+            )
         )
     : SQL`
     SELECT count(*) AS total
-    FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft nft
-    WHERE nft.category = 'ens'`)
+    FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(SQL`.nft nft `)
+        .append(where)
+
+  return query
 }
