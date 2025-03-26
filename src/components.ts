@@ -1,5 +1,7 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
+import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
+import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
@@ -47,7 +49,7 @@ export async function initComponents(): Promise<AppComponents> {
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
-  const logs = await createLogComponent({ metrics })
+  const logs = await createLogComponent({ metrics, tracer })
   const server = await createServerComponent<GlobalContext>({ config, logs }, { cors })
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent({ tracer })
@@ -130,7 +132,8 @@ export async function initComponents(): Promise<AppComponents> {
       apiSecret: await config.requireString('TRANSAK_API_SECRET')
     }
   )
-
+  createHttpTracerComponent({ server, tracer })
+  instrumentHttpServerWithRequestLogger({ server, logger: logs })
   await instrumentHttpServerWithMetrics({ metrics, server, config })
 
   return {
