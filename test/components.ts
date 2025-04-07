@@ -11,7 +11,6 @@ import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
-import { createBalanceComponent } from '../src/ports/balance/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createPgComponent } from '../src/ports/db/component'
@@ -88,7 +87,6 @@ async function initComponents(): Promise<TestComponents> {
   )
 
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
-  const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
@@ -107,7 +105,6 @@ async function initComponents(): Promise<TestComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const schemaValidator = await createSchemaValidatorComponent()
-  const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
 
@@ -146,7 +143,6 @@ async function initComponents(): Promise<TestComponents> {
     dappsWriteDatabase,
     favoritesDatabase,
     catalog,
-    balances,
     wertSigner,
     ens,
     updateBuilderServerItemsViewJob,
