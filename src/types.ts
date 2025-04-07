@@ -9,7 +9,6 @@ import type {
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
-import { IBalanceComponent } from './ports/balance/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { IPgComponent } from './ports/db/types'
@@ -50,7 +49,6 @@ export type BaseComponents = {
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
-  balances: IBalanceComponent
   wertSigner: IWertSignerComponent
   transak: ITransakComponent
   ens: IENSComponent

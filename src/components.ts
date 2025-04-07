@@ -9,7 +9,6 @@ import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
-import { createBalanceComponent } from './ports/balance/component'
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createPgComponent } from './ports/db/component'
@@ -80,11 +79,9 @@ export async function initComponents(): Promise<AppComponents> {
   )
 
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
-  const COVALENT_API_KEY = await config.getString('COVALENT_API_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
 
-  const balances = createBalanceComponent({ apiKey: COVALENT_API_KEY ?? '' })
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const ens = createENS()
 
@@ -148,7 +145,6 @@ export async function initComponents(): Promise<AppComponents> {
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
     catalog,
-    balances,
     wertSigner,
     ens,
     updateBuilderServerItemsViewJob,
