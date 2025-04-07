@@ -11,10 +11,7 @@
       "files": ["*.ts"],
       "rules": {
         "import/no-unresolved": [
-          "error",
-          {
-            "ignore": ["^@covalenthq/client-sdk"]
-          }
+          "error"
         ],
         "@typescript-eslint/naming-convention": [
           "error",

@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.621.0",
-    "@covalenthq/client-sdk": "^0.6.4",
     "@dcl/schemas": "^14.1.0",
     "@segment/analytics-node": "^2.1.0",
     "@types/etag": "^1.8.3",

@@ -3,7 +3,6 @@ import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { GlobalContext } from '../types'
-import { createBalanceHandler } from './handlers/balance-handler'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
@@ -74,7 +73,6 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     createTransakHandler
   )
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
-  router.get('/v1/:chainId/address/:wallet/balance', createBalanceHandler)
 
   router.get('/v1/trades', getTradesHandler)
   router.post(
