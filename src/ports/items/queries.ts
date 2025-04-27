@@ -1,8 +1,8 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeType, WearableGender } from '@dcl/schemas'
+import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, WearableGender } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
-import { getTradesForTypeQuery } from '../trades/queries'
+import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
 import { ItemType } from './types'
 import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
@@ -125,7 +125,28 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
 }
 
 export function getItemsQuery(filters: ItemFilters = {}) {
-  return SQL`
+  return getTradesCTE({
+    category: filters.category,
+    cteName: 'all_trades',
+    // sortBy: filters.sortBy,
+    first: filters.first,
+    skip: filters.skip
+  }).append(
+    SQL`
+    , trades AS (
+      SELECT
+        *
+      FROM (
+        SELECT
+          t.*,
+          (sent_contract_address || '-' || sent_item_id) AS item_id, -- Derived item ID
+          row_number() OVER (PARTITION BY sent_contract_address,
+            sent_item_id ORDER BY t.created_at DESC) AS row_num
+      FROM
+        all_trades t WHERE t.status = 'open' AND t.type = 'public_item_order') sub
+      WHERE
+        row_num = 1 -- Keep only the latest trade per unique item
+    )
     SELECT
       COUNT(*) OVER() as count,
       item.id,
@@ -158,42 +179,39 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       coalesce (wearable.description, emote.description) as description,
       coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', trades.created_at) as first_listed_at,
       trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
-      trades.expires_at as trade_expires_at,
+      -- trades.expires_at as trade_expires_at,
       trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
       `
-    .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(
-      SQL`.item item
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item item
     LEFT JOIN `
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.metadata metadata on
+          .append(MARKETPLACE_SQUID_SCHEMA)
+          .append(
+            SQL`.metadata metadata on
       item.metadata_id = metadata.id
     LEFT JOIN `
-            .append(MARKETPLACE_SQUID_SCHEMA)
-            .append(
-              SQL`.wearable wearable on
+              .append(MARKETPLACE_SQUID_SCHEMA)
+              .append(
+                SQL`.wearable wearable on
       metadata.wearable_id = wearable.id
     LEFT JOIN `
-                .append(MARKETPLACE_SQUID_SCHEMA)
-                .append(
-                  SQL`.emote emote on
+                  .append(MARKETPLACE_SQUID_SCHEMA)
+                  .append(
+                    SQL`.emote emote on
       metadata.emote_id = emote.id
   `
-                    .append(
-                      ` LEFT JOIN (${getTradesForTypeQuery(
-                        TradeType.PUBLIC_ITEM_ORDER
-                      )}) as trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${
-                        ListingStatus.OPEN
-                      }' `
-                    )
-                    .append(getItemsWhereStatement(filters))
-                    .append(getItemsLimitAndOffsetStatement(filters))
-                )
-            )
-        )
-    )
+                      .append(
+                        ` LEFT JOIN trades ON trades.assets -> 'sent' ->> 'item_id' = item.blockchain_id::text AND trades.assets -> 'sent' ->> 'contract_address' = item.collection_id AND trades.status = '${ListingStatus.OPEN}' `
+                      )
+                      .append(getItemsWhereStatement(filters))
+                      .append(getItemsLimitAndOffsetStatement(filters))
+                  )
+              )
+          )
+      )
+  )
 }
 
 export function getUtilityByItem(contractAddress: string, itemId: string) {

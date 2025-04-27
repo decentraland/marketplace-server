@@ -4,6 +4,7 @@ import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
+import { getTradesCTE } from '../catalog/queries'
 import { getTradesForTypeQueryWithFilters } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -27,14 +28,14 @@ function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
 }
 
 function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const limit = filters?.first ? filters.first : 1000
+  const limit = filters?.first ? filters.first : 10000
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
 function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const finalLimit = filters?.first ? filters.first : 1000
+  const finalLimit = filters?.first ? filters.first : 10000
   const finalOffset = filters?.skip ? filters.skip : 0
 
   // For inner queries, we need to fetch enough records to account for the final offset
@@ -181,26 +182,28 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
 export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, prefix = 'combined_orders'): SQLStatement {
   const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
 
-  return SQL`
+  return getTradesCTE().append(
+    SQL`
     SELECT `
-    .append(prefix)
-    .append(
-      SQL`.* FROM (
+      .append(prefix)
+      .append(
+        SQL`.* FROM (
       (`
-        .append(orderTradesQuery)
-        .append(
-          SQL`)
+          .append(orderTradesQuery)
+          .append(
+            SQL`)
       UNION ALL
       (`
-            .append(legacyOrdersQuery)
-            .append(
-              SQL`)
+              .append(legacyOrdersQuery)
+              .append(
+                SQL`)
     ) as `
-            )
-            .append(prefix)
-            .append(getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters)))
-        )
-    )
+              )
+              .append(prefix)
+              .append(getOrdersSortByStatement(filters).append(getOrdersLimitAndOffsetStatement(filters)))
+          )
+      )
+  )
 }
 
 export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {

@@ -25,3 +25,10 @@ export type DBOrder = {
   issued_id: string
   trade_id: string
 }
+
+export enum OrderStatus {
+  OPEN = 'open',
+  SOLD = 'sold',
+  CANCELLED = 'cancelled',
+  TRANSFERRED = 'transferred'
+}
