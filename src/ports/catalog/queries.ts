@@ -359,7 +359,7 @@ export const getOnlyMintingWhere = () => {
 }
 
 export const getOnlyMintingWhereWithTrades = () => {
-  return SQL`(items.search_is_store_minter = true AND available > 0) OR (offchain_orders.count IS NOT NULL)`
+  return SQL`((items.search_is_store_minter = true AND available > 0) OR (offchain_orders.count IS NOT NULL))`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
