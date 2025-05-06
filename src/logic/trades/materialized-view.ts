@@ -121,8 +121,8 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
                       AND (t.checks ->> 'contractSignatureIndex')::int != 0)
                   )
                                                                                       THEN 'cancelled'
-              WHEN COUNT(CASE WHEN st.action = 'executed' THEN 1 END)
-                  >= (t.checks ->> 'uses')::int                                       THEN 'sold'
+              WHEN COUNT(DISTINCT st.id) FILTER (WHERE st.action = 'executed') >= (t.checks ->> 'uses')::int 
+                                                                                      THEN 'sold'
               ELSE 'open'
           END AS status
 
@@ -221,68 +221,90 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       $$;
     `)
 
-    // Create triggers with exception handling
+    // Create triggers - Entire operation will fail if any trigger cannot be created
     await client.query(`
-      DO $$
-      BEGIN
-        BEGIN
-          CREATE TRIGGER refresh_trades_mv_on_trades
-          AFTER INSERT OR UPDATE OR DELETE
-          ON marketplace.trades
-          FOR EACH STATEMENT
-          EXECUTE FUNCTION refresh_trades_mv();
-        EXCEPTION WHEN insufficient_privilege THEN
-          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_trades';
-        END;
+      -- First, drop triggers if they exist to avoid errors
 
-        BEGIN
-          CREATE TRIGGER refresh_trades_mv_on_nft
-          AFTER INSERT OR UPDATE OR DELETE
-          ON ${MARKETPLACE_SQUID_SCHEMA}.nft
-          FOR EACH STATEMENT
-          EXECUTE FUNCTION refresh_trades_mv();
-        EXCEPTION WHEN insufficient_privilege THEN
-          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_nft';
-        END;
 
-        BEGIN
-          CREATE TRIGGER refresh_trades_mv_on_item
-          AFTER INSERT OR UPDATE OR DELETE
-          ON ${MARKETPLACE_SQUID_SCHEMA}.item
-          FOR EACH STATEMENT
-          EXECUTE FUNCTION refresh_trades_mv();
-        EXCEPTION WHEN insufficient_privilege THEN
-          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_item';
-        END;
+      -- Then create all triggers without exception handling so the operation fails if there are any issues
+      CREATE TRIGGER refresh_trades_mv_on_trades_assets_erc721
+      AFTER INSERT OR UPDATE OR DELETE
+      ON marketplace.trade_assets_erc721
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
+      
+      CREATE TRIGGER refresh_trades_mv_on_trades_assets_erc20
+      AFTER INSERT OR UPDATE OR DELETE
+      ON marketplace.trade_assets_erc20
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
 
-        BEGIN
-          CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
-          AFTER INSERT OR UPDATE OR DELETE
-          ON squid_trades.trade
-          FOR EACH STATEMENT
-          EXECUTE FUNCTION refresh_trades_mv();
-        EXCEPTION WHEN insufficient_privilege THEN
-          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_squid_trades_trade';
-        END;
+      CREATE TRIGGER refresh_trades_mv_on_trades_assets_item
+      AFTER INSERT OR UPDATE OR DELETE
+      ON marketplace.trade_assets_item
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
 
-        BEGIN
-          CREATE TRIGGER refresh_trades_mv_on_signature_index
-          AFTER INSERT OR UPDATE OR DELETE
-          ON squid_trades.signature_index
-          FOR EACH STATEMENT
-          EXECUTE FUNCTION refresh_trades_mv();
-        EXCEPTION WHEN insufficient_privilege THEN
-          RAISE NOTICE 'Insufficient privileges to create trigger refresh_trades_mv_on_signature_index';
-        END;
-      END
-      $$;
+      CREATE TRIGGER refresh_trades_mv_on_nft
+      AFTER INSERT OR UPDATE OR DELETE
+      ON ${MARKETPLACE_SQUID_SCHEMA}.nft
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
+
+      CREATE TRIGGER refresh_trades_mv_on_item
+      AFTER INSERT OR UPDATE OR DELETE
+      ON ${MARKETPLACE_SQUID_SCHEMA}.item
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
+
+      CREATE TRIGGER refresh_trades_mv_on_squid_trades_trade
+      AFTER INSERT OR UPDATE OR DELETE
+      ON squid_trades.trade
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
+
+      CREATE TRIGGER refresh_trades_mv_on_signature_index
+      AFTER INSERT OR UPDATE OR DELETE
+      ON squid_trades.signature_index
+      FOR EACH STATEMENT
+      EXECUTE FUNCTION refresh_trades_mv();
     `)
 
     // Set the owner of the materialized view
     await client.query(`ALTER MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} OWNER TO mv_trades_owner;`)
 
+    // MANDATORY: grant permissions for SELECT on public squids table
+    // Grant permissions to active squid users dynamically
+    await client.query(`
+      DO $$
+      DECLARE
+        schema_name TEXT;
+        db_user TEXT;
+      BEGIN
+        FOR schema_name IN (SELECT schema FROM squids WHERE schema IS NOT NULL)
+        LOOP
+          FOR db_user IN (
+            SELECT i.db_user 
+            FROM indexers i 
+            WHERE i.schema = schema_name
+          )
+          LOOP
+            IF db_user IS NOT NULL THEN
+              EXECUTE 'GRANT USAGE ON SCHEMA marketplace TO ' || quote_ident(db_user);
+              EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace to mv_trades_owner';
+              EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA squid_trades to mv_trades_owner';
+              EXECUTE 'GRANT mv_trades_owner TO ' || quote_ident(db_user);
+            END IF;
+          END LOOP;
+        END LOOP;
+      END $$;
+    `)
+
+    await client.query('GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace TO dappsdata;')
+
     await client.query('COMMIT')
   } catch (error) {
+    console.error('Error recreating materialized view', error)
     await client.query('ROLLBACK')
     throw error
   } finally {
