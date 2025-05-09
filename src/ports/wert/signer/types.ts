@@ -1,3 +1,5 @@
+import { Target } from '../types'
+
 export type WertMessage = {
   address: string
   commodity: string
@@ -5,11 +7,6 @@ export type WertMessage = {
   network: string
   sc_address: string
   sc_input_data: string
-}
-
-export enum Target {
-  DEFAULT = 'default',
-  PUBLICATION_FEES = 'publicationFees'
 }
 
 export type IWertSignerComponent = {

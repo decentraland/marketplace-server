@@ -1,5 +1,6 @@
 import { signSmartContractData } from '@wert-io/widget-sc-signer'
-import { IWertSignerComponent, Target, WertMessage } from './types'
+import { Target } from '../types'
+import { IWertSignerComponent, WertMessage } from './types'
 
 export function createWertSigner({
   privateKey,

@@ -32,7 +32,8 @@ import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
 import { createTrendingsComponent } from './ports/trendings/component'
 import { createVolumeComponent } from './ports/volume/component'
-import { createWertSigner } from './ports/wert-signer/component'
+import { createWertApi } from './ports/wert/api/component'
+import { createWertSigner } from './ports/wert/signer/component'
 import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
@@ -83,6 +84,7 @@ export async function initComponents(): Promise<AppComponents> {
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
 
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
+  const wertApi = await createWertApi({ config, fetch })
   const ens = createENS()
 
   // rentals
@@ -146,6 +148,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsWriteDatabase,
     catalog,
     wertSigner,
+    wertApi,
     ens,
     updateBuilderServerItemsViewJob,
     schemaValidator,

@@ -35,7 +35,8 @@ import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
-import { createWertSigner } from '../src/ports/wert-signer/component'
+import { createWertApi } from '../src/ports/wert/api/component'
+import { createWertSigner } from '../src/ports/wert/signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
 
@@ -90,6 +91,7 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
+  const wertApi = await createWertApi({ config, fetch })
   const ens = createENS()
 
   // favorites stuff
@@ -144,6 +146,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     wertSigner,
+    wertApi,
     ens,
     updateBuilderServerItemsViewJob,
     access,

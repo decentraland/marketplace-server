@@ -32,7 +32,8 @@ import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
 import { IVolumeComponent } from './ports/volume/types'
-import { IWertSignerComponent } from './ports/wert-signer/types'
+import { IWertApiComponent } from './ports/wert/api/types'
+import { IWertSignerComponent } from './ports/wert/signer/types'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -50,6 +51,7 @@ export type BaseComponents = {
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   wertSigner: IWertSignerComponent
+  wertApi: IWertApiComponent
   transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
