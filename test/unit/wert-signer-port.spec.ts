@@ -1,6 +1,7 @@
 import { signSmartContractData } from '@wert-io/widget-sc-signer'
-import { createWertSigner } from '../../src/ports/wert-signer/component'
-import { Target, WertMessage } from '../../src/ports/wert-signer/types'
+import { createWertSigner } from '../../src/ports/wert/signer/component'
+import { WertMessage } from '../../src/ports/wert/signer/types'
+import { Target } from '../../src/ports/wert/types'
 
 jest.mock('@wert-io/widget-sc-signer')
 
@@ -12,6 +13,7 @@ describe('createWertSigner', () => {
   describe('signMessage', () => {
     let wertMessage: WertMessage
     let expectedSignature: string
+
     beforeEach(() => {
       wertMessage = {
         address: 'myAddress',

@@ -35,7 +35,7 @@ import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
-import { createWertSigner } from '../src/ports/wert-signer/component'
+import { createWertSigner } from '../src/ports/wert/signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
 
