@@ -25,7 +25,7 @@ import {
 import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { getVolumeHandler } from './handlers/volume-handler'
-import { createWertSignerHandler } from './handlers/wert-signer-handler'
+import { createWertSignerAndSessionCreatorHandler } from './handlers/wert-signer-and-session-creator-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
 const FIVE_MINUTES = 5 * 60 * 1000
@@ -61,7 +61,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       expiration: FIVE_MINUTES,
       verifyMetadataContent: validateNotKernelSceneSigner
     }),
-    createWertSignerHandler
+    createWertSignerAndSessionCreatorHandler
   )
   router.get(
     '/v1/transak/orders/:id',
