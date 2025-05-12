@@ -23,8 +23,8 @@ export async function createWertSignerAndSessionCreatorHandler(
 
   if (
     !userAddress ||
-    (!!userAddress && userAddress !== wertMessage.address.toLocaleLowerCase()) ||
-    (!!userAddress && userAddress !== wertSession.wallet_address?.toLocaleLowerCase())
+    (!!userAddress && userAddress !== wertMessage.address.toLowerCase()) ||
+    (!!userAddress && userAddress !== wertSession.wallet_address?.toLowerCase())
   ) {
     return {
       status: StatusCode.UNAUTHORIZED,
