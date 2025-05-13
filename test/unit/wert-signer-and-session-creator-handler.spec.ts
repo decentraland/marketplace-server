@@ -197,7 +197,7 @@ describe('when getting the wert signer and session creator handler', () => {
           }
         })
         expect(wertSignerMock.signMessage).toHaveBeenCalledWith(message, undefined)
-        expect(wertApiMock.createSession).toHaveBeenCalledWith(session, undefined)
+        expect(wertApiMock.createSession).toHaveBeenCalledWith(session)
       })
 
       describe('with different targets', () => {
@@ -237,7 +237,7 @@ describe('when getting the wert signer and session creator handler', () => {
               }
             })
             expect(wertSignerMock.signMessage).toHaveBeenCalledWith(message, target)
-            expect(wertApiMock.createSession).toHaveBeenCalledWith(session, target)
+            expect(wertApiMock.createSession).toHaveBeenCalledWith(session)
           })
         })
       })

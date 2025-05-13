@@ -3,8 +3,6 @@ Wert API Session Parameters Documentation
 https://docs.wert.io/docs/fiat-onramp#parameters
 */
 
-import { Target } from '../types'
-
 type Commodity = {
   commodity: string
   network: string
@@ -47,5 +45,5 @@ export type WertSessionResponse = {
 }
 
 export type IWertApiComponent = {
-  createSession(session: WertSession, target?: Target): Promise<WertSessionResponse>
+  createSession(session: WertSession): Promise<WertSessionResponse>
 }

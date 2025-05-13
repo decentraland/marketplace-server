@@ -2,12 +2,10 @@ import { IFetchComponent } from '@well-known-components/http-server'
 import { IConfigComponent } from '@well-known-components/interfaces'
 import { createWertApi } from '../../src/ports/wert/api/component'
 import { WertSession } from '../../src/ports/wert/api/types'
-import { Target } from '../../src/ports/wert/types'
 
 describe('createWertApi', () => {
   const apiUrl = 'https://api.wert.io'
-  const privateKey = 'myPrivateKey'
-  const publicationFeesPrivateKey = 'myPublicationFeesPrivateKey'
+  const apiKey = 'myApiKey'
 
   let config: jest.Mocked<IConfigComponent>
   let mockedFetch: jest.Mock
@@ -28,10 +26,8 @@ describe('createWertApi', () => {
       switch (key) {
         case 'WERT_API_URL':
           return Promise.resolve(apiUrl)
-        case 'WERT_PRIVATE_KEY':
-          return Promise.resolve(privateKey)
-        case 'WERT_PUBLICATION_FEES_PRIVATE_KEY':
-          return Promise.resolve(publicationFeesPrivateKey)
+        case 'WERT_API_KEY':
+          return Promise.resolve(apiKey)
         default:
           return Promise.reject(new Error(`Unknown config key: ${key}`))
       }
@@ -66,7 +62,7 @@ describe('createWertApi', () => {
           expect(mockedFetch).toHaveBeenCalledWith(`${apiUrl}/create-session`, {
             method: 'POST',
             headers: {
-              'x-api-key': privateKey,
+              'x-api-key': apiKey,
               'content-type': 'application/json'
             },
             body: JSON.stringify(wertSession)
@@ -75,36 +71,18 @@ describe('createWertApi', () => {
         })
       })
 
-      describe('and the target is default', () => {
-        it('should create a session using the private key', async () => {
-          const response = await wertApi.createSession(wertSession, Target.DEFAULT)
+      it('should create a session using the api key', async () => {
+        const response = await wertApi.createSession(wertSession)
 
-          expect(mockedFetch).toHaveBeenCalledWith(`${apiUrl}/create-session`, {
-            method: 'POST',
-            headers: {
-              'x-api-key': privateKey,
-              'content-type': 'application/json'
-            },
-            body: JSON.stringify(wertSession)
-          })
-          expect(response).toEqual(expectedResponse)
+        expect(mockedFetch).toHaveBeenCalledWith(`${apiUrl}/create-session`, {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify(wertSession)
         })
-      })
-
-      describe('and the target is publicationFees', () => {
-        it('should create a session using the publication fees private key', async () => {
-          const response = await wertApi.createSession(wertSession, Target.PUBLICATION_FEES)
-
-          expect(mockedFetch).toHaveBeenCalledWith(`${apiUrl}/create-session`, {
-            method: 'POST',
-            headers: {
-              'x-api-key': publicationFeesPrivateKey,
-              'content-type': 'application/json'
-            },
-            body: JSON.stringify(wertSession)
-          })
-          expect(response).toEqual(expectedResponse)
-        })
+        expect(response).toEqual(expectedResponse)
       })
     })
 
