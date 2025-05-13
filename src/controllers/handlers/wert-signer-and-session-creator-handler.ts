@@ -45,10 +45,7 @@ export async function createWertSignerAndSessionCreatorHandler(
     }
   }
 
-  const [signature, { sessionId }] = await Promise.all([
-    wertSigner.signMessage(wertMessage, target),
-    wertApi.createSession(wertSession, target)
-  ])
+  const [signature, { sessionId }] = await Promise.all([wertSigner.signMessage(wertMessage, target), wertApi.createSession(wertSession)])
 
   return {
     status: StatusCode.OK,
