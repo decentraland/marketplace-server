@@ -198,6 +198,11 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
         )
         .append(filters.category ? SQL` AND nft.category = ${filters.category}` : SQL``)
         .append(filters.owner ? SQL` AND nft.owner_address = ${filters.owner}` : SQL``)
+        .append(filters.minEstateSize ? SQL` AND nft.search_estate_size >= ${filters.minEstateSize}` : SQL``)
+        .append(filters.maxEstateSize ? SQL` AND nft.search_estate_size <= ${filters.maxEstateSize}` : SQL``)
+        .append(filters.minDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza >= ${filters.minDistanceToPlaza}` : SQL``)
+        .append(filters.maxDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza <= ${filters.maxDistanceToPlaza}` : SQL``)
+        .append(filters.adjacentToRoad ? SQL` AND nft.search_adjacent_to_road = true` : SQL``)
         .append(
           SQL`
           `
