@@ -84,7 +84,6 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
         .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
         .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
         .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
-        // .append(getTradesForTypeQueryWithFilters(TradeType.PUBLIC_NFT_ORDER, { owner: filters.owner, ids: filters.nftIds }))
         .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
     )
 }
