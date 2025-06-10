@@ -304,7 +304,8 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_MIN_ESTATE_SIZE,
     // FILTER_BY_IDS, //@TODO check this ones out
     FILTER_BY_SEARCH,
-    FILTER_CATEGORY
+    FILTER_CATEGORY,
+    FILTER_BY_IDS
   } = getAllLANDWheres(filters)
 
   const topNFTsWhere = [
@@ -318,7 +319,8 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_BY_MAX_PLAZA_DISTANCE,
     FILTER_BY_ROAD_ADJACENT,
     FILTER_CATEGORY,
-    FILTER_BY_SEARCH
+    FILTER_BY_SEARCH,
+    FILTER_BY_IDS
   ]
 
   return getTradesCTE(filters).append(
@@ -345,7 +347,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
           )
           .append(getWhereStatementFromFilters(topNFTsWhere))
           .append(getNFTsSortBy(sortBy))
-          .append(getNFTLimitAndOffsetStatement(filters))
+          .append(filters.ids?.length ? SQL`` : getNFTLimitAndOffsetStatement(filters))
           .append(
             SQL`
     ),
@@ -444,7 +446,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
       ) estate_data ON TRUE
       `
                                           .append(getNFTsSortBy(sortBy))
-                                          .append(SQL``)
+                                          .append(filters.ids?.length ? getNFTLimitAndOffsetStatement(filters) : SQL``)
                                       )
                                   )
                               )
