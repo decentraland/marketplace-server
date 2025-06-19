@@ -96,7 +96,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
         ${price},
         '${contractAddress}',
         'aContentHash',
-        NULL,
+        'https://example.com/image/${itemId}.png',
         'https://example.com/token/1',
         ARRAY['${contractAddress}'],
         ARRAY['${contractAddress}'],
