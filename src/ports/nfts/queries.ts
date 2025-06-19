@@ -51,6 +51,10 @@ function getRarityWhereStatement(rarities?: Rarity[]): SQLStatement | null {
   return SQL` (nft.search_wearable_rarity = ANY (${rarities}) OR nft.search_emote_rarity = ANY (${rarities})) `
 }
 
+function shouldApplyLimitOffsetInCTE(nftFilters: GetNFTsFilters, uncapped = false): boolean {
+  return !(uncapped || nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED || !!nftFilters.owner)
+}
+
 function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
   const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_address = ${nftFilters.owner} ` : null
   const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLocaleLowerCase()} ` : null
@@ -110,11 +114,7 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
     `
         .append(whereClause)
         .append(getNFTsSortByStatement(nftFilters.sortBy))
-        .append(
-          uncapped || nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED || !!nftFilters.owner
-            ? SQL``
-            : getNFTLimitAndOffsetStatement(nftFilters)
-        )
+        .append(shouldApplyLimitOffsetInCTE(nftFilters, uncapped) ? getNFTLimitAndOffsetStatement(nftFilters) : SQL``)
         .append(SQL`)`)
     )
 }
@@ -340,7 +340,11 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
     `
                                     .append(getNFTWhereStatement(nftFilters))
                                     .append(getMainQuerySortByStatement(nftFilters.sortBy))
-                                    .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
+                                    .append(
+                                      uncapped || shouldApplyLimitOffsetInCTE(nftFilters, uncapped)
+                                        ? SQL``
+                                        : getNFTLimitAndOffsetStatement(nftFilters)
+                                    )
                                 )
                             )
                         )
@@ -385,6 +389,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
                 AND ((LENGTH(nft.search_order_expires_at::text) = 13 AND TO_TIMESTAMP(nft.search_order_expires_at / 1000.0) > NOW())
                       OR
                     (LENGTH(nft.search_order_expires_at::text) = 10 AND TO_TIMESTAMP(nft.search_order_expires_at) > NOW())))) `)
+    : nftFilters.isOnSale === false
+    ? SQL` (trades.id IS NULL AND nft.search_order_status IS NULL) `
     : null
   const FITLER_BANNED_NAMES =
     nftFilters.bannedNames && nftFilters.bannedNames.length
