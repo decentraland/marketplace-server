@@ -96,7 +96,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
         ${price},
         '${contractAddress}',
         'aContentHash',
-        'https://example.com/image/${itemId}.png',
+        'https://peer.decentraland.org/lambdas/collections/contents/urn:decentraland:matic:collections-v2:${contractAddress}:${itemId}/thumbnail',
         'https://example.com/token/1',
         ARRAY['${contractAddress}'],
         ARRAY['${contractAddress}'],
