@@ -57,6 +57,9 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
         MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
         MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
+        MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
+        t.network,
+        t.expires_at,
 
         CASE
             WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
