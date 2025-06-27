@@ -16,3 +16,4 @@ SNAPSHOT_SPACE=daotest.dcl.eth
 DCL_LISTS_SERVER=https://dcl-lists.decentraland.org
 RENTALS_SUBGRAPH_URL=
 SIGNATURES_SERVER_URL=https://signatures-api.decentraland.zone
+RENTALS_SUBGRAPH_URL=https://subgraph.decentraland.org/rentals-ethereum-mainnet
