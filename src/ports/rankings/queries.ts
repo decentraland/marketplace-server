@@ -98,12 +98,100 @@ function getQueryParams(entity: RankingEntity, filters: RankingsFilters) {
   return { where, orderBy, orderDirection }
 }
 
+function getSalesQueryParams(entity: RankingEntity, filters: RankingsFilters) {
+  const { from, sortBy, rarity } = filters
+  const conditions: SQLStatement[] = []
+
+  // Filter by category using search_category
+  if (entity === RankingEntity.WEARABLES) {
+    conditions.push(SQL`search_category = 'wearable'`)
+  } else if (entity === RankingEntity.EMOTES) {
+    conditions.push(SQL`search_category = 'emote'`)
+  }
+
+  // Filter by rarity (requires JOIN with items table)
+  if (rarity) {
+    conditions.push(SQL`item.rarity = ${rarity}`)
+  }
+
+  // Filter by date
+  if (from) {
+    conditions.push(SQL`timestamp >= ${Math.round(from / 1000)}`)
+  }
+
+  // Order
+  let orderBy = 'volume'
+  const orderDirection = 'DESC'
+  switch (sortBy) {
+    case RankingsSortBy.MOST_SALES:
+      orderBy = 'sales'
+      break
+    case RankingsSortBy.MOST_VOLUME:
+      orderBy = 'volume'
+      break
+  }
+
+  const where = SQL``
+  conditions.forEach((condition, index) => {
+    if (condition) {
+      where.append(condition)
+      if (conditions[index + 1]) {
+        where.append(SQL` AND `)
+      }
+    }
+  })
+
+  return { where, orderBy, orderDirection, needsItemJoin: !!rarity }
+}
+
+export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilters) {
+  const { where, orderBy, orderDirection, needsItemJoin } = getSalesQueryParams(entity, filters)
+
+  let query = SQL`
+    SELECT 
+      item_id as id,
+      COUNT(*)::integer as sales,
+      SUM(sale.price::numeric) as volume
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.sale`)
+
+  // JOIN condicional con tabla items solo si hay filtro por rarity
+  if (needsItemJoin) {
+    query = query
+      .append(
+        SQL`
+    LEFT JOIN `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item item ON 
+      sale.search_contract_address = item.collection_id AND 
+      sale.search_item_id::text = item.blockchain_id::text`
+      )
+  }
+
+  query = query
+    .append(where.text && where.text.trim() ? SQL` WHERE `.append(where) : SQL``)
+    .append(
+      SQL`
+    GROUP BY item_id
+    ORDER BY `
+        .append(orderBy)
+        .append(SQL` `)
+        .append(orderDirection)
+    )
+    .append(filters.first ? SQL` LIMIT ${filters.first}` : SQL``)
+
+  return query
+}
+
 export function getRankingQuery(entity: RankingEntity, filters: RankingsFilters, page = 0) {
   switch (entity) {
     case RankingEntity.WEARABLES:
-      return getItemsDayDataQuery(RankingEntity.WEARABLES, filters, page)
+      return getItemsSalesQuery(RankingEntity.WEARABLES, filters)
     case RankingEntity.EMOTES:
-      return getItemsDayDataQuery(RankingEntity.EMOTES, filters, page)
+      return getItemsSalesQuery(RankingEntity.EMOTES, filters)
     case RankingEntity.CREATORS:
       return getCreatorsDayDataQuery(filters, page)
     case RankingEntity.COLLECTORS:
