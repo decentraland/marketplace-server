@@ -156,7 +156,7 @@ export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilte
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.sale`)
 
-  // JOIN condicional con tabla items solo si hay filtro por rarity
+  // JOIN conditional with items table only if there is a rarity filter
   if (needsItemJoin) {
     query = query
       .append(
