@@ -18,6 +18,7 @@ import {
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
+import { HTTPResponse, StatusCode } from '../../types'
 
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
@@ -41,11 +42,11 @@ export const getItemsParams = (params: Params) => {
     emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
-    contractAddresses: params.getList('contractAddress'),
+    contractAddresses: params.getAddressList('contractAddress'),
     itemId: params.getString('itemId'),
     network: params.getValue<Network>('network', Network),
-    maxPrice: maxPrice ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
+    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
     urns: params.getList('urn'),
     ids: params.getList('id')
   }
@@ -83,8 +84,8 @@ export const getNFTParams = (params: Params): NFTFilters => {
     minDistanceToPlaza: params.getNumber('minDistanceToPlaza'),
     maxDistanceToPlaza: params.getNumber('maxDistanceToPlaza'),
     tenant: params.getAddress('tenant')?.toLowerCase(),
-    maxPrice: maxPrice ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
+    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
     minEstateSize: params.getNumber('minEstateSize'),
     maxEstateSize: params.getNumber('maxEstateSize'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
@@ -155,5 +156,37 @@ export const getPricesParams = (params: Params): PriceFilters => {
     minEstateSize: params.getNumber('minEstateSize'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry')
+  }
+}
+
+export const getUserAssetsParams = (params: Params): { first: number; skip: number } => {
+  return {
+    first: params.getNumber('first') || 100,
+    skip: params.getNumber('skip') || 0
+  }
+}
+
+export function createPaginatedResponse<T>(
+  elements: T[],
+  total: number,
+  first: number,
+  skip: number
+): HTTPResponse<{ elements: T[]; page: number; pages: number; limit: number; total: number }> {
+  const limit = first || 1
+  const page = Math.floor(skip / limit) + 1
+  const pages = Math.ceil(total / limit)
+
+  return {
+    status: StatusCode.OK,
+    body: {
+      ok: true,
+      data: {
+        elements,
+        page,
+        pages,
+        limit,
+        total
+      }
+    }
   }
 }

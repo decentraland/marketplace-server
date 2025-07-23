@@ -24,6 +24,9 @@ import {
 } from './handlers/trades-handler'
 import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
+import { getUserEmotesHandler, getUserEmotesUrnTokenHandler } from './handlers/user-assets/emotes-handler'
+import { getUserNamesHandler, getUserNamesOnlyHandler } from './handlers/user-assets/names-handler'
+import { getUserWearablesHandler, getUserWearablesUrnTokenHandler } from './handlers/user-assets/wearables-handler'
 import { getVolumeHandler } from './handlers/volume-handler'
 import { createWertSignerAndSessionCreatorHandler } from './handlers/wert-signer-and-session-creator-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
@@ -118,6 +121,14 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/rankings/:entity/:timeframe', getRankingsHandler)
   router.get('/v1/volume/:timeframe', getVolumeHandler)
   router.post('/v1/trades/materialized-view/recreate', createTradesViewAuthMiddleware(), recreateTradesMaterializedViewHandler)
+
+  // User assets endpoints
+  router.get('/v1/users/:address/wearables', getUserWearablesHandler)
+  router.get('/v1/users/:address/wearables/urn-token', getUserWearablesUrnTokenHandler)
+  router.get('/v1/users/:address/emotes', getUserEmotesHandler)
+  router.get('/v1/users/:address/emotes/urn-token', getUserEmotesUrnTokenHandler)
+  router.get('/v1/users/:address/names', getUserNamesHandler)
+  router.get('/v1/users/:address/names/names-only', getUserNamesOnlyHandler)
 
   setupFavoritesRouter(router, { components })
 
