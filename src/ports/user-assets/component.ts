@@ -3,15 +3,20 @@ import { fromDbRowsToWearables, fromDbRowsToEmotes, fromDbRowsToNames } from './
 import {
   getWearablesByOwnerQuery,
   getWearablesByOwnerCountQuery,
+  getWearablesByOwnerUniqueItemsCountQuery,
   getOwnedWearablesUrnAndTokenIdQuery,
   getEmotesByOwnerQuery,
   getEmotesByOwnerCountQuery,
+  getEmotesByOwnerUniqueItemsCountQuery,
   getOwnedEmotesUrnAndTokenIdQuery,
   getNamesByOwnerQuery,
   getNamesByOwnerCountQuery,
   getOwnedNamesOnlyQuery
 } from './queries'
 import { IUserAssetsComponent, ProfileWearable, ProfileEmote, ProfileName, DappsDbRow } from './types'
+
+const FIRST_DEFAULT = 100
+const SKIP_DEFAULT = 0
 
 export async function createUserAssetsComponent(components: Pick<AppComponents, 'logs' | 'dappsDatabase'>): Promise<IUserAssetsComponent> {
   const { logs, dappsDatabase } = components
@@ -24,28 +29,35 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @param owner - Ethereum address of the wearable owner
    * @param first - Maximum number of wearables to return (default: 100)
    * @param skip - Number of wearables to skip (default: 0)
-   * @returns Promise resolving to object with data array and total count
+   * @returns Promise resolving to object with data array, total count, and total unique items
    */
-  async function getWearablesByOwner(owner: string, first = 100, skip = 0): Promise<{ data: ProfileWearable[]; total: number }> {
+  async function getWearablesByOwner(
+    owner: string,
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
+  ): Promise<{ data: ProfileWearable[]; total: number; totalItems: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
-        const [dataQuery, countQuery] = [getWearablesByOwnerQuery(owner, first, skip), getWearablesByOwnerCountQuery(owner)]
-        console.log('dataQuery', dataQuery.text)
-        console.log('dataQuery', dataQuery.values)
-        console.log('countQuery', countQuery.text)
-        console.log('countQuery', countQuery.values)
-        const [dataResult, countResult] = await Promise.all([
+        const [dataQuery, countQuery, uniqueItemsQuery] = [
+          getWearablesByOwnerQuery(owner, first, skip),
+          getWearablesByOwnerCountQuery(owner),
+          getWearablesByOwnerUniqueItemsCountQuery(owner)
+        ]
+
+        const [dataResult, countResult, uniqueItemsResult] = await Promise.all([
           client.query<DappsDbRow>(dataQuery),
-          client.query<{ total: string }>(countQuery)
+          client.query<{ total: string }>(countQuery),
+          client.query<{ total_items: string }>(uniqueItemsQuery)
         ])
 
         const total = parseInt(countResult.rows[0]?.total || '0', 10)
+        const totalItems = parseInt(uniqueItemsResult.rows[0]?.total_items || '0', 10)
         const data = fromDbRowsToWearables(dataResult.rows)
 
-        logger.debug(`Found ${data.length} wearables (${total} total) for owner ${owner}`)
-        return { data, total }
+        logger.debug(`Found ${data.length} wearables (${total} total, ${totalItems} unique items) for owner ${owner}`)
+        return { data, total, totalItems }
       } finally {
         client.release()
       }
@@ -69,8 +81,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    */
   async function getOwnedWearablesUrnAndTokenId(
     owner: string,
-    first = 100,
-    skip = 0
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
   ): Promise<{ data: { urn: string; tokenId: string }[]; total: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
@@ -107,25 +119,35 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @param owner - Ethereum address of the emote owner
    * @param first - Maximum number of emotes to return (default: 100)
    * @param skip - Number of emotes to skip (default: 0)
-   * @returns Promise resolving to object with data array and total count
+   * @returns Promise resolving to object with data array, total count, and total unique items
    */
-  async function getEmotesByOwner(owner: string, first = 100, skip = 0): Promise<{ data: ProfileEmote[]; total: number }> {
+  async function getEmotesByOwner(
+    owner: string,
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
+  ): Promise<{ data: ProfileEmote[]; total: number; totalItems: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
-        const [dataQuery, countQuery] = [getEmotesByOwnerQuery(owner, first, skip), getEmotesByOwnerCountQuery(owner)]
+        const [dataQuery, countQuery, uniqueItemsQuery] = [
+          getEmotesByOwnerQuery(owner, first, skip),
+          getEmotesByOwnerCountQuery(owner),
+          getEmotesByOwnerUniqueItemsCountQuery(owner)
+        ]
 
-        const [dataResult, countResult] = await Promise.all([
+        const [dataResult, countResult, uniqueItemsResult] = await Promise.all([
           client.query<DappsDbRow>(dataQuery),
-          client.query<{ total: string }>(countQuery)
+          client.query<{ total: string }>(countQuery),
+          client.query<{ total_items: string }>(uniqueItemsQuery)
         ])
 
         const total = parseInt(countResult.rows[0]?.total || '0', 10)
+        const totalItems = parseInt(uniqueItemsResult.rows[0]?.total_items || '0', 10)
         const data = fromDbRowsToEmotes(dataResult.rows)
 
-        logger.debug(`Found ${data.length} emotes (${total} total) for owner ${owner}`)
-        return { data, total }
+        logger.debug(`Found ${data.length} emotes (${total} total, ${totalItems} unique items) for owner ${owner}`)
+        return { data, total, totalItems }
       } finally {
         client.release()
       }
@@ -147,7 +169,11 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @param skip - Number of names to skip (default: 0)
    * @returns Promise resolving to object with data array and total count
    */
-  async function getNamesByOwner(owner: string, first = 100, skip = 0): Promise<{ data: ProfileName[]; total: number }> {
+  async function getNamesByOwner(
+    owner: string,
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
+  ): Promise<{ data: ProfileName[]; total: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
 
@@ -187,8 +213,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    */
   async function getOwnedEmotesUrnAndTokenId(
     owner: string,
-    first = 100,
-    skip = 0
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
   ): Promise<{ data: { urn: string; tokenId: string }[]; total: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
@@ -227,7 +253,11 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @param skip - Number of names to skip (default: 0)
    * @returns Promise resolving to object with data array and total count
    */
-  async function getOwnedNamesOnly(owner: string, first = 100, skip = 0): Promise<{ data: { name: string }[]; total: number }> {
+  async function getOwnedNamesOnly(
+    owner: string,
+    first = FIRST_DEFAULT,
+    skip = SKIP_DEFAULT
+  ): Promise<{ data: { name: string }[]; total: number }> {
     try {
       const client = await dappsDatabase.getPool().connect()
 

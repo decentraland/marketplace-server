@@ -61,16 +61,21 @@ describe('User Assets Component', () => {
         }
       ]
       const mockCountRow = { total: '50' }
+      const mockUniqueItemsRow = { total_items: '25' }
 
-      mockClient.query.mockResolvedValueOnce({ rows: mockDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+      mockClient.query
+        .mockResolvedValueOnce({ rows: mockDataRows })
+        .mockResolvedValueOnce({ rows: [mockCountRow] })
+        .mockResolvedValueOnce({ rows: [mockUniqueItemsRow] })
 
       const result = await userAssetsComponent.getWearablesByOwner('0xowner', 10, 20)
 
       expect(result).toEqual({
         data: expect.any(Array),
-        total: 50
+        total: 50,
+        totalItems: 25
       })
-      expect(mockClient.query).toHaveBeenCalledTimes(2)
+      expect(mockClient.query).toHaveBeenCalledTimes(3)
       expect(mockClient.release).toHaveBeenCalledTimes(1)
       expect(mockLogger.debug).toHaveBeenCalled()
     })
@@ -93,16 +98,21 @@ describe('User Assets Component', () => {
     it('should use default pagination values', async () => {
       const mockDataRows: unknown[] = []
       const mockCountRow = { total: '0' }
+      const mockUniqueItemsRow = { total_items: '0' }
 
-      mockClient.query.mockResolvedValueOnce({ rows: mockDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+      mockClient.query
+        .mockResolvedValueOnce({ rows: mockDataRows })
+        .mockResolvedValueOnce({ rows: [mockCountRow] })
+        .mockResolvedValueOnce({ rows: [mockUniqueItemsRow] })
 
       const result = await userAssetsComponent.getWearablesByOwner('0xowner')
 
       expect(result).toEqual({
         data: [],
-        total: 0
+        total: 0,
+        totalItems: 0
       })
-      expect(mockClient.query).toHaveBeenCalledTimes(2)
+      expect(mockClient.query).toHaveBeenCalledTimes(3)
     })
   })
 
@@ -159,16 +169,21 @@ describe('User Assets Component', () => {
         }
       ]
       const mockCountRow = { total: '30' }
+      const mockUniqueItemsRow = { total_items: '15' }
 
-      mockClient.query.mockResolvedValueOnce({ rows: mockDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+      mockClient.query
+        .mockResolvedValueOnce({ rows: mockDataRows })
+        .mockResolvedValueOnce({ rows: [mockCountRow] })
+        .mockResolvedValueOnce({ rows: [mockUniqueItemsRow] })
 
       const result = await userAssetsComponent.getEmotesByOwner('0xowner', 5, 10)
 
       expect(result).toEqual({
         data: expect.any(Array),
-        total: 30
+        total: 30,
+        totalItems: 15
       })
-      expect(mockClient.query).toHaveBeenCalledTimes(2)
+      expect(mockClient.query).toHaveBeenCalledTimes(3)
     })
   })
 

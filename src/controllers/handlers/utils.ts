@@ -170,23 +170,30 @@ export function createPaginatedResponse<T>(
   elements: T[],
   total: number,
   first: number,
-  skip: number
-): HTTPResponse<{ elements: T[]; page: number; pages: number; limit: number; total: number }> {
+  skip: number,
+  totalItems?: number
+): HTTPResponse<{ elements: T[]; page: number; pages: number; limit: number; total: number; totalItems?: number }> {
   const limit = first || 1
   const page = Math.floor(skip / limit) + 1
   const pages = Math.ceil(total / limit)
+
+  const data: { elements: T[]; page: number; pages: number; limit: number; total: number; totalItems?: number } = {
+    elements,
+    page,
+    pages,
+    limit,
+    total
+  }
+
+  if (totalItems !== undefined) {
+    data.totalItems = totalItems
+  }
 
   return {
     status: StatusCode.OK,
     body: {
       ok: true,
-      data: {
-        elements,
-        page,
-        pages,
-        limit,
-        total
-      }
+      data
     }
   }
 }

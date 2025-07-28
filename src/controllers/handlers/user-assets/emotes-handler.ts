@@ -16,8 +16,8 @@ export async function getUserEmotesHandler(
   const { first, skip } = getUserAssetsParams(params)
 
   try {
-    const { data, total } = await userAssets.getEmotesByOwner(address.toLowerCase(), first, skip)
-    return createPaginatedResponse(data, total, first, skip)
+    const { data, total, totalItems } = await userAssets.getEmotesByOwner(address.toLowerCase(), first, skip)
+    return createPaginatedResponse(data, total, first, skip, totalItems)
   } catch (error) {
     return {
       status: 500,

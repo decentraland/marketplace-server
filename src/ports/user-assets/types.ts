@@ -5,7 +5,7 @@ export interface IUserAssetsComponent {
    * Gets complete wearable data for a user
    * Returns full wearable information including metadata, rarity, pricing, etc.
    */
-  getWearablesByOwner(owner: string, first?: number, skip?: number): Promise<{ data: ProfileWearable[]; total: number }>
+  getWearablesByOwner(owner: string, first?: number, skip?: number): Promise<{ data: ProfileWearable[]; total: number; totalItems: number }>
 
   /**
    * Gets minimal wearable data for profile validation - used by profiles endpoint
@@ -21,7 +21,7 @@ export interface IUserAssetsComponent {
    * Gets complete emote data for a user
    * Returns full emote information including metadata, rarity, pricing, etc.
    */
-  getEmotesByOwner(owner: string, first?: number, skip?: number): Promise<{ data: ProfileEmote[]; total: number }>
+  getEmotesByOwner(owner: string, first?: number, skip?: number): Promise<{ data: ProfileEmote[]; total: number; totalItems: number }>
 
   /**
    * Gets minimal emote data for profile validation - used by profiles endpoint
@@ -103,6 +103,7 @@ export type UserWearablesResponse = {
   pages: number
   limit: number
   total: number
+  totalItems: number
 }
 
 export type UserEmotesResponse = {
@@ -111,6 +112,7 @@ export type UserEmotesResponse = {
   pages: number
   limit: number
   total: number
+  totalItems: number
 }
 
 export type UserNamesResponse = {

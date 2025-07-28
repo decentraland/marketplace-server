@@ -16,8 +16,8 @@ export async function getUserWearablesHandler(
   const { first, skip } = getUserAssetsParams(params)
 
   try {
-    const { data, total } = await userAssets.getWearablesByOwner(address.toLowerCase(), first, skip)
-    return createPaginatedResponse(data, total, first, skip)
+    const { data, total, totalItems } = await userAssets.getWearablesByOwner(address.toLowerCase(), first, skip)
+    return createPaginatedResponse(data, total, first, skip, totalItems)
   } catch (error) {
     return {
       status: 500,

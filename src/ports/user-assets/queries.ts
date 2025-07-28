@@ -54,6 +54,18 @@ export function getWearablesByOwnerCountQuery(owner: string): SQLStatement {
 }
 
 /**
+ * Gets count of unique wearable items for a user (grouped by item_id)
+ */
+export function getWearablesByOwnerUniqueItemsCountQuery(owner: string): SQLStatement {
+  return SQL`
+    SELECT COUNT(DISTINCT nft.item_id) as total_items
+    FROM squid_marketplace.nft nft
+    WHERE owner_address = ${owner}
+      AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
+  `
+}
+
+/**
  * Gets minimal wearable data for profile validation - used by profiles endpoint
  * Returns only URN and token ID for efficient profile wearable validation
  *
@@ -122,6 +134,18 @@ export function getEmotesByOwnerQuery(owner: string, first: number, skip: number
 export function getEmotesByOwnerCountQuery(owner: string): SQLStatement {
   return SQL`
     SELECT COUNT(*) as total
+    FROM squid_marketplace.nft nft
+    WHERE owner_address = ${owner}
+      AND nft.item_type = 'emote_v1'
+  `
+}
+
+/**
+ * Gets count of unique emote items for a user (grouped by item_id)
+ */
+export function getEmotesByOwnerUniqueItemsCountQuery(owner: string): SQLStatement {
+  return SQL`
+    SELECT COUNT(DISTINCT nft.item_id) as total_items
     FROM squid_marketplace.nft nft
     WHERE owner_address = ${owner}
       AND nft.item_type = 'emote_v1'

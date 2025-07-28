@@ -60,7 +60,8 @@ describe('User Assets Handlers', () => {
     beforeEach(() => {
       mockUserAssets.getWearablesByOwner.mockResolvedValue({
         data: mockWearables,
-        total: 50
+        total: 50,
+        totalItems: 25
       })
     })
 
@@ -79,7 +80,8 @@ describe('User Assets Handlers', () => {
             page: 3, // (20 / 10) + 1
             pages: 5, // Math.ceil(50 / 10)
             limit: 10,
-            total: 50
+            total: 50,
+            totalItems: 25
           }
         }
       })
@@ -145,24 +147,26 @@ describe('User Assets Handlers', () => {
 
       mockUserAssets.getWearablesByOwner.mockResolvedValue({
         data: duplicateUrnWearables,
-        total: 3
+        total: 3,
+        totalItems: 1
       })
 
       const result = await getUserWearablesHandler(mockContext)
 
-      expect(result).toEqual({
-        status: 200,
-        body: {
-          ok: true,
-          data: {
-            elements: duplicateUrnWearables,
-            page: 1,
-            pages: 1,
-            limit: 100,
-            total: 3
+              expect(result).toEqual({
+          status: 200,
+          body: {
+            ok: true,
+            data: {
+              elements: duplicateUrnWearables,
+              page: 1,
+              pages: 1,
+              limit: 100,
+              total: 3,
+              totalItems: 1
+            }
           }
-        }
-      })
+        })
 
       // Verify we get 3 separate elements even though they have the same URN
       if (result.body.ok) {
@@ -194,7 +198,8 @@ describe('User Assets Handlers', () => {
 
       mockUserAssets.getWearablesByOwner.mockResolvedValue({
         data: wearablesWithNullTransferred,
-        total: 1
+        total: 1,
+        totalItems: 1
       })
 
       const result = await getUserWearablesHandler(mockContext)
@@ -269,7 +274,8 @@ describe('User Assets Handlers', () => {
     beforeEach(() => {
       mockUserAssets.getEmotesByOwner.mockResolvedValue({
         data: mockEmotes,
-        total: 30
+        total: 30,
+        totalItems: 2
       })
     })
 
@@ -279,19 +285,20 @@ describe('User Assets Handlers', () => {
 
       const result = await getUserEmotesHandler(mockContext)
 
-      expect(result).toEqual({
-        status: 200,
-        body: {
-          ok: true,
-          data: {
-            elements: mockEmotes,
-            page: 1,
-            pages: 2, // Math.ceil(30 / 15)
-            limit: 15,
-            total: 30
+              expect(result).toEqual({
+          status: 200,
+          body: {
+            ok: true,
+            data: {
+              elements: mockEmotes,
+              page: 1,
+              pages: 2, // Math.ceil(30 / 15)
+              limit: 15,
+              total: 30,
+              totalItems: 2
+            }
           }
-        }
-      })
+        })
     })
 
     it('should handle errors gracefully', async () => {
