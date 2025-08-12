@@ -1,5 +1,15 @@
 import { WearableCategory, EmoteCategory } from '@dcl/schemas'
 
+export type UserAssetsFilters = {
+  first?: number
+  skip?: number
+  category?: string
+  rarity?: string
+  name?: string
+  orderBy?: string
+  direction?: string
+}
+
 export interface IUserAssetsComponent {
   /**
    * Gets complete wearable data for a user
@@ -37,13 +47,25 @@ export interface IUserAssetsComponent {
    * Gets complete name/ENS data for a user
    * Returns full name information including contract details and pricing
    */
-  getNamesByOwner(owner: string, first?: number, skip?: number): Promise<{ data: ProfileName[]; total: number }>
+  getNamesByOwner(owner: string, filters?: UserAssetsFilters): Promise<{ data: ProfileName[]; total: number }>
 
   /**
    * Gets minimal name data for profile validation
    * Returns only the name/subdomain for efficient name ownership validation
    */
   getOwnedNamesOnly(owner: string, first?: number, skip?: number): Promise<{ data: { name: string }[]; total: number }>
+
+  /**
+   * Gets grouped wearables data for a user - groups NFTs by URN
+   * Returns wearables grouped by URN with individual data arrays, amounts, etc.
+   */
+  getGroupedWearablesByOwner(owner: string, filters?: UserAssetsFilters): Promise<{ data: GroupedWearable[]; total: number }>
+
+  /**
+   * Gets grouped emotes data for a user - groups NFTs by URN
+   * Returns emotes grouped by URN with individual data arrays, amounts, etc.
+   */
+  getGroupedEmotesByOwner(owner: string, filters?: UserAssetsFilters): Promise<{ data: GroupedEmote[]; total: number }>
 }
 
 export type ProfileWearable = {
@@ -73,6 +95,39 @@ export type ProfileName = {
   contractAddress: string
   tokenId: string
   price?: number
+}
+
+// Grouped item types - equivalent to OnChainWearable and OnChainEmote in lamb2
+export type GroupedWearable = {
+  urn: string
+  amount: number
+  individualData: Array<{
+    id: string
+    tokenId: string
+    transferredAt: string
+    price: string
+  }>
+  name: string
+  rarity: string
+  minTransferredAt: number
+  maxTransferredAt: number
+  category: WearableCategory
+}
+
+export type GroupedEmote = {
+  urn: string
+  amount: number
+  individualData: Array<{
+    id: string
+    tokenId: string
+    transferredAt: string
+    price: string
+  }>
+  name: string
+  rarity: string
+  minTransferredAt: number
+  maxTransferredAt: number
+  category: EmoteCategory
 }
 
 export type DappsDbRow = {
@@ -141,6 +196,22 @@ export type UserEmotesUrnTokenResponse = {
 
 export type UserNamesOnlyResponse = {
   elements: { name: string }[]
+  page: number
+  pages: number
+  limit: number
+  total: number
+}
+
+export type UserGroupedWearablesResponse = {
+  elements: GroupedWearable[]
+  page: number
+  pages: number
+  limit: number
+  total: number
+}
+
+export type UserGroupedEmotesResponse = {
+  elements: GroupedEmote[]
   page: number
   pages: number
   limit: number

@@ -1,5 +1,5 @@
 import { Params } from '../../../logic/http/params'
-import { UserEmotesResponse, UserEmotesUrnTokenResponse } from '../../../ports/user-assets/types'
+import { UserEmotesResponse, UserEmotesUrnTokenResponse, UserGroupedEmotesResponse } from '../../../ports/user-assets/types'
 import { HandlerContextWithPath } from '../../../types'
 import { getUserAssetsParams, createPaginatedResponse } from '../utils'
 
@@ -50,7 +50,30 @@ export async function getUserEmotesUrnTokenHandler(
       status: 500,
       body: {
         ok: false,
-        message: 'Failed to fetch user emotes URN and token data',
+        message: 'Failed to fetch user emotes URN tokens',
+        data: error instanceof Error ? { error: error.message } : undefined
+      }
+    }
+  }
+}
+
+export async function getUserGroupedEmotesHandler(
+  context: HandlerContextWithPath<'userAssets', '/v1/users/:address/emotes/grouped'>
+): Promise<ReturnType<typeof createPaginatedResponse<UserGroupedEmotesResponse['elements'][0]>>> {
+  const { userAssets } = context.components
+  const { address } = context.params
+  const params = new Params(context.url.searchParams)
+  const filters = getUserAssetsParams(params)
+
+  try {
+    const { data, total } = await userAssets.getGroupedEmotesByOwner(address.toLowerCase(), filters)
+    return createPaginatedResponse(data, total, filters.first, filters.skip)
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ok: false,
+        message: 'Failed to fetch user grouped emotes',
         data: error instanceof Error ? { error: error.message } : undefined
       }
     }

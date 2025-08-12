@@ -13,11 +13,11 @@ export async function getUserNamesHandler(
   const { userAssets } = context.components
   const { address } = context.params
   const params = new Params(context.url.searchParams)
-  const { first, skip } = getUserAssetsParams(params)
+  const filters = getUserAssetsParams(params)
 
   try {
-    const { data, total } = await userAssets.getNamesByOwner(address.toLowerCase(), first, skip)
-    return createPaginatedResponse(data, total, first, skip)
+    const { data, total } = await userAssets.getNamesByOwner(address.toLowerCase(), filters)
+    return createPaginatedResponse(data, total, filters.first, filters.skip)
   } catch (error) {
     return {
       status: 500,

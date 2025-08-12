@@ -1,5 +1,11 @@
 import { AppComponents } from '../../types'
-import { fromDbRowsToWearables, fromDbRowsToEmotes, fromDbRowsToNames } from './mappers'
+import {
+  fromDbRowsToWearables,
+  fromDbRowsToEmotes,
+  fromDbRowsToNames,
+  fromDbRowsToGroupedWearables,
+  fromDbRowsToGroupedEmotes
+} from './mappers'
 import {
   getWearablesByOwnerQuery,
   getWearablesByOwnerCountQuery,
@@ -11,9 +17,22 @@ import {
   getOwnedEmotesUrnAndTokenIdQuery,
   getNamesByOwnerQuery,
   getNamesByOwnerCountQuery,
-  getOwnedNamesOnlyQuery
+  getOwnedNamesOnlyQuery,
+  getGroupedWearablesByOwnerQuery,
+  getGroupedWearablesByOwnerCountQuery,
+  getGroupedEmotesByOwnerQuery,
+  getGroupedEmotesByOwnerCountQuery
 } from './queries'
-import { IUserAssetsComponent, ProfileWearable, ProfileEmote, ProfileName, DappsDbRow } from './types'
+import {
+  IUserAssetsComponent,
+  ProfileWearable,
+  ProfileEmote,
+  ProfileName,
+  DappsDbRow,
+  GroupedWearable,
+  GroupedEmote,
+  UserAssetsFilters
+} from './types'
 
 const FIRST_DEFAULT = 100
 const SKIP_DEFAULT = 0
@@ -169,11 +188,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @param skip - Number of names to skip (default: 0)
    * @returns Promise resolving to object with data array and total count
    */
-  async function getNamesByOwner(
-    owner: string,
-    first = FIRST_DEFAULT,
-    skip = SKIP_DEFAULT
-  ): Promise<{ data: ProfileName[]; total: number }> {
+  async function getNamesByOwner(owner: string, filters: UserAssetsFilters = {}): Promise<{ data: ProfileName[]; total: number }> {
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
@@ -286,6 +302,81 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     }
   }
 
+  /**
+   * Gets grouped wearables data for a user - groups NFTs by URN
+   * Returns wearables grouped by URN with individual data arrays, amounts, etc.
+   *
+   * @param owner - Ethereum address of the wearable owner
+   * @param first - Maximum number of grouped wearables to return (default: 100)
+   * @param skip - Number of grouped wearables to skip (default: 0)
+   * @returns Promise resolving to object with data array and total count
+   */
+  async function getGroupedWearablesByOwner(
+    owner: string,
+    filters: UserAssetsFilters = {}
+  ): Promise<{ data: GroupedWearable[]; total: number }> {
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT } = filters
+    try {
+      const client = await dappsDatabase.getPool().connect()
+
+      try {
+        const [dataQuery, countQuery] = [getGroupedWearablesByOwnerQuery(owner, first, skip), getGroupedWearablesByOwnerCountQuery(owner)]
+
+        const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
+
+        const total = parseInt(countResult.rows[0]?.total || '0', 10)
+        const data = fromDbRowsToGroupedWearables(dataResult.rows)
+
+        logger.debug(`Found ${data.length} grouped wearables (${total} total unique) for owner ${owner}`)
+        return { data, total }
+      } finally {
+        client.release()
+      }
+    } catch (error) {
+      logger.error('Error fetching grouped wearables by owner', {
+        owner,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Gets grouped emotes data for a user - groups NFTs by URN
+   * Returns emotes grouped by URN with individual data arrays, amounts, etc.
+   *
+   * @param owner - Ethereum address of the emote owner
+   * @param first - Maximum number of grouped emotes to return (default: 100)
+   * @param skip - Number of grouped emotes to skip (default: 0)
+   * @returns Promise resolving to object with data array and total count
+   */
+  async function getGroupedEmotesByOwner(owner: string, filters: UserAssetsFilters = {}): Promise<{ data: GroupedEmote[]; total: number }> {
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT } = filters
+    try {
+      const client = await dappsDatabase.getPool().connect()
+
+      try {
+        const [dataQuery, countQuery] = [getGroupedEmotesByOwnerQuery(owner, first, skip), getGroupedEmotesByOwnerCountQuery(owner)]
+
+        const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
+
+        const total = parseInt(countResult.rows[0]?.total || '0', 10)
+        const data = fromDbRowsToGroupedEmotes(dataResult.rows)
+
+        logger.debug(`Found ${data.length} grouped emotes (${total} total unique) for owner ${owner}`)
+        return { data, total }
+      } finally {
+        client.release()
+      }
+    } catch (error) {
+      logger.error('Error fetching grouped emotes by owner', {
+        owner,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
+  }
+
   return {
     getWearablesByOwner,
     getOwnedWearablesUrnAndTokenId,
@@ -293,6 +384,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     getOwnedEmotesUrnAndTokenId,
     getNamesByOwner,
     getOwnedNamesOnly,
+    getGroupedWearablesByOwner,
+    getGroupedEmotesByOwner,
     ...dappsDatabase
   }
 }

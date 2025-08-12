@@ -1,7 +1,10 @@
+import { URLSearchParams } from 'url'
 import { WearableCategory, EmoteCategory } from '@dcl/schemas'
 import { getUserEmotesHandler, getUserEmotesUrnTokenHandler } from '../../src/controllers/handlers/user-assets/emotes-handler'
 import { getUserNamesHandler, getUserNamesOnlyHandler } from '../../src/controllers/handlers/user-assets/names-handler'
 import { getUserWearablesHandler, getUserWearablesUrnTokenHandler } from '../../src/controllers/handlers/user-assets/wearables-handler'
+import { getUserAssetsParams } from '../../src/controllers/handlers/utils'
+import { Params } from '../../src/logic/http/params'
 import { IUserAssetsComponent } from '../../src/ports/user-assets/types'
 
 describe('User Assets Handlers', () => {
@@ -16,21 +19,16 @@ describe('User Assets Handlers', () => {
       getEmotesByOwner: jest.fn(),
       getOwnedEmotesUrnAndTokenId: jest.fn(),
       getNamesByOwner: jest.fn(),
-      getOwnedNamesOnly: jest.fn()
+      getOwnedNamesOnly: jest.fn(),
+      getGroupedWearablesByOwner: jest.fn(),
+      getGroupedEmotesByOwner: jest.fn()
     }
 
     searchParams = new URLSearchParams()
-
     mockContext = {
-      components: {
-        userAssets: mockUserAssets
-      },
-      params: {
-        address: '0x1234567890abcdef'
-      },
-      url: {
-        searchParams
-      }
+      params: { address: '0x1234567890abcdef' },
+      url: { searchParams },
+      components: { userAssets: mockUserAssets }
     }
   })
 
@@ -153,20 +151,20 @@ describe('User Assets Handlers', () => {
 
       const result = await getUserWearablesHandler(mockContext)
 
-              expect(result).toEqual({
-          status: 200,
-          body: {
-            ok: true,
-            data: {
-              elements: duplicateUrnWearables,
-              page: 1,
-              pages: 1,
-              limit: 100,
-              total: 3,
-              totalItems: 1
-            }
+      expect(result).toEqual({
+        status: 200,
+        body: {
+          ok: true,
+          data: {
+            elements: duplicateUrnWearables,
+            page: 1,
+            pages: 1,
+            limit: 100,
+            total: 3,
+            totalItems: 1
           }
-        })
+        }
+      })
 
       // Verify we get 3 separate elements even though they have the same URN
       if (result.body.ok) {
@@ -285,20 +283,20 @@ describe('User Assets Handlers', () => {
 
       const result = await getUserEmotesHandler(mockContext)
 
-              expect(result).toEqual({
-          status: 200,
-          body: {
-            ok: true,
-            data: {
-              elements: mockEmotes,
-              page: 1,
-              pages: 2, // Math.ceil(30 / 15)
-              limit: 15,
-              total: 30,
-              totalItems: 2
-            }
+      expect(result).toEqual({
+        status: 200,
+        body: {
+          ok: true,
+          data: {
+            elements: mockEmotes,
+            page: 1,
+            pages: 2, // Math.ceil(30 / 15)
+            limit: 15,
+            total: 30,
+            totalItems: 2
           }
-        })
+        }
+      })
     })
 
     it('should handle errors gracefully', async () => {
@@ -478,5 +476,43 @@ describe('User Assets Handlers', () => {
         }
       })
     })
+  })
+})
+
+describe('getUserAssetsParams', () => {
+  it('should handle limit parameter up to 1000', () => {
+    const searchParams = new URLSearchParams({ limit: '1000', offset: '0' })
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.first).toBe(1000)
+    expect(result.skip).toBe(0)
+  })
+
+  it('should cap limit at 1000 when higher value is provided', () => {
+    const searchParams = new URLSearchParams({ limit: '2000', offset: '0' })
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.first).toBe(1000) // Should be capped at 1000
+    expect(result.skip).toBe(0)
+  })
+
+  it('should fallback to first parameter if limit is not provided', () => {
+    const searchParams = new URLSearchParams({ first: '500', skip: '10' })
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.first).toBe(500)
+    expect(result.skip).toBe(10)
+  })
+
+  it('should use default value when no limit or first is provided', () => {
+    const searchParams = new URLSearchParams({})
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.first).toBe(100) // Default value
+    expect(result.skip).toBe(0) // Default value
   })
 })

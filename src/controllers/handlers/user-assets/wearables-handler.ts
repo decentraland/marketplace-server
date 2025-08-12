@@ -1,5 +1,5 @@
 import { Params } from '../../../logic/http/params'
-import { UserWearablesResponse, UserWearablesUrnTokenResponse } from '../../../ports/user-assets/types'
+import { UserWearablesResponse, UserWearablesUrnTokenResponse, UserGroupedWearablesResponse } from '../../../ports/user-assets/types'
 import { HandlerContextWithPath } from '../../../types'
 import { getUserAssetsParams, createPaginatedResponse } from '../utils'
 
@@ -50,7 +50,30 @@ export async function getUserWearablesUrnTokenHandler(
       status: 500,
       body: {
         ok: false,
-        message: 'Failed to fetch user wearables URN and token data',
+        message: 'Failed to fetch user wearables URN tokens',
+        data: error instanceof Error ? { error: error.message } : undefined
+      }
+    }
+  }
+}
+
+export async function getUserGroupedWearablesHandler(
+  context: HandlerContextWithPath<'userAssets', '/v1/users/:address/wearables/grouped'>
+): Promise<ReturnType<typeof createPaginatedResponse<UserGroupedWearablesResponse['elements'][0]>>> {
+  const { userAssets } = context.components
+  const { address } = context.params
+  const params = new Params(context.url.searchParams)
+  const filters = getUserAssetsParams(params)
+
+  try {
+    const { data, total } = await userAssets.getGroupedWearablesByOwner(address.toLowerCase(), filters)
+    return createPaginatedResponse(data, total, filters.first, filters.skip)
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ok: false,
+        message: 'Failed to fetch user grouped wearables',
         data: error instanceof Error ? { error: error.message } : undefined
       }
     }
