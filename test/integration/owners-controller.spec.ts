@@ -22,7 +22,7 @@ test('when getting owners', function ({ components }) {
       expect(response.status).toEqual(400)
       expect(responseBody).toEqual({
         ok: false,
-        message: "Couldn't fetch owners with the filters provided"
+        message: "itemId and contractAddress are necessary params."
       })
     })
 
@@ -33,7 +33,7 @@ test('when getting owners', function ({ components }) {
       expect(response.status).toEqual(400)
       expect(responseBody).toEqual({
         ok: false,
-        message: "Couldn't fetch owners with the filters provided"
+        message: "itemId and contractAddress are necessary params."
       })
     })
 
@@ -44,7 +44,7 @@ test('when getting owners', function ({ components }) {
       expect(response.status).toEqual(400)
       expect(responseBody).toEqual({
         ok: false,
-        message: "Couldn't fetch owners with the filters provided"
+        message: "itemId and contractAddress are necessary params."
       })
     })
   })
