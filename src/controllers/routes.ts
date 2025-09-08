@@ -10,6 +10,7 @@ import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
+import { getOwnersHandler } from './handlers/owners-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
@@ -100,6 +101,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+  router.get('/v1/owners', getOwnersHandler)
 
   router.get(
     '/v1/items',
