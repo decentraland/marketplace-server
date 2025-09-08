@@ -19,12 +19,12 @@ export const getOwnersQuery = (
 
   const query = SQL`SELECT `
     .append(fields)
-    .append(` FROM `)
+    .append(' FROM ')
     .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(`.nft AS nft`)
-    .append(` LEFT JOIN `)
+    .append('.nft AS nft')
+    .append(' LEFT JOIN ')
     .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(`.account AS account ON nft.owner_id = account.id`)
+    .append('.account AS account ON nft.owner_id = account.id')
 
   const where = [
     contractAddress ? SQL`nft.contract_address = ${contractAddress}` : undefined,
@@ -32,12 +32,12 @@ export const getOwnersQuery = (
   ].filter(Boolean)
 
   if (where.length) {
-    query.append(` WHERE `)
+    query.append(' WHERE ')
     where.forEach((whereClause, index) => {
       if (whereClause) {
         query.append(whereClause)
         if (index < where.length - 1) {
-          query.append(` AND `)
+          query.append(' AND ')
         }
       }
     })
