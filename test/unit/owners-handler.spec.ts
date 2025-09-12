@@ -11,7 +11,7 @@ describe('getOwnersHandler', () => {
       context = {
         components: {
           owners: {
-            fetchAndCount: jest.fn().mockResolvedValue({ data: [], total: 0 })
+            fetchAndCount: jest.fn().mockResolvedValueOnce({ data: [], total: 0 })
           }
         },
         url: new URL('http://example.com/v1/owners?contractAddress=0x123&itemId=0')

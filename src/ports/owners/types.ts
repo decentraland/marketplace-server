@@ -5,9 +5,9 @@ export type Owner = {
 }
 
 export type OwnersFilters = {
-  contractAddress?: string
+  contractAddress: string
+  itemId: string
   first?: number
-  itemId?: string
   skip?: number
   orderDirection?: string
 }
