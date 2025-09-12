@@ -18,6 +18,16 @@ export async function getOwnersHandler(context: Pick<HandlerContextWithPath<'own
     const first = params.getNumber('first')
     const skip = params.getNumber('skip')
 
+    if (!contractAddress || !itemId) {
+      return {
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: 'contractAddress and itemId are necessary params.'
+        }
+      }
+    }
+
     const { data, total } = await owners.fetchAndCount({
       contractAddress,
       itemId,
