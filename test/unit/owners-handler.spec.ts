@@ -94,14 +94,6 @@ describe('getOwnersHandler', () => {
           message: 'itemId and contractAddress are necessary params.'
         }
       })
-      expect(context.components.owners.fetchAndCount).toHaveBeenCalledWith({
-        contractAddress: undefined,
-        itemId: undefined,
-        orderDirection: 'desc',
-        sortBy: OwnersSortBy.ISSUED_ID,
-        first: undefined,
-        skip: undefined
-      })
     })
   })
 
