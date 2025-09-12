@@ -23,7 +23,7 @@ export async function getOwnersHandler(context: Pick<HandlerContextWithPath<'own
         status: StatusCode.BAD_REQUEST,
         body: {
           ok: false,
-          message: 'contractAddress and itemId are necessary params.'
+          message: 'itemId and contractAddress are necessary params.'
         }
       }
     }

@@ -20,10 +20,6 @@ export function createOwnersComponent(options: {
       skip?: number
     }
   ) {
-    if (filters.itemId === undefined || !filters.contractAddress) {
-      throw new Error('itemId and contractAddress are necessary params.')
-    }
-
     let client: PoolClient | undefined = undefined
     try {
       client = await dappsDatabase.getPool().connect()
