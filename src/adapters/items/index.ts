@@ -58,7 +58,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     rarity: dbItem.rarity,
     price: dbItem.trade_id ? dbItem.trade_price : dbItem.price,
     available: dbItem.available,
-    isOnSale: !!(dbItem.search_is_store_minter || dbItem.trade_id) && dbItem.available > 0,
+    isOnSale: (dbItem.search_is_store_minter || (!!dbItem.trade_id && dbItem.search_is_marketplace_v3_minter)) && dbItem.available > 0,
     creator: dbItem.creator,
     tradeId: dbItem.trade_id,
     beneficiary: isAddressZero(beneficiary) ? null : beneficiary,
