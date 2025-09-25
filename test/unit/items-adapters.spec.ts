@@ -23,6 +23,7 @@ beforeEach(() => {
     reviewed_at: Date.now(),
     sold_at: Date.now(),
     search_is_store_minter: false,
+    search_is_marketplace_v3_minter: false,
     updated_at: Date.now(),
     uri: 'url',
     urn: 'urn',
