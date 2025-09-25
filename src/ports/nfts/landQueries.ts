@@ -198,6 +198,11 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
         )
         .append(filters.category ? SQL` AND nft.category = ${filters.category}` : SQL``)
         .append(filters.owner ? SQL` AND nft.owner_address = ${filters.owner}` : SQL``)
+        .append(filters.minEstateSize ? SQL` AND nft.search_estate_size >= ${filters.minEstateSize}` : SQL``)
+        .append(filters.maxEstateSize ? SQL` AND nft.search_estate_size <= ${filters.maxEstateSize}` : SQL``)
+        .append(filters.minDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza >= ${filters.minDistanceToPlaza}` : SQL``)
+        .append(filters.maxDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza <= ${filters.maxDistanceToPlaza}` : SQL``)
+        .append(filters.adjacentToRoad ? SQL` AND nft.search_adjacent_to_road = true` : SQL``)
         .append(
           SQL`
           `
@@ -299,7 +304,8 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_MIN_ESTATE_SIZE,
     // FILTER_BY_IDS, //@TODO check this ones out
     FILTER_BY_SEARCH,
-    FILTER_CATEGORY
+    FILTER_CATEGORY,
+    FILTER_BY_IDS
   } = getAllLANDWheres(filters)
 
   const topNFTsWhere = [
@@ -313,7 +319,8 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_BY_MAX_PLAZA_DISTANCE,
     FILTER_BY_ROAD_ADJACENT,
     FILTER_CATEGORY,
-    FILTER_BY_SEARCH
+    FILTER_BY_SEARCH,
+    FILTER_BY_IDS
   ]
 
   return getTradesCTE(filters).append(
@@ -340,7 +347,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
           )
           .append(getWhereStatementFromFilters(topNFTsWhere))
           .append(getNFTsSortBy(sortBy))
-          .append(getNFTLimitAndOffsetStatement(filters))
+          .append(filters.ids?.length ? SQL`` : getNFTLimitAndOffsetStatement(filters))
           .append(
             SQL`
     ),
@@ -439,7 +446,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
       ) estate_data ON TRUE
       `
                                           .append(getNFTsSortBy(sortBy))
-                                          .append(SQL``)
+                                          .append(filters.ids?.length ? getNFTLimitAndOffsetStatement(filters) : SQL``)
                                       )
                                   )
                               )

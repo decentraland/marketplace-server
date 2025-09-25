@@ -182,11 +182,18 @@ export function getOrderBy(filters: CatalogFilters, isV2 = false) {
       break
     case CatalogSortBy.RECENTLY_LISTED:
       isV2
-        ? sortByQuery.append(SQL`
+        ? sortByQuery.append(
+            filters.onlyMinting
+              ? SQL`
+              GREATEST(GREATEST(
+                COALESCE(ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 0)
+              ), first_listed_at) desc \n`
+              : SQL`
               GREATEST(GREATEST(
                 COALESCE(ROUND(EXTRACT(EPOCH FROM offchain_orders.max_created_at)), 0), 
                 COALESCE(nfts_with_orders.max_order_created_at, 0)
-              ), first_listed_at) desc \n`)
+              ), first_listed_at) desc \n`
+          )
         : sortByQuery.append(SQL`GREATEST(max_order_created_at, first_listed_at) desc \n`)
       break
     case CatalogSortBy.RECENTLY_SOLD:
@@ -270,6 +277,9 @@ export const getIsOnSale = (filters: CatalogFilters) => {
 }
 
 export const getIsOnSaleWithTrades = (filters: CatalogFilters) => {
+  if (filters.onlyMinting && filters.isOnSale) {
+    return SQL`((search_is_store_minter = true AND available > 0) OR offchain_orders.count IS NOT NULL)`
+  }
   return filters.isOnSale
     ? SQL`((search_is_store_minter = true AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
     : SQL`((search_is_store_minter = false OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
@@ -315,10 +325,20 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
 }
 
 export const getMinPriceWhere = (filters: CatalogFilters) => {
+  if (filters.onlyMinting) {
+    return SQL`(price >= ${filters.minPrice} AND price IS DISTINCT FROM ${MAX_NUMERIC_NUMBER})`
+  } else if (filters.onlyListing) {
+    return SQL`min_price >= ${filters.minPrice}`
+  }
   return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND search_is_store_minter = true))`
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
+  if (filters.onlyMinting) {
+    return SQL`price <= ${filters.maxPrice}`
+  } else if (filters.onlyListing) {
+    return SQL`max_price <= ${filters.maxPrice}`
+  }
   return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND search_is_store_minter = true))`
 }
 
@@ -336,6 +356,10 @@ export const getOnlyListingsWhereWithTrades = () => {
 
 export const getOnlyMintingWhere = () => {
   return SQL`items.search_is_store_minter = true AND available > 0`
+}
+
+export const getOnlyMintingWhereWithTrades = () => {
+  return SQL`((items.search_is_store_minter = true AND available > 0) OR (offchain_orders.count IS NOT NULL))`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
@@ -375,7 +399,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.minPrice ? getMinPriceWhere(filters) : undefined,
     filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
     filters.onlyListing ? (isV2 ? getOnlyListingsWhereWithTrades() : getOnlyListingsWhere()) : undefined,
-    filters.onlyMinting ? getOnlyMintingWhere() : undefined,
+    filters.onlyMinting ? (isV2 ? getOnlyMintingWhereWithTrades() : getOnlyMintingWhere()) : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
@@ -431,7 +455,20 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
                 `
     .append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
     .append(
-      ` 
+      filters.onlyMinting
+        ? SQL`
+                THEN LEAST(
+                    COALESCE(items.price, ${MAX_NUMERIC_NUMBER}), 
+                    COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                    COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
+                  )
+                ELSE LEAST(
+                  COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER}),
+                  COALESCE(offchain_orders.open_item_trade_price, ${MAX_NUMERIC_NUMBER})
+                )
+              END AS min_price
+              `
+        : SQL`
                   THEN LEAST(
                     COALESCE(items.price, ${MAX_NUMERIC_NUMBER}), 
                     COALESCE(nfts_with_orders.min_price, ${MAX_NUMERIC_NUMBER}), 
@@ -449,20 +486,36 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
 }
 
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
-  return SQL`CASE
+  return filters.onlyMinting
+    ? SQL`CASE
+            WHEN items.available > 0 AND items.search_is_store_minter = true `.append(
+        filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``
+      ).append(` THEN items.price
+          ELSE NULL
+          END AS max_price
+          `)
+    : SQL`CASE
                 WHEN items.available > 0 AND items.search_is_store_minter = true 
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
-    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
+        .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
           ELSE nfts_with_orders.max_price 
           END AS max_price
           `)
 }
 
 const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
-  return SQL`CASE
+  return filters.onlyMinting
+    ? SQL`CASE
                 WHEN items.available > 0 AND items.search_is_store_minter = true 
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
-    .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
+        .append(` THEN GREATEST(items.price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
+              ELSE GREATEST(offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
+          END AS max_price
+          `)
+    : SQL`CASE
+                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
+        .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
               ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
           END AS max_price
           `)
@@ -539,13 +592,13 @@ export const getTradesCTE = ({
       SQL` AS (
         SELECT * from marketplace.mv_trades
         `
-        .append(category ? SQL`WHERE sent_nft_category = ${category}` : SQL``)
-        .append(sortBy === NFTSortBy.RECENTLY_LISTED ? SQL`ORDER BY created_at DESC LIMIT ${first} OFFSET ${skip}` : SQL``)
+        .append(category ? SQL`WHERE sent_nft_category = ${category} ` : SQL``)
+        .append(sortBy === NFTSortBy.RECENTLY_LISTED ? SQL` ORDER BY created_at DESC LIMIT ${first} OFFSET ${skip}` : SQL``)
     )
     .append(SQL`)`)
 }
 
-const getTradesJoin = () => {
+const getTradesJoin = (filters: CatalogQueryFilters) => {
   return SQL`
         LEFT JOIN
           (
@@ -565,13 +618,16 @@ const getTradesJoin = () => {
               MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at,
               json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
           FROM unified_trades
-            WHERE status = 'open'
+            WHERE status = 'open' and (available IS NULL OR available > 0)`
+    .append(filters.onlyMinting ? SQL` AND type = 'public_item_order'` : SQL``)
+    .append(filters.minPrice ? SQL` AND amount_received >= ${filters.minPrice}` : SQL``)
+    .append(filters.maxPrice ? SQL` AND amount_received <= ${filters.maxPrice}` : SQL``).append(SQL`
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
           ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
             LEFT JOIN ut_min_item 
   ON offchain_orders.contract_address_sent = ut_min_item.contract_address_sent
      AND offchain_orders.item_id = ut_min_item.item_id
-  `
+  `)
 }
 
 const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
@@ -647,7 +703,7 @@ const getMinItemCreatedAtCTE = () => {
 export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   return SQL``
     .append(getTradesCTE())
-    .append(getNFTsWithOrdersCTE(filters))
+    .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
     .append(
       SQL`
@@ -658,11 +714,13 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
     .append(SQL`.item AS items`)
     .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
     .append(
-      SQL`
+      filters.onlyMinting
+        ? SQL``
+        : SQL`
         LEFT JOIN nfts_with_orders ON nfts_with_orders.item_id = items.id`
     )
     .append(getMetadataJoins())
-    .append(getTradesJoin())
+    .append(getTradesJoin(filters))
     .append(getCollectionsQueryWhere(filters, true))
 }
 
@@ -670,7 +728,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
   const query = SQL``
     .append(getTradesCTE())
     .append(getTopNItemsCTE(filters))
-    .append(getNFTsWithOrdersCTE(filters))
+    .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
     .append(
       SQL`
@@ -708,7 +766,24 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
             : SQL`items.first_listed_at as first_listed_at,`
         )
         .append(
-          SQL`
+          filters.onlyMinting
+            ? SQL`
+              items.urn,
+                CASE
+                  WHEN offchain_orders.min_order_amount_received IS NULL THEN NULL
+                  ELSE LEAST(
+                    COALESCE(offchain_orders.min_order_amount_received, ${MAX_NUMERIC_NUMBER})
+                  )
+                END AS min_listing_price,
+                0 AS min_onchain_price,
+                offchain_orders.max_order_amount_received AS max_listing_price,
+                NULL AS max_onchain_price,
+                COALESCE(offchain_orders.nfts_listings_count, 0) AS listings_count,
+                COALESCE(offchain_orders.count, 0) AS offchain_listings_count,
+                0 as onchain_listings_count,
+                EXTRACT(EPOCH FROM offchain_orders.max_created_at) AS max_order_created_at,
+            `
+            : SQL`
               items.urn,
               CASE
                 WHEN offchain_orders.min_order_amount_received IS NULL AND nfts_with_orders.min_price IS NULL THEN NULL
@@ -729,11 +804,6 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               ) AS max_order_created_at,`
         )
         .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
-        .append(
-          `
-              nfts_with_orders.max_order_created_at as max_order_created_at,
-              `
-        )
         .append(getMinPriceCaseWithTrades(filters))
         .append(
           `,
@@ -750,12 +820,14 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
         )
         .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
         .append(
-          SQL`
+          filters.onlyMinting
+            ? SQL``
+            : SQL`
             LEFT JOIN nfts_with_orders ON nfts_with_orders.item_id = items.id 
               `
         )
         .append(getMetadataJoins())
-        .append(getTradesJoin())
+        .append(getTradesJoin(filters))
         .append(getCollectionsQueryWhere(filters, true))
     )
 
@@ -812,12 +884,17 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
               items.network,
               items.first_listed_at,
               items.urn,
-              nfts_with_orders.min_price AS min_listing_price,
-              nfts_with_orders.max_price AS max_listing_price, 
-              COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+              `
+    .append(
+      filters.onlyMinting
+        ? SQL`NULL AS min_listing_price, NULL AS max_listing_price, 0 as listings_count,`
+        : SQL`nfts_with_orders.min_price AS min_listing_price, nfts_with_orders.max_price AS max_listing_price, COALESCE(nfts_with_orders.listings_count,0) as listings_count,`
+    )
     .append(filters.isOnSale === false ? SQL`nfts.owners_count,` : SQL``)
     .append(
-      `
+      filters.onlyMinting
+        ? SQL``
+        : `
               nfts_with_orders.max_order_created_at as max_order_created_at,
               `
     )

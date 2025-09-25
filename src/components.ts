@@ -22,6 +22,7 @@ import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
+import { createOwnersComponent } from './ports/owners/component'
 import { createPricesComponents } from './ports/prices'
 import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
@@ -32,7 +33,8 @@ import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
 import { createTrendingsComponent } from './ports/trendings/component'
 import { createVolumeComponent } from './ports/volume/component'
-import { createWertSigner } from './ports/wert-signer/component'
+import { createWertApi } from './ports/wert/api/component'
+import { createWertSigner } from './ports/wert/signer/component'
 import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
@@ -83,6 +85,7 @@ export async function initComponents(): Promise<AppComponents> {
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
 
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
+  const wertApi = await createWertApi({ config, fetch })
   const ens = createENS()
 
   // rentals
@@ -113,6 +116,7 @@ export async function initComponents(): Promise<AppComponents> {
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
@@ -146,6 +150,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsWriteDatabase,
     catalog,
     wertSigner,
+    wertApi,
     ens,
     updateBuilderServerItemsViewJob,
     schemaValidator,
@@ -158,6 +163,7 @@ export async function initComponents(): Promise<AppComponents> {
     eventPublisher,
     nfts,
     orders,
+    owners,
     rentals,
     sales,
     prices,

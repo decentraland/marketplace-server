@@ -25,6 +25,7 @@ import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
+import { createOwnersComponent } from '../src/ports/owners/component'
 import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
@@ -35,7 +36,8 @@ import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
-import { createWertSigner } from '../src/ports/wert-signer/component'
+import { createWertApi } from '../src/ports/wert/api/component'
+import { createWertSigner } from '../src/ports/wert/signer/component'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
 
@@ -90,6 +92,7 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
+  const wertApi = await createWertApi({ config, fetch })
   const ens = createENS()
 
   // favorites stuff
@@ -117,6 +120,7 @@ async function initComponents(): Promise<TestComponents> {
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
@@ -144,6 +148,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     wertSigner,
+    wertApi,
     ens,
     updateBuilderServerItemsViewJob,
     access,
@@ -157,6 +162,7 @@ async function initComponents(): Promise<TestComponents> {
     eventPublisher,
     nfts,
     orders,
+    owners,
     rentals,
     sales,
     prices,

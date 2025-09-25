@@ -10,6 +10,7 @@ import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
+import { getOwnersHandler } from './handlers/owners-handler'
 import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
@@ -25,7 +26,7 @@ import {
 import { createTransakHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { getVolumeHandler } from './handlers/volume-handler'
-import { createWertSignerHandler } from './handlers/wert-signer-handler'
+import { createWertSignerAndSessionCreatorHandler } from './handlers/wert-signer-and-session-creator-handler'
 import { validateNotKernelSceneSigner, validateAuthMetadata } from './utils'
 
 const FIVE_MINUTES = 5 * 60 * 1000
@@ -61,7 +62,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       expiration: FIVE_MINUTES,
       verifyMetadataContent: validateNotKernelSceneSigner
     }),
-    createWertSignerHandler
+    createWertSignerAndSessionCreatorHandler
   )
   router.get(
     '/v1/transak/orders/:id',
@@ -100,6 +101,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+  router.get('/v1/owners', getOwnersHandler)
 
   router.get(
     '/v1/items',
