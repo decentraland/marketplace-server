@@ -6,6 +6,8 @@ import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createRedisComponent } from '@dcl/redis-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
@@ -43,10 +45,36 @@ const fiveMinutes = 5 * 60 * 1000
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const [
+    CORS_ORIGIN,
+    CORS_METHODS,
+    SEGMENT_WRITE_KEY,
+    WERT_PRIVATE_KEY,
+    WERT_PUBLICATION_FEES_PRIVATE_KEY,
+    RENTALS_SUBGRAPH_URL,
+    SIGNATURES_SERVER_URL,
+    TRANSAK_API_URL,
+    TRANSAK_API_KEY,
+    TRANSAK_API_SECRET,
+    REDIS_URL
+  ] = await Promise.all([
+    config.requireString('CORS_ORIGIN'),
+    config.requireString('CORS_METHODS'),
+    config.requireString('SEGMENT_WRITE_KEY'),
+    config.requireString('WERT_PRIVATE_KEY'),
+    config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY'),
+    config.requireString('RENTALS_SUBGRAPH_URL'),
+    config.requireString('SIGNATURES_SERVER_URL'),
+    config.requireString('TRANSAK_API_URL'),
+    config.requireString('TRANSAK_API_KEY'),
+    config.requireString('TRANSAK_API_SECRET'),
+    config.getString('REDIS_URL')
+  ])
+
   const eventPublisher = await createEventPublisher({ config })
   const cors = {
-    origin: (await config.requireString('CORS_ORIGIN')).split(';').map(origin => new RegExp(origin)),
-    methods: await config.requireString('CORS_METHODS')
+    origin: CORS_ORIGIN.split(';').map(origin => new RegExp(origin)),
+    methods: CORS_METHODS
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
@@ -80,24 +108,18 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
-  const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
-  const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
-  const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
-
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
   const ens = createENS()
 
   // rentals
-  const rentalsSubgraph = await createSubgraphComponent(
-    { logs, config, fetch, metrics },
-    await config.requireString('RENTALS_SUBGRAPH_URL')
-  )
-  const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
+  const rentalsSubgraph = await createSubgraphComponent({ logs, config, fetch, metrics }, RENTALS_SUBGRAPH_URL)
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
 
   // favorites stuff
   const schemaValidator = await createSchemaValidatorComponent()
+
+  const cache = REDIS_URL ? await createRedisComponent(REDIS_URL, { logs }) : await createInMemoryCacheComponent()
 
   const snapshot = await createSnapshotComponent({ fetch, config })
   const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
@@ -126,11 +148,11 @@ export async function initComponents(): Promise<AppComponents> {
   const volumes = await createVolumeComponent({ analyticsData })
 
   const transak = await createTransakComponent(
-    { fetch },
+    { fetch, logs, cache },
     {
-      apiURL: await config.requireString('TRANSAK_API_URL'),
-      apiKey: await config.requireString('TRANSAK_API_KEY'),
-      apiSecret: await config.requireString('TRANSAK_API_SECRET')
+      apiURL: TRANSAK_API_URL,
+      apiKey: TRANSAK_API_KEY,
+      apiSecret: TRANSAK_API_SECRET
     }
   )
   createHttpTracerComponent({ server, tracer })
@@ -139,6 +161,7 @@ export async function initComponents(): Promise<AppComponents> {
 
   return {
     bids,
+    cache,
     config,
     logs,
     server,

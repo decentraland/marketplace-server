@@ -6,6 +6,7 @@ import type {
   IBaseComponent,
   IMetricsComponent
 } from '@well-known-components/interfaces'
+import type { ICacheStorageComponent } from '@dcl/core-commons'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
@@ -43,6 +44,7 @@ export type GlobalContext = {
 // components used in every environment
 export type BaseComponents = {
   config: IConfigComponent
+  cache: ICacheStorageComponent
   logs: ILoggerComponent
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
