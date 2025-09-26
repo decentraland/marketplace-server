@@ -272,17 +272,17 @@ export const getIsSoldOutWhere = () => {
 
 export const getIsOnSale = (filters: CatalogFilters) => {
   return filters.isOnSale
-    ? SQL`((search_is_store_minter = true AND available > 0) OR listings_count IS NOT NULL)`
-    : SQL`((search_is_store_minter = false OR available = 0) AND listings_count IS NULL)`
+    ? SQL`(((search_is_store_minter = true OR search_is_marketplace_v3_minter = true) AND available > 0) OR listings_count IS NOT NULL)`
+    : SQL`((search_is_store_minter = false AND search_is_marketplace_v3_minter = false) OR available = 0) AND listings_count IS NULL)`
 }
 
 export const getIsOnSaleWithTrades = (filters: CatalogFilters) => {
   if (filters.onlyMinting && filters.isOnSale) {
-    return SQL`((search_is_store_minter = true AND available > 0) OR offchain_orders.count IS NOT NULL)`
+    return SQL`((search_is_store_minter = true OR search_is_marketplace_v3_minter = true) AND available > 0) OR offchain_orders.count IS NOT NULL)`
   }
   return filters.isOnSale
-    ? SQL`((search_is_store_minter = true AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
-    : SQL`((search_is_store_minter = false OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
+    ? SQL`(((search_is_store_minter = true OR search_is_marketplace_v3_minter = true) AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
+    : SQL`(((search_is_store_minter = false AND search_is_marketplace_v3_minter = false) OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
 }
 
 export const getIsWearableHeadAccessoryWhere = () => {
@@ -330,7 +330,7 @@ export const getMinPriceWhere = (filters: CatalogFilters) => {
   } else if (filters.onlyListing) {
     return SQL`min_price >= ${filters.minPrice}`
   }
-  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
@@ -339,7 +339,7 @@ export const getMaxPriceWhere = (filters: CatalogFilters) => {
   } else if (filters.onlyListing) {
     return SQL`max_price <= ${filters.maxPrice}`
   }
-  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -347,19 +347,19 @@ export const getContractAddressWhere = (filters: CatalogFilters) => {
 }
 
 export const getOnlyListingsWhere = () => {
-  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
+  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
 }
 
 export const getOnlyListingsWhereWithTrades = () => {
-  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
+  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
 }
 
 export const getOnlyMintingWhere = () => {
-  return SQL`items.search_is_store_minter = true AND available > 0`
+  return SQL`(items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true) AND available > 0`
 }
 
 export const getOnlyMintingWhereWithTrades = () => {
-  return SQL`((items.search_is_store_minter = true AND available > 0) OR (offchain_orders.count IS NOT NULL))`
+  return SQL`(((items.c = true OR items.search_is_marketplace_v3_minter = true) AND available > 0) OR (offchain_orders.count IS NOT NULL))`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
@@ -437,7 +437,7 @@ const MAX_NUMERIC_NUMBER = '1157920892373161954235709850086879078532699846656405
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
   return SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
     .append(` THEN LEAST(items.price, nfts_with_orders.min_price) 
                 ELSE nfts_with_orders.min_price 
@@ -451,7 +451,7 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
     To avoid this, we add the COALESCE with a very high number, so it will always pick the other value.
   */
   return SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `
     .append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
     .append(
@@ -488,14 +488,14 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
 const getMaxPriceCase = (filters: CatalogQueryFilters) => {
   return filters.onlyMinting
     ? SQL`CASE
-            WHEN items.available > 0 AND items.search_is_store_minter = true `.append(
+            WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true) `.append(
         filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``
       ).append(` THEN items.price
           ELSE NULL
           END AS max_price
           `)
     : SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
           ELSE nfts_with_orders.max_price 
@@ -506,14 +506,14 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
 const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
   return filters.onlyMinting
     ? SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
               ELSE GREATEST(offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
           END AS max_price
           `)
     : SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
               ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
@@ -750,6 +750,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               items.price,
               items.available,
               items.search_is_store_minter,
+              items.search_is_marketplace_v3_minter,
               items.creator,
               items.beneficiary,
               items.created_at,
@@ -875,6 +876,7 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
               items.price,
               items.available,
               items.search_is_store_minter,
+              items.search_is_marketplace_v3_minter,
               items.creator,
               items.beneficiary,
               items.created_at,
