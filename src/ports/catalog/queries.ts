@@ -703,6 +703,7 @@ const getMinItemCreatedAtCTE = () => {
 export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   return SQL``
     .append(getTradesCTE())
+    .append(getTopNItemsCTE(filters))
     .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
     .append(
