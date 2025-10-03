@@ -32,6 +32,7 @@ import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
+import { IUserAssetsComponent } from './ports/user-assets/types'
 import { IVolumeComponent } from './ports/volume/types'
 import { IWertApiComponent } from './ports/wert/api/types'
 import { IWertSignerComponent } from './ports/wert/signer/types'
@@ -76,6 +77,7 @@ export type BaseComponents = {
   rankings: IItemsDayDataComponent
   volumes: IVolumeComponent
   analyticsData: IAnalyticsDayDataComponent
+  userAssets: IUserAssetsComponent
 }
 
 // components used in runtime
