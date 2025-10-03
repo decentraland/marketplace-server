@@ -664,7 +664,7 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
   `)
 }
 
-const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters, isCountQuery = false) => {
+const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
   return (
     SQL`
     , nfts_with_orders AS (SELECT 
@@ -682,11 +682,8 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters, isCountQuery = false
             AND orders.expires_at_normalized > NOW()`
       )
       // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
-      // BUT NOT in count queries - we need to count all items
       .append(
-        !isCountQuery &&
-          filters.isOnSale === false &&
-          (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
+        filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
           ? SQL` AND orders.item_id IN (
                 SELECT id::text
                 FROM top_n_items
