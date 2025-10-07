@@ -265,10 +265,7 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
 }
 
 export const getSearchWhere = (filters: CatalogFilters) => {
-  if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
-    return SQL`word::text % lower(${filters.search})`
-  }
-  return SQL`word::text % lower(${filters.search})`
+  return SQL`lower(word::text) % lower(${filters.search})`
 }
 
 export const getIsSoldOutWhere = () => {
