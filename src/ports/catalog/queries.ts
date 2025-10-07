@@ -60,7 +60,7 @@ const getItemIdsByTagOrNameQuery = (filters: CatalogQueryFilters) => {
         items.id AS id,
         CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
         word.text AS word,
-        similarity(word.text, ${search}) AS word_similarity
+        similarity(lower(word.text), lower(${search})) AS word_similarity
       `
       .append(' FROM ')
       .append(MARKETPLACE_SQUID_SCHEMA)
@@ -111,11 +111,11 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 
 const getLatestMetadataCTE = () => {
   return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (wearable_id)
+        SELECT DISTINCT ON (COALESCE(m.wearable_id::text, m.emote_id::text))
           CASE 
             WHEN m.network = 'ETHEREUM' 
-                THEN w.collection || '-' || m.id  -- Use collection + '-' + metadata.id for L1 items
-            ELSE m.wearable_id::text  
+                 THEN (COALESCE(w.collection, e.collection)) || '-' || m.id -- Use collection + '-' + metadata.id for L1 items
+            ELSE COALESCE(m.wearable_id::text, m.emote_id::text) 
             END AS item_id,
         m.id AS latest_metadata_id,
           m.item_type,
@@ -126,12 +126,17 @@ const getLatestMetadataCTE = () => {
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(
       SQL`.metadata as m
-          JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.wearable AS w
-        ON w.id = m.wearable_id
-        ORDER BY
-          wearable_id DESC
+          LEFT JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.wearable AS w
+          ON w.id = m.wearable_id
+          LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.emote AS e
+        ON e.id = m.emote_id
+        ORDER BY COALESCE(m.wearable_id::text, m.emote_id::text) DESC
       )
     `)
+        )
     )
 }
 
@@ -261,9 +266,9 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
 
 export const getSearchWhere = (filters: CatalogFilters) => {
   if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
-    return SQL`word::text % ${filters.search}`
+    return SQL`word::text % lower(${filters.search})`
   }
-  return SQL`word::text % ${filters.search}`
+  return SQL`word::text % lower(${filters.search})`
 }
 
 export const getIsSoldOutWhere = () => {
