@@ -22,6 +22,7 @@ import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
+import { IOwnersComponent } from './ports/owners/types'
 import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
@@ -67,6 +68,7 @@ export type BaseComponents = {
   eventPublisher: IEventPublisherComponent
   nfts: INFTsComponent
   orders: IOrdersComponent
+  owners: IOwnersComponent
   rentals: IRentalsComponent
   sales: ISalesComponent
   trendings: ITrendingsComponent

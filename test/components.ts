@@ -25,6 +25,7 @@ import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
+import { createOwnersComponent } from '../src/ports/owners/component'
 import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
@@ -120,6 +121,7 @@ async function initComponents(): Promise<TestComponents> {
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
@@ -162,6 +164,7 @@ async function initComponents(): Promise<TestComponents> {
     eventPublisher,
     nfts,
     orders,
+    owners,
     rentals,
     sales,
     prices,
