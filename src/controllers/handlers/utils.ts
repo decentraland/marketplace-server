@@ -160,9 +160,25 @@ export const getPricesParams = (params: Params): PriceFilters => {
 }
 
 export const getUserAssetsParams = (params: Params): { first: number; skip: number } => {
+  const MAX_LIMIT = 1000
+  const DEFAULT_LIMIT = 100
+
+  // Support both limit/offset (used by lamb2) and first/skip (legacy)
+  const limit = params.getNumber('limit')
+  const offset = params.getNumber('offset')
+  const first = params.getNumber('first')
+  const skip = params.getNumber('skip')
+
+  // Prioritize limit/offset if present, otherwise fallback to first/skip
+  const requestedLimit = limit !== undefined ? limit : first !== undefined ? first : DEFAULT_LIMIT
+  const requestedSkip = offset !== undefined ? offset : skip !== undefined ? skip : 0
+
+  // Cap limit at MAX_LIMIT
+  const cappedLimit = Math.min(requestedLimit, MAX_LIMIT)
+
   return {
-    first: params.getNumber('first') || 100,
-    skip: params.getNumber('skip') || 0
+    first: cappedLimit,
+    skip: requestedSkip
   }
 }
 
