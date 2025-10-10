@@ -18,6 +18,7 @@ import {
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
+import { HTTPResponse, StatusCode } from '../../types'
 
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
@@ -41,11 +42,11 @@ export const getItemsParams = (params: Params) => {
     emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
-    contractAddresses: params.getList('contractAddress'),
+    contractAddresses: params.getAddressList('contractAddress'),
     itemId: params.getString('itemId'),
     network: params.getValue<Network>('network', Network),
-    maxPrice: maxPrice ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
+    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
     urns: params.getList('urn'),
     ids: params.getList('id')
   }
@@ -83,8 +84,8 @@ export const getNFTParams = (params: Params): NFTFilters => {
     minDistanceToPlaza: params.getNumber('minDistanceToPlaza'),
     maxDistanceToPlaza: params.getNumber('maxDistanceToPlaza'),
     tenant: params.getAddress('tenant')?.toLowerCase(),
-    maxPrice: maxPrice ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
+    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
     minEstateSize: params.getNumber('minEstateSize'),
     maxEstateSize: params.getNumber('maxEstateSize'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
@@ -155,5 +156,74 @@ export const getPricesParams = (params: Params): PriceFilters => {
     minEstateSize: params.getNumber('minEstateSize'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry')
+  }
+}
+
+export const getUserAssetsParams = (
+  params: Params
+): { first: number; skip: number; category?: string; rarity?: string; name?: string; orderBy?: string; direction?: string } => {
+  const MAX_LIMIT = 1000
+  const DEFAULT_LIMIT = 100
+
+  // Support both limit/offset (used by lamb2) and first/skip (legacy)
+  const limit = params.getNumber('limit')
+  const offset = params.getNumber('offset')
+  const first = params.getNumber('first')
+  const skip = params.getNumber('skip')
+
+  // Prioritize limit/offset if present, otherwise fallback to first/skip
+  const requestedLimit = limit !== undefined ? limit : first !== undefined ? first : DEFAULT_LIMIT
+  const requestedSkip = offset !== undefined ? offset : skip !== undefined ? skip : 0
+
+  // Cap limit at MAX_LIMIT
+  const cappedLimit = Math.min(requestedLimit, MAX_LIMIT)
+
+  // Parse filters
+  const category = params.getString('category')
+  const rarity = params.getString('rarity')
+  const name = params.getString('name')
+  const orderBy = params.getString('orderBy')
+  const direction = params.getString('direction')
+
+  return {
+    first: cappedLimit,
+    skip: requestedSkip,
+    category,
+    rarity,
+    name,
+    orderBy,
+    direction
+  }
+}
+
+export function createPaginatedResponse<T>(
+  elements: T[],
+  total: number,
+  first: number,
+  skip: number,
+  totalItems?: number
+): HTTPResponse<{ elements: T[]; page: number; pages: number; limit: number; total: number; totalItems?: number }> {
+  const limit = first || 1
+  const page = Math.floor(skip / limit) + 1
+  const pages = Math.ceil(total / limit)
+
+  const data: { elements: T[]; page: number; pages: number; limit: number; total: number; totalItems?: number } = {
+    elements,
+    page,
+    pages,
+    limit,
+    total
+  }
+
+  if (totalItems !== undefined) {
+    data.totalItems = totalItems
+  }
+
+  return {
+    status: StatusCode.OK,
+    body: {
+      ok: true,
+      data
+    }
   }
 }

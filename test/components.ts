@@ -35,6 +35,7 @@ import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
+import { createUserAssetsComponent } from '../src/ports/user-assets/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
 import { createWertApi } from '../src/ports/wert/api/component'
 import { createWertSigner } from '../src/ports/wert/signer/component'
@@ -135,6 +136,7 @@ async function initComponents(): Promise<TestComponents> {
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
+  const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
 
   return {
     config,
@@ -171,7 +173,8 @@ async function initComponents(): Promise<TestComponents> {
     trendings,
     rankings,
     analyticsData,
-    volumes
+    volumes,
+    userAssets
   }
 }
 
