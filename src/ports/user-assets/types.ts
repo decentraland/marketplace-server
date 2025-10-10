@@ -8,6 +8,7 @@ export type UserAssetsFilters = {
   name?: string
   orderBy?: string
   direction?: string
+  itemType?: string
 }
 
 export interface IUserAssetsComponent {
