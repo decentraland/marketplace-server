@@ -159,7 +159,9 @@ export const getPricesParams = (params: Params): PriceFilters => {
   }
 }
 
-export const getUserAssetsParams = (params: Params): { first: number; skip: number } => {
+export const getUserAssetsParams = (
+  params: Params
+): { first: number; skip: number; category?: string; rarity?: string; name?: string; orderBy?: string; direction?: string } => {
   const MAX_LIMIT = 1000
   const DEFAULT_LIMIT = 100
 
@@ -176,9 +178,21 @@ export const getUserAssetsParams = (params: Params): { first: number; skip: numb
   // Cap limit at MAX_LIMIT
   const cappedLimit = Math.min(requestedLimit, MAX_LIMIT)
 
+  // Parse filters
+  const category = params.getString('category')
+  const rarity = params.getString('rarity')
+  const name = params.getString('name')
+  const orderBy = params.getString('orderBy')
+  const direction = params.getString('direction')
+
   return {
     first: cappedLimit,
-    skip: requestedSkip
+    skip: requestedSkip,
+    category,
+    rarity,
+    name,
+    orderBy,
+    direction
   }
 }
 

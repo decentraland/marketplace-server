@@ -205,7 +205,7 @@ export function getNamesByOwnerQuery(owner: string, first: number, skip: number)
     LEFT JOIN squid_marketplace.order orders on orders.id = nft.active_order_id
     WHERE owner_address = ${owner.toLowerCase()}
       AND nft.category = 'ens'
-    ORDER BY nft.created_at DESC
+    ORDER BY nft.id ASC
     LIMIT ${first}
     OFFSET ${skip}
   `
@@ -240,7 +240,7 @@ export function getOwnedNamesOnlyQuery(owner: string, first: number, skip: numbe
     LEFT JOIN squid_marketplace.ens ens on ens.id = nft.ens_id
     WHERE owner_address = ${owner.toLowerCase()}
       AND nft.category = 'ens'
-    ORDER BY nft.created_at DESC
+    ORDER BY nft.id ASC
     LIMIT ${first}
     OFFSET ${skip}
   `
@@ -253,10 +253,18 @@ export function getOwnedNamesOnlyQuery(owner: string, first: number, skip: numbe
  * @param owner - Ethereum address of the owner
  * @param first - Maximum number of grouped wearables to return
  * @param skip - Number of grouped wearables to skip
+ * @param category - Optional filter by category
+ * @param rarity - Optional filter by rarity
  * @returns SQL query for grouped wearable data
  */
-export function getGroupedWearablesByOwnerQuery(owner: string, first: number, skip: number): SQLStatement {
-  return SQL`
+export function getGroupedWearablesByOwnerQuery(
+  owner: string,
+  first: number,
+  skip: number,
+  category?: string,
+  rarity?: string
+): SQLStatement {
+  const query = SQL`
     WITH grouped_wearables AS (
       SELECT
         nft.urn,
@@ -292,25 +300,54 @@ export function getGroupedWearablesByOwnerQuery(owner: string, first: number, sk
       LEFT JOIN squid_marketplace.item item on nft.item_id = item.id
       WHERE owner_address = ${owner}
         AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
+  `
+
+  // Add optional category filter
+  if (category) {
+    query.append(SQL` AND wearable.category = ${category}`)
+  }
+
+  // Add optional rarity filter
+  if (rarity) {
+    query.append(SQL` AND wearable.rarity = ${rarity}`)
+  }
+
+  query.append(SQL`
       GROUP BY nft.urn, wearable.category, wearable.rarity, wearable.name
     )
     SELECT * FROM grouped_wearables
     ORDER BY rarity_order DESC, urn ASC
     LIMIT ${first}
     OFFSET ${skip}
-  `
+  `)
+
+  return query
 }
 
 /**
  * Gets count of grouped wearables for a user
  */
-export function getGroupedWearablesByOwnerCountQuery(owner: string): SQLStatement {
-  return SQL`
+export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: string, rarity?: string): SQLStatement {
+  const query = SQL`
     SELECT COUNT(DISTINCT nft.urn) as total
     FROM squid_marketplace.nft nft
+    LEFT JOIN squid_marketplace.metadata metadata on nft.metadata_id = metadata.id
+    LEFT JOIN squid_marketplace.wearable wearable on metadata.wearable_id = wearable.id
     WHERE owner_address = ${owner}
       AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
   `
+
+  // Add optional category filter
+  if (category) {
+    query.append(SQL` AND wearable.category = ${category}`)
+  }
+
+  // Add optional rarity filter
+  if (rarity) {
+    query.append(SQL` AND wearable.rarity = ${rarity}`)
+  }
+
+  return query
 }
 
 /**
@@ -320,10 +357,12 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string): SQLStatemen
  * @param owner - Ethereum address of the owner
  * @param first - Maximum number of grouped emotes to return
  * @param skip - Number of grouped emotes to skip
+ * @param category - Optional filter by category
+ * @param rarity - Optional filter by rarity
  * @returns SQL query for grouped emote data
  */
-export function getGroupedEmotesByOwnerQuery(owner: string, first: number, skip: number): SQLStatement {
-  return SQL`
+export function getGroupedEmotesByOwnerQuery(owner: string, first: number, skip: number, category?: string, rarity?: string): SQLStatement {
+  const query = SQL`
     WITH grouped_emotes AS (
       SELECT
         nft.urn,
@@ -358,23 +397,51 @@ export function getGroupedEmotesByOwnerQuery(owner: string, first: number, skip:
       LEFT JOIN squid_marketplace.item item on nft.item_id = item.id
       WHERE owner_address = ${owner}
         AND nft.item_type = 'emote_v1'
+  `
+
+  // Add optional category filter
+  if (category) {
+    query.append(SQL` AND emote.category = ${category}`)
+  }
+
+  // Add optional rarity filter
+  if (rarity) {
+    query.append(SQL` AND emote.rarity = ${rarity}`)
+  }
+
+  query.append(SQL`
       GROUP BY nft.urn, emote.category, emote.rarity, emote.name
     )
     SELECT * FROM grouped_emotes
     ORDER BY rarity_order DESC, urn ASC
     LIMIT ${first}
     OFFSET ${skip}
-  `
+  `)
+
+  return query
 }
 
 /**
  * Gets count of grouped emotes for a user
  */
-export function getGroupedEmotesByOwnerCountQuery(owner: string): SQLStatement {
-  return SQL`
+export function getGroupedEmotesByOwnerCountQuery(owner: string, category?: string, rarity?: string): SQLStatement {
+  const query = SQL`
     SELECT COUNT(DISTINCT nft.urn) as total
     FROM squid_marketplace.nft nft
+    LEFT JOIN squid_marketplace.emote emote on nft.item_id = emote.id
     WHERE owner_address = ${owner}
       AND nft.item_type = 'emote_v1'
   `
+
+  // Add optional category filter
+  if (category) {
+    query.append(SQL` AND emote.category = ${category}`)
+  }
+
+  // Add optional rarity filter
+  if (rarity) {
+    query.append(SQL` AND emote.rarity = ${rarity}`)
+  }
+
+  return query
 }

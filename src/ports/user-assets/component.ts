@@ -315,19 +315,25 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     owner: string,
     filters: UserAssetsFilters = {}
   ): Promise<{ data: GroupedWearable[]; total: number }> {
-    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT } = filters
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
-        const [dataQuery, countQuery] = [getGroupedWearablesByOwnerQuery(owner, first, skip), getGroupedWearablesByOwnerCountQuery(owner)]
+        const [dataQuery, countQuery] = [
+          getGroupedWearablesByOwnerQuery(owner, first, skip, category, rarity),
+          getGroupedWearablesByOwnerCountQuery(owner, category, rarity)
+        ]
 
         const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
 
         const total = parseInt(countResult.rows[0]?.total || '0', 10)
         const data = fromDbRowsToGroupedWearables(dataResult.rows)
 
-        logger.debug(`Found ${data.length} grouped wearables (${total} total unique) for owner ${owner}`)
+        logger.debug(`Found ${data.length} grouped wearables (${total} total unique) for owner ${owner}`, {
+          category: category || '',
+          rarity: rarity || ''
+        })
         return { data, total }
       } finally {
         client.release()
@@ -335,6 +341,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     } catch (error) {
       logger.error('Error fetching grouped wearables by owner', {
         owner,
+        category: category || '',
+        rarity: rarity || '',
         error: error instanceof Error ? error.message : String(error)
       })
       throw error
@@ -351,12 +359,15 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @returns Promise resolving to object with data array and total count
    */
   async function getGroupedEmotesByOwner(owner: string, filters: UserAssetsFilters = {}): Promise<{ data: GroupedEmote[]; total: number }> {
-    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT } = filters
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
-        const [dataQuery, countQuery] = [getGroupedEmotesByOwnerQuery(owner, first, skip), getGroupedEmotesByOwnerCountQuery(owner)]
+        const [dataQuery, countQuery] = [
+          getGroupedEmotesByOwnerQuery(owner, first, skip, category, rarity),
+          getGroupedEmotesByOwnerCountQuery(owner, category, rarity)
+        ]
 
         const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
 
