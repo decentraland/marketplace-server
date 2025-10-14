@@ -291,6 +291,7 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
       emote.loop,
       emote.has_sound,
       emote.has_geometry,
+      emote.outcome_type AS emote_outcome_type,
       estate.estate_parcels,
       estate.size AS size,
       parcel.parcel_estate_token_id,
@@ -363,6 +364,7 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   // Keep only filters that need JOINed tables
   const FILTER_BY_HAS_SOUND = nftFilters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = nftFilters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
+  const FILTER_BY_OUTCOME_TYPE = nftFilters.emoteOutcomeType ? SQL` emote.outcome_type = ${nftFilters.emoteOutcomeType} ` : null
   const FILTER_BY_WEARABLE_CATEGORY = nftFilters.wearableCategory ? SQL` wearable.category = ${nftFilters.wearableCategory} ` : null
   const FILTER_BY_EMOTE_CATEGORY = nftFilters.emoteCategory ? SQL` emote.category = ${nftFilters.emoteCategory} ` : null
   const FILTER_BY_EMOTE_PLAY_MODE = getEmotePlayModeWhereStatement(nftFilters.emotePlayMode)
@@ -394,6 +396,7 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   return getWhereStatementFromFilters([
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
+    FILTER_BY_OUTCOME_TYPE,
     FILTER_BY_EMOTE_CATEGORY,
     FILTER_BY_WEARABLE_CATEGORY,
     FILTER_BY_EMOTE_PLAY_MODE,
@@ -596,6 +599,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
       emote.loop,
       emote.has_sound,
       emote.has_geometry,
+      emote.outcome_type AS emote_outcome_type,
       estate.estate_parcels,
       estate.size AS size,
       parcel.parcel_estate_token_id,
