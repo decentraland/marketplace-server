@@ -309,7 +309,8 @@ describe('fromDBNFTToNFT', () => {
           rarity: dbNFT.rarity,
           loop: dbNFT.loop || false,
           hasSound: dbNFT.has_sound || false,
-          hasGeometry: dbNFT.has_geometry || false
+          hasGeometry: dbNFT.has_geometry || false,
+          outcomeType: dbNFT.emote_outcome_type || null
         }
       },
       id: `${dbNFT.contract_address}-${dbNFT.token_id}`,
