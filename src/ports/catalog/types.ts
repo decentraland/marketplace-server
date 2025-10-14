@@ -39,6 +39,7 @@ export type CollectionsItemDBResult = {
     loop?: boolean
     hasGeometry?: boolean
     hasSound?: boolean
+    outcomeType?: string
   }
 }
 

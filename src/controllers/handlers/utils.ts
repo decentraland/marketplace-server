@@ -14,7 +14,8 @@ import {
   OrderSortBy,
   SaleFilters,
   SaleSortBy,
-  SaleType
+  SaleType,
+  EmoteOutcomeType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
@@ -42,6 +43,7 @@ export const getItemsParams = (params: Params) => {
     emotePlayMode: params.getList<EmotePlayMode>('emotePlayMode', EmotePlayMode),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
+    emoteOutcomeType: params.getValue<EmoteOutcomeType>('emoteOutcomeType', EmoteOutcomeType),
     contractAddresses: params.getAddressList('contractAddress'),
     itemId: params.getString('itemId'),
     network: params.getValue<Network>('network', Network),
@@ -90,6 +92,7 @@ export const getNFTParams = (params: Params): NFTFilters => {
     maxEstateSize: params.getNumber('maxEstateSize'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
+    emoteOutcomeType: params.getValue<EmoteOutcomeType>('emoteOutcomeType', EmoteOutcomeType),
     rentalDays: params
       .getList('rentalDays')
       .map(days => Number.parseInt(days))
@@ -155,7 +158,8 @@ export const getPricesParams = (params: Params): PriceFilters => {
     maxEstateSize: params.getNumber('maxEstateSize'),
     minEstateSize: params.getNumber('minEstateSize'),
     emoteHasSound: params.getBoolean('emoteHasSound'),
-    emoteHasGeometry: params.getBoolean('emoteHasGeometry')
+    emoteHasGeometry: params.getBoolean('emoteHasGeometry'),
+    emoteOutcomeType: params.getValue<EmoteOutcomeType>('emoteOutcomeType', EmoteOutcomeType)
   }
 }
 

@@ -50,6 +50,7 @@ export const fromPriceFiltersToCatalogFilters = (filters: PriceFilters): Catalog
     network: filters.network,
     emoteHasGeometry: filters.emoteHasGeometry,
     emoteHasSound: filters.emoteHasSound,
+    emoteOutcomeType: filters.emoteOutcomeType,
     category: getNFTCategoryFromPriceCategory(filters.category)[0]
   }
 }

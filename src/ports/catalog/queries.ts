@@ -376,6 +376,10 @@ export const getHasGeometryWhere = () => {
   return SQL`items.search_emote_has_geometry = true`
 }
 
+export const getHasOutcomeTypeWhere = (filters: CatalogFilters) => {
+  return SQL`items.search_emote_outcome_type = ${filters.emoteOutcomeType}`
+}
+
 export const getUrnsWhere = (filters: CatalogFilters) => {
   return SQL`items.urn = ANY(${filters.urns})`
 }
@@ -398,6 +402,7 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
+    filters.emoteOutcomeType ? getHasOutcomeTypeWhere(filters) : undefined,
     filters.urns?.length ? getUrnsWhere(filters) : undefined,
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
@@ -439,6 +444,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
+    filters.emoteOutcomeType ? getHasOutcomeTypeWhere(filters) : undefined,
     filters.urns?.length ? getUrnsWhere(filters) : undefined,
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
@@ -596,7 +602,8 @@ LEFT JOIN (
     emote.name, 
     emote.loop,
     emote.has_sound,
-    emote.has_geometry
+    emote.has_geometry,
+    emote.outcome_type
   FROM `
             .append(MARKETPLACE_SQUID_SCHEMA)
             .append(
