@@ -381,7 +381,7 @@ export const getUrnsWhere = (filters: CatalogFilters) => {
 }
 
 export const getNetworkWhere = (filters: CatalogFilters) => {
-  return SQL`items.network = ${filters.network}`
+  return SQL`items.network = ${filters.network === Network.MATIC ? 'POLYGON' : filters.network}`
 }
 
 /** Helper to build WHERE clause with item-level filters only (no joins needed) */
