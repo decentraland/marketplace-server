@@ -8,6 +8,7 @@ import { createMetricsComponent } from '@well-known-components/metrics'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
@@ -118,6 +119,7 @@ async function initComponents(): Promise<TestComponents> {
   )
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
+  const cache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -130,7 +132,7 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
 
-  const transak = createTransakComponent({ fetch }, { apiURL: '', apiKey: '', apiSecret: '' })
+  const transak = createTransakComponent({ fetch, logs, cache }, { apiURL: '', apiKey: '', apiSecret: '' })
   const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
@@ -139,6 +141,7 @@ async function initComponents(): Promise<TestComponents> {
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
 
   return {
+    cache,
     config,
     logs,
     server,
