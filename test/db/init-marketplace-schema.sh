@@ -166,6 +166,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         "body_shapes" character varying(10) array,
         "has_sound" boolean,
         "has_geometry" boolean,
+        "outcome_type" character varying(16),
         CONSTRAINT "PK_c08d432f6b22ef550be511163ac" PRIMARY KEY ("id")
     );
 
@@ -238,6 +239,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         "search_emote_body_shapes" character varying(10) array,
         "search_emote_has_sound" boolean,
         "search_emote_has_geometry" boolean,
+        "search_emote_outcome_type" character varying(16),
         "unique_collectors" text array NOT NULL,
         "unique_collectors_total" integer NOT NULL,
         "collection_id" character varying,

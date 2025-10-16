@@ -38,6 +38,7 @@ export type PriceFilters = {
   | 'maxEstateSize'
   | 'emoteHasGeometry'
   | 'emoteHasSound'
+  | 'emoteOutcomeType'
 >
 
 export type PriceFragment = {
