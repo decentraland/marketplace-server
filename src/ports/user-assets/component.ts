@@ -315,14 +315,14 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     owner: string,
     filters: UserAssetsFilters = {}
   ): Promise<{ data: GroupedWearable[]; total: number }> {
-    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity } = filters
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity, itemType } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
         const [dataQuery, countQuery] = [
-          getGroupedWearablesByOwnerQuery(owner, first, skip, category, rarity),
-          getGroupedWearablesByOwnerCountQuery(owner, category, rarity)
+          getGroupedWearablesByOwnerQuery(owner, first, skip, category, rarity, itemType),
+          getGroupedWearablesByOwnerCountQuery(owner, category, rarity, itemType)
         ]
 
         const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
@@ -332,7 +332,8 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
 
         logger.debug(`Found ${data.length} grouped wearables (${total} total unique) for owner ${owner}`, {
           category: category || '',
-          rarity: rarity || ''
+          rarity: rarity || '',
+          itemType: itemType || ''
         })
         return { data, total }
       } finally {

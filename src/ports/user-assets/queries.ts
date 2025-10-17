@@ -262,7 +262,8 @@ export function getGroupedWearablesByOwnerQuery(
   first: number,
   skip: number,
   category?: string,
-  rarity?: string
+  rarity?: string,
+  itemType?: string
 ): SQLStatement {
   const query = SQL`
     WITH grouped_wearables AS (
@@ -299,8 +300,14 @@ export function getGroupedWearablesByOwnerQuery(
       LEFT JOIN squid_marketplace.wearable wearable on metadata.wearable_id = wearable.id
       LEFT JOIN squid_marketplace.item item on nft.item_id = item.id
       WHERE owner_address = ${owner}
-        AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
   `
+
+  // Add optional item type filter
+  if (itemType) {
+    query.append(SQL` AND nft.item_type = ${itemType}`)
+  } else {
+    query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
+  }
 
   // Add optional category filter
   if (category) {
@@ -327,14 +334,13 @@ export function getGroupedWearablesByOwnerQuery(
 /**
  * Gets count of grouped wearables for a user
  */
-export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: string, rarity?: string): SQLStatement {
+export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: string, rarity?: string, itemType?: string): SQLStatement {
   const query = SQL`
     SELECT COUNT(DISTINCT nft.urn) as total
     FROM squid_marketplace.nft nft
     LEFT JOIN squid_marketplace.metadata metadata on nft.metadata_id = metadata.id
     LEFT JOIN squid_marketplace.wearable wearable on metadata.wearable_id = wearable.id
     WHERE owner_address = ${owner}
-      AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
   `
 
   // Add optional category filter
@@ -345,6 +351,13 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: s
   // Add optional rarity filter
   if (rarity) {
     query.append(SQL` AND wearable.rarity = ${rarity}`)
+  }
+
+  // Add optional item type filter
+  if (itemType) {
+    query.append(SQL` AND nft.item_type = ${itemType}`)
+  } else {
+    query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
   }
 
   return query
