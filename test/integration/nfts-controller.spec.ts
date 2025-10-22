@@ -42,7 +42,15 @@ function mockSignaturesAPI(): void {
     })
 }
 
-function mockRentalsSubgraph(rentalAssets: any[] = []): void {
+function mockRentalsSubgraph(
+  rentalAssets: Array<{
+    id: string
+    contractAddress: string
+    tokenId: string
+    lessor: string
+    isClaimed: boolean
+  }> = []
+): void {
   nock('https://subgraph.decentraland.org').persist().post(/.*/).reply(200, {
     data: {
       rentalAssets
@@ -1327,7 +1335,10 @@ test('when getting NFTs', function ({ components }) {
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
+        // Add small delay to ensure different timestamps
+        await new Promise(resolve => setTimeout(resolve, 10))
         await createParcelNFT(components, contractAddress, parcelTokenId)
+        await new Promise(resolve => setTimeout(resolve, 10))
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
@@ -1354,7 +1365,10 @@ test('when getting NFTs', function ({ components }) {
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
+        // Add small delay to ensure different timestamps
+        await new Promise(resolve => setTimeout(resolve, 10))
         await createParcelNFT(components, contractAddress, parcelTokenId)
+        await new Promise(resolve => setTimeout(resolve, 10))
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
