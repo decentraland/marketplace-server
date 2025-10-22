@@ -48,81 +48,76 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
     collectionApproved = true,
     price = '100000000000000000000'
   } = options
-  const client = await dappsDatabase.getPool().connect()
 
-  try {
-    await client.query(`
-      INSERT INTO squid_marketplace."item" (
-        id,
-        blockchain_id,
-        creator,
-        item_type,
-        total_supply,
-        max_supply,
-        rarity,
-        creation_fee,
-        available,
-        price,
-        beneficiary,
-        content_hash,
-        image,
-        uri,
-        minters,
-        managers,
-        raw_metadata,
-        urn,
-        created_at,
-        updated_at,
-        reviewed_at,
-        first_listed_at,
-        sales,
-        volume,
-        search_is_store_minter,
-        search_is_collection_approved,
-        unique_collectors,
-        unique_collectors_total,
-        collection_id,
-        network
-      ) VALUES (
-        '${contractAddress}_${itemId}',
-        ${itemId},
-        '${contractAddress}',
-        'wearable_v1',
-        1,
-        1,
-        'unique',
-        0,
-        ${available},
-        ${price},
-        '${contractAddress}',
-        'aContentHash',
-        'https://peer.decentraland.org/lambdas/collections/contents/urn:decentraland:matic:collections-v2:${contractAddress}:${itemId}/thumbnail',
-        'https://example.com/token/1',
-        ARRAY['${contractAddress}'],
-        ARRAY['${contractAddress}'],
-        '{}',
-        'urn:decentraland:${contractAddress}:${itemId}',
-        1000000,
-        1000000,
-        1000000,
-        1000000,
-        0,
-        0,
-        ${isStoreMinterSet ? 'true' : 'false'},
-        ${collectionApproved ? 'true' : 'false'},
-        ARRAY[]::text[],
-        0,
-        '${contractAddress}',
-        'matic'
-      ) ON CONFLICT (id) DO UPDATE SET
-        search_is_store_minter = ${isStoreMinterSet ? 'true' : 'false'},
-        available = ${available},
-        search_is_collection_approved = ${collectionApproved ? 'true' : 'false'},
-        price = ${price}
-    `)
-  } finally {
-    await client.release()
-  }
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."item" (
+      id,
+      blockchain_id,
+      creator,
+      item_type,
+      total_supply,
+      max_supply,
+      rarity,
+      creation_fee,
+      available,
+      price,
+      beneficiary,
+      content_hash,
+      image,
+      uri,
+      minters,
+      managers,
+      raw_metadata,
+      urn,
+      created_at,
+      updated_at,
+      reviewed_at,
+      first_listed_at,
+      sales,
+      volume,
+      search_is_store_minter,
+      search_is_collection_approved,
+      unique_collectors,
+      unique_collectors_total,
+      collection_id,
+      network
+    ) VALUES (
+      '${contractAddress}_${itemId}',
+      ${itemId},
+      '${contractAddress}',
+      'wearable_v1',
+      1,
+      1,
+      'unique',
+      0,
+      ${available},
+      ${price},
+      '${contractAddress}',
+      'aContentHash',
+      'https://peer.decentraland.org/lambdas/collections/contents/urn:decentraland:matic:collections-v2:${contractAddress}:${itemId}/thumbnail',
+      'https://example.com/token/1',
+      ARRAY['${contractAddress}'],
+      ARRAY['${contractAddress}'],
+      '{}',
+      'urn:decentraland:${contractAddress}:${itemId}',
+      1000000,
+      1000000,
+      1000000,
+      1000000,
+      0,
+      0,
+      ${isStoreMinterSet ? 'true' : 'false'},
+      ${collectionApproved ? 'true' : 'false'},
+      ARRAY[]::text[],
+      0,
+      '${contractAddress}',
+      'matic'
+    ) ON CONFLICT (id) DO UPDATE SET
+      search_is_store_minter = ${isStoreMinterSet ? 'true' : 'false'},
+      available = ${available},
+      search_is_collection_approved = ${collectionApproved ? 'true' : 'false'},
+      price = ${price}
+  `)
 }
 
 export async function createSquidDBOrder(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, options: CreateDBOrderOptions): Promise<void> {
@@ -136,53 +131,47 @@ export async function createSquidDBOrder(dbComponent: Pick<BaseComponents, 'dapp
     orderId = `order_${itemId}_${Date.now()}`
   } = options
 
-  const client = await dappsDatabase.getPool().connect()
-
-  try {
-    await client.query(`
-      INSERT INTO squid_marketplace."order" (
-        id,
-        marketplace_address,
-        category,
-        nft_address,
-        token_id,
-        tx_hash,
-        owner,
-        buyer,
-        price,
-        status,
-        block_number,
-        expires_at,
-        created_at,
-        updated_at,
-        network,
-        item_id,
-        expires_at_normalized
-      ) VALUES (
-        '${orderId}',
-        '0x8de9c5a032463c561423387a9648c5c7bcc5bc90',
-        'wearable',
-        '${contractAddress}',
-        ${itemId},
-        '0x1234567890abcdef',
-        '0x1234567890123456789012345678901234567890',
-        NULL,
-        ${price},
-        '${status}',
-        1000000,
-        ${expiresAt},
-        ${Math.floor(Date.now() / 1000)},
-        ${Math.floor(Date.now() / 1000)},
-        'matic',
-        '${contractAddress}_${itemId}',
-        NOW() + INTERVAL '1 day'
-      ) ON CONFLICT (id) DO UPDATE SET
-        status = '${status}',
-        price = ${price}
-    `)
-  } finally {
-    await client.release()
-  }
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."order" (
+      id,
+      marketplace_address,
+      category,
+      nft_address,
+      token_id,
+      tx_hash,
+      owner,
+      buyer,
+      price,
+      status,
+      block_number,
+      expires_at,
+      created_at,
+      updated_at,
+      network,
+      item_id,
+      expires_at_normalized
+    ) VALUES (
+      '${orderId}',
+      '0x8de9c5a032463c561423387a9648c5c7bcc5bc90',
+      'wearable',
+      '${contractAddress}',
+      '${itemId}',
+      '0x1234567890abcdef',
+      '0x1234567890123456789012345678901234567890',
+      NULL,
+      ${price},
+      '${status}',
+      1000000,
+      ${expiresAt},
+      ${Math.floor(Date.now() / 1000)},
+      ${Math.floor(Date.now() / 1000)},
+      'matic',
+      '${contractAddress}_${itemId}',
+      NOW() + INTERVAL '1 day'
+    ) ON CONFLICT (id) DO UPDATE SET
+      status = '${status}',
+      price = ${price}
+  `)
 }
 
 export async function createItemOnlyMintingOld(
@@ -279,13 +268,8 @@ export async function deleteSquidDBItem(
   contractAddress: string
 ): Promise<void> {
   const { dappsDatabase } = dbComponent
-  const client = await dappsDatabase.getPool().connect()
-  try {
-    await client.query(`DELETE FROM squid_marketplace."order" WHERE item_id = '${contractAddress}_${itemId}'`)
-    await client.query(`DELETE FROM squid_marketplace."item" WHERE id = '${contractAddress}_${itemId}'`)
-  } finally {
-    await client.release()
-  }
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."order" WHERE item_id = '${contractAddress}_${itemId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."item" WHERE id = '${contractAddress}_${itemId}'`)
 }
 
 export async function createSquidDBNFT(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, options: CreateDBNFTOptions): Promise<void> {
@@ -307,194 +291,188 @@ export async function createSquidDBNFT(dbComponent: Pick<BaseComponents, 'dappsD
     estateSize = 1
   } = options
 
-  const client = await dappsDatabase.getPool().connect()
+  // Insert account if it doesn't exist
+  const accountId = `${owner.toLowerCase()}-${network.toUpperCase()}`
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."account" (
+      id,
+      address,
+      sales,
+      purchases,
+      spent,
+      earned,
+      royalties,
+      primary_sales,
+      primary_sales_earned,
+      unique_and_mythic_items,
+      unique_and_mythic_items_total,
+      collections,
+      creators_supported,
+      creators_supported_total,
+      unique_collectors,
+      unique_collectors_total,
+      network
+    ) VALUES (
+      '${accountId}',
+      '${owner.toLowerCase()}',
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      ARRAY[]::text[],
+      0,
+      0,
+      ARRAY[]::text[],
+      0,
+      ARRAY[]::text[],
+      0,
+      '${network.toLowerCase()}'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
 
-  try {
-    // Insert account if it doesn't exist
-    const accountId = `${owner.toLowerCase()}-${network.toUpperCase()}`
-    await client.query(`
-      INSERT INTO squid_marketplace."account" (
+  const id = `${
+    category === NFTCategory.PARCEL || category === NFTCategory.ESTATE ? (category === NFTCategory.ESTATE ? 'estate-' : 'parcel-') : ''
+  }${contractAddress}-${tokenId}`
+
+  // Insert NFT
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."nft" (
+      id,
+      token_id,
+      contract_address,
+      category,
+      token_uri,
+      name,
+      image,
+      created_at,
+      updated_at,
+      sold_at,
+      transferred_at,
+      sales,
+      volume,
+      search_order_status,
+      search_order_price,
+      search_order_expires_at,
+      search_order_created_at,
+      search_is_land,
+      search_text,
+      search_parcel_is_in_bounds,
+      search_parcel_x,
+      search_parcel_y,
+      search_distance_to_plaza,
+      search_adjacent_to_road,
+      search_estate_size,
+      search_is_wearable_head,
+      search_is_wearable_accessory,
+      search_wearable_rarity,
+      search_wearable_category,
+      search_wearable_body_shapes,
+      item_blockchain_id,
+      issued_id,
+      item_type,
+      urn,
+      search_item_type,
+      search_emote_category,
+      search_emote_loop,
+      search_emote_rarity,
+      search_emote_body_shapes,
+      network,
+      owner_address,
+      owner_id
+    ) VALUES (
+      '${id}',
+      ${tokenId},
+      '${contractAddress}',
+      '${category}',
+      'https://example.com/token/${tokenId}',
+      '${name}',
+      '${image}',
+      ${Math.floor(Date.now() / 1000)},
+      ${Math.floor(Date.now() / 1000)},
+      ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
+      ${Math.floor(Date.now() / 1000)},
+      0,
+      0,
+      ${isOnSale ? "'open'" : 'NULL'},
+      ${isOnSale ? price : 'NULL'},
+      ${isOnSale ? Math.floor(Date.now() / 1000) + 86400 : 'NULL'},
+      ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
+      ${category === 'parcel' || category === 'estate' ? 'true' : 'false'},
+      '${name.toLowerCase()}',
+      ${category === 'parcel' ? 'true' : 'false'},
+      ${category === 'parcel' ? Math.floor(Math.random() * 100) : 'NULL'},
+      ${category === 'parcel' ? Math.floor(Math.random() * 100) : 'NULL'},
+      ${distanceToPlaza},
+      ${adjacentToRoad ? 'true' : 'false'},
+      ${category === 'estate' ? estateSize : 1},
+      ${category === 'wearable' && wearableCategory === 'hat' ? 'true' : 'false'},
+      ${category === 'wearable' && wearableCategory !== 'hat' ? 'true' : 'false'},
+      '${rarity}',
+      '${wearableCategory}',
+      ARRAY['male', 'female'],
+      ${tokenId},
+      ${tokenId},
+      'wearable_v1',
+      'urn:decentraland:${contractAddress}:${tokenId}',
+      'wearable',
+      ${category === 'emote' ? "'dance'" : 'NULL'},
+      ${category === 'emote' ? 'false' : 'NULL'},
+      '${rarity}',
+      ARRAY['male', 'female'],
+      '${network}',
+      '${owner.toLowerCase()}',
+      '${accountId}'
+    ) ON CONFLICT (id) DO UPDATE SET
+      search_order_status = ${isOnSale ? "'open'" : 'NULL'},
+      search_order_price = ${isOnSale ? price : 'NULL'},
+      owner_address = '${owner.toLowerCase()}',
+      owner_id = '${accountId}'
+  `)
+
+  // Create order if NFT is on sale
+  if (isOnSale) {
+    await dappsDatabase.query(`
+      INSERT INTO squid_marketplace."order" (
         id,
-        address,
-        sales,
-        purchases,
-        spent,
-        earned,
-        royalties,
-        primary_sales,
-        primary_sales_earned,
-        unique_and_mythic_items,
-        unique_and_mythic_items_total,
-        collections,
-        creators_supported,
-        creators_supported_total,
-        unique_collectors,
-        unique_collectors_total,
-        network
-      ) VALUES (
-        '${accountId}',
-        '${owner.toLowerCase()}',
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        ARRAY[]::text[],
-        0,
-        0,
-        ARRAY[]::text[],
-        0,
-        ARRAY[]::text[],
-        0,
-        '${network.toLowerCase()}'
-      ) ON CONFLICT (id) DO NOTHING
-    `)
-
-    const id = `${
-      category === NFTCategory.PARCEL || category === NFTCategory.ESTATE ? (category === NFTCategory.ESTATE ? 'estate-' : 'parcel-') : ''
-    }${contractAddress}-${tokenId}`
-
-    // Insert NFT
-    await client.query(`
-      INSERT INTO squid_marketplace."nft" (
-        id,
-        token_id,
-        contract_address,
+        marketplace_address,
         category,
-        token_uri,
-        name,
-        image,
+        nft_address,
+        token_id,
+        tx_hash,
+        owner,
+        buyer,
+        price,
+        status,
+        block_number,
+        expires_at,
         created_at,
         updated_at,
-        sold_at,
-        transferred_at,
-        sales,
-        volume,
-        search_order_status,
-        search_order_price,
-        search_order_expires_at,
-        search_order_created_at,
-        search_is_land,
-        search_text,
-        search_parcel_is_in_bounds,
-        search_parcel_x,
-        search_parcel_y,
-        search_distance_to_plaza,
-        search_adjacent_to_road,
-        search_estate_size,
-        search_is_wearable_head,
-        search_is_wearable_accessory,
-        search_wearable_rarity,
-        search_wearable_category,
-        search_wearable_body_shapes,
-        item_blockchain_id,
-        issued_id,
-        item_type,
-        urn,
-        search_item_type,
-        search_emote_category,
-        search_emote_loop,
-        search_emote_rarity,
-        search_emote_body_shapes,
+        nft_id,
         network,
-        owner_address,
-        owner_id
+        expires_at_normalized
       ) VALUES (
-        '${id}',
-        ${tokenId},
-        '${contractAddress}',
+        'order_${tokenId}_${Date.now()}',
+        '0x8de9c5a032463c561423387a9648c5c7bcc5bc90',
         '${category}',
-        'https://example.com/token/${tokenId}',
-        '${name}',
-        '${image}',
-        ${Math.floor(Date.now() / 1000)},
-        ${Math.floor(Date.now() / 1000)},
-        ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
-        ${Math.floor(Date.now() / 1000)},
-        0,
-        0,
-        ${isOnSale ? "'open'" : 'NULL'},
-        ${isOnSale ? price : 'NULL'},
-        ${isOnSale ? Math.floor(Date.now() / 1000) + 86400 : 'NULL'},
-        ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
-        ${category === 'parcel' || category === 'estate' ? 'true' : 'false'},
-        '${name.toLowerCase()}',
-        ${category === 'parcel' ? 'true' : 'false'},
-        ${category === 'parcel' ? Math.floor(Math.random() * 100) : 'NULL'},
-        ${category === 'parcel' ? Math.floor(Math.random() * 100) : 'NULL'},
-        ${distanceToPlaza},
-        ${adjacentToRoad ? 'true' : 'false'},
-        ${category === 'estate' ? estateSize : 1},
-        ${category === 'wearable' && wearableCategory === 'hat' ? 'true' : 'false'},
-        ${category === 'wearable' && wearableCategory !== 'hat' ? 'true' : 'false'},
-        '${rarity}',
-        '${wearableCategory}',
-        ARRAY['male', 'female'],
+        '${contractAddress}',
         ${tokenId},
-        ${tokenId},
-        'wearable_v1',
-        'urn:decentraland:${contractAddress}:${tokenId}',
-        'wearable',
-        ${category === 'emote' ? "'dance'" : 'NULL'},
-        ${category === 'emote' ? 'false' : 'NULL'},
-        '${rarity}',
-        ARRAY['male', 'female'],
+        '0x1234567890abcdef',
+        '${owner}',
+        NULL,
+        ${price},
+        'open',
+        1000000,
+        ${Math.floor(Date.now() / 1000) + 86400},
+        ${Math.floor(Date.now() / 1000)},
+        ${Math.floor(Date.now() / 1000)},
+        '${contractAddress}-${tokenId}',
         '${network}',
-        '${owner.toLowerCase()}',
-        '${accountId}'
-      ) ON CONFLICT (id) DO UPDATE SET
-        search_order_status = ${isOnSale ? "'open'" : 'NULL'},
-        search_order_price = ${isOnSale ? price : 'NULL'},
-        owner_address = '${owner.toLowerCase()}',
-        owner_id = '${accountId}'
+        NOW() + INTERVAL '1 day'
+      ) ON CONFLICT (id) DO NOTHING
     `)
-
-    // Create order if NFT is on sale
-    if (isOnSale) {
-      await client.query(`
-        INSERT INTO squid_marketplace."order" (
-          id,
-          marketplace_address,
-          category,
-          nft_address,
-          token_id,
-          tx_hash,
-          owner,
-          buyer,
-          price,
-          status,
-          block_number,
-          expires_at,
-          created_at,
-          updated_at,
-          nft_id,
-          network,
-          expires_at_normalized
-        ) VALUES (
-          'order_${tokenId}_${Date.now()}',
-          '0x8de9c5a032463c561423387a9648c5c7bcc5bc90',
-          '${category}',
-          '${contractAddress}',
-          ${tokenId},
-          '0x1234567890abcdef',
-          '${owner}',
-          NULL,
-          ${price},
-          'open',
-          1000000,
-          ${Math.floor(Date.now() / 1000) + 86400},
-          ${Math.floor(Date.now() / 1000)},
-          ${Math.floor(Date.now() / 1000)},
-          '${contractAddress}-${tokenId}',
-          '${network}',
-          NOW() + INTERVAL '1 day'
-        ) ON CONFLICT (id) DO NOTHING
-      `)
-    }
-  } finally {
-    await client.release()
   }
 }
 
@@ -504,13 +482,8 @@ export async function deleteSquidDBNFT(
   contractAddress: string
 ): Promise<void> {
   const { dappsDatabase } = dbComponent
-  const client = await dappsDatabase.getPool().connect()
-  try {
-    await client.query(`DELETE FROM squid_marketplace."order" WHERE nft_id = '${contractAddress}-${tokenId}'`)
-    await client.query(`DELETE FROM squid_marketplace."nft" WHERE id = '${contractAddress}-${tokenId}'`)
-  } finally {
-    await client.release()
-  }
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."order" WHERE nft_id = '${contractAddress}-${tokenId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."nft" WHERE id = '${contractAddress}-${tokenId}'`)
 }
 
 export async function createNFTOnSale(
@@ -764,14 +737,11 @@ export async function createNFTOnSaleTrade(
 
 export async function refreshTradesMaterializedView(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
   const { dappsDatabase } = dbComponent
-  const client = await dappsDatabase.getPool().connect()
 
   try {
-    await client.query('REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.mv_trades')
+    await dappsDatabase.query('REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.mv_trades')
   } catch (error) {
     // If CONCURRENTLY fails, try without it
-    await client.query('REFRESH MATERIALIZED VIEW marketplace.mv_trades')
-  } finally {
-    await client.release()
+    await dappsDatabase.query('REFRESH MATERIALIZED VIEW marketplace.mv_trades')
   }
 }
