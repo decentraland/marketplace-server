@@ -43,14 +43,11 @@ function mockSignaturesAPI(): void {
 }
 
 function mockRentalsSubgraph(rentalAssets: any[] = []): void {
-  nock('https://subgraph.decentraland.org')
-    .persist()
-    .post(/.*/)
-    .reply(200, {
-      data: {
-        rentalAssets
-      }
-    })
+  nock('https://subgraph.decentraland.org').persist().post(/.*/).reply(200, {
+    data: {
+      rentalAssets
+    }
+  })
 
   nock('https://subgraph.decentraland.org')
     .persist()
@@ -744,18 +741,18 @@ test('when getting NFTs', function ({ components }) {
       })
     })
 
-      describe('when price parameter is invalid', () => {
-        let response: Response
+    describe('when price parameter is invalid', () => {
+      let response: Response
 
-        beforeEach(async () => {
-          const { localFetch } = components
-          response = await localFetch.fetch('/v1/nfts?minPrice=invalid')
-        })
-
-        it('should respond with 400 status', async () => {
-          expect(response.status).toEqual(400)
-        })
+      beforeEach(async () => {
+        const { localFetch } = components
+        response = await localFetch.fetch('/v1/nfts?minPrice=invalid')
       })
+
+      it('should respond with 400 status', async () => {
+        expect(response.status).toEqual(400)
+      })
+    })
   })
 
   describe('and filtering by contract address', () => {
@@ -1259,9 +1256,6 @@ test('when getting NFTs', function ({ components }) {
       let allBody: NFTsResponse
       let skippedResponse: Response
       let skippedBody: NFTsResponse
-      let firstItemId: string
-      let secondItemId: string
-      let thirdItemId: string
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
@@ -1290,10 +1284,10 @@ test('when getting NFTs', function ({ components }) {
       it('should skip first item and return next items in order', async () => {
         const allIds = allBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         const skippedIds = skippedBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
-        
+
         // The first item should not be in the skipped results
         expect(skippedIds).not.toContain(allIds[0])
-        
+
         // All returned items should be from the original list
         skippedIds.forEach(id => {
           expect(allIds).toContain(id)
@@ -1378,10 +1372,8 @@ test('when getting NFTs', function ({ components }) {
       it('should sort NFTs by creation date ascending', async () => {
         // Filter only the NFTs created in this test
         const createdNFTIds = [wearableTokenId, parcelTokenId, estateTokenId]
-        const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => 
-          createdNFTIds.includes(nftResponse.nft.tokenId)
-        )
-        
+        const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => createdNFTIds.includes(nftResponse.nft.tokenId))
+
         for (let i = 0; i < testNFTs.length - 1; i++) {
           const currentCreatedAt = testNFTs[i].nft.createdAt
           const nextCreatedAt = testNFTs[i + 1].nft.createdAt
