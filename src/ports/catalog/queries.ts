@@ -393,7 +393,10 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
     filters.isSoldOut ? getIsSoldOutWhere() : undefined,
     filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
     filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
+    filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
     filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
+    filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
+    filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
@@ -741,12 +744,21 @@ const getMinItemCreatedAtCTE = () => {
 
 export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   // Optimized count query: no metadata joins, no owners, use NOT EXISTS for performance
+  // Add metadata joins only when needed for category/playMode filters
+  const needsMetadataJoins = filters.wearableCategory || filters.emoteCategory || filters.emotePlayMode?.length
+
   const query = SQL`
     SELECT COUNT(*) as total
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.item AS items `)
-    .append(getItemLevelFiltersWhere(filters))
+
+  // Add metadata joins conditionally
+  if (needsMetadataJoins) {
+    query.append(getMetadataJoins())
+  }
+
+  query.append(getItemLevelFiltersWhere(filters))
 
   // Handle isOnSale filter with NOT EXISTS (more efficient than LEFT JOIN + IS NULL)
   if (filters.isOnSale === false) {
