@@ -1265,9 +1265,6 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         allResponse = await localFetch.fetch(`/v1/nfts?sortBy=newest&contractAddress=${contractAddress}`)
         allBody = await allResponse.json()
-        firstItemId = allBody.data[0].nft.tokenId
-        secondItemId = allBody.data[1].nft.tokenId
-        thirdItemId = allBody.data[2].nft.tokenId
 
         skippedResponse = await localFetch.fetch(`/v1/nfts?skip=1&first=2&sortBy=newest&contractAddress=${contractAddress}`)
         skippedBody = await skippedResponse.json()
