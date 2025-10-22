@@ -1335,14 +1335,14 @@ test('when getting NFTs', function ({ components }) {
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
-        // Add small delay to ensure different timestamps
-        await new Promise(resolve => setTimeout(resolve, 10))
+        // Add delay to ensure different timestamps
+        await new Promise(resolve => setTimeout(resolve, 50))
         await createParcelNFT(components, contractAddress, parcelTokenId)
-        await new Promise(resolve => setTimeout(resolve, 10))
+        await new Promise(resolve => setTimeout(resolve, 50))
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
-        response = await localFetch.fetch('/v1/nfts?sortBy=newest')
+        response = await localFetch.fetch(`/v1/nfts?sortBy=newest&contractAddress=${contractAddress}`)
         responseBody = await response.json()
       })
 
@@ -1351,9 +1351,22 @@ test('when getting NFTs', function ({ components }) {
       })
 
       it('should sort NFTs by creation date descending', async () => {
-        for (let i = 0; i < responseBody.data.length - 1; i++) {
-          const currentCreatedAt = responseBody.data[i].nft.createdAt
-          const nextCreatedAt = responseBody.data[i + 1].nft.createdAt
+        // Get only our test NFTs
+        const createdNFTIds = [wearableTokenId, parcelTokenId, estateTokenId]
+        const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => createdNFTIds.includes(nftResponse.nft.tokenId))
+
+        // We should have exactly 3 NFTs
+        expect(testNFTs.length).toBe(3)
+
+        // Verify all 3 NFTs are present
+        expect(testNFTs.some(nft => nft.nft.tokenId === wearableTokenId)).toBe(true)
+        expect(testNFTs.some(nft => nft.nft.tokenId === parcelTokenId)).toBe(true)
+        expect(testNFTs.some(nft => nft.nft.tokenId === estateTokenId)).toBe(true)
+
+        // Verify timestamps are in descending order (newest first)
+        for (let i = 0; i < testNFTs.length - 1; i++) {
+          const currentCreatedAt = testNFTs[i].nft.createdAt
+          const nextCreatedAt = testNFTs[i + 1].nft.createdAt
           expect(currentCreatedAt).toBeGreaterThanOrEqual(nextCreatedAt)
         }
       })
@@ -1365,14 +1378,14 @@ test('when getting NFTs', function ({ components }) {
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
-        // Add small delay to ensure different timestamps
-        await new Promise(resolve => setTimeout(resolve, 10))
+        // Add delay to ensure different timestamps
+        await new Promise(resolve => setTimeout(resolve, 50))
         await createParcelNFT(components, contractAddress, parcelTokenId)
-        await new Promise(resolve => setTimeout(resolve, 10))
+        await new Promise(resolve => setTimeout(resolve, 50))
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
-        response = await localFetch.fetch('/v1/nfts?sortBy=oldest')
+        response = await localFetch.fetch(`/v1/nfts?sortBy=oldest&contractAddress=${contractAddress}`)
         responseBody = await response.json()
       })
 
@@ -1381,10 +1394,19 @@ test('when getting NFTs', function ({ components }) {
       })
 
       it('should sort NFTs by creation date ascending', async () => {
-        // Filter only the NFTs created in this test
+        // Get only our test NFTs
         const createdNFTIds = [wearableTokenId, parcelTokenId, estateTokenId]
         const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => createdNFTIds.includes(nftResponse.nft.tokenId))
 
+        // We should have exactly 3 NFTs
+        expect(testNFTs.length).toBe(3)
+
+        // Verify all 3 NFTs are present
+        expect(testNFTs.some(nft => nft.nft.tokenId === wearableTokenId)).toBe(true)
+        expect(testNFTs.some(nft => nft.nft.tokenId === parcelTokenId)).toBe(true)
+        expect(testNFTs.some(nft => nft.nft.tokenId === estateTokenId)).toBe(true)
+
+        // Verify timestamps are in ascending order (oldest first)
         for (let i = 0; i < testNFTs.length - 1; i++) {
           const currentCreatedAt = testNFTs[i].nft.createdAt
           const nextCreatedAt = testNFTs[i + 1].nft.createdAt
