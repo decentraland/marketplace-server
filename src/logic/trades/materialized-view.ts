@@ -66,12 +66,14 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
           LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.collection collection
           ON  ta.contract_address = nft.contract_address
           AND ta.direction = 'sent'
           AND nft.token_id = erc721_asset.token_id::numeric
+          AND ta.contract_address = collection.id
           WHERE t.type IN ('public_item_order', 'public_nft_order')
           GROUP BY t.id
-          HAVING bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
+          HAVING bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer OR collection.creator = t.signer)
       )
       SELECT
           t.id,
