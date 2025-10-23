@@ -61,7 +61,7 @@ export const getNFTParams = (params: Params): NFTFilters => {
     sortBy: params.getValue<NFTSortBy>('sortBy', NFTSortBy),
     category: params.getValue<NFTCategory>('category', NFTCategory),
     owner: params.getAddress('owner') || undefined,
-    isOnSale: params.getBoolean('isOnSale'),
+    isOnSale: params.getBoolean('isOnSale') ? params.getString('isOnSale') === 'true' : undefined,
     isOnRent: params.getBoolean('isOnRent'),
     search: params.getString('search'),
     isLand: params.getBoolean('isLand'),
