@@ -132,7 +132,16 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
 
-  const transak = createTransakComponent({ fetch, logs, cache }, { apiURL: '', apiKey: '', apiSecret: '' })
+  const transak = createTransakComponent(
+    { fetch, logs, cache },
+    {
+      apiURL: 'https://api.transak.com',
+      apiGatewayURL: 'https://api-gateway.transak.com',
+      marketplaceURL: 'https://market.decentraland.org',
+      apiKey: '',
+      apiSecret: ''
+    }
+  )
   const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
