@@ -1,0 +1,20 @@
+name: build-app-docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+
+jobs:
+  build:
+    uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
+    with:
+      api-spec-file: 'docs/openapi.yaml'
+      api-spec-name: 'marketplace-server-api'
+      node-version: '20'
+    secrets: inherit
+
+
