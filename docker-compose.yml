@@ -17,11 +17,11 @@ services:
       - marketplace_data:/var/lib/postgresql/data
       - ./test/db/init-favorites-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
 
-  # redis:
-  #   image: redis:latest
-  #   container_name: redis-marketplace-local
-  #   ports:
-  #     - '6379:6379'
+  redis:
+    image: redis:latest
+    container_name: redis-marketplace-local
+    ports:
+      - '6379:6379'
 
   dapps_db:
     image: postgres
