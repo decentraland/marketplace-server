@@ -13,7 +13,6 @@ jobs:
     uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
     with:
       api-spec-file: 'docs/openapi.yaml'
-      output-directory: './docs'
       api-spec-name: 'marketplace-server-api'
       node-version: '20'
     secrets: inherit
