@@ -14,14 +14,10 @@
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose -c jest.config.json",
     "test:watch": "jest --watch --verbose -c jest.config.json",
     "test:integration": "jest --forceExit --detectOpenHandles --verbose -c jest.integration.config.json --runInBand",
-    "test:integration:watch": "jest --watch --verbose -c jest.integration.config.json --runInBand",
-    "docs:build": "yarn redocly build-docs ./docs/openapi.yaml -o ./docs/index.html",
-    "predocs:preview": "yarn docs:build",
-    "docs:preview": "yarn redocly preview-docs ./docs/openapi.yaml"
+    "test:integration:watch": "jest --watch --verbose -c jest.integration.config.json --runInBand"
   },
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.12",
-    "@redocly/cli": "^2.8.0",
     "@types/node": "^20.2.5",
     "@types/seedrandom": "^3.0.8",
     "@well-known-components/test-helpers": "^1.5.0",
@@ -32,6 +28,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.621.0",
+    "@dcl/memory-cache-component": "^2.2.0",
+    "@dcl/redis-component": "^2.2.0",
     "@dcl/schemas": "^14.1.0",
     "@segment/analytics-node": "^2.1.0",
     "@types/etag": "^1.8.3",
