@@ -7,6 +7,7 @@ import type {
   IMetricsComponent
 } from '@well-known-components/interfaces'
 import type { ICacheStorageComponent } from '@dcl/core-commons'
+import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
@@ -28,7 +29,6 @@ import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
-import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
@@ -59,7 +59,7 @@ export type BaseComponents = {
   transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
-  schemaValidator: ISchemaValidatorComponent
+  schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent
   picks: IPicksComponent

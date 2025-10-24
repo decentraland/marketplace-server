@@ -9,6 +9,7 @@ import { createRunner, createLocalFetchCompoment } from '@well-known-components/
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
@@ -31,7 +32,6 @@ import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
-import { createSchemaValidatorComponent } from '../src/ports/schema-validator'
 import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
@@ -132,7 +132,16 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
 
-  const transak = createTransakComponent({ fetch, logs, cache }, { apiURL: '', apiKey: '', apiSecret: '' })
+  const transak = createTransakComponent(
+    { fetch, logs, cache },
+    {
+      apiURL: 'https://api.transak.com',
+      apiGatewayURL: 'https://api-gateway.transak.com',
+      marketplaceURL: 'https://market.decentraland.org',
+      apiKey: '',
+      apiSecret: ''
+    }
+  )
   const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })

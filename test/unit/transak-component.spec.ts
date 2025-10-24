@@ -6,7 +6,7 @@ import { ITransakComponent, OrderResponse, TransakOrderStatus } from '../../src/
 import { createCacheMockedComponent } from '../mocks/cache-mock'
 
 let transakComponent: ITransakComponent
-let mockConfig: { apiURL: string; apiKey: string; apiSecret: string }
+let mockConfig: { apiURL: string; apiKey: string; apiSecret: string; apiGatewayURL: string; marketplaceURL: string }
 let mockFetch: jest.MockedFn<IFetchComponent['fetch']>
 let mockGet: jest.MockedFn<ICacheStorageComponent['get']>
 let mockSet: jest.MockedFn<ICacheStorageComponent['set']>
@@ -22,6 +22,8 @@ beforeEach(() => {
 
   mockConfig = {
     apiURL: 'https://api.transak.com',
+    apiGatewayURL: 'https://api-gateway.transak.com',
+    marketplaceURL: 'https://market.decentraland.org',
     apiKey: 'test-api-key',
     apiSecret: 'test-api-secret'
   }
@@ -235,6 +237,113 @@ describe('when getting an order', () => {
       await expect(transakComponent.getOrder(orderId)).rejects.toThrow('Order API unavailable')
 
       expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+    })
+  })
+})
+
+describe('when getting a widget session URL', () => {
+  let widgetUrl: string
+  let cachedAccessToken: string
+
+  beforeEach(() => {
+    widgetUrl = 'https://widget.transak.com/?session=abc123'
+    cachedAccessToken = 'cached-access-token'
+  })
+
+  describe('and the access token is cached and valid', () => {
+    beforeEach(() => {
+      ;(mockTryAcquireLock as jest.Mock).mockResolvedValue(true)
+      ;(mockGet as jest.Mock).mockResolvedValue(cachedAccessToken)
+      ;(mockFetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ data: { widgetUrl } })
+      } as any)
+    })
+
+    it('should call the auth session endpoint and return the widget url', async () => {
+      const result = await transakComponent.getWidget({ fiatAmount: 100, fiatCurrency: 'USD' })
+
+      expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiGatewayURL}/v2/auth/session`, {
+        method: 'POST',
+        headers: { 'access-token': cachedAccessToken, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          widgetParams: {
+            apiKey: mockConfig.apiKey,
+            referrerDomain: new URL(mockConfig.marketplaceURL).hostname,
+            networks: 'ethereum,polygon',
+            cryptoCurrencyCode: 'MANA',
+            defaultCryptoCurrency: 'MANA',
+            cyptoCurrencyList: 'MANA',
+            fiatAmount: 100,
+            fiatCurrency: 'USD'
+          }
+        })
+      })
+      expect(result).toEqual(widgetUrl)
+    })
+  })
+
+  describe('and the access token is not cached', () => {
+    let newAccessToken: string
+    let expiresAt: number
+
+    beforeEach(() => {
+      newAccessToken = 'new-access-token'
+      expiresAt = Date.now() + 3600000
+      ;(mockTryAcquireLock as jest.Mock).mockResolvedValue(true)
+      ;(mockGet as jest.Mock).mockResolvedValue(null)
+      ;(mockFetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: { accessToken: newAccessToken, expiresAt } })
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: { widgetUrl } })
+        } as any)
+    })
+
+    it('should refresh the token and then call the auth session endpoint', async () => {
+      const result = await transakComponent.getWidget()
+
+      expect(mockFetch).toHaveBeenNthCalledWith(1, `${mockConfig.apiURL}/v2/refresh-token`, {
+        method: 'POST',
+        headers: { 'api-secret': mockConfig.apiSecret, accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ apiKey: mockConfig.apiKey })
+      })
+
+      expect(mockFetch).toHaveBeenNthCalledWith(2, `${mockConfig.apiGatewayURL}/v2/auth/session`, {
+        method: 'POST',
+        headers: { 'access-token': newAccessToken, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          widgetParams: {
+            apiKey: mockConfig.apiKey,
+            referrerDomain: new URL(mockConfig.marketplaceURL).hostname,
+            networks: 'ethereum,polygon',
+            cryptoCurrencyCode: 'MANA',
+            defaultCryptoCurrency: 'MANA',
+            cyptoCurrencyList: 'MANA'
+          }
+        })
+      })
+
+      expect(result).toEqual(widgetUrl)
+    })
+  })
+
+  describe('and the session request fails', () => {
+    beforeEach(() => {
+      ;(mockTryAcquireLock as jest.Mock).mockResolvedValue(true)
+      ;(mockGet as jest.Mock).mockResolvedValue('valid-token')
+      ;(mockFetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: jest.fn().mockResolvedValue({ data: { widgetUrl: '' } })
+      } as any)
+    })
+
+    it('should throw with status code', async () => {
+      await expect(transakComponent.getWidget()).rejects.toThrow('Error getting widget, status: 500')
     })
   })
 })
