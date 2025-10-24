@@ -6,16 +6,21 @@ info:
   contact:
     name: Decentraland
     url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: marketplace-server-api
 servers:
   - url: /
     description: Service root
+security: []
 paths:
   /ping:
     get:
       summary: Health check
       description: Returns service health status
       operationId: ping
+      security: []
       responses:
         '200':
           description: Service is healthy
@@ -24,6 +29,18 @@ paths:
               schema:
                 type: string
                 example: pong
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/catalog:
     get:
       summary: Get catalog
@@ -39,6 +56,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v2/catalog:
     get:
       summary: Get catalog v2
@@ -54,6 +83,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/wert/sign:
     post:
       summary: Sign Wert transaction
@@ -108,6 +149,7 @@ paths:
       summary: Generate ENS image
       description: Generates an ENS image
       operationId: generateENSImage
+      security: []
       responses:
         '200':
           description: Generated ENS image
@@ -120,6 +162,7 @@ paths:
       summary: List trades
       description: Returns list of trades
       operationId: getTrades
+      security: []
       parameters:
         - name: limit
           in: query
@@ -178,6 +221,7 @@ paths:
       summary: Get trade details
       description: Returns details of a specific trade
       operationId: getTrade
+      security: []
       parameters:
         - name: id
           in: path
@@ -203,6 +247,7 @@ paths:
       summary: Get trade accepted event
       description: Returns trade accepted event information
       operationId: getTradeAcceptedEvent
+      security: []
       parameters:
         - name: hashedSignature
           in: path
@@ -228,6 +273,7 @@ paths:
       summary: List bids
       description: Returns list of bids
       operationId: getBids
+      security: []
       parameters:
         - name: limit
           in: query
@@ -285,6 +331,7 @@ paths:
       summary: List orders
       description: Returns list of orders
       operationId: getOrders
+      security: []
       parameters:
         - name: limit
           in: query
@@ -342,6 +389,7 @@ paths:
       summary: List sales
       description: Returns list of sales
       operationId: getSales
+      security: []
       parameters:
         - name: limit
           in: query
@@ -369,6 +417,7 @@ paths:
       summary: Get prices
       description: Returns price information
       operationId: getPrices
+      security: []
       responses:
         '200':
           description: Price information
@@ -381,6 +430,7 @@ paths:
       summary: Get trending items
       description: Returns trending items
       operationId: getTrendings
+      security: []
       responses:
         '200':
           description: Trending items
@@ -395,6 +445,7 @@ paths:
       summary: Get statistics
       description: Returns statistics for a specific category and stat
       operationId: getStats
+      security: []
       parameters:
         - name: category
           in: path
@@ -420,6 +471,7 @@ paths:
       summary: Get rankings
       description: Returns rankings for a specific entity and timeframe
       operationId: getRankings
+      security: []
       parameters:
         - name: entity
           in: path
@@ -445,6 +497,7 @@ paths:
       summary: Get volume data
       description: Returns volume data for a specific timeframe
       operationId: getVolume
+      security: []
       parameters:
         - name: timeframe
           in: path
@@ -590,6 +643,7 @@ paths:
       summary: Get all picks stats
       description: Returns statistics for all picks
       operationId: getAllPicksStats
+      security: []
       responses:
         '200':
           description: All picks statistics
