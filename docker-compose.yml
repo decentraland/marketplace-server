@@ -16,6 +16,11 @@ services:
     volumes:
       - marketplace_data:/var/lib/postgresql/data
       - ./test/db/init-favorites-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U marketplace_admin -d marketplace']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:latest
@@ -36,7 +41,13 @@ services:
       - dapps_data:/var/lib/postgresql/data
       - ./test/db/init-marketplace-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
     depends_on:
-      - builder_db
+      builder_db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dapps_admin -d dapps_test']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   builder_db:
     image: postgres
@@ -50,6 +61,11 @@ services:
     volumes:
       - builder_data:/var/lib/postgresql/data
       - ./test/db/init-builder-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U builder_admin -d builder']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   marketplace_data:
