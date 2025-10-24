@@ -20,8 +20,8 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U marketplace_admin -d marketplace']
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 60s
 
   redis:
     image: redis:latest
@@ -48,8 +48,8 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U dapps_admin -d dapps_test']
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 60s
 
   builder_db:
     image: postgres
@@ -67,8 +67,8 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U builder_admin -d builder']
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 60s
 
 volumes:
   marketplace_data:
