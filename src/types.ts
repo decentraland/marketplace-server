@@ -141,16 +141,13 @@ export type HTTPResponse<T> = {
   status: StatusCode
   body:
     | {
-        ok: false
         message: string
         data?: object
       }
     | {
-        ok: true
         data?: PaginatedResponse<T>
       }
     | {
-        ok: true
         data?: T
       }
 }

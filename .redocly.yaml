@@ -1,0 +1,12 @@
+apis:
+  main@v1:
+    root: docs/marketplace-server-openapi.yaml
+
+extends:
+  - recommended
+
+rules:
+  security-defined: off
+  info-license: off
+  operation-4xx-response: warn
+  no-unused-components: warn

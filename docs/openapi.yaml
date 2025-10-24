@@ -1,0 +1,1510 @@
+openapi: 3.1.0
+info:
+  title: Marketplace Server API
+  description: API for marketplace server providing trading, NFT management, and favorites functionality
+  version: 1.0.0
+  contact:
+    name: Decentraland
+    url: https://decentraland.org
+  x-api-id: marketplace-server-api
+servers:
+  - url: /
+    description: Service root
+paths:
+  /ping:
+    get:
+      summary: Health check
+      description: Returns service health status
+      operationId: ping
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+  /v1/catalog:
+    get:
+      summary: Get catalog
+      description: Returns marketplace catalog (optional authentication)
+      operationId: getCatalog
+      security:
+        - SignedFetch: []
+        - {}
+      responses:
+        '200':
+          description: Marketplace catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogResponse'
+  /v2/catalog:
+    get:
+      summary: Get catalog v2
+      description: Returns marketplace catalog v2 (optional authentication)
+      operationId: getCatalogV2
+      security:
+        - SignedFetch: []
+        - {}
+      responses:
+        '200':
+          description: Marketplace catalog v2
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogResponse'
+  /v1/wert/sign:
+    post:
+      summary: Sign Wert transaction
+      description: Signs a Wert transaction (optional authentication)
+      operationId: signWertTransaction
+      security:
+        - SignedFetch: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WertSignRequest'
+      responses:
+        '200':
+          description: Signed transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WertSignResponse'
+  /v1/transak/orders/{id}:
+    get:
+      summary: Get Transak order
+      description: Returns Transak order information (optional authentication)
+      operationId: getTransakOrder
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Order ID
+      responses:
+        '200':
+          description: Transak order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransakOrder'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/ens/generate:
+    get:
+      summary: Generate ENS image
+      description: Generates an ENS image
+      operationId: generateENSImage
+      responses:
+        '200':
+          description: Generated ENS image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ENSImageResponse'
+  /v1/trades:
+    get:
+      summary: List trades
+      description: Returns list of trades
+      operationId: getTrades
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of trades to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of trades to skip
+      responses:
+        '200':
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trade'
+    post:
+      summary: Create trade
+      description: Creates a new trade (requires authentication with metadata validation)
+      operationId: createTrade
+      security:
+        - SignedFetch: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTradeRequest'
+      responses:
+        '201':
+          description: Trade created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trade'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/trades/{id}:
+    get:
+      summary: Get trade details
+      description: Returns details of a specific trade
+      operationId: getTrade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Trade ID
+      responses:
+        '200':
+          description: Trade details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trade'
+        '404':
+          description: Trade not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/trades/{hashedSignature}/accept:
+    get:
+      summary: Get trade accepted event
+      description: Returns trade accepted event information
+      operationId: getTradeAcceptedEvent
+      parameters:
+        - name: hashedSignature
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Hashed signature
+      responses:
+        '200':
+          description: Trade accepted event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeAcceptedEvent'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/bids:
+    get:
+      summary: List bids
+      description: Returns list of bids
+      operationId: getBids
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of bids to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of bids to skip
+      responses:
+        '200':
+          description: List of bids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Bid'
+  /v1/nfts:
+    get:
+      summary: List NFTs
+      description: Returns list of NFTs (optional authentication)
+      operationId: getNFTs
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of NFTs to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of NFTs to skip
+      responses:
+        '200':
+          description: List of NFTs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NFT'
+  /v1/orders:
+    get:
+      summary: List orders
+      description: Returns list of orders
+      operationId: getOrders
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of orders to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of orders to skip
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+  /v1/items:
+    get:
+      summary: List items
+      description: Returns list of items (optional authentication)
+      operationId: getItems
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of items to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of items to skip
+      responses:
+        '200':
+          description: List of items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+  /v1/sales:
+    get:
+      summary: List sales
+      description: Returns list of sales
+      operationId: getSales
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of sales to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of sales to skip
+      responses:
+        '200':
+          description: List of sales
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sale'
+  /v1/prices:
+    get:
+      summary: Get prices
+      description: Returns price information
+      operationId: getPrices
+      responses:
+        '200':
+          description: Price information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricesResponse'
+  /v1/trendings:
+    get:
+      summary: Get trending items
+      description: Returns trending items
+      operationId: getTrendings
+      responses:
+        '200':
+          description: Trending items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrendingItem'
+  /v1/stats/{category}/{stat}:
+    get:
+      summary: Get statistics
+      description: Returns statistics for a specific category and stat
+      operationId: getStats
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Statistics category
+        - name: stat
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Statistics type
+      responses:
+        '200':
+          description: Statistics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+  /v1/rankings/{entity}/{timeframe}:
+    get:
+      summary: Get rankings
+      description: Returns rankings for a specific entity and timeframe
+      operationId: getRankings
+      parameters:
+        - name: entity
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Entity type
+        - name: timeframe
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Timeframe
+      responses:
+        '200':
+          description: Rankings data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankingsResponse'
+  /v1/volume/{timeframe}:
+    get:
+      summary: Get volume data
+      description: Returns volume data for a specific timeframe
+      operationId: getVolume
+      parameters:
+        - name: timeframe
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Timeframe
+      responses:
+        '200':
+          description: Volume data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeResponse'
+  /v1/lists/{id}/picks:
+    get:
+      summary: Get picks in list
+      description: Returns picks in a specific list (optional authentication)
+      operationId: getListPicks
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      responses:
+        '200':
+          description: List picks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pick'
+    post:
+      summary: Add pick to list
+      description: Adds a pick to a list (requires authentication)
+      operationId: addPickToList
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPickRequest'
+      responses:
+        '201':
+          description: Pick added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pick'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/lists/{id}/picks/{itemId}:
+    delete:
+      summary: Remove pick from list
+      description: Removes a pick from a list (requires authentication)
+      operationId: removePickFromList
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      responses:
+        '200':
+          description: Pick removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/picks/{itemId}/stats:
+    get:
+      summary: Get pick stats
+      description: Returns statistics for a specific item (optional authentication)
+      operationId: getPickStats
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      responses:
+        '200':
+          description: Pick statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PickStats'
+  /v1/picks/stats:
+    get:
+      summary: Get all picks stats
+      description: Returns statistics for all picks
+      operationId: getAllPicksStats
+      responses:
+        '200':
+          description: All picks statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllPicksStats'
+  /v1/picks/{itemId}:
+    get:
+      summary: Get picks for item
+      description: Returns picks for a specific item (optional authentication)
+      operationId: getPicksForItem
+      security:
+        - SignedFetch: []
+        - {}
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      responses:
+        '200':
+          description: Item picks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pick'
+    post:
+      summary: Pick/unpick in bulk
+      description: Picks or unpicks items in bulk (requires authentication)
+      operationId: bulkPickUnpick
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkPickRequest'
+      responses:
+        '200':
+          description: Bulk operation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkPickResponse'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/lists/{id}:
+    get:
+      summary: Get list details
+      description: Returns details of a specific list (optional authentication)
+      operationId: getListDetails
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      responses:
+        '200':
+          description: List details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update list
+      description: Updates an existing list (requires authentication)
+      operationId: updateList
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateListRequest'
+      responses:
+        '200':
+          description: List updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete list
+      description: Deletes a list (requires authentication)
+      operationId: deleteList
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      responses:
+        '200':
+          description: List deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/lists:
+    get:
+      summary: Get user lists
+      description: Returns lists for the authenticated user (requires authentication)
+      operationId: getUserLists
+      security:
+        - SignedFetch: []
+      responses:
+        '200':
+          description: User lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/List'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create list
+      description: Creates a new list (requires authentication)
+      operationId: createList
+      security:
+        - SignedFetch: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListRequest'
+      responses:
+        '201':
+          description: List created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/lists/{id}/access:
+    post:
+      summary: Grant list access
+      description: Grants access to a list (requires authentication)
+      operationId: grantListAccess
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantAccessRequest'
+      responses:
+        '200':
+          description: Access granted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Revoke list access
+      description: Revokes access to a list (requires authentication)
+      operationId: revokeListAccess
+      security:
+        - SignedFetch: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: List ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeAccessRequest'
+      responses:
+        '200':
+          description: Access revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Unauthorized - invalid signed fetch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    SignedFetch:
+      type: http
+      scheme: bearer
+      description: |
+        Signed fetch authentication using decentraland-crypto-middleware with metadata validation (ADR-44l). 
+        Requires auth chain headers (x-identity, x-signature, x-timestamp) for signature validation. 
+        See http://adr.decentraland.org/adr/ADR-44l for details.
+  schemas:
+    CatalogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogItem'
+          description: List of catalog items
+        total:
+          type: number
+          description: Total number of items
+      required:
+        - items
+        - total
+    CatalogItem:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Item ID
+        name:
+          type: string
+          description: Item name
+        description:
+          type: string
+          description: Item description
+        image:
+          type: string
+          description: Item image URL
+        category:
+          type: string
+          description: Item category
+        rarity:
+          type: string
+          description: Item rarity
+        price:
+          type: number
+          description: Item price
+        # TODO: align with precise source types - additional properties may exist
+      additionalProperties: true
+      required:
+        - id
+        - name
+        - category
+    WertSignRequest:
+      type: object
+      properties:
+        transaction:
+          type: object
+          additionalProperties: true
+          description: |
+            Transaction data (TODO: align with precise source types)
+        signature:
+          type: string
+          description: Transaction signature
+      required:
+        - transaction
+    WertSignResponse:
+      type: object
+      properties:
+        signedTransaction:
+          type: string
+          description: Signed transaction
+        success:
+          type: boolean
+          description: Signing success status
+      required:
+        - signedTransaction
+        - success
+    TransakOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Order ID
+        status:
+          type: string
+          description: Order status
+        amount:
+          type: number
+          description: Order amount
+        currency:
+          type: string
+          description: Order currency
+        createdAt:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+      required:
+        - id
+        - status
+        - amount
+        - currency
+    ENSImageResponse:
+      type: object
+      properties:
+        imageUrl:
+          type: string
+          description: Generated ENS image URL
+        success:
+          type: boolean
+          description: Generation success status
+      required:
+        - imageUrl
+        - success
+    Trade:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Trade ID
+        buyer:
+          type: string
+          description: Buyer address
+        seller:
+          type: string
+          description: Seller address
+        item:
+          $ref: '#/components/schemas/Item'
+        price:
+          type: number
+          description: Trade price
+        status:
+          type: string
+          enum: [pending, completed, cancelled]
+          description: Trade status
+        createdAt:
+          type: string
+          format: date-time
+          description: Trade creation timestamp
+      required:
+        - id
+        - buyer
+        - seller
+        - price
+        - status
+    CreateTradeRequest:
+      type: object
+      properties:
+        itemId:
+          type: string
+          description: Item ID
+        price:
+          type: number
+          description: Trade price
+        seller:
+          type: string
+          description: Seller address
+      required:
+        - itemId
+        - price
+        - seller
+    TradeAcceptedEvent:
+      type: object
+      properties:
+        tradeId:
+          type: string
+          description: Trade ID
+        hashedSignature:
+          type: string
+          description: Hashed signature
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp
+      required:
+        - tradeId
+        - hashedSignature
+    Bid:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Bid ID
+        bidder:
+          type: string
+          description: Bidder address
+        item:
+          $ref: '#/components/schemas/Item'
+        amount:
+          type: number
+          description: Bid amount
+        status:
+          type: string
+          enum: [active, accepted, rejected]
+          description: Bid status
+        createdAt:
+          type: string
+          format: date-time
+          description: Bid creation timestamp
+      required:
+        - id
+        - bidder
+        - amount
+        - status
+    NFT:
+      type: object
+      properties:
+        id:
+          type: string
+          description: NFT ID
+        tokenId:
+          type: string
+          description: Token ID
+        contract:
+          type: string
+          description: Contract address
+        owner:
+          type: string
+          description: Owner address
+        metadata:
+          type: object
+          description: NFT metadata
+        price:
+          type: number
+          description: NFT price
+      required:
+        - id
+        - tokenId
+        - contract
+        - owner
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Order ID
+        maker:
+          type: string
+          description: Maker address
+        taker:
+          type: string
+          description: Taker address
+        item:
+          $ref: '#/components/schemas/Item'
+        price:
+          type: number
+          description: Order price
+        status:
+          type: string
+          enum: [open, filled, cancelled]
+          description: Order status
+        createdAt:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+      required:
+        - id
+        - maker
+        - price
+        - status
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Item ID
+        name:
+          type: string
+          description: Item name
+        description:
+          type: string
+          description: Item description
+        image:
+          type: string
+          description: Item image URL
+        category:
+          type: string
+          description: Item category
+        rarity:
+          type: string
+          description: Item rarity
+        price:
+          type: number
+          description: Item price
+        owner:
+          type: string
+          description: Item owner
+      required:
+        - id
+        - name
+        - category
+    Sale:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Sale ID
+        buyer:
+          type: string
+          description: Buyer address
+        seller:
+          type: string
+          description: Seller address
+        item:
+          $ref: '#/components/schemas/Item'
+        price:
+          type: number
+          description: Sale price
+        timestamp:
+          type: string
+          format: date-time
+          description: Sale timestamp
+      required:
+        - id
+        - buyer
+        - seller
+        - price
+    PricesResponse:
+      type: object
+      properties:
+        prices:
+          type: object
+          description: Price data by category
+        timestamp:
+          type: string
+          format: date-time
+          description: Price timestamp
+      required:
+        - prices
+    TrendingItem:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/Item'
+        trendScore:
+          type: number
+          description: Trend score
+        volume:
+          type: number
+          description: Trading volume
+      required:
+        - item
+        - trendScore
+    StatsResponse:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Statistics category
+        stat:
+          type: string
+          description: Statistics type
+        value:
+          type: number
+          description: Statistics value
+        timestamp:
+          type: string
+          format: date-time
+          description: Statistics timestamp
+      required:
+        - category
+        - stat
+        - value
+    RankingsResponse:
+      type: object
+      properties:
+        entity:
+          type: string
+          description: Entity type
+        timeframe:
+          type: string
+          description: Timeframe
+        rankings:
+          type: array
+          items:
+            type: object
+          description: Rankings data
+      required:
+        - entity
+        - timeframe
+        - rankings
+    VolumeResponse:
+      type: object
+      properties:
+        timeframe:
+          type: string
+          description: Timeframe
+        volume:
+          type: number
+          description: Volume value
+        timestamp:
+          type: string
+          format: date-time
+          description: Volume timestamp
+      required:
+        - timeframe
+        - volume
+    Pick:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Pick ID
+        itemId:
+          type: string
+          description: Item ID
+        listId:
+          type: string
+          description: List ID
+        user:
+          type: string
+          description: User address
+        createdAt:
+          type: string
+          format: date-time
+          description: Pick creation timestamp
+      required:
+        - id
+        - itemId
+        - listId
+        - user
+    AddPickRequest:
+      type: object
+      properties:
+        itemId:
+          type: string
+          description: Item ID
+      required:
+        - itemId
+    PickStats:
+      type: object
+      properties:
+        itemId:
+          type: string
+          description: Item ID
+        pickCount:
+          type: number
+          description: Number of picks
+        listsCount:
+          type: number
+          description: Number of lists containing this item
+      required:
+        - itemId
+        - pickCount
+        - listsCount
+    AllPicksStats:
+      type: object
+      properties:
+        totalPicks:
+          type: number
+          description: Total number of picks
+        totalItems:
+          type: number
+          description: Total number of items picked
+        totalLists:
+          type: number
+          description: Total number of lists
+      required:
+        - totalPicks
+        - totalItems
+        - totalLists
+    BulkPickRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [pick, unpick]
+          description: Action to perform
+        listIds:
+          type: array
+          items:
+            type: string
+          description: List of list IDs
+      required:
+        - action
+        - listIds
+    BulkPickResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Operation success status
+        processed:
+          type: number
+          description: Number of items processed
+      required:
+        - success
+        - processed
+    List:
+      type: object
+      properties:
+        id:
+          type: string
+          description: List ID
+        name:
+          type: string
+          description: List name
+        description:
+          type: string
+          description: List description
+        owner:
+          type: string
+          description: List owner
+        isPublic:
+          type: boolean
+          description: Whether list is public
+        itemCount:
+          type: number
+          description: Number of items in list
+        createdAt:
+          type: string
+          format: date-time
+          description: List creation timestamp
+      required:
+        - id
+        - name
+        - owner
+        - isPublic
+        - itemCount
+    CreateListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: List name
+        description:
+          type: string
+          description: List description
+        isPublic:
+          type: boolean
+          description: Whether list should be public
+      required:
+        - name
+        - isPublic
+    UpdateListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: List name
+        description:
+          type: string
+          description: List description
+        isPublic:
+          type: boolean
+          description: Whether list should be public
+      required:
+        - name
+        - isPublic
+    GrantAccessRequest:
+      type: object
+      properties:
+        userAddress:
+          type: string
+          description: User address to grant access to
+        permissions:
+          type: array
+          items:
+            type: string
+          description: List of permissions
+      required:
+        - userAddress
+        - permissions
+    RevokeAccessRequest:
+      type: object
+      properties:
+        userAddress:
+          type: string
+          description: User address to revoke access from
+      required:
+        - userAddress
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+      required:
+        - error
