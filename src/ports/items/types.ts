@@ -52,6 +52,7 @@ export type DBItem = {
   trade_id?: string
   trade_beneficiary?: string
   trade_expires_at?: Date
+  trade_contract?: string
   trade_price: string
   utility?: string
 }

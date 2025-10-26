@@ -204,7 +204,8 @@ describe('when adding a new trade', () => {
         signature:
           '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c',
         signer: '0x1234567890',
-        type: mockTrade.type
+        type: mockTrade.type,
+        contract: 'OffChainMarketplace'
       }
 
       insertedSentAsset = {
@@ -363,7 +364,8 @@ describe('when getting a trade', () => {
             extra: '0x',
             beneficiary: '0x9876543210'
           }
-        ]
+        ],
+        contract: 'OffChainMarketplace'
       }
 
       assets = [
@@ -378,6 +380,7 @@ describe('when getting a trade', () => {
           expires_at: new Date(trade.checks.expiration),
           signer: trade.signer,
           type: trade.type,
+          contract: trade.contract,
           asset_type: TradeAssetType.ERC20,
           contract_address: trade.sent[0].contractAddress,
           direction: TradeAssetDirection.SENT,
@@ -396,6 +399,7 @@ describe('when getting a trade', () => {
           expires_at: new Date(trade.checks.expiration),
           signer: trade.signer,
           type: trade.type,
+          contract: trade.contract,
           asset_type: TradeAssetType.ERC721,
           contract_address: trade.received[0].contractAddress,
           direction: TradeAssetDirection.RECEIVED,
