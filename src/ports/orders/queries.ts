@@ -1,8 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { OrderFilters, OrderSortBy } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'

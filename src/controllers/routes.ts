@@ -126,7 +126,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/stats/:category/:stat', getStatsHandler)
   router.get('/v1/rankings/:entity/:timeframe', getRankingsHandler)
   router.get('/v1/volume/:timeframe', getVolumeHandler)
-  router.post('/v1/trades/materialized-view/recreate', recreateTradesMaterializedViewHandler)
+  router.post('/v1/trades/materialized-view/recreate', createTradesViewAuthMiddleware(), recreateTradesMaterializedViewHandler)
 
   // User assets endpoints
   router.get('/v1/users/:address/wearables', getUserWearablesHandler)
