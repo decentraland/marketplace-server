@@ -12,6 +12,7 @@ describe('when adapting a db bid to a bid', () => {
         dbBid = {
           bids_count: 10,
           trade_id: '1',
+          trade_contract_address: '0x1',
           price: '10',
           token_id: 'token-id',
           created_at: new Date(),
@@ -54,6 +55,7 @@ describe('when adapting a db bid to a bid', () => {
     describe('and the bid is for an item', () => {
       beforeEach(() => {
         dbBid = {
+          trade_contract_address: '0x1',
           bids_count: 10,
           trade_id: '1',
           price: '10',

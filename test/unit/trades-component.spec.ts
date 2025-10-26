@@ -37,6 +37,7 @@ import {
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
+import { ContractName, getContract } from 'decentraland-transactions'
 
 let mockTrade: TradeCreation
 let mockSigner: string
@@ -269,7 +270,12 @@ describe('when adding a new trade', () => {
     })
 
     it('should add the trade to the database', async () => {
-      expect(mockPgQuery).toHaveBeenCalledWith(getInsertTradeQuery(mockTrade, mockSigner))
+      expect(mockPgQuery).toHaveBeenCalledWith(
+        getInsertTradeQuery(
+          { ...mockTrade, contract: getContract(ContractName.OffChainMarketplaceV2, mockTrade.chainId).address },
+          mockSigner
+        )
+      )
     })
 
     it('should add sent asset to db', () => {

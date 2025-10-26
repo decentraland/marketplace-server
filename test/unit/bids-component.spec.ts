@@ -31,6 +31,7 @@ describe('when fetching bids', () => {
     beforeEach(() => {
       bids = [
         {
+          trade_contract_address: '0x1',
           bids_count: 10,
           trade_id: '1',
           price: '10',
