@@ -8,6 +8,7 @@ import { createSubgraphComponent } from '@well-known-components/thegraph-compone
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createRedisComponent } from '@dcl/redis-component'
+import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
@@ -29,7 +30,6 @@ import { createPricesComponents } from './ports/prices'
 import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
-import { createSchemaValidatorComponent } from './ports/schema-validator'
 import { createStatsComponent } from './ports/stats/component'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
@@ -55,8 +55,10 @@ export async function initComponents(): Promise<AppComponents> {
     RENTALS_SUBGRAPH_URL,
     SIGNATURES_SERVER_URL,
     TRANSAK_API_URL,
+    TRANSAK_API_GATEWAY_URL,
     TRANSAK_API_KEY,
     TRANSAK_API_SECRET,
+    MARKETPLACE_BASE_URL,
     REDIS_URL
   ] = await Promise.all([
     config.requireString('CORS_ORIGIN'),
@@ -67,8 +69,10 @@ export async function initComponents(): Promise<AppComponents> {
     config.requireString('RENTALS_SUBGRAPH_URL'),
     config.requireString('SIGNATURES_SERVER_URL'),
     config.requireString('TRANSAK_API_URL'),
+    config.requireString('TRANSAK_API_GATEWAY_URL'),
     config.requireString('TRANSAK_API_KEY'),
     config.requireString('TRANSAK_API_SECRET'),
+    config.requireString('MARKETPLACE_BASE_URL'),
     config.getString('REDIS_URL')
   ])
 
@@ -152,6 +156,8 @@ export async function initComponents(): Promise<AppComponents> {
   const transak = await createTransakComponent(
     { fetch, logs, cache },
     {
+      marketplaceURL: MARKETPLACE_BASE_URL,
+      apiGatewayURL: TRANSAK_API_GATEWAY_URL,
       apiURL: TRANSAK_API_URL,
       apiKey: TRANSAK_API_KEY,
       apiSecret: TRANSAK_API_SECRET

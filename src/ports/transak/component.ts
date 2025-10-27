@@ -1,7 +1,7 @@
 import { fromMillisecondsToSeconds } from '../../logic/date'
 import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
-import { ITransakComponent, OrderResponse } from './types'
+import { WidgetOptions, ITransakComponent, OrderResponse } from './types'
 
 const TRANSAK_ACCESS_TOKEN_LOCK_KEY = 'transak-access-token-lock'
 const TRANSAK_ACCESS_TOKEN_CACHE_KEY = 'transak-access-token'
@@ -13,17 +13,21 @@ export function createTransakComponent(
   components: Pick<AppComponents, 'fetch' | 'logs' | 'cache'>,
   {
     apiURL,
+    marketplaceURL,
+    apiGatewayURL,
     apiKey,
     apiSecret
   }: {
+    marketplaceURL: string
     apiURL: string
+    apiGatewayURL: string
     apiKey: string
     apiSecret: string
   }
 ): ITransakComponent {
   const { fetch, logs, cache } = components
   const logger = logs.getLogger('Transak')
-
+  const marketplaceDomain = new URL(marketplaceURL).hostname
   /**
    * Retrieves a cached access token or refreshes it if not available.
    * Uses a distributed lock to prevent concurrent token refresh requests.
@@ -88,6 +92,36 @@ export function createTransakComponent(
     }
   }
 
+  async function getWidget(options?: WidgetOptions): Promise<string> {
+    try {
+      const accessToken = await getOrRefreshAccessToken()
+      const res = await fetch.fetch(`${apiGatewayURL}/v2/auth/session`, {
+        method: 'POST',
+        headers: { 'access-token': accessToken, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          widgetParams: {
+            apiKey,
+            referrerDomain: marketplaceDomain,
+            networks: 'ethereum,polygon',
+            cryptoCurrencyCode: 'MANA',
+            defaultCryptoCurrency: 'MANA',
+            cyptoCurrencyList: 'MANA',
+            ...options
+          }
+        })
+      })
+
+      const body: { data: { widgetUrl: string } } = await res.json()
+      if (!res.ok) {
+        throw new Error(`Error getting widget, status: ${res.status}`)
+      }
+      return body.data.widgetUrl
+    } catch (error) {
+      logger.error(`Error getting widget: ${isErrorWithMessage(error) ? error.message : 'Unknown error'}`)
+      throw error
+    }
+  }
+
   /**
    * Obtains a new access token from the Transak API using the configured API credentials.
    * Makes a POST request to the refresh-token endpoint with the API key and secret.
@@ -112,6 +146,7 @@ export function createTransakComponent(
   }
 
   return {
+    getWidget,
     getOrder
   }
 }

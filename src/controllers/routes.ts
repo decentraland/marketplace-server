@@ -2,6 +2,7 @@ import { Router } from '@well-known-components/http-server'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
+import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
@@ -23,7 +24,7 @@ import {
   getTradesHandler,
   recreateTradesMaterializedViewHandler
 } from './handlers/trades-handler'
-import { createTransakHandler } from './handlers/transak-handler'
+import { createTransakHandler, createTransakWidgetHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { getUserEmotesHandler, getUserEmotesUrnTokenHandler, getUserGroupedEmotesHandler } from './handlers/user-assets/emotes-handler'
 import { getUserNamesHandler, getUserNamesOnlyHandler } from './handlers/user-assets/names-handler'
@@ -79,6 +80,11 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       verifyMetadataContent: validateNotKernelSceneSigner
     }),
     createTransakHandler
+  )
+  router.post(
+    '/v1/transak/widget-url',
+    components.schemaValidator.withSchemaValidatorMiddleware(WidgetOptionsSchema),
+    createTransakWidgetHandler
   )
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
 
