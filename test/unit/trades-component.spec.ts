@@ -14,6 +14,7 @@ import {
   Rarity,
   Event
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
@@ -37,7 +38,6 @@ import {
 import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
-import { ContractName, getContract } from 'decentraland-transactions'
 
 let mockTrade: TradeCreation
 let mockSigner: string
