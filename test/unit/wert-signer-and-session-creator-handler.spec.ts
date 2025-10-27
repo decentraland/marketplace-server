@@ -20,6 +20,7 @@ describe('when getting the wert signer and session creator handler', () => {
   let verification: authorizationMiddleware.DecentralandSignatureData | undefined
 
   beforeEach(() => {
+    url = {} as URL
     components = {
       wertSigner: wertSignerMock,
       wertApi: wertApiMock
