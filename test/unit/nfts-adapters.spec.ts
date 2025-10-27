@@ -303,6 +303,7 @@ describe('fromDBNFTToNFT', () => {
       createdAt: fromSecondsToMilliseconds(dbNFT.created_at),
       data: {
         emote: {
+          outcomeType: null,
           bodyShapes: dbNFT.body_shapes,
           category: dbNFT.emote_category as EmoteCategory,
           description: dbNFT.description || '',

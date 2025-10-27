@@ -161,6 +161,7 @@ describe('fromDBItemToItem', () => {
         reviewedAt: dbItem.reviewed_at,
         soldAt: dbItem.sold_at,
         tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+        tradeContractAddress: dbItem.trade_contract as string,
         data: {
           emote: {
             bodyShapes: dbItem.emote_body_shapes,
@@ -168,6 +169,7 @@ describe('fromDBItemToItem', () => {
             description: dbItem.description || '',
             rarity: dbItem.rarity,
             loop: dbItem.loop || false,
+            outcomeType: null,
             hasSound: dbItem.has_sound || false,
             hasGeometry: dbItem.has_geometry || false
           }
@@ -245,7 +247,8 @@ describe('getDataFromDBItem', () => {
           rarity: dbItem.rarity,
           loop: dbItem.loop,
           hasSound: dbItem.has_sound,
-          hasGeometry: dbItem.has_geometry
+          hasGeometry: dbItem.has_geometry,
+          outcomeType: null
         }
       })
     })

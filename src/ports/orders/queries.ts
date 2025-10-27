@@ -1,8 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { OrderFilters, OrderSortBy } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
@@ -45,24 +43,11 @@ function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
 }
 
 export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-
   return SQL`
     SELECT
       id::text,
       id::text as trade_id,
-      CASE
-        WHEN LOWER(network) = 'matic' then '`
-    .append(marketplacePolygon.address)
-    .append(
-      SQL`'
-        ELSE '`
-    )
-    .append(marketplaceEthereum.address)
-    .append(
-      SQL`'
-      END AS marketplace_address,
+      trade_contract as marketplace_address,
       sent_nft_category as category,
       contract_address_sent as nft_address,
       (sent_token_id)::numeric(78) as token_id,
@@ -81,11 +66,10 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (`
-        .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
-        .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
-        .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
-        .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
-    )
+    .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
+    .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
+    .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
+    .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
 }
 
 export function getLegacyOrdersQuery(): string {
