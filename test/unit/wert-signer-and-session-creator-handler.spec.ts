@@ -25,6 +25,9 @@ describe('when getting the wert signer and session creator handler', () => {
       wertSigner: wertSignerMock,
       wertApi: wertApiMock
     }
+    request = {} as HandlerContextWithPath<'wertSigner' | 'wertApi', '/v1/wert/sign'>['request']
+    params = {} as HandlerContextWithPath<'wertSigner' | 'wertApi', '/v1/wert/sign'>['params']
+    verification = undefined
     wertSignerMock.signMessage.mockReset()
     wertApiMock.createSession.mockReset()
   })
