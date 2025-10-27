@@ -9,6 +9,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- SET UP EXTENSIONS
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "postgres_fdw";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
     -- CREATE THE TRADES SQUID TABLES
     CREATE TABLE squid_trades."trade" ("id" character varying NOT NULL, "signature" text NOT NULL, "network" character varying(8) NOT NULL, "action" character varying(9) NOT NULL, "timestamp" numeric, "caller" text NOT NULL, CONSTRAINT "PK_d4097908741dc408f8274ebdc53" PRIMARY KEY ("id"));
