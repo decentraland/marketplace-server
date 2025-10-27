@@ -58,7 +58,8 @@ export function fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade: DBTrade,
     sent: assets.filter(asset => asset.direction === TradeAssetDirection.SENT).map(fromDBTradeAssetWithValueToTradeAsset),
     received: assets
       .filter(asset => asset.direction === TradeAssetDirection.RECEIVED)
-      .map(fromDBTradeAssetWithValueToTradeAssetWithBeneficiary)
+      .map(fromDBTradeAssetWithValueToTradeAssetWithBeneficiary),
+    contract: dbTrade.contract
   }
 }
 

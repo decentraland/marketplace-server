@@ -164,6 +164,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', unified_trades.created_at) as first_listed_at,
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
+      unified_trades.trade_contract as trade_contract,
       unified_trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
       `

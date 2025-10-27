@@ -15,7 +15,7 @@ export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
     LEFT JOIN marketplace.trade_assets_item as item ON ta.id = item.asset_id`.append(customWhere ? SQL` WHERE `.append(customWhere) : SQL``)
 }
 
-export function getInsertTradeQuery(trade: TradeCreation, signer: string) {
+export function getInsertTradeQuery(trade: TradeCreation & { contract: string }, signer: string) {
   return SQL`INSERT INTO marketplace.trades (
     chain_id,
     checks,
@@ -25,7 +25,8 @@ export function getInsertTradeQuery(trade: TradeCreation, signer: string) {
     signature,
     hashed_signature,
     signer,
-    type
+    type,
+    contract
   ) VALUES (
    ${trade.chainId},
    ${trade.checks},
@@ -35,7 +36,8 @@ export function getInsertTradeQuery(trade: TradeCreation, signer: string) {
    ${trade.signature},
    ${keccak256(trade.signature)},
    ${signer.toLowerCase()},
-   ${trade.type}
+   ${trade.type},
+   ${trade.contract}
    ) RETURNING *;`
 }
 
@@ -95,11 +97,14 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 export function getTradesForTypeQuery(type: TradeType) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
+  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
     SELECT
       t.id,
+      t.contract as trade_contract_address,
       t.created_at,
       t.signer,
       t.expires_at,
@@ -127,6 +132,7 @@ export function getTradesForTypeQuery(type: TradeType) {
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+          AND t.signer = trade_status.caller
         ) THEN '${ListingStatus.CANCELLED}'
         WHEN (t.expires_at < now()::timestamptz(3)) THEN '${ListingStatus.CANCELLED}'
         WHEN (
@@ -162,15 +168,17 @@ export function getTradesForTypeQuery(type: TradeType) {
     ) as assets_with_values ON t.id = assets_with_values.trade_id
     LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
+    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '${type}'
-    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index, trade_status.caller
   `
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
+  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   return SQL`
     SELECT
       t.id,
@@ -247,7 +255,13 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('`
                 .append(marketplaceEthereum.address.toLowerCase())
-                .append(SQL`'`)
+                .append(SQL`','`)
+                .append(marketplaceEthereumV2.address.toLowerCase())
+                .append(SQL`','`)
+                .append(marketplacePolygon.address.toLowerCase())
+                .append(SQL`','`)
+                .append(marketplacePolygonV2.address.toLowerCase())
+                .append(SQL`')`)
                 .append(
                   SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
                     SQL`')) as contract_signature_index ON t.network = contract_signature_index.network

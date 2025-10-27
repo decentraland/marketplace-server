@@ -67,6 +67,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
+          outcomeType: null,
           description,
           category: emoteCategory.toLocaleLowerCase() as EmoteCategory, // toLocaleLowerCase used since they were indexed in uppercase.
           bodyShapes: body_shapes as BodyShape[],

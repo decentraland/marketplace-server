@@ -36,6 +36,7 @@ export function fromDBBidToBid(dbBid: DBBid): Bid {
       ? {
           id: dbBid.trade_id,
           tradeId: dbBid.trade_id,
+          tradeContractAddress: dbBid.trade_contract_address,
           ...(dbBid.token_id !== null ? { tokenId: dbBid.token_id } : { itemId: dbBid.item_id })
         }
       : {
