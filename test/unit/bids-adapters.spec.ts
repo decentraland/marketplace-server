@@ -47,7 +47,8 @@ describe('when adapting a db bid to a bid', () => {
           network: dbBid.network,
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
-          expiresAt: dbBid.expires_at.getTime()
+          expiresAt: dbBid.expires_at.getTime(),
+          tradeContractAddress: dbBid.trade_contract_address
         })
       })
     })
@@ -92,7 +93,8 @@ describe('when adapting a db bid to a bid', () => {
           network: dbBid.network,
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
-          expiresAt: dbBid.expires_at.getTime()
+          expiresAt: dbBid.expires_at.getTime(),
+          tradeContractAddress: dbBid.trade_contract_address
         })
       })
     })
