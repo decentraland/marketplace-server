@@ -23,7 +23,7 @@ beforeEach(() => {
   mockConfig = {
     apiURL: 'https://api.transak.com',
     apiGatewayURL: 'https://api-gateway.transak.com',
-    marketplaceURL: 'https://market.decentraland.org',
+    marketplaceURL: 'https://decentraland.org/marketplace',
     apiKey: 'test-api-key',
     apiSecret: 'test-api-secret'
   }

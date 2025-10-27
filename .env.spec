@@ -30,11 +30,11 @@ WERT_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000
 WERT_PUBLICATION_FEES_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000002
 
 # Transak Configuration
-TRANSAK_API_URL=https://api.transak.com
-TRANSAK_API_GATEWAY_URL=https://api-gateway.transak.com
+TRANSAK_API_URL=https://api.transak.com/partners/api
+TRANSAK_API_GATEWAY_URL=https://api-gateway.transak.com/api
 TRANSAK_API_KEY=test_key
 TRANSAK_API_SECRET=test_secret
-MARKETPLACE_BASE_URL=https://market.decentraland.org
+MARKETPLACE_BASE_URL=https://decentraland.org/marketplace
 
 # Optional Redis (will use in-memory cache if not set)
 # REDIS_URL=
