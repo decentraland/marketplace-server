@@ -33,7 +33,7 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
     }
 
     const listsServer = await config.requireString('DCL_LISTS_SERVER')
-    const nftFilters = await getNFTFilters(filters, listsServer, rentals)
+    const { filters: nftFilters, listings } = await getNFTFilters(filters, listsServer, rentals)
     const client = await pg.getPool().connect()
     let query
     try {
@@ -70,12 +70,13 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
       const landNftIds = nfts.rows
         .filter(nft => nft.category === NFTCategory.PARCEL || nft.category === NFTCategory.ESTATE)
         .map(nft => nft.id)
-      const listings = landNftIds.length
-        ? await rentals.getRentalsListingsOfNFTs(landNftIds, filters.rentalStatus || RentalStatus.OPEN)
-        : []
+
+      // if for some reason we don't have listings, we need to fetch them
+      const rentalListings =
+        !listings && landNftIds.length ? await rentals.getRentalsListingsOfNFTs(landNftIds, filters.rentalStatus || RentalStatus.OPEN) : []
 
       return {
-        data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings),
+        data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings || rentalListings),
         total: total ? Number(total.rows[0]?.total) ?? 0 : nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
       }
     } catch (error) {

@@ -8,7 +8,8 @@ export const TRADES_MV_NAME = 'mv_trades'
 export async function recreateTradesMaterializedView(db: IPgComponent) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-
+  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
+  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   // Start transaction
   const client = await db.getPool().connect()
   try {
@@ -104,6 +105,10 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
           MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
           MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
+          MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
+          t.network,
+          t.expires_at,
+          MAX(t.contract) AS trade_contract,
           CASE
               WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
               WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
@@ -175,7 +180,9 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           FROM squid_trades.signature_index idx
           WHERE LOWER(idx.address) IN (
               '${marketplacePolygon.address}',
-              '${marketplaceEthereum.address}'
+              '${marketplaceEthereum.address}',
+              '${marketplacePolygonV2.address}',
+              '${marketplaceEthereumV2.address}'
           )
       ) AS si_contract
       ON t.network = si_contract.network
@@ -273,7 +280,14 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
     // Set the owner of the materialized view
     await client.query(`ALTER MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} OWNER TO mv_trades_owner;`)
 
-    // MANDATORY: grant permissions for SELECT on public squids table
+    // MANDATORY: grant permissions for SELECT on all required tables
+    // First grant permissions to mv_trades_owner on marketplace schema tables
+    await client.query(`
+      GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;
+      GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace TO mv_trades_owner;
+      GRANT SELECT ON ALL TABLES IN SCHEMA squid_trades TO mv_trades_owner;
+    `)
+
     // Grant permissions to active squid users dynamically
     await client.query(`
       DO $$
@@ -291,8 +305,6 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           LOOP
             IF db_user IS NOT NULL THEN
               EXECUTE 'GRANT USAGE ON SCHEMA marketplace TO ' || quote_ident(db_user);
-              EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace to mv_trades_owner';
-              EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA squid_trades to mv_trades_owner';
               EXECUTE 'GRANT mv_trades_owner TO ' || quote_ident(db_user);
             END IF;
           END LOOP;

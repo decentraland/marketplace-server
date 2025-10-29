@@ -25,6 +25,7 @@ type DBBaseBid = {
 
 export type DBTradeBid = DBBaseBid & {
   trade_id: string
+  trade_contract_address: string
   legacy_bid_id: null // This is to correctly identify the type
 } & ({ token_id: string; item_id: null } | { item_id: string; token_id: null })
 

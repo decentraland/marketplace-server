@@ -10,6 +10,7 @@ describe('when getting the create ENS image handler ', () => {
   let request: HandlerContextWithPath<'ens', '/v1/ens/generate'>['request']
 
   beforeEach(() => {
+    request = {} as HandlerContextWithPath<'ens', '/v1/ens/generate'>['request']
     components = {
       ens: ensImageGeneratorMock
     }
