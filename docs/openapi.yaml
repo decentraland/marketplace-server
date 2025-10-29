@@ -258,13 +258,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of trades to return per request (default: 20, max: 100)
+          description: 'Maximum number of trades to return per request (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of trades to skip for pagination (default: 0)
+          description: 'Number of trades to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
@@ -406,13 +406,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of bids to return per request (default: 20, max: 100)
+          description: 'Maximum number of bids to return per request (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of bids to skip for pagination (default: 0)
+          description: 'Number of bids to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
@@ -456,13 +456,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of NFTs to return (default: 20, max: 100)
+          description: 'Maximum number of NFTs to return (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of NFTs to skip for pagination (default: 0)
+          description: 'Number of NFTs to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
@@ -497,13 +497,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of orders to return (default: 20, max: 100)
+          description: 'Maximum number of orders to return (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of orders to skip for pagination (default: 0)
+          description: 'Number of orders to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
@@ -543,13 +543,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of items to return (default: 20, max: 100)
+          description: 'Maximum number of items to return (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of items to skip for pagination (default: 0)
+          description: 'Number of items to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
@@ -586,13 +586,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum number of sales to return (default: 20, max: 100)
+          description: 'Maximum number of sales to return (default: 20, max: 100)'
           schema:
             type: number
         - name: offset
           in: query
           required: false
-          description: Number of sales to skip for pagination (default: 0)
+          description: 'Number of sales to skip for pagination (default: 0)'
           schema:
             type: number
       responses:
