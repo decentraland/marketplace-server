@@ -1,7 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Marketplace Server API
-  description: API for marketplace server providing trading, NFT management, and favorites functionality
+  title: Decentraland Marketplace Server API
+  description: |
+    API for Decentraland Marketplace server providing NFT trading, catalog browsing, favorites management, 
+    and marketplace analytics. This API supports various blockchain networks and provides comprehensive 
+    functionality for managing NFTs, wearables, emotes, and LAND in the Decentraland metaverse.
   version: 1.0.0
   contact:
     name: Decentraland
@@ -11,19 +14,60 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: marketplace-server-api
 servers:
-  - url: /
-    description: Service root
+  - url: https://marketplace-api.decentraland.org
+    description: Production server
+  - url: https://marketplace-api.decentraland.zone
+    description: Development server
 security: []
+tags:
+  - name: Health
+    description: Health check and service status endpoints
+  - name: Catalog
+    description: Browse and search marketplace catalog items
+  - name: Trades
+    description: Manage and view trading activity
+  - name: NFTs
+    description: Query and manage NFTs including wearables, emotes, and LAND
+  - name: Items
+    description: View marketplace items and collections
+  - name: Orders
+    description: Manage marketplace orders
+  - name: Bids
+    description: View and manage bids on marketplace items
+  - name: Sales
+    description: Query sales history and transactions
+  - name: Prices
+    description: Get current marketplace prices
+  - name: Trending
+    description: View trending items and collections
+  - name: Statistics
+    description: Access marketplace statistics and analytics
+  - name: Rankings
+    description: View marketplace rankings by various metrics
+  - name: Volume
+    description: Query trading volume data
+  - name: Lists
+    description: Manage user favorites lists (curated collections)
+  - name: Picks
+    description: Manage picks within favorites lists
+  - name: Payments
+    description: Payment gateway integration (Wert, Transak)
+  - name: ENS
+    description: ENS (Ethereum Name Service) utilities
 paths:
   /ping:
     get:
-      summary: Health check
-      description: Returns service health status
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: |
+        Simple health check endpoint that returns "pong" when the service is running and healthy.
+        Used for monitoring and load balancer health checks.
       operationId: ping
       security: []
       responses:
         '200':
-          description: Service is healthy
+          description: Service is healthy and responding
           content:
             text/plain:
               schema:
@@ -43,8 +87,15 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/catalog:
     get:
-      summary: Get catalog
-      description: Returns marketplace catalog (optional authentication)
+      tags:
+        - Catalog
+      summary: Get marketplace catalog (v1)
+      description: |
+        Retrieves the marketplace catalog with items available for browsing and purchase.
+        Supports filtering by category, price range, and various item attributes.
+        Authentication is optional but recommended for personalized results.
+        
+        **Note**: Consider using /v2/catalog for enhanced features and performance.
       operationId: getCatalog
       security:
         - SignedFetch: []
@@ -70,8 +121,20 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v2/catalog:
     get:
-      summary: Get catalog v2
-      description: Returns marketplace catalog v2 (optional authentication)
+      tags:
+        - Catalog
+      summary: Get marketplace catalog (v2 - Recommended)
+      description: |
+        Retrieves the marketplace catalog with enhanced filtering and sorting capabilities.
+        Supports comprehensive filtering by:
+        - Categories (wearables, emotes)
+        - Price ranges and sorting (newest, cheapest, most expensive, recently sold)
+        - Rarities and creator addresses
+        - Wearable-specific filters (gender, category, accessories)
+        - Emote-specific filters (category, play mode)
+        - Text search across item names and descriptions
+        
+        Authentication is optional but may provide personalized results and user-specific data.
       operationId: getCatalogV2
       security:
         - SignedFetch: []
@@ -97,8 +160,15 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/wert/sign:
     post:
-      summary: Sign Wert transaction
-      description: Signs a Wert transaction (optional authentication)
+      tags:
+        - Payments
+      summary: Sign Wert payment transaction
+      description: |
+        Signs a transaction for Wert payment gateway integration.
+        Wert is a fiat-to-crypto payment solution that allows users to purchase NFTs with credit/debit cards.
+        This endpoint validates and signs the transaction data before forwarding to Wert's infrastructure.
+        
+        Authentication is optional but recommended for tracking user transactions.
       operationId: signWertTransaction
       security:
         - SignedFetch: []
@@ -118,8 +188,15 @@ paths:
                 $ref: '#/components/schemas/WertSignResponse'
   /v1/transak/orders/{id}:
     get:
-      summary: Get Transak order
-      description: Returns Transak order information (optional authentication)
+      tags:
+        - Payments
+      summary: Get Transak order details
+      description: |
+        Retrieves detailed information about a Transak payment order.
+        Transak is a fiat-to-crypto payment gateway that enables credit/debit card purchases.
+        
+        Use this endpoint to check order status, amount, currency, and completion details.
+        Authentication is optional but may provide access to user-specific order information.
       operationId: getTransakOrder
       security:
         - SignedFetch: []
@@ -130,7 +207,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Order ID
+          description: Unique Transak order identifier
       responses:
         '200':
           description: Transak order
@@ -146,8 +223,15 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/ens/generate:
     get:
-      summary: Generate ENS image
-      description: Generates an ENS image
+      tags:
+        - ENS
+      summary: Generate ENS name image
+      description: |
+        Generates a visual representation (image) for an ENS (Ethereum Name Service) name.
+        This is typically used to create profile images or avatar representations for ENS domains
+        in the Decentraland marketplace.
+        
+        The generated image can be used as a preview or thumbnail for ENS-based NFTs.
       operationId: generateENSImage
       security: []
       responses:
@@ -159,23 +243,30 @@ paths:
                 $ref: '#/components/schemas/ENSImageResponse'
   /v1/trades:
     get:
-      summary: List trades
-      description: Returns list of trades
+      tags:
+        - Trades
+      summary: List marketplace trades
+      description: |
+        Retrieves a paginated list of trades in the marketplace.
+        Trades represent peer-to-peer exchanges between users, including offers and accepted deals.
+        
+        Use pagination parameters (limit and offset) to navigate through large result sets.
+        Results are typically ordered by creation date (most recent first).
       operationId: getTrades
       security: []
       parameters:
         - name: limit
           in: query
           required: false
+          description: Maximum number of trades to return per request (default: 20, max: 100)
           schema:
             type: number
-          description: Number of trades to return
         - name: offset
           in: query
           required: false
+          description: Number of trades to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of trades to skip
       responses:
         '200':
           description: List of trades
@@ -186,8 +277,19 @@ paths:
                 items:
                   $ref: '#/components/schemas/Trade'
     post:
-      summary: Create trade
-      description: Creates a new trade (requires authentication with metadata validation)
+      tags:
+        - Trades
+      summary: Create a new trade
+      description: |
+        Creates a new trade offer in the marketplace.
+        
+        **Authentication Required**: This endpoint requires Decentraland authentication with signed metadata.
+        The authentication validates:
+        - User identity via signed message (ADR-44l)
+        - Authorized origins (dcl:marketplace or dcl:builder)
+        - Metadata intent (dcl:create-trade)
+        
+        The trade will be validated against blockchain data and marketplace rules before creation.
       operationId: createTrade
       security:
         - SignedFetch: []
@@ -218,8 +320,16 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/trades/{id}:
     get:
-      summary: Get trade details
-      description: Returns details of a specific trade
+      tags:
+        - Trades
+      summary: Get trade by ID
+      description: |
+        Retrieves detailed information about a specific trade including:
+        - Trade participants (buyer and seller)
+        - Item details and metadata
+        - Trade price and currency
+        - Current status (pending, completed, or cancelled)
+        - Timestamps (creation, updates, completion)
       operationId: getTrade
       security: []
       parameters:
@@ -228,7 +338,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Trade ID
+          description: Unique trade identifier
       responses:
         '200':
           description: Trade details
@@ -244,8 +354,15 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/trades/{hashedSignature}/accept:
     get:
-      summary: Get trade accepted event
-      description: Returns trade accepted event information
+      tags:
+        - Trades
+      summary: Get trade acceptance event
+      description: |
+        Retrieves information about a trade acceptance event using the hashed signature.
+        This endpoint is used to verify and track when a trade offer was accepted on-chain.
+        
+        The hashed signature serves as a unique identifier linking the off-chain trade
+        to its blockchain transaction acceptance event.
       operationId: getTradeAcceptedEvent
       security: []
       parameters:
@@ -254,7 +371,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Hashed signature
+          description: Keccak-256 hashed signature of the trade acceptance transaction
       responses:
         '200':
           description: Trade accepted event
@@ -270,23 +387,34 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/bids:
     get:
-      summary: List bids
-      description: Returns list of bids
+      tags:
+        - Bids
+      summary: List marketplace bids
+      description: |
+        Retrieves a paginated list of bids placed on marketplace items.
+        Bids represent offers made by potential buyers on NFTs and items.
+        
+        Supports filtering by:
+        - Contract address and item ID
+        - Bid status (active, accepted, rejected)
+        - Bidder and seller addresses
+        
+        Results include bid amounts, timestamps, and current status.
       operationId: getBids
       security: []
       parameters:
         - name: limit
           in: query
           required: false
+          description: Maximum number of bids to return per request (default: 20, max: 100)
           schema:
             type: number
-          description: Number of bids to return
         - name: offset
           in: query
           required: false
+          description: Number of bids to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of bids to skip
       responses:
         '200':
           description: List of bids
@@ -298,8 +426,28 @@ paths:
                   $ref: '#/components/schemas/Bid'
   /v1/nfts:
     get:
-      summary: List NFTs
-      description: Returns list of NFTs (optional authentication)
+      tags:
+        - NFTs
+      summary: List and search NFTs
+      description: |
+        Retrieves NFTs from the Decentraland marketplace with comprehensive filtering capabilities.
+        
+        Supports multiple NFT types:
+        - Wearables (clothing, accessories)
+        - LAND parcels and Estates
+        - ENS names
+        - Emotes
+        
+        Advanced filtering options:
+        - Ownership and sale status
+        - Categories and search text
+        - Price ranges
+        - LAND-specific: distance to plaza, adjacent to roads, estate size
+        - Rental status for LAND parcels
+        - Network selection (Ethereum mainnet, Polygon)
+        - Sort by: newest, recently listed, price
+        
+        Authentication is optional but provides access to user-specific data like favorites.
       operationId: getNFTs
       security:
         - SignedFetch: []
@@ -308,15 +456,15 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of NFTs to return (default: 20, max: 100)
           schema:
             type: number
-          description: Number of NFTs to return
         - name: offset
           in: query
           required: false
+          description: Number of NFTs to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of NFTs to skip
       responses:
         '200':
           description: List of NFTs
@@ -328,23 +476,36 @@ paths:
                   $ref: '#/components/schemas/NFT'
   /v1/orders:
     get:
-      summary: List orders
-      description: Returns list of orders
+      tags:
+        - Orders
+      summary: List marketplace orders
+      description: |
+        Retrieves marketplace orders (listings) for NFTs and items.
+        Orders represent sell listings created by item owners.
+        
+        Filter options:
+        - Contract address and item ID
+        - Order status (open, filled, cancelled)
+        - Owner (seller) or buyer addresses
+        - Network (Ethereum, Polygon)
+        - Sort by price (cheapest first)
+        
+        Use this endpoint to find available items for purchase and their pricing.
       operationId: getOrders
       security: []
       parameters:
         - name: limit
           in: query
           required: false
+          description: Maximum number of orders to return (default: 20, max: 100)
           schema:
             type: number
-          description: Number of orders to return
         - name: offset
           in: query
           required: false
+          description: Number of orders to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of orders to skip
       responses:
         '200':
           description: List of orders
@@ -356,8 +517,24 @@ paths:
                   $ref: '#/components/schemas/Order'
   /v1/items:
     get:
-      summary: List items
-      description: Returns list of items (optional authentication)
+      tags:
+        - Items
+      summary: List marketplace items
+      description: |
+        Retrieves items from marketplace collections.
+        Items are templates/blueprints for NFTs in collections (e.g., wearable designs, emote templates).
+        
+        Filter capabilities:
+        - Specific contract address and item ID
+        - Category (wearable, emote, etc.)
+        - Creator address
+        - Sale and sold-out status
+        - Search by name or description
+        - Wearable filters: category, gender, smart wearables
+        - Emote filters: category, play mode
+        - Network selection
+        
+        Authentication is optional and may provide personalized results.
       operationId: getItems
       security:
         - SignedFetch: []
@@ -366,15 +543,15 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of items to return (default: 20, max: 100)
           schema:
             type: number
-          description: Number of items to return
         - name: offset
           in: query
           required: false
+          description: Number of items to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of items to skip
       responses:
         '200':
           description: List of items
@@ -386,23 +563,38 @@ paths:
                   $ref: '#/components/schemas/Item'
   /v1/sales:
     get:
-      summary: List sales
-      description: Returns list of sales
+      tags:
+        - Sales
+      summary: List completed sales
+      description: |
+        Retrieves historical sales transactions from the marketplace.
+        Sales represent completed purchases of NFTs and items.
+        
+        Use this endpoint to:
+        - Track sales history and market activity
+        - Analyze price trends
+        - View transaction details (buyer, seller, price, timestamp)
+        
+        Filter options:
+        - Category (wearable, emote, etc.)
+        - Contract address and item ID
+        - Network (Ethereum, Polygon)
+        - Sort by: recently sold, price
       operationId: getSales
       security: []
       parameters:
         - name: limit
           in: query
           required: false
+          description: Maximum number of sales to return (default: 20, max: 100)
           schema:
             type: number
-          description: Number of sales to return
         - name: offset
           in: query
           required: false
+          description: Number of sales to skip for pagination (default: 0)
           schema:
             type: number
-          description: Number of sales to skip
       responses:
         '200':
           description: List of sales
@@ -414,8 +606,19 @@ paths:
                   $ref: '#/components/schemas/Sale'
   /v1/prices:
     get:
-      summary: Get prices
-      description: Returns price information
+      tags:
+        - Prices
+      summary: Get current market prices
+      description: |
+        Retrieves current cryptocurrency and token price information used in the marketplace.
+        
+        Returns price data for:
+        - MANA (Decentraland's native token)
+        - ETH (Ethereum)
+        - Other supported currencies
+        
+        Prices are typically provided in USD and updated regularly.
+        Use this endpoint to display current conversion rates and calculate fiat equivalents.
       operationId: getPrices
       security: []
       responses:
@@ -427,8 +630,20 @@ paths:
                 $ref: '#/components/schemas/PricesResponse'
   /v1/trendings:
     get:
-      summary: Get trending items
-      description: Returns trending items
+      tags:
+        - Trending
+      summary: Get trending marketplace items
+      description: |
+        Retrieves currently trending items in the marketplace based on various metrics.
+        
+        Trending scores are calculated from:
+        - Recent sales volume
+        - Number of views and interactions
+        - Price movements
+        - Time-weighted activity
+        
+        Use this endpoint to display popular items and identify market trends.
+        Results are updated periodically and represent the most active items in the marketplace.
       operationId: getTrendings
       security: []
       responses:
@@ -442,8 +657,25 @@ paths:
                   $ref: '#/components/schemas/TrendingItem'
   /v1/stats/{category}/{stat}:
     get:
-      summary: Get statistics
-      description: Returns statistics for a specific category and stat
+      tags:
+        - Statistics
+      summary: Get marketplace statistics
+      description: |
+        Retrieves specific statistical data for marketplace categories.
+        
+        Common categories:
+        - wearable: Statistics for wearable items
+        - emote: Statistics for emotes
+        - land: Statistics for LAND parcels
+        - ens: Statistics for ENS names
+        
+        Common stat types:
+        - sales_volume: Total sales volume in specified timeframe
+        - average_price: Average sale price
+        - unique_buyers: Number of unique buyers
+        - unique_sellers: Number of unique sellers
+        
+        Use this endpoint for analytics dashboards and market insights.
       operationId: getStats
       security: []
       parameters:
@@ -452,13 +684,14 @@ paths:
           required: true
           schema:
             type: string
-          description: Statistics category
+            enum: [wearable, emote, land, ens, all]
+          description: Item category for statistics (e.g., wearable, emote, land)
         - name: stat
           in: path
           required: true
           schema:
             type: string
-          description: Statistics type
+          description: Type of statistic to retrieve (e.g., sales_volume, average_price)
       responses:
         '200':
           description: Statistics data
@@ -468,8 +701,25 @@ paths:
                 $ref: '#/components/schemas/StatsResponse'
   /v1/rankings/{entity}/{timeframe}:
     get:
-      summary: Get rankings
-      description: Returns rankings for a specific entity and timeframe
+      tags:
+        - Rankings
+      summary: Get marketplace rankings
+      description: |
+        Retrieves ranked lists of marketplace entities based on various metrics and timeframes.
+        
+        Entity types:
+        - collections: Top-performing collections
+        - creators: Most active or highest-earning creators
+        - items: Best-selling items
+        - sellers: Top sellers by volume
+        
+        Timeframes:
+        - day: Last 24 hours
+        - week: Last 7 days
+        - month: Last 30 days
+        - all: All-time rankings
+        
+        Rankings are calculated based on sales volume, transaction count, and other relevant metrics.
       operationId: getRankings
       security: []
       parameters:
@@ -478,13 +728,15 @@ paths:
           required: true
           schema:
             type: string
-          description: Entity type
+            enum: [collections, creators, items, sellers]
+          description: Type of entity to rank (collections, creators, items, sellers)
         - name: timeframe
           in: path
           required: true
           schema:
             type: string
-          description: Timeframe
+            enum: [day, week, month, all]
+          description: Time period for rankings (day, week, month, all)
       responses:
         '200':
           description: Rankings data
@@ -494,8 +746,24 @@ paths:
                 $ref: '#/components/schemas/RankingsResponse'
   /v1/volume/{timeframe}:
     get:
-      summary: Get volume data
-      description: Returns volume data for a specific timeframe
+      tags:
+        - Volume
+      summary: Get trading volume data
+      description: |
+        Retrieves total trading volume for the marketplace within a specified timeframe.
+        
+        Volume metrics include:
+        - Total sales amount (in MANA and USD)
+        - Number of transactions
+        - Unique traders (buyers and sellers)
+        
+        Available timeframes:
+        - day: Last 24 hours
+        - week: Last 7 days
+        - month: Last 30 days
+        - all: All-time volume
+        
+        Use this data for market health monitoring and trend analysis.
       operationId: getVolume
       security: []
       parameters:
@@ -504,7 +772,8 @@ paths:
           required: true
           schema:
             type: string
-          description: Timeframe
+            enum: [day, week, month, all]
+          description: Time period for volume calculation (day, week, month, all)
       responses:
         '200':
           description: Volume data
@@ -514,8 +783,15 @@ paths:
                 $ref: '#/components/schemas/VolumeResponse'
   /v1/lists/{id}/picks:
     get:
-      summary: Get picks in list
-      description: Returns picks in a specific list (optional authentication)
+      tags:
+        - Lists
+        - Picks
+      summary: Get picks from a favorites list
+      description: |
+        Retrieves all items (picks) that have been added to a specific favorites list.
+        Lists are user-curated collections of marketplace items.
+        
+        Authentication is optional but recommended to access private lists or user-specific data.
       operationId: getListPicks
       security:
         - SignedFetch: []
@@ -526,7 +802,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
       responses:
         '200':
           description: List picks
@@ -537,8 +813,15 @@ paths:
                 items:
                   $ref: '#/components/schemas/Pick'
     post:
-      summary: Add pick to list
-      description: Adds a pick to a list (requires authentication)
+      tags:
+        - Lists
+        - Picks
+      summary: Add item to favorites list
+      description: |
+        Adds an item (pick) to a user's favorites list.
+        
+        **Authentication Required**: User must be authenticated and authorized to modify the list.
+        Only list owners and users with granted access can add items.
       operationId: addPickToList
       security:
         - SignedFetch: []
@@ -548,7 +831,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
       requestBody:
         required: true
         content:
@@ -576,8 +859,15 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/lists/{id}/picks/{itemId}:
     delete:
-      summary: Remove pick from list
-      description: Removes a pick from a list (requires authentication)
+      tags:
+        - Lists
+        - Picks
+      summary: Remove item from favorites list
+      description: |
+        Removes a specific item (pick) from a favorites list.
+        
+        **Authentication Required**: User must be authenticated and authorized to modify the list.
+        Only list owners and users with granted access can remove items.
       operationId: removePickFromList
       security:
         - SignedFetch: []
@@ -587,13 +877,13 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
         - name: itemId
           in: path
           required: true
           schema:
             type: string
-          description: Item ID
+          description: Unique identifier of the item to remove
       responses:
         '200':
           description: Pick removed successfully
@@ -618,8 +908,18 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/picks/{itemId}/stats:
     get:
-      summary: Get pick stats
-      description: Returns statistics for a specific item (optional authentication)
+      tags:
+        - Picks
+      summary: Get statistics for a specific item
+      description: |
+        Retrieves pick statistics for a specific marketplace item.
+        
+        Returns:
+        - Total number of times the item has been picked (added to lists)
+        - Number of different lists containing this item
+        - Popularity metrics
+        
+        Authentication is optional but may provide additional user-specific data.
       operationId: getPickStats
       security:
         - SignedFetch: []
@@ -630,7 +930,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Item ID
+          description: Unique identifier of the marketplace item
       responses:
         '200':
           description: Pick statistics
@@ -640,8 +940,18 @@ paths:
                 $ref: '#/components/schemas/PickStats'
   /v1/picks/stats:
     get:
-      summary: Get all picks stats
-      description: Returns statistics for all picks
+      tags:
+        - Picks
+      summary: Get global pick statistics
+      description: |
+        Retrieves aggregated statistics across all picks in the marketplace.
+        
+        Returns:
+        - Total number of picks across all lists
+        - Total number of unique items that have been picked
+        - Total number of active lists
+        
+        Use this endpoint for global marketplace analytics and engagement metrics.
       operationId: getAllPicksStats
       security: []
       responses:
@@ -653,8 +963,14 @@ paths:
                 $ref: '#/components/schemas/AllPicksStats'
   /v1/picks/{itemId}:
     get:
-      summary: Get picks for item
-      description: Returns picks for a specific item (optional authentication)
+      tags:
+        - Picks
+      summary: Get all picks for a specific item
+      description: |
+        Retrieves all pick instances for a specific marketplace item.
+        Shows which lists contain this item and associated pick metadata.
+        
+        Authentication is optional but may provide access to private lists if the user has permissions.
       operationId: getPicksForItem
       security:
         - SignedFetch: []
@@ -665,7 +981,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Item ID
+          description: Unique identifier of the marketplace item
       responses:
         '200':
           description: Item picks
@@ -676,8 +992,19 @@ paths:
                 items:
                   $ref: '#/components/schemas/Pick'
     post:
-      summary: Pick/unpick in bulk
-      description: Picks or unpicks items in bulk (requires authentication)
+      tags:
+        - Picks
+      summary: Bulk pick/unpick operation
+      description: |
+        Adds or removes an item from multiple favorites lists in a single operation.
+        
+        **Authentication Required**: User must be authenticated and authorized.
+        
+        Use cases:
+        - Add an item to multiple lists at once
+        - Remove an item from multiple lists at once
+        
+        This is more efficient than making individual pick/unpick requests when managing multiple lists.
       operationId: bulkPickUnpick
       security:
         - SignedFetch: []
@@ -687,7 +1014,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Item ID
+          description: Unique identifier of the marketplace item to pick/unpick
       requestBody:
         required: true
         content:
@@ -715,8 +1042,20 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/lists/{id}:
     get:
-      summary: Get list details
-      description: Returns details of a specific list (optional authentication)
+      tags:
+        - Lists
+      summary: Get favorites list details
+      description: |
+        Retrieves detailed information about a specific favorites list.
+        
+        Returns:
+        - List name and description
+        - Owner information
+        - Privacy settings (public/private)
+        - Item count
+        - Creation and update timestamps
+        
+        Authentication may be required for private lists depending on access permissions.
       operationId: getListDetails
       security:
         - SignedFetch: []
@@ -726,7 +1065,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
       responses:
         '200':
           description: List details
@@ -741,8 +1080,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     put:
-      summary: Update list
-      description: Updates an existing list (requires authentication)
+      tags:
+        - Lists
+      summary: Update favorites list
+      description: |
+        Updates an existing favorites list's properties.
+        
+        **Authentication Required**: Only the list owner can update list details.
+        
+        Updatable fields:
+        - List name
+        - Description
+        - Privacy settings (public/private)
       operationId: updateList
       security:
         - SignedFetch: []
@@ -752,7 +1101,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list to update
       requestBody:
         required: true
         content:
@@ -785,8 +1134,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
-      summary: Delete list
-      description: Deletes a list (requires authentication)
+      tags:
+        - Lists
+      summary: Delete favorites list
+      description: |
+        Permanently deletes a favorites list and all its picks.
+        
+        **Authentication Required**: Only the list owner can delete the list.
+        
+        **Warning**: This action is irreversible. All items in the list will be removed.
       operationId: deleteList
       security:
         - SignedFetch: []
@@ -796,7 +1152,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list to delete
       responses:
         '200':
           description: List deleted successfully
@@ -827,8 +1183,18 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/lists:
     get:
-      summary: Get user lists
-      description: Returns lists for the authenticated user (requires authentication)
+      tags:
+        - Lists
+      summary: Get user's favorites lists
+      description: |
+        Retrieves all favorites lists owned by the authenticated user.
+        
+        **Authentication Required**: User must be authenticated to view their lists.
+        
+        Returns both public and private lists owned by the user, including:
+        - List metadata (name, description, privacy settings)
+        - Item counts
+        - Creation and update timestamps
       operationId: getUserLists
       security:
         - SignedFetch: []
@@ -854,8 +1220,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Create list
-      description: Creates a new list (requires authentication)
+      tags:
+        - Lists
+      summary: Create new favorites list
+      description: |
+        Creates a new favorites list for the authenticated user.
+        
+        **Authentication Required**: User must be authenticated.
+        
+        When creating a list, specify:
+        - List name (required)
+        - Description (optional)
+        - Privacy setting: public or private (required)
+        
+        Public lists can be viewed by anyone, while private lists are only accessible to the owner
+        and users who have been granted explicit access.
       operationId: createList
       security:
         - SignedFetch: []
@@ -886,8 +1265,17 @@ paths:
                 $ref: '#/components/schemas/Error'
   /v1/lists/{id}/access:
     post:
-      summary: Grant list access
-      description: Grants access to a list (requires authentication)
+      tags:
+        - Lists
+      summary: Grant access to private list
+      description: |
+        Grants a user access to a private favorites list.
+        
+        **Authentication Required**: Only the list owner can grant access.
+        
+        Use this endpoint to share private lists with specific users by providing their
+        wallet address and desired permissions. This allows collaborative list management
+        without making the list public.
       operationId: grantListAccess
       security:
         - SignedFetch: []
@@ -897,7 +1285,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
       requestBody:
         required: true
         content:
@@ -933,8 +1321,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
-      summary: Revoke list access
-      description: Revokes access to a list (requires authentication)
+      tags:
+        - Lists
+      summary: Revoke access from private list
+      description: |
+        Revokes a user's access to a private favorites list.
+        
+        **Authentication Required**: Only the list owner can revoke access.
+        
+        After revocation, the specified user will no longer be able to view or modify
+        the private list. Use this endpoint to manage access control for collaborative lists.
       operationId: revokeListAccess
       security:
         - SignedFetch: []
@@ -944,7 +1340,7 @@ paths:
           required: true
           schema:
             type: string
-          description: List ID
+          description: Unique identifier of the favorites list
       requestBody:
         required: true
         content:
