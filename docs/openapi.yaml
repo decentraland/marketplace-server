@@ -4,7 +4,7 @@ info:
   description: |
     API for Decentraland Marketplace server providing NFT trading, catalog browsing, favorites management, 
     and marketplace analytics. This API supports various blockchain networks and provides comprehensive 
-    functionality for managing NFTs, wearables, emotes, and LAND in the Decentraland metaverse.
+    functionality for managing NFTs, wearables, emotes, and LAND in Decentraland.
   version: 1.0.0
   contact:
     name: Decentraland
