@@ -315,14 +315,17 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     owner: string,
     filters: UserAssetsFilters = {}
   ): Promise<{ data: GroupedWearable[]; total: number }> {
-    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity, itemType, orderBy, direction } = filters
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity, name, itemType, orderBy, direction } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
+        const itemFilters = { category, rarity, name, itemType }
+        const sort = { orderBy, direction }
+
         const [dataQuery, countQuery] = [
-          getGroupedWearablesByOwnerQuery(owner, first, skip, category, rarity, itemType, orderBy, direction),
-          getGroupedWearablesByOwnerCountQuery(owner, category, rarity, itemType)
+          getGroupedWearablesByOwnerQuery(owner, first, skip, itemFilters, sort),
+          getGroupedWearablesByOwnerCountQuery(owner, itemFilters)
         ]
 
         const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
@@ -333,6 +336,7 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
         logger.debug(`Found ${data.length} grouped wearables (${total} total unique) for owner ${owner}`, {
           category: category || '',
           rarity: rarity || '',
+          name: name || '',
           itemType: itemType || ''
         })
         return { data, total }
@@ -344,6 +348,7 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
         owner,
         category: category || '',
         rarity: rarity || '',
+        name: name || '',
         error: error instanceof Error ? error.message : String(error)
       })
       throw error
@@ -360,14 +365,17 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
    * @returns Promise resolving to object with data array and total count
    */
   async function getGroupedEmotesByOwner(owner: string, filters: UserAssetsFilters = {}): Promise<{ data: GroupedEmote[]; total: number }> {
-    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity, orderBy, direction } = filters
+    const { first = FIRST_DEFAULT, skip = SKIP_DEFAULT, category, rarity, name, orderBy, direction } = filters
     try {
       const client = await dappsDatabase.getPool().connect()
 
       try {
+        const itemFilters = { category, rarity, name }
+        const sort = { orderBy, direction }
+
         const [dataQuery, countQuery] = [
-          getGroupedEmotesByOwnerQuery(owner, first, skip, category, rarity, orderBy, direction),
-          getGroupedEmotesByOwnerCountQuery(owner, category, rarity)
+          getGroupedEmotesByOwnerQuery(owner, first, skip, itemFilters, sort),
+          getGroupedEmotesByOwnerCountQuery(owner, itemFilters)
         ]
 
         const [dataResult, countResult] = await Promise.all([client.query(dataQuery), client.query<{ total: string }>(countQuery)])
@@ -375,7 +383,11 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
         const total = parseInt(countResult.rows[0]?.total || '0', 10)
         const data = fromDbRowsToGroupedEmotes(dataResult.rows)
 
-        logger.debug(`Found ${data.length} grouped emotes (${total} total unique) for owner ${owner}`)
+        logger.debug(`Found ${data.length} grouped emotes (${total} total unique) for owner ${owner}`, {
+          category: category || '',
+          rarity: rarity || '',
+          name: name || ''
+        })
         return { data, total }
       } finally {
         client.release()
@@ -383,6 +395,9 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
     } catch (error) {
       logger.error('Error fetching grouped emotes by owner', {
         owner,
+        category: category || '',
+        rarity: rarity || '',
+        name: name || '',
         error: error instanceof Error ? error.message : String(error)
       })
       throw error
