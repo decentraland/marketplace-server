@@ -2,9 +2,41 @@ openapi: 3.1.0
 info:
   title: Decentraland Marketplace Server API
   description: |
-    API for Decentraland Marketplace server providing NFT trading, catalog browsing, favorites management, 
-    and marketplace analytics. This API supports various blockchain networks and provides comprehensive 
-    functionality for managing NFTs, wearables, emotes, and LAND in Decentraland.
+    ## Overview
+    
+    The Decentraland Marketplace API provides comprehensive access to the Decentraland NFT marketplace,
+    enabling developers to build applications that interact with digital assets in the metaverse.
+    
+    ### Key Features
+    
+    - **NFT Management**: Browse, search, and query NFTs including wearables, emotes, LAND parcels, and ENS names
+    - **Trading Operations**: Create and manage trades, place bids, and view active orders
+    - **Marketplace Catalog**: Access the full marketplace catalog with advanced filtering and sorting
+    - **Favorites & Lists**: Create and manage personalized item collections with privacy controls
+    - **Analytics**: Access sales history, price data, trending items, rankings, and volume metrics
+    - **Payment Integration**: Support for fiat-to-crypto gateways (Wert, Transak)
+    
+    ### Supported Networks
+    
+    - **Ethereum Mainnet**: Primary network for LAND, premium wearables, and high-value items
+    - **Polygon**: Layer 2 solution for wearables, emotes, and lower-cost transactions
+    
+    ### Authentication
+    
+    Most endpoints support optional authentication using Decentraland's signed fetch mechanism.
+    Authenticated requests provide access to:
+    - Private user lists and favorites
+    - Personalized recommendations
+    - User-specific data and permissions
+    
+    Authentication uses the **SignedFetch** scheme (decentraland-crypto-middleware) with metadata validation
+    following [ADR-44](http://adr.decentraland.org/adr/ADR-44). Required endpoints clearly indicate authentication
+    in their documentation.    
+        
+    ### Base URLs
+    
+    - Production: `https://marketplace-api.decentraland.org`
+    - Development: `https://marketplace-api.decentraland.zone`
   version: 1.0.0
   contact:
     name: Decentraland
