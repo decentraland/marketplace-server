@@ -1,5 +1,17 @@
 import { WearableCategory, EmoteCategory } from '@dcl/schemas'
 
+export type ItemFilters = {
+  category?: string
+  rarity?: string
+  name?: string
+  itemType?: string
+}
+
+export type SortOptions = {
+  orderBy?: string
+  direction?: string
+}
+
 export type UserAssetsFilters = {
   first?: number
   skip?: number

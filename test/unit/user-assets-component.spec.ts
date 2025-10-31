@@ -340,6 +340,38 @@ describe('User Assets Component', () => {
         })
       })
     })
+
+    describe('when filtering grouped wearables by name', () => {
+      let mockGroupedDataRows: any[]
+      let mockCountRow: any
+
+      beforeEach(() => {
+        mockGroupedDataRows = [
+          {
+            urn: 'urn:decentraland:polygon:collections-v2:0x123:item1',
+            category: 'eyewear',
+            rarity: 'rare',
+            name: 'Cool Glasses',
+            amount: 1,
+            min_transferred_at: 1640995200,
+            max_transferred_at: 1640995200,
+            individual_data: []
+          }
+        ]
+        mockCountRow = { total: '1' }
+      })
+
+      it('should apply name filter using ILIKE', async () => {
+        mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+        await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, name: 'Cool' })
+
+        expect(mockClient.query).toHaveBeenCalledTimes(2)
+        const sqlQuery = mockClient.query.mock.calls[0][0]
+        expect(sqlQuery.text).toContain('ILIKE')
+        expect(sqlQuery.values).toContain('%Cool%')
+      })
+    })
   })
 
   describe('when fetching minimal wearable data', () => {
@@ -633,6 +665,38 @@ describe('User Assets Component', () => {
           const sqlQuery = mockClient.query.mock.calls[0][0]
           expect(sqlQuery.text).toContain('ORDER BY rarity_order DESC')
         })
+      })
+    })
+
+    describe('when filtering grouped emotes by name', () => {
+      let mockGroupedDataRows: any[]
+      let mockCountRow: any
+
+      beforeEach(() => {
+        mockGroupedDataRows = [
+          {
+            urn: 'urn:decentraland:polygon:collections-v2:0x123:emote1',
+            category: 'dance',
+            rarity: 'rare',
+            name: 'Cool Dance',
+            amount: 1,
+            min_transferred_at: 1640995200,
+            max_transferred_at: 1640995200,
+            individual_data: []
+          }
+        ]
+        mockCountRow = { total: '1' }
+      })
+
+      it('should apply name filter using ILIKE', async () => {
+        mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+        await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, name: 'Cool' })
+
+        expect(mockClient.query).toHaveBeenCalledTimes(2)
+        const sqlQuery = mockClient.query.mock.calls[0][0]
+        expect(sqlQuery.text).toContain('ILIKE')
+        expect(sqlQuery.values).toContain('%Cool%')
       })
     })
   })

@@ -1,22 +1,22 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
+import { ItemFilters, SortOptions } from './types'
 
 /**
  * Helper function to build ORDER BY clause for grouped items (wearables/emotes)
  * Matches lamb2 sorting logic: use maxTransferredAt for newest (DESC), minTransferredAt for oldest (ASC)
  *
- * @param orderBy - Sort field: 'rarity', 'name', or 'date' (default: 'rarity')
- * @param direction - Sort direction: 'ASC' or 'DESC' (default: 'DESC' for rarity/date, 'ASC' for name)
+ * @param sort - Sort options with orderBy and direction
  * @returns SQLStatement with ORDER BY clause
  */
-function buildOrderByClause(orderBy?: string, direction?: string): SQLStatement {
-  const sort = (orderBy || 'rarity').toLowerCase()
-  const dir = (direction || (sort === 'name' ? 'ASC' : 'DESC')).toUpperCase()
+function buildOrderByClause(sort?: SortOptions): SQLStatement {
+  const sortField = (sort?.orderBy || 'rarity').toLowerCase()
+  const dir = (sort?.direction || (sortField === 'name' ? 'ASC' : 'DESC')).toUpperCase()
 
-  if (sort === 'rarity') {
+  if (sortField === 'rarity') {
     return dir === 'ASC' ? SQL` ORDER BY rarity_order ASC, urn ASC` : SQL` ORDER BY rarity_order DESC, urn ASC`
-  } else if (sort === 'name') {
+  } else if (sortField === 'name') {
     return dir === 'ASC' ? SQL` ORDER BY name ASC, urn ASC` : SQL` ORDER BY name DESC, urn ASC`
-  } else if (sort === 'date') {
+  } else if (sortField === 'date') {
     return dir === 'ASC' ? SQL` ORDER BY min_transferred_at ASC, urn DESC` : SQL` ORDER BY max_transferred_at DESC, urn ASC`
   } else {
     // Default to rarity DESC if invalid sort specified
@@ -277,19 +277,16 @@ export function getOwnedNamesOnlyQuery(owner: string, first: number, skip: numbe
  * @param owner - Ethereum address of the owner
  * @param first - Maximum number of grouped wearables to return
  * @param skip - Number of grouped wearables to skip
- * @param category - Optional filter by category
- * @param rarity - Optional filter by rarity
+ * @param filters - Optional filters (category, rarity, name, itemType)
+ * @param sort - Optional sort options (orderBy, direction)
  * @returns SQL query for grouped wearable data
  */
 export function getGroupedWearablesByOwnerQuery(
   owner: string,
   first: number,
   skip: number,
-  category?: string,
-  rarity?: string,
-  itemType?: string,
-  orderBy?: string,
-  direction?: string
+  filters?: ItemFilters,
+  sort?: SortOptions
 ): SQLStatement {
   const query = SQL`
     WITH grouped_wearables AS (
@@ -329,20 +326,25 @@ export function getGroupedWearablesByOwnerQuery(
   `
 
   // Add optional item type filter
-  if (itemType) {
-    query.append(SQL` AND nft.item_type = ${itemType}`)
+  if (filters?.itemType) {
+    query.append(SQL` AND nft.item_type = ${filters.itemType}`)
   } else {
     query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
   }
 
   // Add optional category filter
-  if (category) {
-    query.append(SQL` AND wearable.category = ${category}`)
+  if (filters?.category) {
+    query.append(SQL` AND wearable.category = ${filters.category}`)
   }
 
   // Add optional rarity filter
-  if (rarity) {
-    query.append(SQL` AND wearable.rarity = ${rarity}`)
+  if (filters?.rarity) {
+    query.append(SQL` AND wearable.rarity = ${filters.rarity}`)
+  }
+
+  // Add optional name filter
+  if (filters?.name) {
+    query.append(SQL` AND wearable.name ILIKE ${`%${filters.name}%`}`)
   }
 
   query.append(SQL`
@@ -351,8 +353,13 @@ export function getGroupedWearablesByOwnerQuery(
     SELECT * FROM grouped_wearables
   `)
 
+  // Add WHERE clause for name filter after grouping (if needed)
+  if (filters?.name) {
+    query.append(SQL` WHERE name ILIKE ${`%${filters.name}%`}`)
+  }
+
   // Add ORDER BY clause
-  query.append(buildOrderByClause(orderBy, direction))
+  query.append(buildOrderByClause(sort))
 
   query.append(SQL`
     LIMIT ${first}
@@ -365,7 +372,7 @@ export function getGroupedWearablesByOwnerQuery(
 /**
  * Gets count of grouped wearables for a user
  */
-export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: string, rarity?: string, itemType?: string): SQLStatement {
+export function getGroupedWearablesByOwnerCountQuery(owner: string, filters?: ItemFilters): SQLStatement {
   const query = SQL`
     SELECT COUNT(DISTINCT nft.urn) as total
     FROM squid_marketplace.nft nft
@@ -375,18 +382,23 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: s
   `
 
   // Add optional category filter
-  if (category) {
-    query.append(SQL` AND wearable.category = ${category}`)
+  if (filters?.category) {
+    query.append(SQL` AND wearable.category = ${filters.category}`)
   }
 
   // Add optional rarity filter
-  if (rarity) {
-    query.append(SQL` AND wearable.rarity = ${rarity}`)
+  if (filters?.rarity) {
+    query.append(SQL` AND wearable.rarity = ${filters.rarity}`)
+  }
+
+  // Add optional name filter
+  if (filters?.name) {
+    query.append(SQL` AND wearable.name ILIKE ${`%${filters.name}%`}`)
   }
 
   // Add optional item type filter
-  if (itemType) {
-    query.append(SQL` AND nft.item_type = ${itemType}`)
+  if (filters?.itemType) {
+    query.append(SQL` AND nft.item_type = ${filters.itemType}`)
   } else {
     query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
   }
@@ -401,18 +413,16 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: s
  * @param owner - Ethereum address of the owner
  * @param first - Maximum number of grouped emotes to return
  * @param skip - Number of grouped emotes to skip
- * @param category - Optional filter by category
- * @param rarity - Optional filter by rarity
+ * @param filters - Optional filters (category, rarity, name)
+ * @param sort - Optional sort options (orderBy, direction)
  * @returns SQL query for grouped emote data
  */
 export function getGroupedEmotesByOwnerQuery(
   owner: string,
   first: number,
   skip: number,
-  category?: string,
-  rarity?: string,
-  orderBy?: string,
-  direction?: string
+  filters?: ItemFilters,
+  sort?: SortOptions
 ): SQLStatement {
   const query = SQL`
     WITH grouped_emotes AS (
@@ -452,13 +462,18 @@ export function getGroupedEmotesByOwnerQuery(
   `
 
   // Add optional category filter
-  if (category) {
-    query.append(SQL` AND emote.category = ${category}`)
+  if (filters?.category) {
+    query.append(SQL` AND emote.category = ${filters.category}`)
   }
 
   // Add optional rarity filter
-  if (rarity) {
-    query.append(SQL` AND emote.rarity = ${rarity}`)
+  if (filters?.rarity) {
+    query.append(SQL` AND emote.rarity = ${filters.rarity}`)
+  }
+
+  // Add optional name filter
+  if (filters?.name) {
+    query.append(SQL` AND emote.name ILIKE ${`%${filters.name}%`}`)
   }
 
   query.append(SQL`
@@ -467,8 +482,13 @@ export function getGroupedEmotesByOwnerQuery(
     SELECT * FROM grouped_emotes
   `)
 
+  // Add WHERE clause for name filter after grouping (if needed)
+  if (filters?.name) {
+    query.append(SQL` WHERE name ILIKE ${`%${filters.name}%`}`)
+  }
+
   // Add ORDER BY clause
-  query.append(buildOrderByClause(orderBy, direction))
+  query.append(buildOrderByClause(sort))
 
   query.append(SQL`
     LIMIT ${first}
@@ -481,7 +501,7 @@ export function getGroupedEmotesByOwnerQuery(
 /**
  * Gets count of grouped emotes for a user
  */
-export function getGroupedEmotesByOwnerCountQuery(owner: string, category?: string, rarity?: string): SQLStatement {
+export function getGroupedEmotesByOwnerCountQuery(owner: string, filters?: ItemFilters): SQLStatement {
   const query = SQL`
     SELECT COUNT(DISTINCT nft.urn) as total
     FROM squid_marketplace.nft nft
@@ -491,13 +511,18 @@ export function getGroupedEmotesByOwnerCountQuery(owner: string, category?: stri
   `
 
   // Add optional category filter
-  if (category) {
-    query.append(SQL` AND emote.category = ${category}`)
+  if (filters?.category) {
+    query.append(SQL` AND emote.category = ${filters.category}`)
   }
 
   // Add optional rarity filter
-  if (rarity) {
-    query.append(SQL` AND emote.rarity = ${rarity}`)
+  if (filters?.rarity) {
+    query.append(SQL` AND emote.rarity = ${filters.rarity}`)
+  }
+
+  // Add optional name filter
+  if (filters?.name) {
+    query.append(SQL` AND emote.name ILIKE ${`%${filters.name}%`}`)
   }
 
   return query
