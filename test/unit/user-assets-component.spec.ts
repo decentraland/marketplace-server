@@ -154,6 +154,192 @@ describe('User Assets Component', () => {
       await expect(userAssetsComponent.getGroupedWearablesByOwner('0xowner')).rejects.toThrow('Database error')
       expect(mockLogger.error).toHaveBeenCalled()
     })
+
+    describe('when sorting grouped wearables', () => {
+      describe('and sorting by rarity', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:rare-item',
+              category: 'eyewear',
+              rarity: 'rare',
+              name: 'Rare Glasses',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:common-item',
+              category: 'eyewear',
+              rarity: 'common',
+              name: 'Common Glasses',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by rarity in descending order by default', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'rarity' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order DESC')
+        })
+
+        it('should sort by rarity in ascending order when direction is ASC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'rarity', direction: 'ASC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order ASC')
+        })
+      })
+
+      describe('and sorting by name', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:item1',
+              category: 'eyewear',
+              rarity: 'common',
+              name: 'Alpha Glasses',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:item2',
+              category: 'eyewear',
+              rarity: 'common',
+              name: 'Zeta Glasses',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by name in ascending order by default', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'name' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY name ASC')
+        })
+
+        it('should sort by name in descending order when direction is DESC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'name', direction: 'DESC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY name DESC')
+        })
+      })
+
+      describe('and sorting by date', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:newest-item',
+              category: 'eyewear',
+              rarity: 'common',
+              name: 'Newest Glasses',
+              amount: 1,
+              min_transferred_at: 1641081600,
+              max_transferred_at: 1641081600,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:oldest-item',
+              category: 'eyewear',
+              rarity: 'common',
+              name: 'Oldest Glasses',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by date in descending order by default using max_transferred_at', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'date' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY max_transferred_at DESC')
+        })
+
+        it('should sort by date in ascending order using min_transferred_at when direction is ASC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'date', direction: 'ASC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY min_transferred_at ASC')
+        })
+      })
+
+      describe('and no orderBy is provided', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:item1',
+              category: 'eyewear',
+              rarity: 'rare',
+              name: 'Test Item',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '1' }
+        })
+
+        it('should default to sorting by rarity in descending order', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0 })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order DESC')
+        })
+      })
+    })
   })
 
   describe('when fetching minimal wearable data', () => {
@@ -262,6 +448,192 @@ describe('User Assets Component', () => {
 
       await expect(userAssetsComponent.getGroupedEmotesByOwner('0xowner')).rejects.toThrow('Database error')
       expect(mockLogger.error).toHaveBeenCalled()
+    })
+
+    describe('when sorting grouped emotes', () => {
+      describe('and sorting by rarity', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:legendary-emote',
+              category: 'dance',
+              rarity: 'legendary',
+              name: 'Legendary Dance',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:common-emote',
+              category: 'dance',
+              rarity: 'common',
+              name: 'Common Dance',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by rarity in descending order by default', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'rarity' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order DESC')
+        })
+
+        it('should sort by rarity in ascending order when direction is ASC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'rarity', direction: 'ASC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order ASC')
+        })
+      })
+
+      describe('and sorting by name', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:emote1',
+              category: 'dance',
+              rarity: 'common',
+              name: 'Alpha Dance',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:emote2',
+              category: 'dance',
+              rarity: 'common',
+              name: 'Zeta Dance',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by name in ascending order by default', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'name' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY name ASC')
+        })
+
+        it('should sort by name in descending order when direction is DESC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'name', direction: 'DESC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY name DESC')
+        })
+      })
+
+      describe('and sorting by date', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:newest-emote',
+              category: 'dance',
+              rarity: 'common',
+              name: 'Newest Dance',
+              amount: 1,
+              min_transferred_at: 1641081600,
+              max_transferred_at: 1641081600,
+              individual_data: []
+            },
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:oldest-emote',
+              category: 'dance',
+              rarity: 'common',
+              name: 'Oldest Dance',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '2' }
+        })
+
+        it('should sort by date in descending order by default using max_transferred_at', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'date' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY max_transferred_at DESC')
+        })
+
+        it('should sort by date in ascending order using min_transferred_at when direction is ASC', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows.reverse() }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0, orderBy: 'date', direction: 'ASC' })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY min_transferred_at ASC')
+        })
+      })
+
+      describe('and no orderBy is provided', () => {
+        let mockGroupedDataRows: any[]
+        let mockCountRow: any
+
+        beforeEach(() => {
+          mockGroupedDataRows = [
+            {
+              urn: 'urn:decentraland:polygon:collections-v2:0x123:emote1',
+              category: 'dance',
+              rarity: 'mythic',
+              name: 'Test Emote',
+              amount: 1,
+              min_transferred_at: 1640995200,
+              max_transferred_at: 1640995200,
+              individual_data: []
+            }
+          ]
+          mockCountRow = { total: '1' }
+        })
+
+        it('should default to sorting by rarity in descending order', async () => {
+          mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+          await userAssetsComponent.getGroupedEmotesByOwner('0xowner', { first: 10, skip: 0 })
+
+          expect(mockClient.query).toHaveBeenCalledTimes(2)
+          const sqlQuery = mockClient.query.mock.calls[0][0]
+          expect(sqlQuery.text).toContain('ORDER BY rarity_order DESC')
+        })
+      })
     })
   })
 

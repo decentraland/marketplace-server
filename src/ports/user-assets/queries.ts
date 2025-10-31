@@ -1,6 +1,30 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 
 /**
+ * Helper function to build ORDER BY clause for grouped items (wearables/emotes)
+ * Matches lamb2 sorting logic: use maxTransferredAt for newest (DESC), minTransferredAt for oldest (ASC)
+ *
+ * @param orderBy - Sort field: 'rarity', 'name', or 'date' (default: 'rarity')
+ * @param direction - Sort direction: 'ASC' or 'DESC' (default: 'DESC' for rarity/date, 'ASC' for name)
+ * @returns SQLStatement with ORDER BY clause
+ */
+function buildOrderByClause(orderBy?: string, direction?: string): SQLStatement {
+  const sort = (orderBy || 'rarity').toLowerCase()
+  const dir = (direction || (sort === 'name' ? 'ASC' : 'DESC')).toUpperCase()
+
+  if (sort === 'rarity') {
+    return dir === 'ASC' ? SQL` ORDER BY rarity_order ASC, urn ASC` : SQL` ORDER BY rarity_order DESC, urn ASC`
+  } else if (sort === 'name') {
+    return dir === 'ASC' ? SQL` ORDER BY name ASC, urn ASC` : SQL` ORDER BY name DESC, urn ASC`
+  } else if (sort === 'date') {
+    return dir === 'ASC' ? SQL` ORDER BY min_transferred_at ASC, urn DESC` : SQL` ORDER BY max_transferred_at DESC, urn ASC`
+  } else {
+    // Default to rarity DESC if invalid sort specified
+    return SQL` ORDER BY rarity_order DESC, urn ASC`
+  }
+}
+
+/**
  * Gets full wearable data for a user - used by wearables endpoint
  * Returns complete wearable information including metadata, rarity, name, etc.
  *
@@ -263,7 +287,9 @@ export function getGroupedWearablesByOwnerQuery(
   skip: number,
   category?: string,
   rarity?: string,
-  itemType?: string
+  itemType?: string,
+  orderBy?: string,
+  direction?: string
 ): SQLStatement {
   const query = SQL`
     WITH grouped_wearables AS (
@@ -323,7 +349,12 @@ export function getGroupedWearablesByOwnerQuery(
       GROUP BY nft.urn, wearable.category, wearable.rarity, wearable.name
     )
     SELECT * FROM grouped_wearables
-    ORDER BY rarity_order DESC, urn ASC
+  `)
+
+  // Add ORDER BY clause
+  query.append(buildOrderByClause(orderBy, direction))
+
+  query.append(SQL`
     LIMIT ${first}
     OFFSET ${skip}
   `)
@@ -374,7 +405,15 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string, category?: s
  * @param rarity - Optional filter by rarity
  * @returns SQL query for grouped emote data
  */
-export function getGroupedEmotesByOwnerQuery(owner: string, first: number, skip: number, category?: string, rarity?: string): SQLStatement {
+export function getGroupedEmotesByOwnerQuery(
+  owner: string,
+  first: number,
+  skip: number,
+  category?: string,
+  rarity?: string,
+  orderBy?: string,
+  direction?: string
+): SQLStatement {
   const query = SQL`
     WITH grouped_emotes AS (
       SELECT
@@ -426,7 +465,12 @@ export function getGroupedEmotesByOwnerQuery(owner: string, first: number, skip:
       GROUP BY nft.urn, emote.category, emote.rarity, emote.name
     )
     SELECT * FROM grouped_emotes
-    ORDER BY rarity_order DESC, urn ASC
+  `)
+
+  // Add ORDER BY clause
+  query.append(buildOrderByClause(orderBy, direction))
+
+  query.append(SQL`
     LIMIT ${first}
     OFFSET ${skip}
   `)
