@@ -1,4 +1,5 @@
 import { Router } from '@well-known-components/http-server'
+import { bearerTokenMiddleware } from '@dcl/platform-server-commons'
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
@@ -24,7 +25,7 @@ import {
   getTradesHandler,
   recreateTradesMaterializedViewHandler
 } from './handlers/trades-handler'
-import { createTransakHandler, createTransakWidgetHandler } from './handlers/transak-handler'
+import { createTransakHandler, createTransakWidgetHandler, refreshTransakAccessTokenHandler } from './handlers/transak-handler'
 import { getTrendingsHandler } from './handlers/trending-handler'
 import { getUserEmotesHandler, getUserEmotesUrnTokenHandler, getUserGroupedEmotesHandler } from './handlers/user-assets/emotes-handler'
 import { getUserNamesHandler, getUserNamesOnlyHandler } from './handlers/user-assets/names-handler'
@@ -42,7 +43,9 @@ const FIVE_MINUTES = 5 * 60 * 1000
 // We return the entire router because it will be easier to test than a whole server
 export async function setupRouter(globalContext: GlobalContext): Promise<Router<GlobalContext>> {
   const { components } = globalContext
+  const { config } = components
   const router = new Router<GlobalContext>()
+  const transakAccessTokenAuth = await config.requireString('TRANSAK_REFRESH_ACCESS_TOKEN_AUTH')
 
   router.get('/ping', pingHandler)
   router.get(
@@ -86,6 +89,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     components.schemaValidator.withSchemaValidatorMiddleware(WidgetOptionsSchema),
     createTransakWidgetHandler
   )
+  router.put('/v1/transak/access-token', bearerTokenMiddleware(transakAccessTokenAuth), refreshTransakAccessTokenHandler)
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
 
   router.get('/v1/trades', getTradesHandler)

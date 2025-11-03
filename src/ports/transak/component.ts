@@ -51,7 +51,8 @@ export function createTransakComponent(
       const cachedAccessToken = await cache.get<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY)
       if (!cachedAccessToken) {
         const { accessToken, expiresAt } = await getAccessToken()
-        await cache.set<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY, accessToken, fromMillisecondsToSeconds(expiresAt))
+        const keyTTL = expiresAt - Date.now()
+        await cache.set<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY, accessToken, fromMillisecondsToSeconds(keyTTL))
         logger.info(`Access token refreshed and cached for ${expiresAt - Date.now()} milliseconds`)
         return accessToken
       }
@@ -130,6 +131,7 @@ export function createTransakComponent(
    * @throws Error when the HTTP request fails or the API returns an error response.
    */
   async function getAccessToken(): Promise<{ accessToken: string; expiresAt: number }> {
+    logger.info(`Getting access token from ${apiURL}/v2/refresh-token`)
     const res = await fetch.fetch(`${apiURL}/v2/refresh-token`, {
       method: 'POST',
       headers: { 'api-secret': apiSecret, accept: 'application/json', 'content-type': 'application/json' },
@@ -142,10 +144,13 @@ export function createTransakComponent(
 
     const bodyRes: { data: { accessToken: string; expiresAt: number } } = await res.json()
 
+    logger.info(`Access token received. Expires at ${bodyRes.data.expiresAt}`)
+
     return { accessToken: bodyRes.data.accessToken, expiresAt: bodyRes.data.expiresAt }
   }
 
   return {
+    getOrRefreshAccessToken,
     getWidget,
     getOrder
   }

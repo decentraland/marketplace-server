@@ -12,6 +12,7 @@ let mockGet: jest.MockedFn<ICacheStorageComponent['get']>
 let mockSet: jest.MockedFn<ICacheStorageComponent['set']>
 let mockTryAcquireLock: jest.MockedFn<ICacheStorageComponent['tryAcquireLock']>
 let mockTryReleaseLock: jest.MockedFn<ICacheStorageComponent['tryReleaseLock']>
+let mockDateNow: jest.SpyInstance
 
 beforeEach(() => {
   mockGet = jest.fn()
@@ -45,6 +46,9 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.resetAllMocks()
+  if (mockDateNow) {
+    mockDateNow.mockRestore()
+  }
 })
 
 describe('when getting an order', () => {
@@ -101,11 +105,13 @@ describe('when getting an order', () => {
   describe('and the access token is not cached', () => {
     let newAccessToken: string
     let expiresAt: number
+    let currentTime: number
     let mockTokenResponse: { data: { accessToken: string; expiresAt: number } }
 
     beforeEach(() => {
+      currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
       newAccessToken = 'new-access-token'
-      expiresAt = Date.now() + 3600000 // 1 hour from now
+      expiresAt = currentTime + 3600000 // 1 hour from now
       mockTokenResponse = {
         data: {
           accessToken: newAccessToken,
@@ -113,6 +119,7 @@ describe('when getting an order', () => {
         }
       }
 
+      mockDateNow = jest.spyOn(Date, 'now').mockReturnValue(currentTime)
       mockTryAcquireLock.mockResolvedValue(true)
       mockGet.mockResolvedValue(null)
       mockFetch
@@ -126,7 +133,7 @@ describe('when getting an order', () => {
         } as any)
     })
 
-    it('should refresh the access token and return the order data', async () => {
+    it('should refresh the access token and cache it with the TTL based on the expiration time', async () => {
       const result = await transakComponent.getOrder(orderId)
 
       expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
@@ -144,7 +151,7 @@ describe('when getting an order', () => {
         },
         body: JSON.stringify({ apiKey: mockConfig.apiKey })
       })
-      expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(expiresAt))
+      expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
       expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/order/${orderId}`, {
         method: 'GET',
         headers: { 'access-token': newAccessToken }
@@ -286,10 +293,13 @@ describe('when getting a widget session URL', () => {
   describe('and the access token is not cached', () => {
     let newAccessToken: string
     let expiresAt: number
+    let currentTime: number
 
     beforeEach(() => {
+      currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
       newAccessToken = 'new-access-token'
-      expiresAt = Date.now() + 3600000
+      expiresAt = currentTime + 3600000
+      mockDateNow = jest.spyOn(Date, 'now').mockReturnValue(currentTime)
       ;(mockTryAcquireLock as jest.Mock).mockResolvedValue(true)
       ;(mockGet as jest.Mock).mockResolvedValue(null)
       ;(mockFetch as jest.Mock)
@@ -303,7 +313,7 @@ describe('when getting a widget session URL', () => {
         } as any)
     })
 
-    it('should refresh the token and then call the auth session endpoint', async () => {
+    it('should refresh the token, cache it with correct TTL, and call the auth session endpoint', async () => {
       const result = await transakComponent.getWidget()
 
       expect(mockFetch).toHaveBeenNthCalledWith(1, `${mockConfig.apiURL}/v2/refresh-token`, {
@@ -311,6 +321,8 @@ describe('when getting a widget session URL', () => {
         headers: { 'api-secret': mockConfig.apiSecret, accept: 'application/json', 'content-type': 'application/json' },
         body: JSON.stringify({ apiKey: mockConfig.apiKey })
       })
+
+      expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
 
       expect(mockFetch).toHaveBeenNthCalledWith(2, `${mockConfig.apiGatewayURL}/v2/auth/session`, {
         method: 'POST',
