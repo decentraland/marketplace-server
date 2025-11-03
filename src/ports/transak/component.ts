@@ -32,10 +32,11 @@ export function createTransakComponent(
    * Retrieves a cached access token or refreshes it if not available.
    * Uses a distributed lock to prevent concurrent token refresh requests.
    *
+   * @param force - If true, the access token will be refreshed even if it is already cached.
    * @returns A promise that resolves to a valid access token.
    * @throws Error when unable to acquire the distributed lock.
    */
-  async function getOrRefreshAccessToken(): Promise<string> {
+  async function getOrRefreshAccessToken(force = false): Promise<string> {
     const lock = await cache.tryAcquireLock(TRANSAK_ACCESS_TOKEN_LOCK_KEY, {
       ttlInMilliseconds: THIRTY_SECONDS_IN_MILLISECONDS,
       retryDelayInMilliseconds: RETRY_DELAY_IN_MILLISECONDS,
@@ -49,7 +50,7 @@ export function createTransakComponent(
 
     try {
       const cachedAccessToken = await cache.get<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY)
-      if (!cachedAccessToken) {
+      if (!cachedAccessToken || force) {
         const { accessToken, expiresAt } = await getAccessToken()
         const keyTTL = expiresAt - Date.now()
         await cache.set<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY, accessToken, fromMillisecondsToSeconds(keyTTL))

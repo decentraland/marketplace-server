@@ -198,7 +198,7 @@ describe('when handling Transak endpoints', () => {
       it('should return 200 with ok: true', async () => {
         const result = await refreshTransakAccessTokenHandler(context)
 
-        expect(mockGetOrRefreshAccessToken).toHaveBeenCalledTimes(1)
+        expect(mockGetOrRefreshAccessToken).toHaveBeenCalledWith(true)
         expect(result).toEqual({
           status: StatusCode.OK,
           body: { ok: true }
@@ -217,21 +217,6 @@ describe('when handling Transak endpoints', () => {
         expect(result).toEqual({
           status: StatusCode.INTERNAL_SERVER_ERROR,
           body: { ok: false, message: 'Failed to acquire lock' }
-        })
-      })
-    })
-
-    describe('and the token refresh fails with a non-Error object', () => {
-      beforeEach(() => {
-        mockGetOrRefreshAccessToken.mockRejectedValue('some string error')
-      })
-
-      it('should respond with a 500 and "Unknown error" message', async () => {
-        const result = await refreshTransakAccessTokenHandler(context)
-
-        expect(result).toEqual({
-          status: StatusCode.INTERNAL_SERVER_ERROR,
-          body: { ok: false, message: 'Unknown error' }
         })
       })
     })

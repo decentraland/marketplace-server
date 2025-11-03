@@ -72,7 +72,7 @@ export async function refreshTransakAccessTokenHandler(
   } = context
 
   try {
-    await transak.getOrRefreshAccessToken()
+    await transak.getOrRefreshAccessToken(true)
   } catch (error) {
     return {
       status: StatusCode.INTERNAL_SERVER_ERROR,

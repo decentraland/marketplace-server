@@ -51,6 +51,199 @@ afterEach(() => {
   }
 })
 
+describe('when getting or refreshing an access token', () => {
+  let currentTime: number
+  let newAccessToken: string
+  let expiresAt: number
+  let mockTokenResponse: { data: { accessToken: string; expiresAt: number } }
+
+  beforeEach(() => {
+    currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
+    newAccessToken = 'new-access-token'
+    expiresAt = currentTime + 3600000 // 1 hour from now
+    mockTokenResponse = {
+      data: {
+        accessToken: newAccessToken,
+        expiresAt: expiresAt
+      }
+    }
+    mockDateNow = jest.spyOn(Date, 'now').mockReturnValue(currentTime)
+  })
+
+  describe('and the access token is cached', () => {
+    let cachedAccessToken: string
+
+    beforeEach(() => {
+      cachedAccessToken = 'cached-access-token'
+      mockTryAcquireLock.mockResolvedValue(true)
+      mockGet.mockResolvedValue(cachedAccessToken)
+    })
+
+    describe('and force is false', () => {
+      it('should return the cached access token without refreshing', async () => {
+        const result = await transakComponent.getOrRefreshAccessToken(false)
+
+        expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
+          ttlInMilliseconds: 30000,
+          retryDelayInMilliseconds: 250,
+          retries: 30
+        })
+        expect(mockGet).toHaveBeenCalledWith('transak-access-token')
+        expect(mockFetch).not.toHaveBeenCalled()
+        expect(mockSet).not.toHaveBeenCalled()
+        expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+        expect(result).toEqual(cachedAccessToken)
+      })
+    })
+
+    describe('and force is true', () => {
+      beforeEach(() => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: jest.fn().mockResolvedValue(mockTokenResponse)
+        } as any)
+      })
+
+      it('should refresh the access token and cache it even when a cached token exists', async () => {
+        const result = await transakComponent.getOrRefreshAccessToken(true)
+
+        expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
+          ttlInMilliseconds: 30000,
+          retryDelayInMilliseconds: 250,
+          retries: 30
+        })
+        expect(mockGet).toHaveBeenCalledWith('transak-access-token')
+        expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/refresh-token`, {
+          method: 'POST',
+          headers: {
+            'api-secret': mockConfig.apiSecret,
+            accept: 'application/json',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ apiKey: mockConfig.apiKey })
+        })
+        expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
+        expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+        expect(result).toEqual(newAccessToken)
+      })
+    })
+  })
+
+  describe('and the access token is not cached', () => {
+    beforeEach(() => {
+      mockTryAcquireLock.mockResolvedValue(true)
+      mockGet.mockResolvedValue(null)
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockTokenResponse)
+      } as any)
+    })
+
+    describe('and force is false', () => {
+      it('should fetch and cache a new access token', async () => {
+        const result = await transakComponent.getOrRefreshAccessToken(false)
+
+        expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
+          ttlInMilliseconds: 30000,
+          retryDelayInMilliseconds: 250,
+          retries: 30
+        })
+        expect(mockGet).toHaveBeenCalledWith('transak-access-token')
+        expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/refresh-token`, {
+          method: 'POST',
+          headers: {
+            'api-secret': mockConfig.apiSecret,
+            accept: 'application/json',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ apiKey: mockConfig.apiKey })
+        })
+        expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
+        expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+        expect(result).toEqual(newAccessToken)
+      })
+    })
+
+    describe('and force is true', () => {
+      it('should fetch and cache a new access token', async () => {
+        const result = await transakComponent.getOrRefreshAccessToken(true)
+
+        expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
+          ttlInMilliseconds: 30000,
+          retryDelayInMilliseconds: 250,
+          retries: 30
+        })
+        expect(mockGet).toHaveBeenCalledWith('transak-access-token')
+        expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/refresh-token`, {
+          method: 'POST',
+          headers: {
+            'api-secret': mockConfig.apiSecret,
+            accept: 'application/json',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ apiKey: mockConfig.apiKey })
+        })
+        expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
+        expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+        expect(result).toEqual(newAccessToken)
+      })
+    })
+  })
+
+  describe('and the lock cannot be acquired', () => {
+    beforeEach(() => {
+      mockTryAcquireLock.mockResolvedValue(false)
+    })
+
+    it('should throw an error indicating lock acquisition failed', async () => {
+      await expect(transakComponent.getOrRefreshAccessToken(false)).rejects.toThrow('Failed to acquire lock')
+
+      expect(mockTryAcquireLock).toHaveBeenCalledWith('transak-access-token-lock', {
+        ttlInMilliseconds: 30000,
+        retryDelayInMilliseconds: 250,
+        retries: 30
+      })
+      expect(mockGet).not.toHaveBeenCalled()
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(mockTryReleaseLock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('and the token refresh request fails', () => {
+    beforeEach(() => {
+      mockTryAcquireLock.mockResolvedValue(true)
+      mockGet.mockResolvedValue(null)
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401
+      } as any)
+    })
+
+    it('should throw an error and release the lock', async () => {
+      await expect(transakComponent.getOrRefreshAccessToken(false)).rejects.toThrow('Error refreshing access token, status: 401')
+
+      expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+    })
+  })
+
+  describe('and there is a network error during token refresh', () => {
+    let networkError: Error
+
+    beforeEach(() => {
+      networkError = new Error('Network connection failed')
+      mockTryAcquireLock.mockResolvedValue(true)
+      mockGet.mockResolvedValue(null)
+      mockFetch.mockRejectedValue(networkError)
+    })
+
+    it('should propagate the network error and release the lock', async () => {
+      await expect(transakComponent.getOrRefreshAccessToken(false)).rejects.toThrow('Network connection failed')
+
+      expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
+    })
+  })
+})
+
 describe('when getting an order', () => {
   let orderId: string
   let mockOrderResponse: OrderResponse
