@@ -60,7 +60,7 @@ describe('when getting or refreshing an access token', () => {
   beforeEach(() => {
     currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
     newAccessToken = 'new-access-token'
-    expiresAt = currentTime + 3600000 // 1 hour from now
+    expiresAt = fromMillisecondsToSeconds(currentTime) + 3600 // 1 hour from now (in seconds)
     mockTokenResponse = {
       data: {
         accessToken: newAccessToken,
@@ -304,7 +304,7 @@ describe('when getting an order', () => {
     beforeEach(() => {
       currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
       newAccessToken = 'new-access-token'
-      expiresAt = currentTime + 3600000 // 1 hour from now
+      expiresAt = fromMillisecondsToSeconds(currentTime) + 3600 // 1 hour from now (in seconds)
       mockTokenResponse = {
         data: {
           accessToken: newAccessToken,
@@ -491,7 +491,7 @@ describe('when getting a widget session URL', () => {
     beforeEach(() => {
       currentTime = 1609459200000 // Fixed timestamp: 2021-01-01T00:00:00.000Z
       newAccessToken = 'new-access-token'
-      expiresAt = currentTime + 3600000
+      expiresAt = fromMillisecondsToSeconds(currentTime) + 3600 // 1 hour from now (in seconds)
       mockDateNow = jest.spyOn(Date, 'now').mockReturnValue(currentTime)
       ;(mockTryAcquireLock as jest.Mock).mockResolvedValue(true)
       ;(mockGet as jest.Mock).mockResolvedValue(null)

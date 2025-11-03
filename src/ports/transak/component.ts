@@ -1,4 +1,4 @@
-import { fromMillisecondsToSeconds } from '../../logic/date'
+import { fromMillisecondsToSeconds, fromSecondsToMilliseconds } from '../../logic/date'
 import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { WidgetOptions, ITransakComponent, OrderResponse } from './types'
@@ -52,7 +52,7 @@ export function createTransakComponent(
       const cachedAccessToken = await cache.get<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY)
       if (!cachedAccessToken || force) {
         const { accessToken, expiresAt } = await getAccessToken()
-        const keyTTL = expiresAt - Date.now()
+        const keyTTL = fromSecondsToMilliseconds(expiresAt) - Date.now()
         await cache.set<string>(TRANSAK_ACCESS_TOKEN_CACHE_KEY, accessToken, fromMillisecondsToSeconds(keyTTL))
         logger.info(`Access token refreshed and cached for ${expiresAt - Date.now()} milliseconds`)
         return accessToken
@@ -128,7 +128,7 @@ export function createTransakComponent(
    * Obtains a new access token from the Transak API using the configured API credentials.
    * Makes a POST request to the refresh-token endpoint with the API key and secret.
    *
-   * @returns A promise that resolves to an object containing the access token and its expiration timestamp.
+   * @returns A promise that resolves to an object containing the access token and its expiration timestamp in seconds.
    * @throws Error when the HTTP request fails or the API returns an error response.
    */
   async function getAccessToken(): Promise<{ accessToken: string; expiresAt: number }> {
