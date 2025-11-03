@@ -63,3 +63,30 @@ export async function createTransakWidgetHandler(
     }
   }
 }
+
+export async function refreshTransakAccessTokenHandler(
+  context: Pick<HandlerContextWithPath<'transak', '/v1/transak/refresh-access-token'>, 'components'>
+): Promise<HTTPResponse<string>> {
+  const {
+    components: { transak }
+  } = context
+
+  try {
+    await transak.getOrRefreshAccessToken(true)
+  } catch (error) {
+    return {
+      status: StatusCode.INTERNAL_SERVER_ERROR,
+      body: {
+        ok: false,
+        message: isErrorWithMessage(error) ? error.message : 'Unknown error'
+      }
+    }
+  }
+
+  return {
+    status: StatusCode.OK,
+    body: {
+      ok: true
+    }
+  }
+}

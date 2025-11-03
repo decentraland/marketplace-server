@@ -1,6 +1,7 @@
 export type ITransakComponent = {
   getOrder(orderId: string): Promise<OrderResponse>
   getWidget(options?: WidgetOptions): Promise<string>
+  getOrRefreshAccessToken(force?: boolean): Promise<string>
 }
 
 export enum TransakOrderStatus {

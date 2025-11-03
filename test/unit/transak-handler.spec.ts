@@ -1,5 +1,9 @@
 import { Request } from 'node-fetch'
-import { createTransakHandler, createTransakWidgetHandler } from '../../src/controllers/handlers/transak-handler'
+import {
+  createTransakHandler,
+  createTransakWidgetHandler,
+  refreshTransakAccessTokenHandler
+} from '../../src/controllers/handlers/transak-handler'
 import { HandlerContextWithPath, StatusCode } from '../../src/types'
 
 describe('when handling Transak endpoints', () => {
@@ -30,7 +34,8 @@ describe('when handling Transak endpoints', () => {
                 errorMessage: null
               }
             }),
-            getWidget: jest.fn()
+            getWidget: jest.fn(),
+            getOrRefreshAccessToken: jest.fn()
           }
         }
       }
@@ -94,7 +99,8 @@ describe('when handling Transak endpoints', () => {
         components: {
           transak: {
             getWidget: mockGetWidget,
-            getOrder: jest.fn()
+            getOrder: jest.fn(),
+            getOrRefreshAccessToken: jest.fn()
           }
         },
         request: {
@@ -158,6 +164,59 @@ describe('when handling Transak endpoints', () => {
         expect(result).toEqual({
           status: StatusCode.INTERNAL_SERVER_ERROR,
           body: { ok: false, message: 'Something went wrong' }
+        })
+      })
+    })
+  })
+
+  describe('when refreshing the Transak access token', () => {
+    let context: Pick<HandlerContextWithPath<'transak', '/v1/transak/refresh-access-token'>, 'components'>
+    let mockGetOrRefreshAccessToken: jest.Mock
+
+    beforeEach(() => {
+      mockGetOrRefreshAccessToken = jest.fn()
+      context = {
+        components: {
+          transak: {
+            getOrRefreshAccessToken: mockGetOrRefreshAccessToken,
+            getWidget: jest.fn(),
+            getOrder: jest.fn()
+          }
+        }
+      }
+    })
+
+    afterEach(() => {
+      jest.resetAllMocks()
+    })
+
+    describe('and the token refresh succeeds', () => {
+      beforeEach(() => {
+        mockGetOrRefreshAccessToken.mockResolvedValue('new-access-token')
+      })
+
+      it('should return 200 with ok: true', async () => {
+        const result = await refreshTransakAccessTokenHandler(context)
+
+        expect(mockGetOrRefreshAccessToken).toHaveBeenCalledWith(true)
+        expect(result).toEqual({
+          status: StatusCode.OK,
+          body: { ok: true }
+        })
+      })
+    })
+
+    describe('and the token refresh fails with an error', () => {
+      beforeEach(() => {
+        mockGetOrRefreshAccessToken.mockRejectedValue(new Error('Failed to acquire lock'))
+      })
+
+      it('should respond with a 500 and the error message', async () => {
+        const result = await refreshTransakAccessTokenHandler(context)
+
+        expect(result).toEqual({
+          status: StatusCode.INTERNAL_SERVER_ERROR,
+          body: { ok: false, message: 'Failed to acquire lock' }
         })
       })
     })
