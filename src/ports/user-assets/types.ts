@@ -4,7 +4,7 @@ export type ItemFilters = {
   category?: string
   rarity?: string
   name?: string
-  itemType?: string
+  itemType?: string[] // Always an array from getUserAssetsParams (getList always returns array)
 }
 
 export type SortOptions = {
@@ -20,7 +20,7 @@ export type UserAssetsFilters = {
   name?: string
   orderBy?: string
   direction?: string
-  itemType?: string
+  itemType?: string[] // Always an array from getUserAssetsParams (getList always returns array)
 }
 
 export interface IUserAssetsComponent {

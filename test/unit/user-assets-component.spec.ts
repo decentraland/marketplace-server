@@ -1,5 +1,5 @@
 import { createUserAssetsComponent } from '../../src/ports/user-assets/component'
-import { IUserAssetsComponent } from '../../src/ports/user-assets/types'
+import { IUserAssetsComponent, UserAssetsFilters } from '../../src/ports/user-assets/types'
 
 describe('User Assets Component', () => {
   let userAssetsComponent: IUserAssetsComponent
@@ -370,6 +370,66 @@ describe('User Assets Component', () => {
         const sqlQuery = mockClient.query.mock.calls[0][0]
         expect(sqlQuery.text).toContain('ILIKE')
         expect(sqlQuery.values).toContain('%Cool%')
+      })
+    })
+
+    describe('when filtering grouped wearables by itemType', () => {
+      let mockGroupedDataRows: any[]
+      let mockCountRow: any
+
+      beforeEach(() => {
+        mockGroupedDataRows = [
+          {
+            urn: 'urn:decentraland:polygon:collections-v2:0x123:item1',
+            category: 'eyewear',
+            rarity: 'rare',
+            name: 'Test Item',
+            amount: 1,
+            min_transferred_at: 1640995200,
+            max_transferred_at: 1640995200,
+            individual_data: []
+          }
+        ]
+        mockCountRow = { total: '1' }
+      })
+
+      it('should apply single itemType filter (as array)', async () => {
+        mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+        await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0, itemType: ['smart_wearable_v1'] })
+
+        expect(mockClient.query).toHaveBeenCalledTimes(2)
+        const sqlQuery = mockClient.query.mock.calls[0][0]
+        expect(sqlQuery.text).toContain('item_type IN')
+        expect(sqlQuery.values).toContain('smart_wearable_v1')
+      })
+
+      it('should apply array itemType filter using IN', async () => {
+        mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+        const filters: UserAssetsFilters = {
+          first: 10,
+          skip: 0,
+          itemType: ['wearable_v1', 'wearable_v2']
+        }
+        await userAssetsComponent.getGroupedWearablesByOwner('0xowner', filters)
+
+        expect(mockClient.query).toHaveBeenCalledTimes(2)
+        const sqlQuery = mockClient.query.mock.calls[0][0]
+        expect(sqlQuery.text).toContain('item_type IN')
+        // The array values are expanded into individual SQL parameters
+        expect(sqlQuery.values).toContain('wearable_v1')
+        expect(sqlQuery.values).toContain('wearable_v2')
+      })
+
+      it('should use default itemTypes when itemType is not provided', async () => {
+        mockClient.query.mockResolvedValueOnce({ rows: mockGroupedDataRows }).mockResolvedValueOnce({ rows: [mockCountRow] })
+
+        await userAssetsComponent.getGroupedWearablesByOwner('0xowner', { first: 10, skip: 0 })
+
+        expect(mockClient.query).toHaveBeenCalledTimes(2)
+        const sqlQuery = mockClient.query.mock.calls[0][0]
+        expect(sqlQuery.text).toContain("item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')")
       })
     })
   })

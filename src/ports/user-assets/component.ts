@@ -337,7 +337,7 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
           category: category || '',
           rarity: rarity || '',
           name: name || '',
-          itemType: itemType || ''
+          itemType: Array.isArray(itemType) ? itemType.join(', ') : itemType || ''
         })
         return { data, total }
       } finally {
@@ -349,6 +349,7 @@ export async function createUserAssetsComponent(components: Pick<AppComponents, 
         category: category || '',
         rarity: rarity || '',
         name: name || '',
+        itemType: Array.isArray(itemType) ? itemType.join(', ') : itemType || '',
         error: error instanceof Error ? error.message : String(error)
       })
       throw error

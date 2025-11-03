@@ -169,7 +169,7 @@ export const getUserAssetsParams = (
   name?: string
   orderBy?: string
   direction?: string
-  itemType?: string
+  itemType?: string[] // Always an array from getList
 } => {
   const MAX_LIMIT = 1000
   const DEFAULT_LIMIT = 100
@@ -193,7 +193,8 @@ export const getUserAssetsParams = (
   const name = params.getString('name')
   const orderBy = params.getString('orderBy')
   const direction = params.getString('direction')
-  const itemType = params.getString('itemType')
+  const itemTypeList = params.getList('itemType')
+  const itemType = itemTypeList.length > 0 ? itemTypeList : undefined
 
   return {
     first: cappedLimit,

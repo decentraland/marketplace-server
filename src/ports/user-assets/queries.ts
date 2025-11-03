@@ -326,8 +326,17 @@ export function getGroupedWearablesByOwnerQuery(
   `
 
   // Add optional item type filter
-  if (filters?.itemType) {
-    query.append(SQL` AND nft.item_type = ${filters.itemType}`)
+  // itemType is always an array from getUserAssetsParams (getList always returns array)
+  if (filters?.itemType && Array.isArray(filters.itemType) && filters.itemType.length > 0) {
+    const itemTypes = filters.itemType
+    query.append(SQL` AND nft.item_type IN (`)
+    itemTypes.forEach((itemType, idx) => {
+      query.append(SQL`${itemType}`)
+      if (idx < itemTypes.length - 1) {
+        query.append(SQL`, `)
+      }
+    })
+    query.append(SQL`)`)
   } else {
     query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
   }
@@ -397,8 +406,17 @@ export function getGroupedWearablesByOwnerCountQuery(owner: string, filters?: It
   }
 
   // Add optional item type filter
-  if (filters?.itemType) {
-    query.append(SQL` AND nft.item_type = ${filters.itemType}`)
+  // itemType is always an array from getUserAssetsParams (getList always returns array)
+  if (filters?.itemType && Array.isArray(filters.itemType) && filters.itemType.length > 0) {
+    const itemTypes = filters.itemType
+    query.append(SQL` AND nft.item_type IN (`)
+    itemTypes.forEach((itemType, idx) => {
+      query.append(SQL`${itemType}`)
+      if (idx < itemTypes.length - 1) {
+        query.append(SQL`, `)
+      }
+    })
+    query.append(SQL`)`)
   } else {
     query.append(SQL` AND nft.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')`)
   }
