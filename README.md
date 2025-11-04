@@ -200,7 +200,7 @@ npm run start:watch
 
 For detailed development instructions, please refer to the development documentation.
 
-## 🤖 AI Agent Context
+## AI Agent Context
 
 **Service Purpose:** Provides comprehensive marketplace APIs for browsing, filtering, and querying Decentraland NFTs (wearables, emotes, LAND, estates). Aggregates marketplace data including listings, sales, orders, and user assets with extensive filtering and sorting capabilities.
 
