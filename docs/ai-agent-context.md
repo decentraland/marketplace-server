@@ -28,4 +28,11 @@
 - Blockchain Indexing: Squid indexer (on-chain marketplace data aggregation)
 - Content Server: Catalyst (optional, for entity metadata)
 
+**Database Schema:**
+
+- **Schemas**: `marketplace` (trades, trade_assets), `favorites` (lists, picks, acl, voting), plus external Squid indexer schema (read-only)
+- **Key Tables**: `marketplace.trades` (orders/bids), `marketplace.trade_assets` (trade assets), `lists` (favorites lists), `picks` (list items), `acl` (list permissions)
+- **Key Columns**: `marketplace.trades.signature` (unique), `marketplace.trades.type` (trade_type enum), `lists.id` (PK), `picks` composite PK `(item_id, user_address, list_id)`
+- **Full Documentation**: See [docs/database-schema.md](docs/database-schema.md) for detailed schema, column definitions, and relationships
+
 **API Specification:** Endpoints documented in README sections above
