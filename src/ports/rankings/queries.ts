@@ -168,9 +168,7 @@ export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilte
       .append(
         SQL`.item item ON 
       sale.search_contract_address = item.collection_id AND 
-      sale.search_item_id::text = item.blockchain_id::text AND sale.type = '`
-          .append(SaleType.MINT)
-          .append(SQL`'`)
+      sale.search_item_id::text = item.blockchain_id::text AND sale.type = ${SaleType.MINT}`
       )
   }
 
