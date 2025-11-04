@@ -1,5 +1,6 @@
 import BN from 'bn.js'
 import SQL, { SQLStatement } from 'sql-template-strings'
+import { SaleType } from '@dcl/schemas/dist/dapps/sale-type'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import {
   getUniqueCollectorsFromCollectorsDayData,
@@ -167,7 +168,7 @@ export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilte
       .append(
         SQL`.item item ON 
       sale.search_contract_address = item.collection_id AND 
-      sale.search_item_id::text = item.blockchain_id::text`
+      sale.search_item_id::text = item.blockchain_id::text AND sale.type = ${SaleType.MINT}`
       )
   }
 
