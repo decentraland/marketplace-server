@@ -2,7 +2,11 @@ import { URLSearchParams } from 'url'
 import { WearableCategory, EmoteCategory } from '@dcl/schemas'
 import { getUserEmotesHandler, getUserEmotesUrnTokenHandler } from '../../src/controllers/handlers/user-assets/emotes-handler'
 import { getUserNamesHandler, getUserNamesOnlyHandler } from '../../src/controllers/handlers/user-assets/names-handler'
-import { getUserWearablesHandler, getUserWearablesUrnTokenHandler } from '../../src/controllers/handlers/user-assets/wearables-handler'
+import {
+  getUserWearablesHandler,
+  getUserWearablesUrnTokenHandler,
+  getUserGroupedWearablesHandler
+} from '../../src/controllers/handlers/user-assets/wearables-handler'
 import { getUserAssetsParams } from '../../src/controllers/handlers/utils'
 import { Params } from '../../src/logic/http/params'
 import { IUserAssetsComponent } from '../../src/ports/user-assets/types'
@@ -477,6 +481,104 @@ describe('User Assets Handlers', () => {
       })
     })
   })
+
+  describe('when fetching grouped user wearables', () => {
+    const mockGroupedWearables = [
+      {
+        urn: 'urn:decentraland:polygon:collections-v2:0x123:item1',
+        amount: 3,
+        individualData: [
+          {
+            id: 'urn:decentraland:polygon:collections-v2:0x123:item1:1',
+            tokenId: '1',
+            transferredAt: '1640995200',
+            price: '100'
+          }
+        ],
+        name: 'Cool Glasses',
+        rarity: 'common',
+        minTransferredAt: 1640995200,
+        maxTransferredAt: 1641081600,
+        category: WearableCategory.EYEWEAR
+      }
+    ]
+
+    beforeEach(() => {
+      mockUserAssets.getGroupedWearablesByOwner.mockResolvedValue({
+        data: mockGroupedWearables,
+        total: 15
+      })
+    })
+
+    it('should return paginated grouped wearables data', async () => {
+      searchParams.set('first', '10')
+      searchParams.set('skip', '0')
+
+      const result = await getUserGroupedWearablesHandler(mockContext)
+
+      expect(result).toEqual({
+        status: 200,
+        body: {
+          ok: true,
+          data: {
+            elements: mockGroupedWearables,
+            page: 1,
+            pages: 2, // Math.ceil(15 / 10)
+            limit: 10,
+            total: 15
+          }
+        }
+      })
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockUserAssets.getGroupedWearablesByOwner).toHaveBeenCalledWith('0x1234567890abcdef', {
+        first: 10,
+        skip: 0
+      })
+    })
+
+    it('should handle array of itemType parameter', async () => {
+      searchParams.set('itemType', 'wearable_v1')
+      searchParams.append('itemType', 'wearable_v2')
+
+      await getUserGroupedWearablesHandler(mockContext)
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockUserAssets.getGroupedWearablesByOwner).toHaveBeenCalledWith('0x1234567890abcdef', {
+        first: 100,
+        skip: 0,
+        itemType: ['wearable_v1', 'wearable_v2']
+      })
+    })
+
+    it('should handle single itemType parameter', async () => {
+      searchParams.set('itemType', 'smart_wearable_v1')
+
+      await getUserGroupedWearablesHandler(mockContext)
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockUserAssets.getGroupedWearablesByOwner).toHaveBeenCalledWith('0x1234567890abcdef', {
+        first: 100,
+        skip: 0,
+        itemType: ['smart_wearable_v1']
+      })
+    })
+
+    it('should handle errors gracefully', async () => {
+      mockUserAssets.getGroupedWearablesByOwner.mockRejectedValue(new Error('Database error'))
+
+      const result = await getUserGroupedWearablesHandler(mockContext)
+
+      expect(result).toEqual({
+        status: 500,
+        body: {
+          ok: false,
+          message: 'Failed to fetch user grouped wearables',
+          data: { error: 'Database error' }
+        }
+      })
+    })
+  })
 })
 
 describe('getUserAssetsParams', () => {
@@ -514,5 +616,31 @@ describe('getUserAssetsParams', () => {
 
     expect(result.first).toBe(100) // Default value
     expect(result.skip).toBe(0) // Default value
+  })
+
+  it('should handle array of itemType parameter', () => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('itemType', 'wearable_v1')
+    searchParams.append('itemType', 'wearable_v2')
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.itemType).toEqual(['wearable_v1', 'wearable_v2'])
+  })
+
+  it('should handle single itemType parameter as array', () => {
+    const searchParams = new URLSearchParams({ itemType: 'smart_wearable_v1' })
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.itemType).toEqual(['smart_wearable_v1'])
+  })
+
+  it('should return undefined itemType when not provided', () => {
+    const searchParams = new URLSearchParams({})
+    const params = new Params(searchParams)
+    const result = getUserAssetsParams(params)
+
+    expect(result.itemType).toBeUndefined()
   })
 })
