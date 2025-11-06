@@ -96,7 +96,8 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     : null
   const FILTER_BY_HAS_SOUND = filters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = filters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
-  const FILTER_BY_OUTCOME_TYPE = filters.emoteOutcomeType ? SQL` emote.outcome_type = ${filters.emoteOutcomeType} ` : null
+  // For now, let's filter if the outcome type is not null
+  const FILTER_BY_OUTCOME_TYPE = filters.emoteOutcomeType ? SQL` emote.outcome_type IS NOT NULL ` : null
   const FILTER_BY_URNS = filters.urns && filters.urns.length ? SQL` item.urn = ANY (${filters.urns}) ` : null
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,

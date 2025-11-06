@@ -376,8 +376,9 @@ export const getHasGeometryWhere = () => {
   return SQL`items.search_emote_has_geometry = true`
 }
 
-export const getHasOutcomeTypeWhere = (filters: CatalogFilters) => {
-  return SQL`items.search_emote_outcome_type = ${filters.emoteOutcomeType}`
+// For now, let's filter if the outcome type is not null
+export const getHasOutcomeTypeWhere = (_filters: CatalogFilters) => {
+  return SQL`items.search_emote_outcome_type IS NOT NULL`
 }
 
 export const getUrnsWhere = (filters: CatalogFilters) => {

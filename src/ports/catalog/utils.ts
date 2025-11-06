@@ -69,22 +69,21 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
         description,
         loop,
         category: emoteCategory,
-        hasGeometry,
-        hasSound,
-        outcomeType
+        has_geometry,
+        has_sound,
+        outcome_type
       } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
-          outcomeType: null,
           description,
           category: emoteCategory.toLocaleLowerCase() as EmoteCategory, // toLocaleLowerCase used since they were indexed in uppercase.
           bodyShapes: body_shapes as BodyShape[],
           rarity: dbItem.rarity as Rarity,
           loop: !!loop,
-          hasGeometry: !!hasGeometry,
-          hasSound: !!hasSound,
-          outcomeType: outcomeType as EmoteOutcomeType
+          hasGeometry: !!has_geometry,
+          hasSound: !!has_sound,
+          outcomeType: outcome_type as EmoteOutcomeType
         }
       }
       break

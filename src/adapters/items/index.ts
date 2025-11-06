@@ -34,7 +34,6 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
 
   return {
     emote: {
-      outcomeType: null,
       bodyShapes: dbItem.emote_body_shapes || [], // if it's emote, the field will be defined
       category: dbItem.emote_category as EmoteCategory,
       description: dbItem.description || '',

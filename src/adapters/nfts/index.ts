@@ -54,7 +54,6 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
 
   return {
     emote: {
-      outcomeType: null,
       bodyShapes: dbNFT.body_shapes,
       category: dbNFT.emote_category as EmoteCategory,
       description: dbNFT.description || '',
