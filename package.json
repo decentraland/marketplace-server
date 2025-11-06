@@ -32,7 +32,7 @@
     "@dcl/platform-server-commons": "^0.2.0",
     "@dcl/redis-component": "^2.2.0",
     "@dcl/schema-validator-component": "^0.1.0",
-    "@dcl/schemas": "^19.4.1",
+    "@dcl/schemas": "^19.8.0",
     "@segment/analytics-node": "^2.1.0",
     "@types/etag": "^1.8.3",
     "@well-known-components/env-config-provider": "^1.1.1",
