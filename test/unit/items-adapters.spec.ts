@@ -169,7 +169,6 @@ describe('fromDBItemToItem', () => {
             description: dbItem.description || '',
             rarity: dbItem.rarity,
             loop: dbItem.loop || false,
-            outcomeType: null,
             hasSound: dbItem.has_sound || false,
             hasGeometry: dbItem.has_geometry || false,
             outcomeType: dbItem.emote_outcome_type || null
