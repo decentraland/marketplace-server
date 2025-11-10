@@ -478,9 +478,9 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   return getTradesCTE({ sortBy: nftFilters.sortBy, first: nftFilters.first, skip: nftFilters.skip, category: nftFilters.category }).append(
     SQL`
     , recent_trade_nft_ids AS (
-      SELECT DISTINCT ON (assets_with_values.nft_id)
+      SELECT
         assets_with_values.nft_id,
-        t.created_at
+        MIN(t.created_at) AS first_trade_created_at
       FROM unified_trades t
       JOIN (
         SELECT
@@ -501,18 +501,20 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
             SQL`
       ) assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'public_nft_order'
-      ORDER BY assets_with_values.nft_id, t.created_at DESC
+      GROUP BY assets_with_values.nft_id
     ),
     nfts_with_trades AS (
       SELECT 
         nft.*,
         unified_trades.created_at AS trade_created_at,
+        recent_trade_nft_ids.first_trade_created_at,
         unified_trades.assets,
         'trade' AS reason
       FROM `
               .append(MARKETPLACE_SQUID_SCHEMA)
               .append(
                 SQL`.nft nft
+      LEFT JOIN recent_trade_nft_ids ON nft.id = recent_trade_nft_ids.nft_id
       LEFT JOIN unified_trades ON (
         unified_trades.assets -> 'sent' ->> 'token_id' = nft.token_id::TEXT
         AND unified_trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
@@ -552,12 +554,14 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
       SELECT 
         nft.*,
         NULL::timestamp AS trade_created_at,
+        recent_trade_nft_ids.first_trade_created_at,
         NULL::json AS trade_assets,
         'order' AS reason
       FROM `
                                   .append(MARKETPLACE_SQUID_SCHEMA)
                                   .append(
                                     SQL`.nft
+      LEFT JOIN recent_trade_nft_ids ON nft.id = recent_trade_nft_ids.nft_id
       JOIN filtered_orders ON nft.id = filtered_orders.nft_id
       `
                                       .append(whereClauseForNFTsWithOrders)
@@ -568,22 +572,51 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
                                           .append(
                                             SQL` 
     )
+    , combined_with_rank AS (
+      SELECT
+        combined.*,
+        MIN(sort_field) OVER (PARTITION BY combined.id) AS first_sort_field,
+        ROW_NUMBER() OVER (
+          PARTITION BY combined.id
+          ORDER BY
+            CASE WHEN combined.reason = 'order' THEN 0 ELSE 1 END,
+            sort_field DESC
+        ) AS row_priority
+      FROM (
+      SELECT 
+        *,
+        COALESCE(
+          first_trade_created_at,
+          trade_created_at
+        ) AS sort_field
+      FROM nfts_with_trades
+      UNION ALL
+      SELECT 
+        *,
+        COALESCE(
+          first_trade_created_at,
+          TO_TIMESTAMP(search_order_created_at),
+          trade_created_at
+        ) AS sort_field
+      FROM nfts_with_orders
+    ) combined
+    )
     SELECT
-      combined.id,
-      combined.contract_address,
-      combined.token_id,
-      combined.network,
-      combined.created_at,
-      combined.token_uri AS url,
-      combined.updated_at,
-      combined.sold_at,
-      combined.urn,
-      COALESCE(combined.search_order_price, (combined.assets -> 'received' ->> 'amount')::numeric(78)) AS price,
+      ranked.id,
+      ranked.contract_address,
+      ranked.token_id,
+      ranked.network,
+      ranked.created_at,
+      ranked.token_uri AS url,
+      ranked.updated_at,
+      ranked.sold_at,
+      ranked.urn,
+      COALESCE(ranked.search_order_price, (ranked.assets -> 'received' ->> 'amount')::numeric(78)) AS price,
       account.address AS owner,
-      combined.image,
-      combined.issued_id,
+      ranked.image,
+      ranked.issued_id,
       item.blockchain_id AS item_id,
-      combined.category,
+      ranked.category,
       COALESCE(wearable.rarity, emote.rarity) AS rarity,
       COALESCE(wearable.name, emote.name, land_data."name", ens.subdomain) AS name,
       parcel.x,
@@ -592,7 +625,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
       wearable.body_shapes,
       wearable.category AS wearable_category,
       emote.category AS emote_category,
-      combined.item_type,
+      ranked.item_type,
       emote.loop,
       emote.has_sound,
       emote.has_geometry,
@@ -602,29 +635,13 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
       parcel.parcel_estate_name,
       parcel.estate_id AS parcel_estate_id,
       COALESCE(wearable.description, emote.description, land_data.description) AS description,
-      COALESCE(TO_TIMESTAMP(combined.search_order_created_at), combined.trade_created_at) AS order_created_at,
-      combined.reason          
-    FROM (
-      SELECT 
-        *,
-        COALESCE(
-          TO_TIMESTAMP(search_order_created_at),
-          trade_created_at
-        ) AS sort_field
-      FROM nfts_with_trades
-      UNION ALL
-      SELECT 
-        *,
-        COALESCE(
-          TO_TIMESTAMP(search_order_created_at),
-          trade_created_at
-        ) AS sort_field
-      FROM nfts_with_orders
-    ) combined
+      COALESCE(TO_TIMESTAMP(ranked.search_order_created_at), ranked.trade_created_at) AS order_created_at,
+      ranked.reason          
+    FROM combined_with_rank ranked
     LEFT JOIN `
                                               .append(MARKETPLACE_SQUID_SCHEMA)
                                               .append(
-                                                SQL`.metadata metadata ON combined.metadata_id = metadata.id
+                                                SQL`.metadata metadata ON ranked.metadata_id = metadata.id
     LEFT JOIN `
                                                   .append(MARKETPLACE_SQUID_SCHEMA)
                                                   .append(
@@ -647,7 +664,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
                                                                   .append(MARKETPLACE_SQUID_SCHEMA)
                                                                   .append(
                                                                     SQL`.data est_data ON par_est.data_id = est_data.id
-    ) AS parcel ON combined.id = parcel.id
+    ) AS parcel ON ranked.id = parcel.id
     LEFT JOIN (
       SELECT est.id, est.token_id, est.size, est.data_id, array_agg(json_build_object('x', est_parcel.x, 'y', est_parcel.y)) AS estate_parcels
       FROM `
@@ -659,7 +676,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
                                                                           .append(
                                                                             SQL`.parcel est_parcel ON est.id = est_parcel.estate_id
       GROUP BY est.id, est.token_id, est.size, est.data_id
-    ) AS estate ON combined.id = estate.id
+    ) AS estate ON ranked.id = estate.id
     LEFT JOIN `
                                                                               .append(MARKETPLACE_SQUID_SCHEMA)
                                                                               .append(
@@ -667,16 +684,17 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
     LEFT JOIN `
                                                                                   .append(MARKETPLACE_SQUID_SCHEMA)
                                                                                   .append(
-                                                                                    SQL`.ens ens ON ens.id = combined.ens_id
+                                                                                    SQL`.ens ens ON ens.id = ranked.ens_id
     LEFT JOIN `
                                                                                       .append(MARKETPLACE_SQUID_SCHEMA)
                                                                                       .append(
-                                                                                        SQL`.account account ON combined.owner_id = account.id
+                                                                                        SQL`.account account ON ranked.owner_id = account.id
     LEFT JOIN `
                                                                                           .append(MARKETPLACE_SQUID_SCHEMA)
                                                                                           .append(
-                                                                                            SQL`.item item ON item.id = combined.item_id
-    ORDER BY sort_field DESC
+                                                                                            SQL`.item item ON item.id = ranked.item_id
+    WHERE ranked.row_priority = 1
+    ORDER BY ranked.first_sort_field DESC
     `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     `)
                                                                                           )
