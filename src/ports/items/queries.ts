@@ -96,6 +96,8 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     : null
   const FILTER_BY_HAS_SOUND = filters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = filters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
+  // For now, let's filter if the outcome type is not null
+  const FILTER_BY_OUTCOME_TYPE = filters.emoteOutcomeType ? SQL` emote.outcome_type IS NOT NULL ` : null
   const FILTER_BY_URNS = filters.urns && filters.urns.length ? SQL` item.urn = ANY (${filters.urns}) ` : null
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,
@@ -120,6 +122,7 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     FILTER_BY_MAX_PRICE,
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
+    FILTER_BY_OUTCOME_TYPE,
     FILTER_BY_URNS
   ])
 }
@@ -160,6 +163,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       emote.loop,
       emote.has_sound,
       emote.has_geometry,
+      emote.outcome_type as emote_outcome_type,
       coalesce (wearable.description, emote.description) as description,
       coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', unified_trades.created_at) as first_listed_at,
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,

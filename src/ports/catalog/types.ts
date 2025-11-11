@@ -37,8 +37,9 @@ export type CollectionsItemDBResult = {
     rarity: string
     name: string
     loop?: boolean
-    hasGeometry?: boolean
-    hasSound?: boolean
+    has_geometry?: boolean
+    has_sound?: boolean
+    outcome_type?: string
   }
 }
 

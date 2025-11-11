@@ -54,14 +54,14 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
 
   return {
     emote: {
-      outcomeType: null,
       bodyShapes: dbNFT.body_shapes,
       category: dbNFT.emote_category as EmoteCategory,
       description: dbNFT.description || '',
       rarity: dbNFT.rarity,
       loop: dbNFT.loop || false,
       hasSound: dbNFT.has_sound || false,
-      hasGeometry: dbNFT.has_geometry || false
+      hasGeometry: dbNFT.has_geometry || false,
+      outcomeType: dbNFT.emote_outcome_type || null
     }
   }
 }

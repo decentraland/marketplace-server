@@ -169,9 +169,9 @@ describe('fromDBItemToItem', () => {
             description: dbItem.description || '',
             rarity: dbItem.rarity,
             loop: dbItem.loop || false,
-            outcomeType: null,
             hasSound: dbItem.has_sound || false,
-            hasGeometry: dbItem.has_geometry || false
+            hasGeometry: dbItem.has_geometry || false,
+            outcomeType: dbItem.emote_outcome_type || null
           }
         },
         network: getNetwork(dbItem.network),
@@ -248,7 +248,7 @@ describe('getDataFromDBItem', () => {
           loop: dbItem.loop,
           hasSound: dbItem.has_sound,
           hasGeometry: dbItem.has_geometry,
-          outcomeType: null
+          outcomeType: dbItem.emote_outcome_type || null
         }
       })
     })

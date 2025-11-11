@@ -34,14 +34,14 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
 
   return {
     emote: {
-      outcomeType: null,
       bodyShapes: dbItem.emote_body_shapes || [], // if it's emote, the field will be defined
       category: dbItem.emote_category as EmoteCategory,
       description: dbItem.description || '',
       rarity: dbItem.rarity,
       loop: dbItem.loop || false,
       hasSound: dbItem.has_sound || false,
-      hasGeometry: dbItem.has_geometry || false
+      hasGeometry: dbItem.has_geometry || false,
+      outcomeType: dbItem.emote_outcome_type || null
     }
   }
 }
