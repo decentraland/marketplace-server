@@ -5,6 +5,7 @@ import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
+import { getAccountsHandler } from './handlers/accounts-handler'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
@@ -118,6 +119,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+  router.get('/v1/accounts', getAccountsHandler)
   router.get('/v1/owners', getOwnersHandler)
 
   router.get(
