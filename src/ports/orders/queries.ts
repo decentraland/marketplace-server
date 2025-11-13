@@ -111,7 +111,6 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_BY_OWNER = filters.owner ? SQL` LOWER(owner) = LOWER(${filters.owner}) ` : null
   const FILTER_BY_BUYER = filters.buyer ? SQL` LOWER(buyer) = LOWER(${filters.buyer}) ` : null
   const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` LOWER(nft_address) = LOWER(${filters.contractAddress}) ` : null
-  const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` token_id = ${filters.tokenId} ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
   // L1 item_ids are in the format of 0x32b7495895264ac9d0b12d32afd435453458b1c6-cw_casinovisor_hat
@@ -127,7 +126,6 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
     FILTER_BY_OWNER,
     FILTER_BY_BUYER,
     FILTER_BY_CONTRACT_ADDRESS,
-    FILTER_BY_TOKEN_ID,
     FILTER_BY_STATUS,
     FILTER_BY_NETWORK,
     FILTER_BY_NFT_ID
@@ -141,6 +139,10 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
 export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: string[] }): OrderQueries {
   const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
 
+  if (filters.tokenId) {
+    ordersFilters.push(SQL` nft.token_id = ${filters.tokenId} `)
+    tradesFilters.push(SQL` token_id = ${filters.tokenId} `)
+  }
   const commonQueryParts = getOrdersSortByStatement(filters).append(getInnerOrdersLimitAndOffsetStatement(filters))
 
   const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
