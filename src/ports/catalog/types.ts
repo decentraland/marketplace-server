@@ -13,6 +13,7 @@ export type CollectionsItemDBResult = {
   price: string
   available: string
   search_is_store_minter: boolean
+  search_is_marketplace_v3_minter: boolean
   creator: string
   beneficiary: string
   created_at: string
