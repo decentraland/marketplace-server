@@ -50,6 +50,7 @@ export type DBItem = {
   first_listed_at: Date
   network: Network.MATIC | Network.ETHEREUM | SquidNetwork
   search_is_store_minter: boolean
+  search_is_marketplace_v3_minter: boolean
   trade_id?: string
   trade_beneficiary?: string
   trade_expires_at?: Date
