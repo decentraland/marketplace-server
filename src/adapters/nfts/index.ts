@@ -60,7 +60,8 @@ function getDataFromDBNFT(dbNFT: DBNFT): NFT['data'] {
       rarity: dbNFT.rarity,
       loop: dbNFT.loop || false,
       hasSound: dbNFT.has_sound || false,
-      hasGeometry: dbNFT.has_geometry || false
+      hasGeometry: dbNFT.has_geometry || false,
+      outcomeType: dbNFT.emote_outcome_type || null
     }
   }
 }

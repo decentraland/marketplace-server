@@ -162,6 +162,7 @@ describe('fromDBItemToItem', () => {
         reviewedAt: dbItem.reviewed_at,
         soldAt: dbItem.sold_at,
         tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+        tradeContractAddress: dbItem.trade_contract as string,
         data: {
           emote: {
             bodyShapes: dbItem.emote_body_shapes,
@@ -170,7 +171,8 @@ describe('fromDBItemToItem', () => {
             rarity: dbItem.rarity,
             loop: dbItem.loop || false,
             hasSound: dbItem.has_sound || false,
-            hasGeometry: dbItem.has_geometry || false
+            hasGeometry: dbItem.has_geometry || false,
+            outcomeType: dbItem.emote_outcome_type || null
           }
         },
         network: getNetwork(dbItem.network),
@@ -246,7 +248,8 @@ describe('getDataFromDBItem', () => {
           rarity: dbItem.rarity,
           loop: dbItem.loop,
           hasSound: dbItem.has_sound,
-          hasGeometry: dbItem.has_geometry
+          hasGeometry: dbItem.has_geometry,
+          outcomeType: dbItem.emote_outcome_type || null
         }
       })
     })

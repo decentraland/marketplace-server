@@ -1,4 +1,4 @@
-import { BodyShape, EmoteCategory, Item, ItemFilters, Network, Rarity, WearableCategory } from '@dcl/schemas'
+import { BodyShape, EmoteCategory, Item, ItemFilters, Network, Rarity, WearableCategory, EmoteOutcomeType } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
 export interface IItemsComponent {
@@ -46,6 +46,7 @@ export type DBItem = {
   loop?: boolean
   has_sound?: boolean
   has_geometry?: boolean
+  emote_outcome_type?: EmoteOutcomeType
   first_listed_at: Date
   network: Network.MATIC | Network.ETHEREUM | SquidNetwork
   search_is_store_minter: boolean
@@ -53,6 +54,7 @@ export type DBItem = {
   trade_id?: string
   trade_beneficiary?: string
   trade_expires_at?: Date
+  trade_contract?: string
   trade_price: string
   utility?: string
 }

@@ -1,4 +1,4 @@
-import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId } from '@dcl/schemas'
+import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId, EmoteOutcomeType } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { CollectionsItemDBResult } from './types'
 
@@ -63,7 +63,16 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, loop, category: emoteCategory, hasGeometry, hasSound } = dbItem.metadata || {}
+      const {
+        name: emoteName,
+        body_shapes,
+        description,
+        loop,
+        category: emoteCategory,
+        has_geometry,
+        has_sound,
+        outcome_type
+      } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
@@ -72,8 +81,9 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           bodyShapes: body_shapes as BodyShape[],
           rarity: dbItem.rarity as Rarity,
           loop: !!loop,
-          hasGeometry: !!hasGeometry,
-          hasSound: !!hasSound
+          hasGeometry: !!has_geometry,
+          hasSound: !!has_sound,
+          outcomeType: outcome_type as EmoteOutcomeType
         }
       }
       break

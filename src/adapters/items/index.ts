@@ -40,7 +40,8 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
       rarity: dbItem.rarity,
       loop: dbItem.loop || false,
       hasSound: dbItem.has_sound || false,
-      hasGeometry: dbItem.has_geometry || false
+      hasGeometry: dbItem.has_geometry || false,
+      outcomeType: dbItem.emote_outcome_type || null
     }
   }
 }
@@ -60,7 +61,6 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     available: dbItem.available,
     isOnSale: (dbItem.search_is_store_minter || (!!dbItem.trade_id && dbItem.search_is_marketplace_v3_minter)) && dbItem.available > 0,
     creator: dbItem.creator,
-    tradeId: dbItem.trade_id,
     beneficiary: isAddressZero(beneficiary) ? null : beneficiary,
     createdAt: dbItem.created_at,
     updatedAt: dbItem.updated_at,
@@ -71,8 +71,11 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     chainId: getNetworkChainId(dbItem.network),
     urn: fixUrn(dbItem.urn),
     firstListedAt: dbItem.first_listed_at?.getTime(),
-    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     picks: { count: 0 }, // TODO: check this
-    utility: dbItem.utility
+    utility: dbItem.utility,
+    // trade fields
+    tradeId: dbItem.trade_id,
+    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+    tradeContractAddress: dbItem.trade_contract as string
   }
 }
