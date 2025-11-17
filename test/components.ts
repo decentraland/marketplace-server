@@ -16,6 +16,7 @@ import { createAccountsComponent } from '../src/ports/accounts/component'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
+import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
@@ -127,6 +128,7 @@ async function initComponents(): Promise<TestComponents> {
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase })
+  const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -182,6 +184,7 @@ async function initComponents(): Promise<TestComponents> {
     orders,
     accounts,
     contracts,
+    collections,
     owners,
     rentals,
     sales,

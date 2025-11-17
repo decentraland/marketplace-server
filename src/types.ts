@@ -14,6 +14,7 @@ import { IAccountsComponent } from './ports/accounts/types'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
+import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
@@ -84,6 +85,7 @@ export type BaseComponents = {
   userAssets: IUserAssetsComponent
   accounts: IAccountsComponent
   contracts: IContractsComponent
+  collections: ICollectionsComponent
 }
 
 // components used in runtime

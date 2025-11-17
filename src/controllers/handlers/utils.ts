@@ -19,6 +19,7 @@ import {
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
+import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { ContractFilters, ContractSortBy } from '../../ports/contracts/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
@@ -136,6 +137,21 @@ export const getContractsParams = (params: Params): ContractFilters => {
     skip: params.getNumber('skip'),
     sortBy: params.getValue<ContractSortBy>('sortBy', ContractSortBy),
     category: params.getValue<NFTCategory>('category', NFTCategory),
+    network: params.getValue<Network>('network', Network)
+  }
+}
+
+export const getCollectionsParams = (params: Params): CollectionFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<CollectionSortBy>('sortBy', CollectionSortBy),
+    name: params.getString('name'),
+    search: params.getString('search'),
+    creator: params.getAddress('creator') || undefined,
+    urn: params.getString('urn'),
+    contractAddress: params.getAddress('contractAddress') || undefined,
+    isOnSale: params.getBoolean('isOnSale'),
     network: params.getValue<Network>('network', Network)
   }
 }
