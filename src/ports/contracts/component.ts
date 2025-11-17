@@ -74,19 +74,27 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
   async function getAllCollectionContracts(filters: ContractFilters = {}) {
     const PAGE_SIZE = 500
     const allCollectionContracts: Contract[] = []
+
+    const countResult = await pg.query<{ count: string }>(getCollectionsCountQuery(filters))
+    const total = Number(countResult.rows?.[0]?.count ?? 0)
+
+    if (total === 0) {
+      return allCollectionContracts
+    }
+
     let skip = 0
-    let hasMore = true
+    while (skip < total) {
+      const collections = await pg.query<DBCollection>(
+        getCollectionsWithItemTypesQuery({
+          ...filters,
+          first: PAGE_SIZE,
+          skip
+        })
+      )
 
-    while (hasMore) {
-      const { data: collectionContracts, total } = await getCollectionContracts({
-        ...filters,
-        first: PAGE_SIZE,
-        skip
-      })
-
+      const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContracts(dbCollection)).flat()
       allCollectionContracts.push(...collectionContracts)
       skip += PAGE_SIZE
-      hasMore = skip < total
     }
 
     return allCollectionContracts

@@ -165,6 +165,25 @@ describe('when getting all collection contracts', () => {
   let pgComponent: IPgComponent
   let pgQueryMock: jest.Mock
 
+  describe('and there are no contracts', () => {
+    beforeEach(() => {
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
+      pgComponent = createTestPgComponent({ query: pgQueryMock })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+    })
+
+    afterEach(() => {
+      jest.resetAllMocks()
+    })
+
+    it('should return empty array and only call count query', async () => {
+      const result = await contractsComponent.getAllCollectionContracts()
+
+      expect(result).toHaveLength(0)
+      expect(pgQueryMock).toHaveBeenCalledTimes(1) // Only count query
+    })
+  })
+
   describe('and there are fewer contracts than page size', () => {
     beforeEach(() => {
       const dbCollections: DBCollection[] = [
@@ -177,7 +196,7 @@ describe('when getting all collection contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '1' }] }).mockResolvedValueOnce({ rows: dbCollections })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -186,11 +205,11 @@ describe('when getting all collection contracts', () => {
       jest.resetAllMocks()
     })
 
-    it('should fetch all contracts in a single page', async () => {
+    it('should fetch count once then data in a single page', async () => {
       const result = await contractsComponent.getAllCollectionContracts()
 
       expect(result).toHaveLength(1)
-      expect(pgQueryMock).toHaveBeenCalledTimes(2) // One call for data, one for count
+      expect(pgQueryMock).toHaveBeenCalledTimes(2) // One count query, one data query
     })
   })
 
@@ -222,14 +241,12 @@ describe('when getting all collection contracts', () => {
 
       pgQueryMock = jest
         .fn()
+        // Count query (once)
+        .mockResolvedValueOnce({ rows: [{ count: '600' }] })
         // First page data
         .mockResolvedValueOnce({ rows: firstPageCollections })
-        // First page count
-        .mockResolvedValueOnce({ rows: [{ count: '600' }] })
         // Second page data
         .mockResolvedValueOnce({ rows: secondPageCollections })
-        // Second page count
-        .mockResolvedValueOnce({ rows: [{ count: '600' }] })
 
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
@@ -239,11 +256,11 @@ describe('when getting all collection contracts', () => {
       jest.resetAllMocks()
     })
 
-    it('should fetch all contracts with pagination', async () => {
+    it('should fetch count once then paginate through data', async () => {
       const result = await contractsComponent.getAllCollectionContracts()
 
       expect(result).toHaveLength(600)
-      expect(pgQueryMock).toHaveBeenCalledTimes(4) // Two pages, each with data + count query
+      expect(pgQueryMock).toHaveBeenCalledTimes(3) // One count query + two data queries
     })
   })
 })
@@ -255,7 +272,7 @@ describe('when getting all contracts', () => {
 
   describe('and there are only marketplace contracts', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValue({ rows: [] })
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -285,7 +302,7 @@ describe('when getting all contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '1' }] }).mockResolvedValueOnce({ rows: dbCollections })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -305,7 +322,7 @@ describe('when getting all contracts', () => {
 
   describe('and category filter is provided', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValue({ rows: [] })
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -324,7 +341,7 @@ describe('when getting all contracts', () => {
 
   describe('and network filter is provided', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValue({ rows: [] })
+      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
