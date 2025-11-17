@@ -31,7 +31,7 @@ export function createAccountsComponent(components: Pick<AppComponents, 'dappsDa
       pg.query<DBAccount>(getAccountsQuery(filters)),
       pg.query<{ count: string }>(getAccountsCountQuery(filters))
     ])
-    return { data: accounts.rows.map(fromDBAccountToAccount), total: Number(count.rows[0].count) ?? 0 }
+    return { data: accounts.rows.map(fromDBAccountToAccount), total: Number(count.rows?.[0]?.count ?? 0) }
   }
 
   return {

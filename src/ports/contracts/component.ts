@@ -57,7 +57,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
 
     return {
       data: collectionContracts,
-      total: Number(count.rows[0]?.count) ?? 0
+      total: Number(count.rows?.[0]?.count ?? 0)
     }
   }
 
@@ -96,10 +96,9 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
    * Retrieves all contracts (marketplace + collections) without pagination or filters
    *
    * This method fetches all marketplace contracts and all collection contracts
-   * by calling getAllCollectionContracts which paginates with a page size of 500.
-   * The results are merged and sorted by name.
+   * by calling getAllCollectionContracts which paginates with a page size of 500..
    *
-   * This is used for legacy reasons and replaced in the future.
+   * TODO: Reimplement this in the future in order to perform filtering and sorting at the SQL level including the hardcoded contracts
    *
    * @param filters - Optional filters for category and network
    * @returns Promise resolving to an object containing all contract data and total count
