@@ -33,14 +33,18 @@ export function getCollectionsWithItemTypesQuery(filters: ContractFilters): SQLS
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.collection c`)
-    .append(SQL`
-    INNER JOIN `)
+    .append(
+      SQL`
+    INNER JOIN `
+    )
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.item i ON i.collection_id = c.id`)
     .append(getContractsWhereStatement(filters))
-    .append(SQL` AND c.is_approved = true
+    .append(
+      SQL` AND c.is_approved = true
     GROUP BY c.id, c.name, c.chain_id, c.network
-    ORDER BY c.name ASC`)
+    ORDER BY c.name ASC`
+    )
     .append(getContractsLimitAndOffsetStatement(filters))
 }
 
@@ -50,11 +54,12 @@ export function getCollectionsCountQuery(filters: ContractFilters): SQLStatement
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.collection c`)
-    .append(SQL`
-    INNER JOIN `)
+    .append(
+      SQL`
+    INNER JOIN `
+    )
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.item i ON i.collection_id = c.id`)
     .append(getContractsWhereStatement(filters))
     .append(SQL` AND c.is_approved = true`)
 }
-

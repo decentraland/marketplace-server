@@ -28,4 +28,3 @@ export type DBCollection = {
   item_types: string[]
   count: number
 }
-

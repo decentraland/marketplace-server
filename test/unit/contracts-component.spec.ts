@@ -1,5 +1,4 @@
-import { ChainId, Contract, Network, NFTCategory } from '@dcl/schemas'
-import { fromDBCollectionToContracts } from '../../src/adapters/contracts'
+import { ChainId, Network, NFTCategory } from '@dcl/schemas'
 import { createContractsComponent } from '../../src/ports/contracts/component'
 import { DBCollection, IContractsComponent } from '../../src/ports/contracts/types'
 import { IPgComponent } from '../../src/ports/db/types'
@@ -72,7 +71,10 @@ describe('when getting collection contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest
+        .fn()
+        .mockResolvedValueOnce({ rows: dbCollections })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -110,7 +112,10 @@ describe('when getting collection contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest
+        .fn()
+        .mockResolvedValueOnce({ rows: dbCollections })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -141,7 +146,10 @@ describe('when getting collection contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest
+        .fn()
+        .mockResolvedValueOnce({ rows: dbCollections })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -177,7 +185,10 @@ describe('when getting all collection contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest
+        .fn()
+        .mockResolvedValueOnce({ rows: dbCollections })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -285,7 +296,10 @@ describe('when getting all contracts', () => {
           count: 1
         }
       ]
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      pgQueryMock = jest
+        .fn()
+        .mockResolvedValueOnce({ rows: dbCollections })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
       contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
     })
@@ -340,4 +354,3 @@ describe('when getting all contracts', () => {
     })
   })
 })
-

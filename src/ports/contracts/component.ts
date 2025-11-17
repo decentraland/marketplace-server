@@ -34,7 +34,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
     const polygonChainId = getPolygonChainId()
     const ethereumMarketplaceContracts = getHardcodedMarketplaceContracts(ethereumChainId)
     const polygonMarketplaceContracts = getHardcodedMarketplaceContracts(polygonChainId)
-    
+
     return [...ethereumMarketplaceContracts, ...polygonMarketplaceContracts]
   }
 
@@ -53,13 +53,11 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
       pg.query<{ count: string }>(getCollectionsCountQuery(filters))
     ])
 
-    const collectionContracts: Contract[] = collections.rows
-      .map((dbCollection) => fromDBCollectionToContracts(dbCollection))
-      .flat()
+    const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContracts(dbCollection)).flat()
 
-    return { 
-      data: collectionContracts, 
-      total: Number(count.rows[0]?.count) ?? 0 
+    return {
+      data: collectionContracts,
+      total: Number(count.rows?.[0]?.count ?? 0)
     }
   }
 
@@ -100,7 +98,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
    * This method fetches all marketplace contracts and all collection contracts
    * by calling getAllCollectionContracts which paginates with a page size of 500.
    * The results are merged and sorted by name.
-   * 
+   *
    * This is used for legacy reasons and replaced in the future.
    *
    * @param filters - Optional filters for category and network
@@ -120,9 +118,9 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
 
     const allContracts = [...marketplaceContracts, ...allCollectionContracts]
 
-    return { 
+    return {
       data: allContracts,
-      total: allContracts.length 
+      total: allContracts.length
     }
   }
 
@@ -133,4 +131,3 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
     getAllCollectionContracts
   }
 }
-
