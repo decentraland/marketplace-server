@@ -38,4 +38,3 @@ export function createCollectionsComponent(components: Pick<AppComponents, 'dapp
     getCollections
   }
 }
-

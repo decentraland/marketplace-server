@@ -192,4 +192,3 @@ describe('when querying for collections count', () => {
     })
   })
 })
-

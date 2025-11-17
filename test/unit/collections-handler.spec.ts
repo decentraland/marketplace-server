@@ -2,7 +2,6 @@
 import { URL } from 'url'
 import { ChainId, Network } from '@dcl/schemas'
 import { getCollectionsHandler } from '../../src/controllers/handlers/collections-handler'
-import { InvalidParameterError } from '../../src/logic/http/errors'
 import { Collection, CollectionSortBy } from '../../src/ports/collections/types'
 import { HandlerContextWithPath, StatusCode } from '../../src/types'
 
@@ -85,7 +84,9 @@ describe('when fetching collections', () => {
     it('should fetch collections with undefined first and skip values', async () => {
       const result = await getCollectionsHandler(context)
 
-      expect(context.components.collections.getCollections).toHaveBeenCalledWith(expect.objectContaining({ first: undefined, skip: undefined }))
+      expect(context.components.collections.getCollections).toHaveBeenCalledWith(
+        expect.objectContaining({ first: undefined, skip: undefined })
+      )
       expect(result).toEqual({
         status: StatusCode.OK,
         body: {
@@ -105,7 +106,9 @@ describe('when fetching collections', () => {
       it('should fetch collections with the correct sortBy', async () => {
         const result = await getCollectionsHandler(context)
 
-        expect(context.components.collections.getCollections).toHaveBeenCalledWith(expect.objectContaining({ sortBy: CollectionSortBy.RECENTLY_LISTED }))
+        expect(context.components.collections.getCollections).toHaveBeenCalledWith(
+          expect.objectContaining({ sortBy: CollectionSortBy.RECENTLY_LISTED })
+        )
         expect(result).toEqual({
           status: StatusCode.OK,
           body: {
@@ -282,4 +285,3 @@ describe('when fetching collections', () => {
     })
   })
 })
-
