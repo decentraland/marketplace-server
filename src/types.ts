@@ -13,6 +13,7 @@ import { metricDeclarations } from './metrics'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
+import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
 import { IEventPublisherComponent } from './ports/events/types'
@@ -80,6 +81,7 @@ export type BaseComponents = {
   volumes: IVolumeComponent
   analyticsData: IAnalyticsDayDataComponent
   userAssets: IUserAssetsComponent
+  contracts: IContractsComponent
 }
 
 // components used in runtime
