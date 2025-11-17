@@ -2,10 +2,9 @@ import { Network } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../src/constants'
 import { getAccountsCountQuery, getAccountsQuery } from '../../src/ports/accounts/queries'
 import { AccountFilters, AccountSortBy } from '../../src/ports/accounts/types'
-import { SquidNetwork } from '../../src/types'
 
 describe('getAccountsQuery', () => {
-    let filters: AccountFilters
+  let filters: AccountFilters
   describe('when no filters are provided', () => {
     beforeEach(() => {
       filters = {}
@@ -194,4 +193,3 @@ describe('getAccountsCountQuery', () => {
     })
   })
 })
-

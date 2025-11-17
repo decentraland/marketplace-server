@@ -84,9 +84,7 @@ describe('when fetching contracts', () => {
     it('should fetch contracts with undefined first and skip values', async () => {
       const result = await getContractsHandler(context)
 
-      expect(context.components.contracts.getContracts).toHaveBeenCalledWith(
-        expect.objectContaining({ first: undefined, skip: undefined })
-      )
+      expect(context.components.contracts.getContracts).toHaveBeenCalledWith(expect.objectContaining({ first: undefined, skip: undefined }))
       expect(result).toEqual({
         status: StatusCode.OK,
         body: {
@@ -124,9 +122,7 @@ describe('when fetching contracts', () => {
     it('should fetch contracts with the correct category', async () => {
       const result = await getContractsHandler(context)
 
-      expect(context.components.contracts.getContracts).toHaveBeenCalledWith(
-        expect.objectContaining({ category: NFTCategory.WEARABLE })
-      )
+      expect(context.components.contracts.getContracts).toHaveBeenCalledWith(expect.objectContaining({ category: NFTCategory.WEARABLE }))
       expect(result).toEqual({
         status: StatusCode.OK,
         body: {
@@ -178,4 +174,3 @@ describe('when fetching contracts', () => {
     })
   })
 })
-
