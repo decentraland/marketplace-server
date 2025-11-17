@@ -2,7 +2,6 @@
 import { URL } from 'url'
 import { Network } from '@dcl/schemas'
 import { getAccountsHandler } from '../../src/controllers/handlers/accounts-handler'
-import { InvalidParameterError } from '../../src/logic/http/errors'
 import { Account, AccountSortBy } from '../../src/ports/accounts/types'
 import { HandlerContextWithPath, StatusCode } from '../../src/types'
 
@@ -85,9 +84,7 @@ describe('when fetching accounts', () => {
     it('should fetch accounts with undefined first and skip values', async () => {
       const result = await getAccountsHandler(context)
 
-      expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(
-        expect.objectContaining({ first: undefined, skip: undefined })
-      )
+      expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(expect.objectContaining({ first: undefined, skip: undefined }))
       expect(result).toEqual({
         status: StatusCode.OK,
         body: {
@@ -107,9 +104,7 @@ describe('when fetching accounts', () => {
       it('should fetch accounts with the correct sortBy', async () => {
         const result = await getAccountsHandler(context)
 
-        expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(
-          expect.objectContaining({ sortBy: AccountSortBy.MOST_SALES })
-        )
+        expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: AccountSortBy.MOST_SALES }))
         expect(result).toEqual({
           status: StatusCode.OK,
           body: {
@@ -202,4 +197,3 @@ describe('when fetching accounts', () => {
     })
   })
 })
-

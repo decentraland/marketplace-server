@@ -33,9 +33,7 @@ function getAccountsLimitAndOffsetStatement(filters: AccountFilters): SQLStateme
 function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
   const FILTER_BY_ID = filters.id ? SQL`id = ${filters.id}` : null
   const FILTER_BY_ADDRESS =
-    filters.address && filters.address.length > 0
-      ? SQL`LOWER(address) = ANY(${filters.address.map(addr => addr.toLowerCase())})`
-      : null
+    filters.address && filters.address.length > 0 ? SQL`LOWER(address) = ANY(${filters.address.map(addr => addr.toLowerCase())})` : null
   const FILTER_BY_NETWORK = filters.network ? SQL`network = ANY(${getDBNetworks(filters.network)})` : null
 
   return getWhereStatementFromFilters([FILTER_BY_ID, FILTER_BY_ADDRESS, FILTER_BY_NETWORK])
@@ -69,4 +67,3 @@ export function getAccountsCountQuery(filters: AccountFilters): SQLStatement {
     .append(SQL`.account`)
     .append(getAccountsWhereStatement(filters))
 }
-

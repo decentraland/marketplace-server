@@ -12,4 +12,3 @@ export function fromDBAccountToAccount(dbAccount: DBAccount): Account {
     collections: dbAccount.collections
   }
 }
-
