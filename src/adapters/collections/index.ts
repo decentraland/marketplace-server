@@ -18,4 +18,3 @@ export function fromDBCollectionToCollection(dbCollection: DBCollection): Collec
     firstListedAt: dbCollection.first_listed_at ? fromSecondsToMilliseconds(dbCollection.first_listed_at) : null
   }
 }
-

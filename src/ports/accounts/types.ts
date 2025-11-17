@@ -44,4 +44,3 @@ export type Account = {
   royalties: string
   collections: number
 }
-

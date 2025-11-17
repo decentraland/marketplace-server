@@ -28,25 +28,19 @@ function getCollectionsLimitAndOffsetStatement(filters: CollectionFilters): SQLS
 }
 
 function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement {
-  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress
-    ? SQL`LOWER(id) = ${filters.contractAddress.toLowerCase()}`
-    : null
+  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL`LOWER(id) = ${filters.contractAddress.toLowerCase()}` : null
   const FILTER_BY_CREATOR = filters.creator ? SQL`LOWER(creator) = ${filters.creator.toLowerCase()}` : null
   const FILTER_BY_URN = filters.urn ? SQL`urn = ${filters.urn}` : null
   const FILTER_BY_IS_ON_SALE = filters.isOnSale === true ? SQL`search_is_store_minter = true` : null
   const FILTER_BY_NAME = filters.name ? SQL`name = ${filters.name}` : null
-  const FILTER_BY_SEARCH = filters.search
-    ? SQL`search_text LIKE ${`%${filters.search.trim().toLowerCase()}%`}`
-    : null
+  const FILTER_BY_SEARCH = filters.search ? SQL`search_text LIKE ${`%${filters.search.trim().toLowerCase()}%`}` : null
   const FILTER_BY_NETWORK = filters.network ? SQL`network = ${filters.network}` : null
-  
+
   // If sorting by recently listed, filter out null values
-  const FILTER_BY_RECENTLY_LISTED =
-    filters.sortBy === CollectionSortBy.RECENTLY_LISTED ? SQL`first_listed_at IS NOT NULL` : null
+  const FILTER_BY_RECENTLY_LISTED = filters.sortBy === CollectionSortBy.RECENTLY_LISTED ? SQL`first_listed_at IS NOT NULL` : null
 
   // Always apply the is_approved = true filter
   const FILTER_BY_IS_APPROVED = SQL`is_approved = true`
-
 
   return getWhereStatementFromFilters([
     FILTER_BY_CONTRACT_ADDRESS,
@@ -102,4 +96,3 @@ export function getCollectionsCountQuery(filters: CollectionFilters): SQLStateme
     .append(SQL`.collection`)
     .append(getCollectionsWhereStatement(filters))
 }
-

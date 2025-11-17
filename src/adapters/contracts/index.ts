@@ -44,4 +44,3 @@ export function fromDBCollectionToContracts(dbCollection: DBCollection): Contrac
 
   return contracts
 }
-

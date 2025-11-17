@@ -38,4 +38,3 @@ export function createAccountsComponent(components: Pick<AppComponents, 'dappsDa
     getAccounts
   }
 }
-

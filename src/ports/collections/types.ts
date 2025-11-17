@@ -65,4 +65,3 @@ export type Collection = {
   chainId: number
   firstListedAt: number | null
 }
-
