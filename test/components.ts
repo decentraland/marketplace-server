@@ -15,6 +15,7 @@ import { metricDeclarations } from '../src/metrics'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
+import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
@@ -123,6 +124,7 @@ async function initComponents(): Promise<TestComponents> {
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -176,6 +178,7 @@ async function initComponents(): Promise<TestComponents> {
     eventPublisher,
     nfts,
     orders,
+    collections,
     owners,
     rentals,
     sales,

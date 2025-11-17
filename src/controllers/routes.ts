@@ -7,6 +7,7 @@ import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
+import { getCollectionsHandler } from './handlers/collections-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
@@ -118,6 +119,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+  router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/owners', getOwnersHandler)
 
   router.get(

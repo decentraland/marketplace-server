@@ -18,6 +18,7 @@ import {
   EmoteOutcomeType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
+import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
 
@@ -114,6 +115,21 @@ export const getOrdersParams = (params: Params): OrderFilters => {
     network: params.getValue<Network>('network', Network),
     itemId: params.getValue('itemId'),
     nftName: params.getValue('nftName')
+  }
+}
+
+export const getCollectionsParams = (params: Params): CollectionFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<CollectionSortBy>('sortBy', CollectionSortBy),
+    name: params.getString('name'),
+    search: params.getString('search'),
+    creator: params.getAddress('creator') || undefined,
+    urn: params.getString('urn'),
+    contractAddress: params.getAddress('contractAddress') || undefined,
+    isOnSale: params.getBoolean('isOnSale'),
+    network: params.getValue<Network>('network', Network)
   }
 }
 
