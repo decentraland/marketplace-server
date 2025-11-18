@@ -27,7 +27,7 @@ export async function getAccountsHandler(
     }
   } catch (e) {
     return {
-      status: StatusCode.BAD_REQUEST,
+      status: StatusCode.INTERNAL_SERVER_ERROR,
       body: {
         ok: false,
         message: isErrorWithMessage(e) ? e.message : 'Could not fetch accounts'

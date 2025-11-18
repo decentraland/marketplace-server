@@ -173,6 +173,25 @@ describe('when fetching accounts', () => {
         })
       })
     })
+
+    describe('and the network is not valid', () => {
+      beforeEach(() => {
+        context.url = new URL('http://localhost:3000/v1/accounts?network=invalid_network')
+      })
+
+      it('should fetch accounts without filtering by network', async () => {
+        const result = await getAccountsHandler(context)
+
+        expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(expect.objectContaining({ network: undefined }))
+        expect(result).toEqual({
+          status: StatusCode.OK,
+          body: {
+            data: accounts,
+            total: 1
+          }
+        })
+      })
+    })
   })
 
   describe('and there is an error fetching accounts', () => {
@@ -184,11 +203,11 @@ describe('when fetching accounts', () => {
       context.components.accounts.getAccounts = jest.fn().mockRejectedValue(error)
     })
 
-    it('should return response with status BAD_REQUEST', async () => {
+    it('should return response with status INTERNAL_SERVER_ERROR', async () => {
       const result = await getAccountsHandler(context)
 
       expect(result).toEqual({
-        status: StatusCode.BAD_REQUEST,
+        status: StatusCode.INTERNAL_SERVER_ERROR,
         body: {
           ok: false,
           message: error.message

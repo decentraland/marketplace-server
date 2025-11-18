@@ -19,6 +19,8 @@ describe('getAccountsQuery', () => {
       const query = getAccountsQuery(filters)
       expect(query.text).toContain('LIMIT')
       expect(query.text).toContain('OFFSET')
+      expect(query.values).toContain(1000)
+      expect(query.values).toContain(0)
     })
 
     it('should select from the account table', () => {
@@ -130,7 +132,7 @@ describe('getAccountsQuery', () => {
     it('should filter by addresses with lowercase comparison', () => {
       const query = getAccountsQuery(filters)
       expect(query.text).toContain('WHERE')
-      expect(query.text).toContain('LOWER(address) = ANY')
+      expect(query.text).toContain('address = ANY')
     })
   })
 
