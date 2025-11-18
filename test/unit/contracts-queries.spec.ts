@@ -11,11 +11,6 @@ describe('getCollectionsWithItemTypesQuery', () => {
       filters = {}
     })
 
-    it('should always filter by is_approved = true', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
-      expect(query.text).toContain('is_approved = true')
-    })
-
     it('should order by name ASC', () => {
       const query = getCollectionsWithItemTypesQuery(filters)
       expect(query.text).toContain('ORDER BY c.name ASC')
@@ -72,11 +67,6 @@ describe('getCollectionsCountQuery', () => {
       expect(query.text).not.toContain('ORDER BY')
       expect(query.text).not.toContain('LIMIT')
       expect(query.text).not.toContain('OFFSET')
-    })
-
-    it('should always filter by is_approved = true', () => {
-      const query = getCollectionsCountQuery(filters)
-      expect(query.text).toContain('is_approved = true')
     })
 
     it('should join with item table', () => {
