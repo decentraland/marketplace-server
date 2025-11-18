@@ -272,11 +272,11 @@ describe('when fetching collections', () => {
       context.components.collections.getCollections = jest.fn().mockRejectedValue(error)
     })
 
-    it('should return response with status BAD_REQUEST', async () => {
+    it('should return response with status INTERNAL_SERVER_ERROR', async () => {
       const result = await getCollectionsHandler(context)
 
       expect(result).toEqual({
-        status: StatusCode.BAD_REQUEST,
+        status: StatusCode.INTERNAL_SERVER_ERROR,
         body: {
           ok: false,
           message: error.message
