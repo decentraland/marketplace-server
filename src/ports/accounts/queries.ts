@@ -32,7 +32,8 @@ function getAccountsLimitAndOffsetStatement(filters: AccountFilters): SQLStateme
 }
 
 function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
-  const FILTER_BY_ID = filters.id ? SQL`id = ${filters.id}` : null
+  // Fetch by id using -ETHEREUM and -POLYGON suffixes
+  const FILTER_BY_ID = filters.id ? SQL`id = ANY(${[filters.id, `${filters.id}-ETHEREUM`, `${filters.id}-POLYGON`]})` : null
   const FILTER_BY_ADDRESS =
     filters.address && filters.address.length > 0 ? SQL`address = ANY(${filters.address.map(addr => addr.toLowerCase())})` : null
   const FILTER_BY_NETWORK = filters.network ? SQL`network = ANY(${getDBNetworks(filters.network)})` : null
