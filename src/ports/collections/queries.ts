@@ -21,15 +21,16 @@ function getCollectionsSortByStatement(filters: CollectionFilters): SQLStatement
 }
 
 function getCollectionsLimitAndOffsetStatement(filters: CollectionFilters): SQLStatement {
-  const limit = filters?.first ? filters.first : 1000
+  const MAX_LIMIT = 1000
+  const limit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : MAX_LIMIT
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
 function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement {
-  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL`LOWER(id) = ${filters.contractAddress.toLowerCase()}` : null
-  const FILTER_BY_CREATOR = filters.creator ? SQL`LOWER(creator) = ${filters.creator.toLowerCase()}` : null
+  const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL`id = ${filters.contractAddress.toLowerCase()}` : null
+  const FILTER_BY_CREATOR = filters.creator ? SQL`creator = ${filters.creator.toLowerCase()}` : null
   const FILTER_BY_URN = filters.urn ? SQL`urn = ${filters.urn}` : null
   const FILTER_BY_IS_ON_SALE = filters.isOnSale === true ? SQL`search_is_store_minter = true` : null
   const FILTER_BY_NAME = filters.name ? SQL`name = ${filters.name}` : null

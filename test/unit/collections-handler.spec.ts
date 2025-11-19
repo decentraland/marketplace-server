@@ -261,6 +261,25 @@ describe('when fetching collections', () => {
         })
       })
     })
+
+    describe('and the network is invalid', () => {
+      beforeEach(() => {
+        context.url = new URL('http://localhost:3000/v1/collections?network=invalid_network')
+      })
+
+      it('should fetch collections without the network filter', async () => {
+        const result = await getCollectionsHandler(context)
+
+        expect(context.components.collections.getCollections).toHaveBeenCalledWith(expect.objectContaining({ network: undefined }))
+        expect(result).toEqual({
+          status: StatusCode.OK,
+          body: {
+            data: collections,
+            total: 1
+          }
+        })
+      })
+    })
   })
 
   describe('and there is an error fetching collections', () => {

@@ -62,7 +62,7 @@ describe('when querying for collections', () => {
   describe('and contractAddress filter is defined', () => {
     it('should add the filter to the query', () => {
       const query = getCollectionsQuery({ contractAddress: '0x1096f950841a99f9b961434714d9a08d3d4ebdff' })
-      expect(query.text).toContain('LOWER(id) =')
+      expect(query.text).toContain('id =')
       expect(query.values).toEqual(expect.arrayContaining(['0x1096f950841a99f9b961434714d9a08d3d4ebdff']))
     })
   })
@@ -70,7 +70,7 @@ describe('when querying for collections', () => {
   describe('and creator filter is defined', () => {
     it('should add the filter to the query', () => {
       const query = getCollectionsQuery({ creator: '0x2a39d4f68133491f0442496f601cde2a945b6d31' })
-      expect(query.text).toContain('LOWER(creator) =')
+      expect(query.text).toContain('creator =')
       expect(query.values).toEqual(expect.arrayContaining(['0x2a39d4f68133491f0442496f601cde2a945b6d31']))
     })
   })
@@ -151,7 +151,7 @@ describe('when querying for collections', () => {
         first: 10,
         skip: 5
       })
-      expect(query.text).toContain('LOWER(creator) =')
+      expect(query.text).toContain('creator =')
       expect(query.text).toContain('search_text LIKE')
       expect(query.text).toContain('network =')
       expect(query.text).toContain('search_is_store_minter = true')
@@ -186,7 +186,7 @@ describe('when querying for collections count', () => {
         search: 'test',
         network: Network.MATIC
       })
-      expect(query.text).toContain('LOWER(creator) =')
+      expect(query.text).toContain('creator =')
       expect(query.text).toContain('search_text LIKE')
       expect(query.text).toContain('network =')
     })
