@@ -1,5 +1,5 @@
 import { Contract } from '@dcl/schemas'
-import { fromDBCollectionToContracts } from '../../adapters/contracts'
+import { fromDBCollectionToContract } from '../../adapters/contracts'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { getMarketplaceContracts as getHardcodedMarketplaceContracts } from '../../logic/contracts'
 import { AppComponents } from '../../types'
@@ -53,7 +53,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
       pg.query<{ count: string }>(getCollectionsCountQuery(filters))
     ])
 
-    const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContracts(dbCollection)).flat()
+    const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContract(dbCollection))
 
     return {
       data: collectionContracts,
@@ -92,7 +92,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
         })
       )
 
-      const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContracts(dbCollection)).flat()
+      const collectionContracts: Contract[] = collections.rows.map(dbCollection => fromDBCollectionToContract(dbCollection))
       allCollectionContracts.push(...collectionContracts)
       skip += PAGE_SIZE
     }

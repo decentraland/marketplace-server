@@ -67,7 +67,6 @@ describe('when getting collection contracts', () => {
           name: 'Test Collection',
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1', 'wearable_v2'],
           count: 1
         }
       ]
@@ -108,7 +107,6 @@ describe('when getting collection contracts', () => {
           name: 'Emote Collection',
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['emote_v1'],
           count: 1
         }
       ]
@@ -124,11 +122,11 @@ describe('when getting collection contracts', () => {
       jest.resetAllMocks()
     })
 
-    it('should return emote contract', async () => {
+    it('should return wearable contract', async () => {
       const result = await contractsComponent.getCollectionContracts()
 
       expect(result.data).toHaveLength(1)
-      expect(result.data[0].category).toBe(NFTCategory.EMOTE)
+      expect(result.data[0].category).toBe(NFTCategory.WEARABLE)
     })
   })
 
@@ -142,7 +140,6 @@ describe('when getting collection contracts', () => {
           name: 'Mixed Collection',
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1', 'emote_v1'],
           count: 1
         }
       ]
@@ -158,12 +155,11 @@ describe('when getting collection contracts', () => {
       jest.resetAllMocks()
     })
 
-    it('should return both wearable and emote contracts', async () => {
+    it('should return a single wearable contract', async () => {
       const result = await contractsComponent.getCollectionContracts()
 
-      expect(result.data).toHaveLength(2)
-      expect(result.data.some(c => c.category === NFTCategory.WEARABLE)).toBe(true)
-      expect(result.data.some(c => c.category === NFTCategory.EMOTE)).toBe(true)
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].category).toBe(NFTCategory.WEARABLE)
     })
   })
 })
@@ -200,7 +196,6 @@ describe('when getting all collection contracts', () => {
           name: 'Collection 1',
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1'],
           count: 1
         }
       ]
@@ -234,7 +229,6 @@ describe('when getting all collection contracts', () => {
           name: `Collection ${i}`,
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1'],
           count: 600
         }))
 
@@ -246,7 +240,6 @@ describe('when getting all collection contracts', () => {
           name: `Collection ${i + 500}`,
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1'],
           count: 600
         }))
 
@@ -309,7 +302,6 @@ describe('when getting all contracts', () => {
           name: 'Custom Collection',
           chain_id: ChainId.MATIC_AMOY,
           network: SquidNetwork.POLYGON,
-          item_types: ['wearable_v1'],
           count: 1
         }
       ]

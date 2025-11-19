@@ -11,14 +11,14 @@ describe('getCollectionsWithItemTypesQuery', () => {
       filters = {}
     })
 
+    it('should always filter by is_approved = true', () => {
+      const query = getCollectionsWithItemTypesQuery(filters)
+      expect(query.text).toContain('is_approved = true')
+    })
+
     it('should order by name ASC', () => {
       const query = getCollectionsWithItemTypesQuery(filters)
       expect(query.text).toContain('ORDER BY c.name ASC')
-    })
-
-    it('should aggregate item types', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
-      expect(query.text).toContain('array_agg(DISTINCT i.item_type) as item_types')
     })
 
     it('should apply default pagination', () => {
@@ -69,10 +69,9 @@ describe('getCollectionsCountQuery', () => {
       expect(query.text).not.toContain('OFFSET')
     })
 
-    it('should join with item table', () => {
+    it('should always filter by is_approved = true', () => {
       const query = getCollectionsCountQuery(filters)
-      expect(query.text).toContain('INNER JOIN')
-      expect(query.text).toContain(`${MARKETPLACE_SQUID_SCHEMA}.item i ON i.collection_id = c.id`)
+      expect(query.text).toContain('is_approved = true')
     })
   })
 
