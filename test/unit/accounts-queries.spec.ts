@@ -113,14 +113,14 @@ describe('getAccountsQuery', () => {
 
   describe('when id filter is provided', () => {
     beforeEach(() => {
-      filters = { id: '0x1-polygon' }
+      filters = { id: '0x1' }
     })
 
-    it('should filter by id', () => {
+    it('should filter by id using -ETHEREUM and -POLYGON suffixes', () => {
       const query = getAccountsQuery(filters)
       expect(query.text).toContain('WHERE')
-      expect(query.text).toContain('id =')
-      expect(query.values).toContain('0x1-polygon')
+      expect(query.text).toContain('id = ANY')
+      expect(query.values[0]).toEqual(['0x1', '0x1-ETHEREUM', '0x1-POLYGON'])
     })
   })
 
@@ -151,7 +151,7 @@ describe('getAccountsQuery', () => {
   describe('when multiple filters are provided', () => {
     beforeEach(() => {
       filters = {
-        id: '0x1-polygon',
+        id: '0x1',
         address: ['0x1'],
         network: Network.MATIC,
         sortBy: AccountSortBy.MOST_SALES,
@@ -185,13 +185,13 @@ describe('getAccountsCountQuery', () => {
 
   describe('when filters are provided', () => {
     beforeEach(() => {
-      filters = { id: '0x1-polygon', network: Network.MATIC }
+      filters = { id: '0x1', network: Network.MATIC }
     })
 
     it('should apply filters to count query', () => {
       const query = getAccountsCountQuery(filters)
       expect(query.text).toContain('WHERE')
-      expect(query.values).toContain('0x1-polygon')
+      expect(query.values[0]).toEqual(['0x1', '0x1-ETHEREUM', '0x1-POLYGON'])
     })
   })
 })

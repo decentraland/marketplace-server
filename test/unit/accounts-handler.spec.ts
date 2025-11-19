@@ -13,7 +13,7 @@ describe('when fetching accounts', () => {
   beforeEach(() => {
     accounts = [
       {
-        id: '0x1-polygon',
+        id: '0x1',
         address: '0x1',
         sales: 10,
         purchases: 5,
@@ -118,13 +118,13 @@ describe('when fetching accounts', () => {
 
   describe('and the id parameter is defined in the url', () => {
     beforeEach(() => {
-      context.url = new URL('http://localhost:3000/v1/accounts?id=0x1-polygon')
+      context.url = new URL('http://localhost:3000/v1/accounts?id=0x1')
     })
 
     it('should fetch accounts with the correct id', async () => {
       const result = await getAccountsHandler(context)
 
-      expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(expect.objectContaining({ id: '0x1-polygon' }))
+      expect(context.components.accounts.getAccounts).toHaveBeenCalledWith(expect.objectContaining({ id: '0x1' }))
       expect(result).toEqual({
         status: StatusCode.OK,
         body: {
