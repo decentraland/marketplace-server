@@ -1,9 +1,9 @@
-import { Contract } from '@dcl/schemas'
+import { Contract, Network, NFTCategory } from '@dcl/schemas'
 import { fromDBCollectionToContract } from '../../adapters/contracts'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { getEthereumChainId } from '../../logic/chainIds'
 import { getMarketplaceContracts as getHardcodedMarketplaceContracts } from '../../logic/contracts'
 import { AppComponents } from '../../types'
-import { getCollectionsCountQuery, getCollectionsWithItemTypesQuery } from './queries'
+import { getCollectionsCountQuery, getCollectionsQuery } from './queries'
 import { ContractFilters, DBCollection, IContractsComponent } from './types'
 
 /**
@@ -18,8 +18,8 @@ import { ContractFilters, DBCollection, IContractsComponent } from './types'
  * @param components Required components: dappsDatabase
  * @returns IContractsComponent implementation
  */
-export function createContractsComponent(components: Pick<AppComponents, 'dappsDatabase'>): IContractsComponent {
-  const { dappsDatabase: pg } = components
+export function createContractsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'inMemoryCache'>): IContractsComponent {
+  const { dappsDatabase: pg, inMemoryCache } = components
 
   /**
    * Retrieves all hardcoded marketplace contracts
@@ -31,11 +31,9 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
    */
   function getMarketplaceContracts(): Contract[] {
     const ethereumChainId = getEthereumChainId()
-    const polygonChainId = getPolygonChainId()
     const ethereumMarketplaceContracts = getHardcodedMarketplaceContracts(ethereumChainId)
-    const polygonMarketplaceContracts = getHardcodedMarketplaceContracts(polygonChainId)
 
-    return [...ethereumMarketplaceContracts, ...polygonMarketplaceContracts]
+    return ethereumMarketplaceContracts
   }
 
   /**
@@ -49,7 +47,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
    */
   async function getCollectionContracts(filters: ContractFilters = {}) {
     const [collections, count] = await Promise.all([
-      pg.query<DBCollection>(getCollectionsWithItemTypesQuery(filters)),
+      pg.query<DBCollection>(getCollectionsQuery(filters)),
       pg.query<{ count: string }>(getCollectionsCountQuery(filters))
     ])
 
@@ -68,14 +66,25 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
    * with a page size of 500. Filters for category and network are applied at
    * the SQL level to minimize memory usage.
    *
+   * Results are cached for 1 hour to improve performance.
+   *
    * @param filters - Optional filters for category and network (first/skip are ignored)
    * @returns Promise resolving to an array of all collection contracts
    */
-  async function getAllCollectionContracts(filters: ContractFilters = {}) {
+  async function getAllCollectionContracts() {
+    const ALL_COLLECTION_CONTRACTS_CACHE_KEY = 'all_collection_contracts'
+    const CACHE_TTL_IN_SECONDS = 60 * 60 // 1 hour
+
+    const cachedContracts = await inMemoryCache.get<Contract[]>(ALL_COLLECTION_CONTRACTS_CACHE_KEY)
+
+    if (cachedContracts) {
+      return cachedContracts
+    }
+
     const PAGE_SIZE = 500
     const allCollectionContracts: Contract[] = []
 
-    const countResult = await pg.query<{ count: string }>(getCollectionsCountQuery(filters))
+    const countResult = await pg.query<{ count: string }>(getCollectionsCountQuery({}))
     const total = Number(countResult.rows?.[0]?.count ?? 0)
 
     if (total === 0) {
@@ -85,8 +94,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
     let skip = 0
     while (skip < total) {
       const collections = await pg.query<DBCollection>(
-        getCollectionsWithItemTypesQuery({
-          ...filters,
+        getCollectionsQuery({
           first: PAGE_SIZE,
           skip
         })
@@ -96,6 +104,8 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
       allCollectionContracts.push(...collectionContracts)
       skip += PAGE_SIZE
     }
+
+    await inMemoryCache.set(ALL_COLLECTION_CONTRACTS_CACHE_KEY, allCollectionContracts, CACHE_TTL_IN_SECONDS)
 
     return allCollectionContracts
   }
@@ -122,7 +132,9 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
       marketplaceContracts = marketplaceContracts.filter(contract => contract.network === filters.network)
     }
 
-    const allCollectionContracts = await getAllCollectionContracts(filters)
+    const shouldFetchAllCollectionContracts =
+      (!filters.category || filters.category === NFTCategory.WEARABLE) && (!filters.network || filters.network === Network.MATIC)
+    const allCollectionContracts = shouldFetchAllCollectionContracts ? await getAllCollectionContracts() : []
 
     const allContracts = [...marketplaceContracts, ...allCollectionContracts]
 

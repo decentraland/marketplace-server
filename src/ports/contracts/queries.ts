@@ -22,7 +22,7 @@ function getContractsLimitAndOffsetStatement(filters: ContractFilters): SQLState
 /**
  * Query to get collections
  */
-export function getCollectionsWithItemTypesQuery(filters: ContractFilters): SQLStatement {
+export function getCollectionsQuery(filters: ContractFilters): SQLStatement {
   return SQL`
     SELECT 
       c.id,

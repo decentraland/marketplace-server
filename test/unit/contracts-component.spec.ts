@@ -4,6 +4,12 @@ import { DBCollection, IContractsComponent } from '../../src/ports/contracts/typ
 import { IPgComponent } from '../../src/ports/db/types'
 import { SquidNetwork } from '../../src/types'
 import { createTestPgComponent } from '../components'
+import { createCacheMockedComponent } from '../mocks/cache-mock'
+import { ICacheStorageComponent } from '@dcl/core-commons'
+
+let inMemoryCache: ICacheStorageComponent
+let mockGet: jest.MockedFn<ICacheStorageComponent['get']>
+let mockSet: jest.MockedFn<ICacheStorageComponent['set']>
 
 jest.mock('../../src/logic/chainIds', () => ({
   getEthereumChainId: () => ChainId.ETHEREUM_SEPOLIA,
@@ -17,8 +23,16 @@ describe('when getting marketplace contracts', () => {
   let pgComponent: IPgComponent
 
   beforeEach(() => {
+    mockGet = jest.fn()
+    mockSet = jest.fn()
+
+    inMemoryCache = createCacheMockedComponent({
+      get: mockGet as any,
+      set: mockSet
+    })
+
     pgComponent = createTestPgComponent({ query: jest.fn() })
-    contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+    contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
   })
 
   it('should include LAND, Estates, and Names contracts', () => {
@@ -35,11 +49,21 @@ describe('when getting collection contracts', () => {
   let pgComponent: IPgComponent
   let pgQueryMock: jest.Mock
 
+  beforeEach(() => {
+    mockGet = jest.fn()
+    mockSet = jest.fn()
+
+    inMemoryCache = createCacheMockedComponent({
+      get: mockGet as any,
+      set: mockSet
+    })
+  })
+
   describe('and there are no collections', () => {
     beforeEach(() => {
       pgQueryMock = jest.fn().mockResolvedValue({ rows: [] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -75,7 +99,7 @@ describe('when getting collection contracts', () => {
         .mockResolvedValueOnce({ rows: dbCollections })
         .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -115,7 +139,7 @@ describe('when getting collection contracts', () => {
         .mockResolvedValueOnce({ rows: dbCollections })
         .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -148,7 +172,7 @@ describe('when getting collection contracts', () => {
         .mockResolvedValueOnce({ rows: dbCollections })
         .mockResolvedValueOnce({ rows: [{ count: '1' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -169,11 +193,21 @@ describe('when getting all collection contracts', () => {
   let pgComponent: IPgComponent
   let pgQueryMock: jest.Mock
 
+  beforeEach(() => {
+    mockGet = jest.fn()
+    mockSet = jest.fn()
+
+    inMemoryCache = createCacheMockedComponent({
+      get: mockGet as any,
+      set: mockSet
+    })
+  })
+
   describe('and there are no contracts', () => {
     beforeEach(() => {
       pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -204,7 +238,7 @@ describe('when getting all collection contracts', () => {
         .mockResolvedValueOnce({ rows: [{ count: '1' }] })
         .mockResolvedValueOnce({ rows: dbCollections })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -253,7 +287,7 @@ describe('when getting all collection contracts', () => {
         .mockResolvedValueOnce({ rows: secondPageCollections })
 
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -267,6 +301,106 @@ describe('when getting all collection contracts', () => {
       expect(pgQueryMock).toHaveBeenCalledTimes(3) // One count query + two data queries
     })
   })
+
+  describe('and the cache is being used', () => {
+    describe('and the data is already cached', () => {
+      let cachedContracts: any[]
+
+      beforeEach(() => {
+        cachedContracts = [
+          {
+            name: 'Cached Collection',
+            address: '0xcached',
+            category: NFTCategory.WEARABLE,
+            network: Network.MATIC,
+            chainId: ChainId.MATIC_AMOY
+          }
+        ]
+        mockGet.mockResolvedValueOnce(cachedContracts)
+        pgQueryMock = jest.fn()
+        pgComponent = createTestPgComponent({ query: pgQueryMock })
+        contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
+      })
+
+      afterEach(() => {
+        jest.resetAllMocks()
+      })
+
+      it('should return cached data', async () => {
+        const result = await contractsComponent.getAllCollectionContracts()
+
+        expect(result).toEqual(cachedContracts)
+      })
+
+      it('should not query the database', async () => {
+        await contractsComponent.getAllCollectionContracts()
+
+        expect(pgQueryMock).not.toHaveBeenCalled()
+      })
+
+      it('should check the cache', async () => {
+        await contractsComponent.getAllCollectionContracts()
+
+        expect(mockGet).toHaveBeenCalledWith('all_collection_contracts')
+      })
+    })
+
+    describe('and the data is not cached', () => {
+      let dbCollections: DBCollection[]
+
+      beforeEach(() => {
+        mockGet.mockResolvedValueOnce(undefined)
+        dbCollections = [
+          {
+            id: '0x1',
+            name: 'Fresh Collection',
+            chain_id: ChainId.MATIC_AMOY,
+            network: SquidNetwork.POLYGON,
+            count: 1
+          }
+        ]
+        pgQueryMock = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+          .mockResolvedValueOnce({ rows: dbCollections })
+        pgComponent = createTestPgComponent({ query: pgQueryMock })
+        contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
+      })
+
+      afterEach(() => {
+        jest.resetAllMocks()
+      })
+
+      it('should fetch data from the database', async () => {
+        const result = await contractsComponent.getAllCollectionContracts()
+
+        expect(result).toHaveLength(1)
+        expect(result[0].name).toBe('Fresh Collection')
+      })
+
+      it('should query the database', async () => {
+        await contractsComponent.getAllCollectionContracts()
+
+        expect(pgQueryMock).toHaveBeenCalledTimes(2)
+      })
+
+      it('should store the result in the cache', async () => {
+        await contractsComponent.getAllCollectionContracts()
+
+        expect(mockSet).toHaveBeenCalledWith(
+          'all_collection_contracts',
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: 'Fresh Collection',
+              address: '0x1',
+              category: NFTCategory.WEARABLE
+            })
+          ]),
+          3600 // 1 hour in seconds
+        )
+      })
+    })
+  })
 })
 
 describe('when getting all contracts', () => {
@@ -274,11 +408,21 @@ describe('when getting all contracts', () => {
   let pgComponent: IPgComponent
   let pgQueryMock: jest.Mock
 
+  beforeEach(() => {
+    mockGet = jest.fn()
+    mockSet = jest.fn()
+
+    inMemoryCache = createCacheMockedComponent({
+      get: mockGet as any,
+      set: mockSet
+    })
+  })
+
   describe('and there are only marketplace contracts', () => {
     beforeEach(() => {
       pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -310,7 +454,7 @@ describe('when getting all contracts', () => {
         .mockResolvedValueOnce({ rows: [{ count: '1' }] })
         .mockResolvedValueOnce({ rows: dbCollections })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -330,7 +474,7 @@ describe('when getting all contracts', () => {
     beforeEach(() => {
       pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
       pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
+      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
     })
 
     afterEach(() => {
@@ -342,24 +486,6 @@ describe('when getting all contracts', () => {
 
       expect(result.data.every(c => c.category === NFTCategory.PARCEL)).toBe(true)
       expect(result.data.some(c => c.name === 'LAND')).toBe(true)
-    })
-  })
-
-  describe('and network filter is provided', () => {
-    beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
-    })
-
-    it('should filter marketplace contracts by network', async () => {
-      const result = await contractsComponent.getContracts({ network: Network.ETHEREUM })
-
-      expect(result.data.every(c => c.network === Network.ETHEREUM)).toBe(true)
     })
   })
 })

@@ -1,6 +1,6 @@
 import { Network } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../src/constants'
-import { getCollectionsCountQuery, getCollectionsWithItemTypesQuery } from '../../src/ports/contracts/queries'
+import { getCollectionsCountQuery, getCollectionsQuery } from '../../src/ports/contracts/queries'
 import { ContractFilters } from '../../src/ports/contracts/types'
 
 describe('getCollectionsWithItemTypesQuery', () => {
@@ -12,17 +12,17 @@ describe('getCollectionsWithItemTypesQuery', () => {
     })
 
     it('should always filter by is_approved = true', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
+      const query = getCollectionsQuery(filters)
       expect(query.text).toContain('is_approved = true')
     })
 
     it('should order by name ASC', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
+      const query = getCollectionsQuery(filters)
       expect(query.text).toContain('ORDER BY c.name ASC')
     })
 
     it('should apply default pagination', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
+      const query = getCollectionsQuery(filters)
       expect(query.text).toContain('LIMIT')
       expect(query.text).toContain('OFFSET')
     })
@@ -34,7 +34,7 @@ describe('getCollectionsWithItemTypesQuery', () => {
     })
 
     it('should filter by network', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
+      const query = getCollectionsQuery(filters)
       expect(query.text).toContain('c.network = ANY')
     })
   })
@@ -45,7 +45,7 @@ describe('getCollectionsWithItemTypesQuery', () => {
     })
 
     it('should apply LIMIT and OFFSET correctly', () => {
-      const query = getCollectionsWithItemTypesQuery(filters)
+      const query = getCollectionsQuery(filters)
       expect(query.text).toContain('LIMIT')
       expect(query.text).toContain('OFFSET')
       expect(query.values).toContain(50)

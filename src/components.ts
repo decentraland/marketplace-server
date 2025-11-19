@@ -126,6 +126,7 @@ export async function initComponents(): Promise<AppComponents> {
   const schemaValidator = await createSchemaValidatorComponent()
 
   const cache = REDIS_URL ? await createRedisComponent(REDIS_URL, { logs }) : await createInMemoryCacheComponent()
+  const inMemoryCache = await createInMemoryCacheComponent() // Used for caching data that should not be stored in Redis
 
   const snapshot = await createSnapshotComponent({ fetch, config })
   const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
@@ -144,7 +145,7 @@ export async function initComponents(): Promise<AppComponents> {
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
-  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase })
+  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -172,6 +173,7 @@ export async function initComponents(): Promise<AppComponents> {
   return {
     bids,
     cache,
+    inMemoryCache,
     config,
     logs,
     server,

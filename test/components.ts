@@ -121,10 +121,11 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
+  const inMemoryCache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
-  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase })
+  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -153,6 +154,7 @@ async function initComponents(): Promise<TestComponents> {
 
   return {
     cache,
+    inMemoryCache,
     config,
     logs,
     server,

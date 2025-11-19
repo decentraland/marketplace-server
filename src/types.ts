@@ -47,6 +47,7 @@ export type GlobalContext = {
 export type BaseComponents = {
   config: IConfigComponent
   cache: ICacheStorageComponent
+  inMemoryCache: ICacheStorageComponent
   logs: ILoggerComponent
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
