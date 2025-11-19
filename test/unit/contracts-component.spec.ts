@@ -1,3 +1,4 @@
+import { ICacheStorageComponent } from '@dcl/core-commons'
 import { ChainId, Network, NFTCategory } from '@dcl/schemas'
 import { createContractsComponent } from '../../src/ports/contracts/component'
 import { DBCollection, IContractsComponent } from '../../src/ports/contracts/types'
@@ -5,7 +6,6 @@ import { IPgComponent } from '../../src/ports/db/types'
 import { SquidNetwork } from '../../src/types'
 import { createTestPgComponent } from '../components'
 import { createCacheMockedComponent } from '../mocks/cache-mock'
-import { ICacheStorageComponent } from '@dcl/core-commons'
 
 let inMemoryCache: ICacheStorageComponent
 let mockGet: jest.MockedFn<ICacheStorageComponent['get']>

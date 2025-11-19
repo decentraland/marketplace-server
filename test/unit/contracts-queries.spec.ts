@@ -1,5 +1,4 @@
 import { Network } from '@dcl/schemas'
-import { MARKETPLACE_SQUID_SCHEMA } from '../../src/constants'
 import { getCollectionsCountQuery, getCollectionsQuery } from '../../src/ports/contracts/queries'
 import { ContractFilters } from '../../src/ports/contracts/types'
 
