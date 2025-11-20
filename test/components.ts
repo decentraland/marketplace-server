@@ -12,6 +12,7 @@ import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
+import { createAccountsComponent } from '../src/ports/accounts/component'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
@@ -125,6 +126,7 @@ async function initComponents(): Promise<TestComponents> {
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
+  const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -179,6 +181,7 @@ async function initComponents(): Promise<TestComponents> {
     nfts,
     orders,
     collections,
+    accounts,
     owners,
     rentals,
     sales,

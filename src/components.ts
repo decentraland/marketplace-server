@@ -11,6 +11,7 @@ import { createRedisComponent } from '@dcl/redis-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
+import { createAccountsComponent } from './ports/accounts/component'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
@@ -145,6 +146,7 @@ export async function initComponents(): Promise<AppComponents> {
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
+  const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
@@ -197,6 +199,7 @@ export async function initComponents(): Promise<AppComponents> {
     nfts,
     orders,
     collections,
+    accounts,
     owners,
     rentals,
     sales,

@@ -19,6 +19,7 @@ import {
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
+import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
 
@@ -129,6 +130,17 @@ export const getCollectionsParams = (params: Params): CollectionFilters => {
     urn: params.getString('urn'),
     contractAddress: params.getAddress('contractAddress') || undefined,
     isOnSale: params.getBoolean('isOnSale'),
+    network: params.getValue<Network>('network', Network)
+  }
+}
+
+export const getAccountsParams = (params: Params): AccountFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<AccountSortBy>('sortBy', AccountSortBy),
+    id: params.getString('id'),
+    address: params.getList('address'),
     network: params.getValue<Network>('network', Network)
   }
 }
