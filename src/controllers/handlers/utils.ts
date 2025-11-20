@@ -18,8 +18,8 @@ import {
   EmoteOutcomeType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
-import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
+import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
 
