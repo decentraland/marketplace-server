@@ -10,9 +10,11 @@ import type { ICacheStorageComponent } from '@dcl/core-commons'
 import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { IAccountsComponent } from './ports/accounts/types'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
+import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
@@ -83,6 +85,8 @@ export type BaseComponents = {
   analyticsData: IAnalyticsDayDataComponent
   userAssets: IUserAssetsComponent
   contracts: IContractsComponent
+  collections: ICollectionsComponent
+  accounts: IAccountsComponent
 }
 
 // components used in runtime
