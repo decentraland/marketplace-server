@@ -19,7 +19,7 @@ function getAccountsSortByStatement(filters: AccountFilters): SQLStatement {
     case AccountSortBy.MOST_SPENT:
       return SQL` ORDER BY spent DESC `
     default:
-      return SQL` ORDER BY sales DESC `
+      return SQL` ORDER BY earned DESC `
   }
 }
 
