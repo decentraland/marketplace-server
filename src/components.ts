@@ -15,6 +15,7 @@ import { createAccountsComponent } from './ports/accounts/component'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
+import { createCollectionsComponent } from './ports/collections/component'
 import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
 import { createEventPublisher } from './ports/events/publisher'
@@ -144,6 +145,7 @@ export async function initComponents(): Promise<AppComponents> {
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
@@ -196,6 +198,7 @@ export async function initComponents(): Promise<AppComponents> {
     eventPublisher,
     nfts,
     orders,
+    collections,
     accounts,
     owners,
     rentals,
