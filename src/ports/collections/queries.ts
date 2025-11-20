@@ -1,5 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
 import { CollectionFilters, CollectionSortBy } from './types'
 
@@ -35,7 +36,7 @@ function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement 
   const FILTER_BY_IS_ON_SALE = filters.isOnSale === true ? SQL`search_is_store_minter = true` : null
   const FILTER_BY_NAME = filters.name ? SQL`name = ${filters.name}` : null
   const FILTER_BY_SEARCH = filters.search ? SQL`search_text LIKE ${`%${filters.search.trim().toLowerCase()}%`}` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL`network = ${filters.network}` : null
+  const FILTER_BY_NETWORK = filters.network ? SQL`network = ANY(${getDBNetworks(filters.network)})` : null
 
   // If sorting by recently listed, filter out null values
   const FILTER_BY_RECENTLY_LISTED = filters.sortBy === CollectionSortBy.RECENTLY_LISTED ? SQL`first_listed_at IS NOT NULL` : null

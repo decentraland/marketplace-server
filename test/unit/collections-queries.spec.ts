@@ -1,6 +1,7 @@
 import { Network } from '@dcl/schemas'
 import { getCollectionsCountQuery, getCollectionsQuery } from '../../src/ports/collections/queries'
 import { CollectionSortBy } from '../../src/ports/collections/types'
+import { SquidNetwork } from '../../src/types'
 
 describe('when querying for collections', () => {
   it('should always filter by is_approved = true', () => {
@@ -126,16 +127,16 @@ describe('when querying for collections', () => {
     describe('and network is MATIC', () => {
       it('should add the filter to the query', () => {
         const query = getCollectionsQuery({ network: Network.MATIC })
-        expect(query.text).toContain('network =')
-        expect(query.values).toEqual(expect.arrayContaining([Network.MATIC]))
+        expect(query.text).toContain('network = ANY')
+        expect(query.values[0]).toEqual([Network.MATIC, SquidNetwork.POLYGON])
       })
     })
 
     describe('and network is ETHEREUM', () => {
       it('should add the filter to the query', () => {
         const query = getCollectionsQuery({ network: Network.ETHEREUM })
-        expect(query.text).toContain('network =')
-        expect(query.values).toEqual(expect.arrayContaining([Network.ETHEREUM]))
+        expect(query.text).toContain('network = ANY')
+        expect(query.values[0]).toEqual([Network.ETHEREUM, SquidNetwork.ETHEREUM])
       })
     })
   })
@@ -153,7 +154,7 @@ describe('when querying for collections', () => {
       })
       expect(query.text).toContain('creator =')
       expect(query.text).toContain('search_text LIKE')
-      expect(query.text).toContain('network =')
+      expect(query.text).toContain('network = ANY')
       expect(query.text).toContain('search_is_store_minter = true')
       expect(query.text).toContain('ORDER BY name ASC')
       expect(query.text).toContain('LIMIT')
@@ -188,7 +189,7 @@ describe('when querying for collections count', () => {
       })
       expect(query.text).toContain('creator =')
       expect(query.text).toContain('search_text LIKE')
-      expect(query.text).toContain('network =')
+      expect(query.text).toContain('network = ANY')
     })
   })
 })
