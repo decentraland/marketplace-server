@@ -10,9 +10,9 @@ describe('getAccountsQuery', () => {
       filters = {}
     })
 
-    it('should return query with default sorting by sales', () => {
+    it('should return query with default sorting by earned', () => {
       const query = getAccountsQuery(filters)
-      expect(query.text).toContain('ORDER BY sales DESC')
+      expect(query.text).toContain('ORDER BY earned DESC')
     })
 
     it('should return query with default pagination', () => {
