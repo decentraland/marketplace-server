@@ -177,6 +177,7 @@ describe('when calling getNotificationEventForTrade function', () => {
           wearable_body_shapes: [],
           first_listed_at: new Date(),
           search_is_store_minter: false,
+          search_is_marketplace_v3_minter: false,
           network: SquidNetwork.ETHEREUM,
           id: '1',
           contract_address: '0xaddr',
