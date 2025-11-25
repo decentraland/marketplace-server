@@ -295,6 +295,7 @@ export function getGroupedWearablesByOwnerQuery(
         wearable.category,
         wearable.rarity,
         wearable.name,
+        metadata.item_type,
         COUNT(*) as amount,
         MIN(nft.transferred_at) as min_transferred_at,
         MAX(nft.transferred_at) as max_transferred_at,
@@ -357,7 +358,7 @@ export function getGroupedWearablesByOwnerQuery(
   }
 
   query.append(SQL`
-      GROUP BY nft.urn, wearable.category, wearable.rarity, wearable.name
+      GROUP BY nft.urn, wearable.category, wearable.rarity, wearable.name, metadata.item_type
     )
     SELECT * FROM grouped_wearables
   `)

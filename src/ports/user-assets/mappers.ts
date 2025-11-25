@@ -1,4 +1,5 @@
 import { EmoteCategory, Rarity, WearableCategory } from '@dcl/schemas'
+import { ItemType } from '../items/types'
 import { fixUrn } from '../nfts/utils'
 import { ProfileWearable, ProfileEmote, ProfileName, DappsDbRow, GroupedWearable, GroupedEmote } from './types'
 
@@ -56,6 +57,7 @@ export function fromDbRowsToNames(rows: DappsDbRow[]): ProfileName[] {
 // Type for grouped database results
 type GroupedDbRow = {
   urn: string
+  item_type: ItemType
   category: string
   rarity: string
   name: string
@@ -80,7 +82,8 @@ export function fromDbRowsToGroupedWearables(rows: GroupedDbRow[]): GroupedWeara
       rarity: row.rarity || Rarity.COMMON,
       minTransferredAt: row.min_transferred_at || 0,
       maxTransferredAt: row.max_transferred_at || 0,
-      category: (row.category as WearableCategory) || WearableCategory.EYEWEAR
+      category: (row.category as WearableCategory) || WearableCategory.EYEWEAR,
+      itemType: row.item_type
     }
   })
 }
