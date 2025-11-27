@@ -23,6 +23,7 @@ beforeEach(() => {
     reviewed_at: Date.now(),
     sold_at: Date.now(),
     search_is_store_minter: false,
+    search_is_marketplace_v3_minter: false,
     updated_at: Date.now(),
     uri: 'url',
     urn: 'urn',
@@ -87,44 +88,115 @@ describe('fromDBItemToItem', () => {
         rarity: Rarity.COMMON
       }
     })
-    it('should convert DBItem to Item for wearable items', () => {
-      const result = fromDBItemToItem(dbItem)
 
-      expect(result).toEqual({
-        id: dbItem.id,
-        name: dbItem.name,
-        thumbnail: dbItem.image,
-        url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
-        category: NFTCategory.WEARABLE,
-        contractAddress: dbItem.contract_address,
-        itemId: dbItem.item_id,
-        rarity: dbItem.rarity,
-        price: dbItem.trade_price,
-        available: dbItem.available,
-        isOnSale: false,
-        creator: dbItem.creator,
-        beneficiary: dbItem.trade_beneficiary,
-        createdAt: dbItem.created_at,
-        updatedAt: dbItem.updated_at,
-        reviewedAt: dbItem.reviewed_at,
-        soldAt: dbItem.sold_at,
-        tradeId: dbItem.trade_id,
-        tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
-        data: {
-          wearable: {
-            bodyShapes: dbItem.wearable_body_shapes,
-            category: dbItem.wearable_category as WearableCategory,
-            description: dbItem.description || '',
-            rarity: dbItem.rarity,
-            isSmart: dbItem.item_type === ItemType.SMART_WEARABLE_V1
-          }
-        },
-        network: getNetwork(dbItem.network),
-        chainId: getNetworkChainId(dbItem.network),
-        urn: dbItem.urn,
-        firstListedAt: dbItem.first_listed_at?.getTime(),
-        picks: { count: 0 },
-        utility: dbItem.utility
+    describe('and has marketplace v3 minter enabled with available items', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: true,
+          available: 5,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
+
+      it('should use trade price', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result).toEqual({
+          id: dbItem.id,
+          name: dbItem.name,
+          thumbnail: dbItem.image,
+          url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
+          category: NFTCategory.WEARABLE,
+          contractAddress: dbItem.contract_address,
+          itemId: dbItem.item_id,
+          rarity: dbItem.rarity,
+          price: dbItem.trade_price,
+          available: dbItem.available,
+          isOnSale: true,
+          creator: dbItem.creator,
+          beneficiary: dbItem.trade_beneficiary,
+          createdAt: dbItem.created_at,
+          updatedAt: dbItem.updated_at,
+          reviewedAt: dbItem.reviewed_at,
+          soldAt: dbItem.sold_at,
+          tradeId: dbItem.trade_id,
+          tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+          tradeContractAddress: dbItem.trade_contract as string,
+          data: {
+            wearable: {
+              bodyShapes: dbItem.wearable_body_shapes,
+              category: dbItem.wearable_category as WearableCategory,
+              description: dbItem.description || '',
+              rarity: dbItem.rarity,
+              isSmart: dbItem.item_type === ItemType.SMART_WEARABLE_V1
+            }
+          },
+          network: getNetwork(dbItem.network),
+          chainId: getNetworkChainId(dbItem.network),
+          urn: dbItem.urn,
+          firstListedAt: dbItem.first_listed_at?.getTime(),
+          picks: { count: 0 },
+          utility: dbItem.utility
+        })
+      })
+    })
+
+    describe('and marketplace v3 minter is disabled', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: false,
+          available: 5,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
+
+      it('should use price 0', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result.price).toBe('0')
+        expect(result.isOnSale).toBe(false)
+      })
+    })
+
+    describe('and available is 0', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: true,
+          available: 0,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
+
+      it('should use price 0', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result.price).toBe('0')
+        expect(result.isOnSale).toBe(false)
+      })
+    })
+
+    describe('and has store minter enabled with available items', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_store_minter: true,
+          search_is_marketplace_v3_minter: false,
+          available: 5,
+          price: '456'
+        }
+      })
+
+      it('should use item price', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result.price).toBe('456')
+        expect(result.isOnSale).toBe(true)
       })
     })
   })
@@ -138,48 +210,98 @@ describe('fromDBItemToItem', () => {
       }
     })
 
-    it('should convert DBItem to Item for emote items', () => {
-      const result = fromDBItemToItem(dbItem)
+    describe('and has marketplace v3 minter enabled with available items', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: true,
+          available: 3,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
 
-      expect(result).toEqual({
-        id: dbItem.id,
-        name: dbItem.name,
-        thumbnail: dbItem.image,
-        url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
-        category: NFTCategory.EMOTE,
-        contractAddress: dbItem.contract_address,
-        itemId: dbItem.item_id,
-        rarity: dbItem.rarity,
-        price: dbItem.trade_price,
-        available: dbItem.available,
-        isOnSale: false,
-        tradeId: dbItem.trade_id,
-        creator: dbItem.creator,
-        beneficiary: dbItem.trade_beneficiary,
-        createdAt: dbItem.created_at,
-        updatedAt: dbItem.updated_at,
-        reviewedAt: dbItem.reviewed_at,
-        soldAt: dbItem.sold_at,
-        tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
-        tradeContractAddress: dbItem.trade_contract as string,
-        data: {
-          emote: {
-            bodyShapes: dbItem.emote_body_shapes,
-            category: dbItem.emote_category as EmoteCategory,
-            description: dbItem.description || '',
-            rarity: dbItem.rarity,
-            loop: dbItem.loop || false,
-            hasSound: dbItem.has_sound || false,
-            hasGeometry: dbItem.has_geometry || false,
-            outcomeType: dbItem.emote_outcome_type || null
-          }
-        },
-        network: getNetwork(dbItem.network),
-        chainId: getNetworkChainId(dbItem.network),
-        urn: dbItem.urn,
-        firstListedAt: dbItem.first_listed_at?.getTime(),
-        picks: { count: 0 },
-        utility: dbItem.utility
+      it('should use trade price', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result).toEqual({
+          id: dbItem.id,
+          name: dbItem.name,
+          thumbnail: dbItem.image,
+          url: `/contracts/${dbItem.contract_address}/items/${dbItem.item_id}`,
+          category: NFTCategory.EMOTE,
+          contractAddress: dbItem.contract_address,
+          itemId: dbItem.item_id,
+          rarity: dbItem.rarity,
+          price: dbItem.trade_price,
+          available: dbItem.available,
+          isOnSale: true,
+          tradeId: dbItem.trade_id,
+          creator: dbItem.creator,
+          beneficiary: dbItem.trade_beneficiary,
+          createdAt: dbItem.created_at,
+          updatedAt: dbItem.updated_at,
+          reviewedAt: dbItem.reviewed_at,
+          soldAt: dbItem.sold_at,
+          tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+          tradeContractAddress: dbItem.trade_contract as string,
+          data: {
+            emote: {
+              bodyShapes: dbItem.emote_body_shapes,
+              category: dbItem.emote_category as EmoteCategory,
+              description: dbItem.description || '',
+              rarity: dbItem.rarity,
+              loop: dbItem.loop || false,
+              hasSound: dbItem.has_sound || false,
+              hasGeometry: dbItem.has_geometry || false,
+              outcomeType: dbItem.emote_outcome_type || null
+            }
+          },
+          network: getNetwork(dbItem.network),
+          chainId: getNetworkChainId(dbItem.network),
+          urn: dbItem.urn,
+          firstListedAt: dbItem.first_listed_at?.getTime(),
+          picks: { count: 0 },
+          utility: dbItem.utility
+        })
+      })
+    })
+
+    describe('and marketplace v3 minter is disabled', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: false,
+          available: 3,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
+
+      it('should use price 0', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result.price).toBe('0')
+        expect(result.isOnSale).toBe(false)
+      })
+    })
+
+    describe('and available is 0', () => {
+      beforeEach(() => {
+        dbItem = {
+          ...dbItem,
+          search_is_marketplace_v3_minter: true,
+          available: 0,
+          trade_id: '12',
+          trade_price: '123'
+        }
+      })
+
+      it('should use price 0', () => {
+        const result = fromDBItemToItem(dbItem)
+
+        expect(result.price).toBe('0')
+        expect(result.isOnSale).toBe(false)
       })
     })
   })
