@@ -1,4 +1,5 @@
 import { WearableCategory, EmoteCategory } from '@dcl/schemas'
+import { ItemType } from '../items/types'
 
 export type ItemFilters = {
   category?: string
@@ -125,6 +126,7 @@ export type GroupedWearable = {
   minTransferredAt: number
   maxTransferredAt: number
   category: WearableCategory
+  itemType: ItemType
 }
 
 export type GroupedEmote = {

@@ -9,6 +9,7 @@ import {
 } from '../../src/controllers/handlers/user-assets/wearables-handler'
 import { getUserAssetsParams } from '../../src/controllers/handlers/utils'
 import { Params } from '../../src/logic/http/params'
+import { ItemType } from '../../src/ports/items/types'
 import { IUserAssetsComponent } from '../../src/ports/user-assets/types'
 
 describe('User Assets Handlers', () => {
@@ -499,7 +500,8 @@ describe('User Assets Handlers', () => {
         rarity: 'common',
         minTransferredAt: 1640995200,
         maxTransferredAt: 1641081600,
-        category: WearableCategory.EYEWEAR
+        category: WearableCategory.EYEWEAR,
+        itemType: ItemType.WEARABLE_V2
       }
     ]
 
