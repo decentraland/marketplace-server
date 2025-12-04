@@ -86,6 +86,10 @@ tags:
     description: Payment gateway integration (Wert, Transak)
   - name: ENS
     description: ENS (Ethereum Name Service) utilities
+  - name: Accounts
+    description: Query account statistics and marketplace activity
+  - name: Collections
+    description: View and search marketplace collections
 paths:
   /ping:
     get:
@@ -1295,6 +1299,268 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/accounts:
+    get:
+      tags:
+        - Accounts
+      summary: Query account statistics and activity
+      description: |
+        Retrieves accounts with their marketplace activity statistics including sales, purchases, 
+        earnings, spending, royalties, and collection counts.
+        
+        Supports filtering and sorting by various metrics:
+        - Most sales, purchases, collections created
+        - Highest earnings, spending, or royalties earned
+        - Specific accounts by address or ID
+        - Network filtering (Ethereum, Polygon)
+        
+        Use this endpoint to:
+        - Display marketplace leaderboards
+        - Track user trading statistics
+        - Analyze account activity and performance
+        - Identify top sellers, buyers, and creators
+        
+        Results are paginated and can be sorted by different ranking criteria.
+      operationId: getAccounts
+      security: []
+      parameters:
+        - name: first
+          in: query
+          required: false
+          description: 'Maximum number of accounts to return (default: 100, max: 1000)'
+          schema:
+            type: number
+            example: 100
+        - name: skip
+          in: query
+          required: false
+          description: 'Number of accounts to skip for pagination (default: 0)'
+          schema:
+            type: number
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: |
+            Sort accounts by specific metrics:
+            - most_sales: Accounts with most items sold
+            - most_purchases: Accounts with most items purchased
+            - most_royalties: Accounts earning most royalties
+            - most_collections: Accounts with most collections created
+            - most_earned: Accounts with highest total earnings
+            - most_spent: Accounts with highest total spending
+          schema:
+            type: string
+            enum:
+              - most_sales
+              - most_purchases
+              - most_royalties
+              - most_collections
+              - most_earned
+              - most_spent
+            example: most_sales
+        - name: id
+          in: query
+          required: false
+          description: Filter by specific account ID
+          schema:
+            type: string
+        - name: address
+          in: query
+          required: false
+          description: Filter by one or more account addresses (can be repeated or comma-separated)
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: network
+          in: query
+          required: false
+          description: Filter by network
+          schema:
+            type: string
+            enum:
+              - ETHEREUM
+              - MATIC
+            example: ETHEREUM
+      responses:
+        '200':
+          description: Account statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Account'
+                  total:
+                    type: number
+                    description: Total number of accounts matching the filters
+                required:
+                  - data
+                  - total
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Could not fetch accounts
+  /v1/collections:
+    get:
+      tags:
+        - Collections
+      summary: List and search marketplace collections
+      description: |
+        Retrieves marketplace collections with their metadata and statistics.
+        
+        Supports comprehensive filtering:
+        - Search by collection name or text
+        - Filter by creator address
+        - Filter by contract address or URN
+        - Show only collections with items on sale
+        - Network filtering
+        
+        Sorting options:
+        - Newest collections
+        - Recently reviewed
+        - Alphabetical by name
+        - By collection size (item count)
+        - Recently listed
+        
+        Use this endpoint to:
+        - Browse marketplace collections
+        - Search for specific creator's collections
+        - Display collection catalogs
+        - Track new collection launches
+        
+        Results include collection metadata, item counts, and listing status.
+      operationId: getCollections
+      security: []
+      parameters:
+        - name: first
+          in: query
+          required: false
+          description: 'Maximum number of collections to return (default: 100, max: 1000)'
+          schema:
+            type: number
+            example: 100
+        - name: skip
+          in: query
+          required: false
+          description: 'Number of collections to skip for pagination (default: 0)'
+          schema:
+            type: number
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: |
+            Sort collections by:
+            - newest: Most recently created
+            - recently_reviewed: Most recently reviewed
+            - name: Alphabetical order
+            - size: Number of items in collection
+            - recently_listed: Most recently listed for sale
+          schema:
+            type: string
+            enum:
+              - newest
+              - recently_reviewed
+              - name
+              - size
+              - recently_listed
+            example: newest
+        - name: name
+          in: query
+          required: false
+          description: Filter by exact collection name
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          description: Search collections by name or description (text search)
+          schema:
+            type: string
+        - name: creator
+          in: query
+          required: false
+          description: Filter by creator wallet address
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: urn
+          in: query
+          required: false
+          description: Filter by collection URN (Uniform Resource Name)
+          schema:
+            type: string
+        - name: contractAddress
+          in: query
+          required: false
+          description: Filter by collection contract address
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: isOnSale
+          in: query
+          required: false
+          description: Filter collections that have items currently on sale
+          schema:
+            type: boolean
+            example: true
+        - name: network
+          in: query
+          required: false
+          description: Filter by blockchain network (ETHEREUM or MATIC)
+          schema:
+            type: string
+            enum:
+              - ETHEREUM
+              - MATIC
+            example: ETHEREUM
+      responses:
+        '200':
+          description: List of collections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Collection'
+                  total:
+                    type: number
+                    description: Total number of collections matching the filters
+                required:
+                  - data
+                  - total
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Could not fetch collections
   /v1/lists/{id}/access:
     post:
       tags:
@@ -1979,6 +2245,118 @@ components:
           description: User address to revoke access from
       required:
         - userAddress
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Account identifier
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        address:
+          type: string
+          description: Wallet address of the account
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        sales:
+          type: number
+          description: Total number of items sold
+          example: 42
+        purchases:
+          type: number
+          description: Total number of items purchased
+          example: 15
+        spent:
+          type: string
+          description: Total amount spent in Wei (as string to handle large numbers)
+          example: '5000000000000000000'
+        earned:
+          type: string
+          description: Total amount earned from sales in Wei
+          example: '10000000000000000000'
+        royalties:
+          type: string
+          description: Total royalties earned in Wei
+          example: '500000000000000000'
+        collections:
+          type: number
+          description: Number of collections created
+          example: 3
+      required:
+        - id
+        - address
+        - sales
+        - purchases
+        - spent
+        - earned
+        - royalties
+        - collections
+    Collection:
+      type: object
+      properties:
+        urn:
+          type: string
+          description: Collection URN (Uniform Resource Name)
+          example: 'urn:decentraland:matic:collections-v2:0xabcd1234...'
+        creator:
+          type: string
+          description: Creator wallet address
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        name:
+          type: string
+          description: Collection name
+          example: 'My Awesome Wearables'
+        contractAddress:
+          type: string
+          description: Smart contract address of the collection
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        createdAt:
+          type: number
+          description: Creation timestamp (Unix epoch in milliseconds)
+          example: 1640000000000
+        updatedAt:
+          type: number
+          description: Last update timestamp (Unix epoch in milliseconds)
+          example: 1640100000000
+        reviewedAt:
+          type: number
+          description: Review timestamp (Unix epoch in milliseconds)
+          example: 1640050000000
+        isOnSale:
+          type: boolean
+          description: Whether the collection has items currently on sale
+          example: true
+        size:
+          type: number
+          description: Number of items in the collection
+          example: 25
+        network:
+          type: string
+          enum:
+            - ETHEREUM
+            - MATIC
+          description: Blockchain network where the collection is deployed
+          example: MATIC
+        chainId:
+          type: number
+          description: Chain ID of the blockchain network
+          example: 137
+        firstListedAt:
+          type: number
+          nullable: true
+          description: Timestamp when first item was listed (Unix epoch in milliseconds, null if never listed)
+          example: 1640020000000
+      required:
+        - urn
+        - creator
+        - name
+        - contractAddress
+        - createdAt
+        - updatedAt
+        - reviewedAt
+        - isOnSale
+        - size
+        - network
+        - chainId
+        - firstListedAt
     Error:
       type: object
       properties:
