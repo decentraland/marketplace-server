@@ -9,6 +9,7 @@
     "start:watch": "nodemon src/index.ts",
     "check:code": "eslint -c .eslintrc.json {src,test}",
     "check:prettier": "prettier -c '{src,test}/**/*.{js,ts,json,yml,md}'",
+    "check:docs": "npx @redocly/cli@latest lint docs/openapi.yaml",
     "fix:code": "npm run check:code -- --fix",
     "fix:prettier": "npm run check:prettier -- --write",
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose -c jest.config.json",
