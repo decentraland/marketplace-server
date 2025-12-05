@@ -9,6 +9,7 @@ import { getAccountsHandler } from './handlers/accounts-handler'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
+import { getContractsHandler } from './handlers/contracts-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
@@ -120,6 +121,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+  router.get('/v1/contracts', getContractsHandler)
   router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/accounts', getAccountsHandler)
   router.get('/v1/owners', getOwnersHandler)

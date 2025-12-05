@@ -15,6 +15,7 @@ import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
+import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
 import { IEventPublisherComponent } from './ports/events/types'
@@ -48,6 +49,7 @@ export type GlobalContext = {
 export type BaseComponents = {
   config: IConfigComponent
   cache: ICacheStorageComponent
+  inMemoryCache: ICacheStorageComponent
   logs: ILoggerComponent
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
@@ -82,6 +84,7 @@ export type BaseComponents = {
   volumes: IVolumeComponent
   analyticsData: IAnalyticsDayDataComponent
   userAssets: IUserAssetsComponent
+  contracts: IContractsComponent
   collections: ICollectionsComponent
   accounts: IAccountsComponent
 }

@@ -20,6 +20,7 @@ import {
 import { Params } from '../../logic/http/params'
 import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
 import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
+import { ContractFilters, ContractSortBy } from '../../ports/contracts/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
 
@@ -116,6 +117,16 @@ export const getOrdersParams = (params: Params): OrderFilters => {
     network: params.getValue<Network>('network', Network),
     itemId: params.getValue('itemId'),
     nftName: params.getValue('nftName')
+  }
+}
+
+export const getContractsParams = (params: Params): ContractFilters => {
+  return {
+    first: params.getNumber('first'),
+    skip: params.getNumber('skip'),
+    sortBy: params.getValue<ContractSortBy>('sortBy', ContractSortBy),
+    category: params.getValue<NFTCategory>('category', NFTCategory),
+    network: params.getValue<Network>('network', Network)
   }
 }
 

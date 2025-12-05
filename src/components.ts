@@ -16,6 +16,7 @@ import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/compon
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createCollectionsComponent } from './ports/collections/component'
+import { createContractsComponent } from './ports/contracts/component'
 import { createPgComponent } from './ports/db/component'
 import { createENS } from './ports/ens/component'
 import { createEventPublisher } from './ports/events/publisher'
@@ -127,6 +128,7 @@ export async function initComponents(): Promise<AppComponents> {
   const schemaValidator = await createSchemaValidatorComponent()
 
   const cache = REDIS_URL ? await createRedisComponent(REDIS_URL, { logs }) : await createInMemoryCacheComponent()
+  const inMemoryCache = await createInMemoryCacheComponent() // Used for caching data that should not be stored in Redis
 
   const snapshot = await createSnapshotComponent({ fetch, config })
   const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
@@ -145,6 +147,7 @@ export async function initComponents(): Promise<AppComponents> {
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
@@ -174,6 +177,7 @@ export async function initComponents(): Promise<AppComponents> {
   return {
     bids,
     cache,
+    inMemoryCache,
     config,
     logs,
     server,
@@ -198,6 +202,7 @@ export async function initComponents(): Promise<AppComponents> {
     eventPublisher,
     nfts,
     orders,
+    contracts,
     collections,
     accounts,
     owners,

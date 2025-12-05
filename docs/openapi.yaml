@@ -64,6 +64,8 @@ tags:
     description: View marketplace items and collections
   - name: Orders
     description: Manage marketplace orders
+  - name: Contracts
+    description: Query smart contracts and collections available in the marketplace
   - name: Bids
     description: View and manage bids on marketplace items
   - name: Sales
@@ -551,6 +553,74 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Order'
+  /v1/contracts:
+    get:
+      tags:
+        - Contracts
+      summary: List smart contracts and collections
+      description: |
+        Retrieves smart contract addresses and collection information available in the marketplace.
+        
+        This endpoint returns both marketplace contracts (LAND, Estates, Names, etc.) 
+        and collection contracts (primarily wearables) from the database.
+        
+        **Contract Types:**
+        - **Marketplace Contracts**: Core Decentraland contracts including LAND parcels, Estates, ENS Names, and legacy wearable collections
+        - **Collection Contracts**: Third-party and creator collections, primarily wearables on Polygon network
+        
+        **Filter Options:**
+        - Category filtering (parcel, estate, ens, wearable, emote)
+        - Network filtering
+        
+        **Use Cases:**
+        - Retrieve contract addresses for specific NFT categories
+        - List all available collections in the marketplace
+        - Filter contracts by network
+        
+        **Response Structure:**
+        Each contract includes:
+        - Contract address
+        - Contract name
+        - NFT category (parcel, estate, ens, wearable, emote)
+        - Network
+        - Chain ID
+        
+        **Performance Notes:**
+        - Collection contracts are cached for 1 hour to improve performance
+        - Large result sets are automatically paginated with page size of 500
+        - Use category and network filters to reduce response size
+      operationId: getContracts
+      security: []
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category'
+          schema:
+            type: string
+            enum: [parcel, estate, ens, wearable, emote]
+            example: wearable
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
+      responses:
+        '200':
+          description: List of contracts with total count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/items:
     get:
       tags:
@@ -2369,3 +2439,62 @@ components:
           description: Error code
       required:
         - error
+    ContractsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contract'
+          description: List of contracts
+        total:
+          type: number
+          description: Total number of contracts matching the query
+      required:
+        - data
+        - total
+    Contract:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable name of the contract or collection
+          example: "Decentraland Wearables"
+        address:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+          description: Contract address
+          example: "0x123456789abcdef123456789abcdef0123456789"
+        category:
+          type: string
+          enum: [parcel, estate, ens, wearable, emote]
+          description: |
+            NFT category type:
+            - parcel: LAND parcels
+            - estate: Estate (group of LAND parcels)
+            - ens: Ethereum Name Service names
+            - wearable: Avatar wearables
+            - emote: Avatar emotes/animations
+          example: wearable
+        network:
+          type: string
+          enum: [ETHEREUM, MATIC]
+          description: |
+            Blockchain network:
+            - ETHEREUM: Ethereum mainnet
+            - MATIC: Polygon network
+          example: MATIC
+        chainId:
+          type: number
+          enum: [1, 137]
+          description: |
+            Blockchain chain ID:
+            - 1: Ethereum mainnet
+            - 137: Polygon mainnet
+          example: 137
+      required:
+        - name
+        - address
+        - category
+        - network
+        - chainId
