@@ -2259,7 +2259,7 @@ components:
         sales:
           type: number
           description: Total number of items sold
-          example: 42
+          example: 43
         purchases:
           type: number
           description: Total number of items purchased
