@@ -2340,8 +2340,9 @@ components:
           description: Chain ID of the blockchain network
           example: 137
         firstListedAt:
-          type: number
-          nullable: true
+          oneOf:
+            - type: number
+            - type: 'null'
           description: Timestamp when first item was listed (Unix epoch in milliseconds, null if never listed)
           example: 1640020000000
       required:
