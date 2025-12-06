@@ -47,6 +47,15 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
 }
 
 export function fromDBItemToItem(dbItem: DBItem): Item {
+  let price = '0'
+  if (dbItem.available > 0) {
+    if (dbItem.trade_id && dbItem.search_is_marketplace_v3_minter) {
+      price = dbItem.trade_price ?? '0'
+    } else if (dbItem.search_is_store_minter) {
+      price = dbItem.price
+    }
+  }
+
   const beneficiary = dbItem.trade_beneficiary || dbItem.beneficiary
   return {
     id: dbItem.id,
@@ -57,9 +66,9 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     contractAddress: dbItem.contract_address,
     itemId: dbItem.item_id,
     rarity: dbItem.rarity,
-    price: dbItem.trade_id ? dbItem.trade_price : dbItem.price,
+    price,
     available: dbItem.available,
-    isOnSale: !!(dbItem.search_is_store_minter || dbItem.trade_id) && dbItem.available > 0,
+    isOnSale: (dbItem.search_is_store_minter || (!!dbItem.trade_id && dbItem.search_is_marketplace_v3_minter)) && dbItem.available > 0,
     creator: dbItem.creator,
     beneficiary: isAddressZero(beneficiary) ? null : beneficiary,
     createdAt: dbItem.created_at,

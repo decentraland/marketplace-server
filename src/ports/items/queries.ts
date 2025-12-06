@@ -72,7 +72,7 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   const FITLER_BY_RARITY = filters.rarities && filters.rarities.length ? SQL` item.rarity = ANY (${filters.rarities}) ` : null
   const FILTER_BY_SOLD_OUT = filters.isSoldOut ? SQL` item.available = 0 ` : null
   const FILTER_BY_IS_ON_SALE = filters.isOnSale
-    ? SQL` ((unified_trades.id IS NOT NULL OR item.search_is_store_minter = true) AND item.available > 0) `
+    ? SQL` (((unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true) OR item.search_is_store_minter = true) AND item.available > 0) `
     : null
   const FILTER_BY_TEXT = filters.search ? SQL` item.search_text % ${filters.search} ` : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
@@ -89,10 +89,10 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   const FILTER_BY_ID = filters.ids && filters.ids.length ? SQL` item.id = ANY (${filters.ids}) ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` item.network = ANY (${getDBNetworks(filters.network)}) ` : null
   const FILTER_BY_MIN_PRICE = filters.minPrice
-    ? SQL` ((item.search_is_store_minter = true AND item.price >= ${filters.minPrice}) OR (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${filters.minPrice}) `
+    ? SQL` ((item.search_is_store_minter = true AND item.price >= ${filters.minPrice}) OR (item.search_is_marketplace_v3_minter = true AND unified_trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${filters.minPrice}) `
     : null
   const FILTER_BY_MAX_PRICE = filters.maxPrice
-    ? SQL` ((item.search_is_store_minter = true AND item.price <= ${filters.maxPrice}) OR (unified_trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${filters.maxPrice}) `
+    ? SQL` ((item.search_is_store_minter = true AND item.price <= ${filters.maxPrice}) OR (item.search_is_marketplace_v3_minter = true AND unified_trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${filters.maxPrice}) `
     : null
   const FILTER_BY_HAS_SOUND = filters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = filters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
@@ -153,6 +153,7 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       item.urn,
       item.network,
       item.search_is_store_minter,
+      item.search_is_marketplace_v3_minter,
       unified_trades.id as trade_id,
 	    coalesce(wearable.name, emote.name) as name,
       wearable.body_shapes as wearable_body_shapes,
