@@ -349,15 +349,15 @@ export const getContractAddressWhere = (filters: CatalogFilters) => {
 }
 
 export const getOnlyListingsWhere = () => {
-  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
+  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND listings_count > 0`
 }
 
 export const getOnlyListingsWhereWithTrades = () => {
-  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0) OR (items.search_is_marketplace_v3_minter = true AND (COALESCE(offchain_orders.items_listings_count, 0) = 0 OR available = 0))) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
+  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0) OR (items.search_is_marketplace_v3_minter = true AND COALESCE(offchain_orders.items_listings_count, 0) = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
 }
 
 export const getOnlyMintingWhere = () => {
-  return SQL`(items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true) AND available > 0`
+  return SQL`items.search_is_store_minter = true AND available > 0`
 }
 
 export const getOnlyMintingWhereWithTrades = () => {
