@@ -93,6 +93,15 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     }
   }
 
+  let price = '0'
+  if (+dbItem.available > 0) {
+    if (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter) {
+      price = dbItem.open_item_trade_price ?? '0'
+    } else if (dbItem.search_is_store_minter) {
+      price = dbItem.price
+    }
+  }
+
   const itemNetwork = dbItem.network ?? network ?? Network.MATIC
   return {
     id: dbItem.id,
@@ -106,12 +115,13 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     contractAddress: dbItem.collection_id,
     rarity: dbItem.rarity as Rarity,
     available: +dbItem.available,
-    isOnSale: !!(dbItem.search_is_store_minter || dbItem.open_item_trade_id) && +dbItem.available > 0,
+    isOnSale:
+      !!(dbItem.search_is_store_minter || (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter)) && +dbItem.available > 0,
     creator: dbItem.creator,
     data,
     network: itemNetwork.toUpperCase() === 'POLYGON' ? Network.MATIC : Network.ETHEREUM,
     chainId: itemNetwork === Network.ETHEREUM ? getEthereumChainId() : getPolygonChainId(),
-    price: dbItem.open_item_trade_id && dbItem.open_item_trade_price && +dbItem.available > 0 ? dbItem.open_item_trade_price : dbItem.price,
+    price,
     createdAt: Number(dbItem.created_at),
     updatedAt: Number(dbItem.updated_at),
     reviewedAt: Number(dbItem.reviewed_at),
