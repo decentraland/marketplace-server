@@ -138,8 +138,12 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
 
     const allContracts = [...marketplaceContracts, ...allCollectionContracts]
 
+    const { first = 0, skip = 0 } = filters
+    const filteredContracts =
+      first <= 0 ? allContracts.slice(Math.max(0, skip)) : allContracts.slice(Math.max(0, skip), Math.max(0, skip) + first)
+
     return {
-      data: allContracts,
+      data: filteredContracts,
       total: allContracts.length
     }
   }

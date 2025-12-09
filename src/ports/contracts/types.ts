@@ -25,5 +25,4 @@ export type DBCollection = {
   name: string
   chain_id: number
   network: SquidNetwork
-  count: number
 }

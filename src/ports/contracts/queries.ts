@@ -28,8 +28,7 @@ export function getCollectionsQuery(filters: ContractFilters): SQLStatement {
       c.id,
       c.name,
       c.chain_id,
-      c.network,
-      COUNT(*) OVER() as count
+      c.network
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.collection c`)

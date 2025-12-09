@@ -567,11 +567,19 @@ paths:
         **Filter Options:**
         - Category filtering (parcel, estate, ens, wearable, emote)
         - Network filtering
+        - Pagination (first/skip)
+        
+        **Pagination:**
+        - Use `first` and `skip` parameters for pagination
+        - `first=0` returns all results (no limit)
+        - `skip` allows you to skip the first N results
+        - Pagination is applied after category and network filters
         
         **Use Cases:**
         - Retrieve contract addresses for specific NFT categories
         - List all available collections in the marketplace
         - Filter contracts by network
+        - Paginate through large result sets
         
         **Response Structure:**
         Each contract includes:
@@ -583,8 +591,8 @@ paths:
         
         **Performance Notes:**
         - Collection contracts are cached for 1 hour to improve performance
-        - Large result sets are automatically paginated with page size of 500
         - Use category and network filters to reduce response size
+        - Pagination is applied in-memory after fetching all matching contracts
       operationId: getContracts
       security: []
       parameters:
@@ -604,6 +612,24 @@ paths:
             type: string
             enum: [ETHEREUM, MATIC]
             example: MATIC
+        - name: first
+          in: query
+          required: false
+          description: 'Maximum number of contracts to return. Use 0 to return all results (default: 0)'
+          schema:
+            type: number
+            default: 0
+            minimum: 0
+            example: 10
+        - name: skip
+          in: query
+          required: false
+          description: 'Number of contracts to skip for pagination (default: 0)'
+          schema:
+            type: number
+            default: 0
+            minimum: 0
+            example: 0
       responses:
         '200':
           description: List of contracts with total count

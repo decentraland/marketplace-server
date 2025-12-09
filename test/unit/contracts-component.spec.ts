@@ -10,6 +10,9 @@ import { createCacheMockedComponent } from '../mocks/cache-mock'
 let inMemoryCache: ICacheStorageComponent
 let mockGet: jest.MockedFn<ICacheStorageComponent['get']>
 let mockSet: jest.MockedFn<ICacheStorageComponent['set']>
+let contractsComponent: IContractsComponent
+let pgComponent: IPgComponent
+let pgQueryMock: jest.Mock
 
 jest.mock('../../src/logic/chainIds', () => ({
   getEthereumChainId: () => ChainId.ETHEREUM_SEPOLIA,
@@ -18,23 +21,25 @@ jest.mock('../../src/logic/chainIds', () => ({
   getNetworkChainId: (network: string) => (network === SquidNetwork.POLYGON ? ChainId.MATIC_AMOY : ChainId.ETHEREUM_SEPOLIA)
 }))
 
-describe('when getting marketplace contracts', () => {
-  let contractsComponent: IContractsComponent
-  let pgComponent: IPgComponent
+beforeEach(() => {
+  mockGet = jest.fn()
+  mockSet = jest.fn()
+  pgQueryMock = jest.fn()
 
-  beforeEach(() => {
-    mockGet = jest.fn()
-    mockSet = jest.fn()
-
-    inMemoryCache = createCacheMockedComponent({
-      get: mockGet as any,
-      set: mockSet
-    })
-
-    pgComponent = createTestPgComponent({ query: jest.fn() })
-    contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
+  inMemoryCache = createCacheMockedComponent({
+    get: mockGet as any,
+    set: mockSet
   })
 
+  pgComponent = createTestPgComponent({ query: pgQueryMock })
+  contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
+})
+
+afterEach(() => {
+  jest.resetAllMocks()
+})
+
+describe('when getting marketplace contracts', () => {
   it('should include LAND, Estates, and Names contracts', () => {
     const contracts = contractsComponent.getMarketplaceContracts()
 
@@ -45,43 +50,18 @@ describe('when getting marketplace contracts', () => {
 })
 
 describe('when getting collection contracts', () => {
-  let contractsComponent: IContractsComponent
-  let pgComponent: IPgComponent
-  let pgQueryMock: jest.Mock
-
-  beforeEach(() => {
-    mockGet = jest.fn()
-    mockSet = jest.fn()
-
-    inMemoryCache = createCacheMockedComponent({
-      get: mockGet as any,
-      set: mockSet
-    })
-  })
-
   describe('and there are no collections', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValue({ rows: [] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValue({ rows: [] })
     })
 
     it('should return empty data with 0 total', async () => {
       const result = await contractsComponent.getCollectionContracts()
       expect(result).toEqual({ data: [], total: 0 })
     })
-
-    it('should call the database query twice in parallel', async () => {
-      await contractsComponent.getCollectionContracts()
-      expect(pgQueryMock).toHaveBeenCalledTimes(2)
-    })
   })
 
-  describe('and there is a collection with wearables', () => {
+  describe('and there is a collection', () => {
     let dbCollections: DBCollection[]
 
     beforeEach(() => {
@@ -90,20 +70,10 @@ describe('when getting collection contracts', () => {
           id: '0x1096f950841a99f9b961434714d9a08d3d4ebdff',
           name: 'Test Collection',
           chain_id: ChainId.MATIC_AMOY,
-          network: SquidNetwork.POLYGON,
-          count: 1
+          network: SquidNetwork.POLYGON
         }
       ]
-      pgQueryMock = jest
-        .fn()
-        .mockResolvedValueOnce({ rows: dbCollections })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: dbCollections }).mockResolvedValueOnce({ rows: [{ count: '1' }] })
     })
 
     it('should return wearable contract', async () => {
@@ -120,98 +90,12 @@ describe('when getting collection contracts', () => {
       expect(result.total).toBe(1)
     })
   })
-
-  describe('and there is a collection with emotes', () => {
-    let dbCollections: DBCollection[]
-
-    beforeEach(() => {
-      dbCollections = [
-        {
-          id: '0x2096f950841a99f9b961434714d9a08d3d4ebdff',
-          name: 'Emote Collection',
-          chain_id: ChainId.MATIC_AMOY,
-          network: SquidNetwork.POLYGON,
-          count: 1
-        }
-      ]
-      pgQueryMock = jest
-        .fn()
-        .mockResolvedValueOnce({ rows: dbCollections })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
-    })
-
-    it('should return wearable contract', async () => {
-      const result = await contractsComponent.getCollectionContracts()
-
-      expect(result.data).toHaveLength(1)
-      expect(result.data[0].category).toBe(NFTCategory.WEARABLE)
-    })
-  })
-
-  describe('and there is a collection with both wearables and emotes', () => {
-    let dbCollections: DBCollection[]
-
-    beforeEach(() => {
-      dbCollections = [
-        {
-          id: '0x3096f950841a99f9b961434714d9a08d3d4ebdff',
-          name: 'Mixed Collection',
-          chain_id: ChainId.MATIC_AMOY,
-          network: SquidNetwork.POLYGON,
-          count: 1
-        }
-      ]
-      pgQueryMock = jest
-        .fn()
-        .mockResolvedValueOnce({ rows: dbCollections })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
-    })
-
-    it('should return a single wearable contract', async () => {
-      const result = await contractsComponent.getCollectionContracts()
-
-      expect(result.data).toHaveLength(1)
-      expect(result.data[0].category).toBe(NFTCategory.WEARABLE)
-    })
-  })
 })
 
 describe('when getting all collection contracts', () => {
-  let contractsComponent: IContractsComponent
-  let pgComponent: IPgComponent
-  let pgQueryMock: jest.Mock
-
-  beforeEach(() => {
-    mockGet = jest.fn()
-    mockSet = jest.fn()
-
-    inMemoryCache = createCacheMockedComponent({
-      get: mockGet as any,
-      set: mockSet
-    })
-  })
-
   describe('and there are no contracts', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '0' }] })
     })
 
     it('should return empty array and only call count query', async () => {
@@ -229,20 +113,10 @@ describe('when getting all collection contracts', () => {
           id: '0x1',
           name: 'Collection 1',
           chain_id: ChainId.MATIC_AMOY,
-          network: SquidNetwork.POLYGON,
-          count: 1
+          network: SquidNetwork.POLYGON
         }
       ]
-      pgQueryMock = jest
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-        .mockResolvedValueOnce({ rows: dbCollections })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '1' }] }).mockResolvedValueOnce({ rows: dbCollections })
     })
 
     it('should fetch count once then data in a single page', async () => {
@@ -277,21 +151,13 @@ describe('when getting all collection contracts', () => {
           count: 600
         }))
 
-      pgQueryMock = jest
-        .fn()
+      pgQueryMock
         // Count query (once)
         .mockResolvedValueOnce({ rows: [{ count: '600' }] })
         // First page data
         .mockResolvedValueOnce({ rows: firstPageCollections })
         // Second page data
         .mockResolvedValueOnce({ rows: secondPageCollections })
-
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
     })
 
     it('should fetch count once then paginate through data', async () => {
@@ -317,13 +183,6 @@ describe('when getting all collection contracts', () => {
           }
         ]
         mockGet.mockResolvedValueOnce(cachedContracts)
-        pgQueryMock = jest.fn()
-        pgComponent = createTestPgComponent({ query: pgQueryMock })
-        contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-      })
-
-      afterEach(() => {
-        jest.resetAllMocks()
       })
 
       it('should return cached data', async () => {
@@ -355,20 +214,10 @@ describe('when getting all collection contracts', () => {
             id: '0x1',
             name: 'Fresh Collection',
             chain_id: ChainId.MATIC_AMOY,
-            network: SquidNetwork.POLYGON,
-            count: 1
+            network: SquidNetwork.POLYGON
           }
         ]
-        pgQueryMock = jest
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-          .mockResolvedValueOnce({ rows: dbCollections })
-        pgComponent = createTestPgComponent({ query: pgQueryMock })
-        contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-      })
-
-      afterEach(() => {
-        jest.resetAllMocks()
+        pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '1' }] }).mockResolvedValueOnce({ rows: dbCollections })
       })
 
       it('should fetch data from the database', async () => {
@@ -404,29 +253,9 @@ describe('when getting all collection contracts', () => {
 })
 
 describe('when getting all contracts', () => {
-  let contractsComponent: IContractsComponent
-  let pgComponent: IPgComponent
-  let pgQueryMock: jest.Mock
-
-  beforeEach(() => {
-    mockGet = jest.fn()
-    mockSet = jest.fn()
-
-    inMemoryCache = createCacheMockedComponent({
-      get: mockGet as any,
-      set: mockSet
-    })
-  })
-
   describe('and there are only marketplace contracts', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '0' }] })
     })
 
     it('should return only marketplace contracts', async () => {
@@ -445,20 +274,10 @@ describe('when getting all contracts', () => {
           id: '0x1',
           name: 'Custom Collection',
           chain_id: ChainId.MATIC_AMOY,
-          network: SquidNetwork.POLYGON,
-          count: 1
+          network: SquidNetwork.POLYGON
         }
       ]
-      pgQueryMock = jest
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-        .mockResolvedValueOnce({ rows: dbCollections })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '1' }] }).mockResolvedValueOnce({ rows: dbCollections })
     })
 
     it('should merge marketplace and collection contracts', async () => {
@@ -472,13 +291,7 @@ describe('when getting all contracts', () => {
 
   describe('and category filter is provided', () => {
     beforeEach(() => {
-      pgQueryMock = jest.fn().mockResolvedValueOnce({ rows: [{ count: '0' }] })
-      pgComponent = createTestPgComponent({ query: pgQueryMock })
-      contractsComponent = createContractsComponent({ dappsDatabase: pgComponent, inMemoryCache })
-    })
-
-    afterEach(() => {
-      jest.resetAllMocks()
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '0' }] })
     })
 
     it('should filter marketplace contracts by category', async () => {
@@ -486,6 +299,197 @@ describe('when getting all contracts', () => {
 
       expect(result.data.every(c => c.category === NFTCategory.PARCEL)).toBe(true)
       expect(result.data.some(c => c.name === 'LAND')).toBe(true)
+    })
+  })
+
+  describe('and skip filter is provided', () => {
+    let dbCollections: DBCollection[]
+
+    beforeEach(() => {
+      dbCollections = [
+        {
+          id: '0x1',
+          name: 'Collection A',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x2',
+          name: 'Collection B',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x3',
+          name: 'Collection C',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        }
+      ]
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '3' }] }).mockResolvedValueOnce({ rows: dbCollections })
+    })
+
+    describe('and skip is 0', () => {
+      it('should return all contracts', async () => {
+        const result = await contractsComponent.getContracts({ skip: 0, network: Network.MATIC })
+
+        expect(result.data.length).toBe(dbCollections.length)
+      })
+    })
+
+    describe('and skip is greater than 0', () => {
+      it('should skip the specified number of contracts', async () => {
+        const skipAmount = 2
+        const result = await contractsComponent.getContracts({ skip: skipAmount, network: Network.MATIC })
+
+        expect(result.data.length).toBe(dbCollections.length - skipAmount)
+        expect(result.data[0].name).toBe(dbCollections[skipAmount].name)
+      })
+    })
+
+    describe('and skip is greater than total contracts', () => {
+      it('should return empty array', async () => {
+        const result = await contractsComponent.getContracts({ skip: 1000, network: Network.MATIC })
+
+        expect(result.data).toEqual([])
+      })
+    })
+  })
+
+  describe('and first filter is provided', () => {
+    let dbCollections: DBCollection[]
+
+    beforeEach(() => {
+      dbCollections = [
+        {
+          id: '0x1',
+          name: 'Collection A',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x2',
+          name: 'Collection B',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x3',
+          name: 'Collection C',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x4',
+          name: 'Collection D',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x5',
+          name: 'Collection E',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        }
+      ]
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '5' }] }).mockResolvedValueOnce({ rows: dbCollections })
+    })
+
+    describe('and first is 0', () => {
+      it('should return all contracts', async () => {
+        const result = await contractsComponent.getContracts({ first: 0, network: Network.MATIC })
+
+        expect(result.data.length).toBe(dbCollections.length)
+      })
+    })
+
+    describe('and first is greater than 0', () => {
+      it('should return only the specified number of contracts', async () => {
+        const firstAmount = 3
+        const result = await contractsComponent.getContracts({ first: firstAmount, network: Network.MATIC })
+
+        expect(result.data.length).toBe(firstAmount)
+      })
+    })
+
+    describe('and first is greater than total contracts', () => {
+      it('should return all available contracts', async () => {
+        const result = await contractsComponent.getContracts({ first: 1000, network: Network.MATIC })
+
+        expect(result.data.length).toBe(dbCollections.length)
+      })
+    })
+  })
+
+  describe('and both first and skip filters are provided', () => {
+    let dbCollections: DBCollection[]
+
+    beforeEach(() => {
+      dbCollections = [
+        {
+          id: '0x1',
+          name: 'Collection A',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x2',
+          name: 'Collection B',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x3',
+          name: 'Collection C',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x4',
+          name: 'Collection D',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        },
+        {
+          id: '0x5',
+          name: 'Collection E',
+          chain_id: ChainId.MATIC_AMOY,
+          network: SquidNetwork.POLYGON
+        }
+      ]
+      pgQueryMock.mockResolvedValueOnce({ rows: [{ count: '5' }] }).mockResolvedValueOnce({ rows: dbCollections })
+    })
+
+    describe('and skip and first are within bounds', () => {
+      it('should skip then limit results', async () => {
+        const skipAmount = 1
+        const firstAmount = 2
+        const result = await contractsComponent.getContracts({ skip: skipAmount, first: firstAmount, network: Network.MATIC })
+
+        expect(result.data.length).toBe(firstAmount)
+        expect(result.data[0].name).toBe(dbCollections[skipAmount].name)
+        expect(result.data[1].name).toBe(dbCollections[skipAmount + 1].name)
+      })
+    })
+
+    describe('and skip plus first exceeds total', () => {
+      it('should return remaining contracts after skip', async () => {
+        const skipAmount = dbCollections.length - 2
+        const firstAmount = 10
+        const result = await contractsComponent.getContracts({ skip: skipAmount, first: firstAmount, network: Network.MATIC })
+
+        expect(result.data.length).toBe(2)
+      })
+    })
+
+    describe('and first is 0 with skip', () => {
+      it('should skip but return all remaining contracts', async () => {
+        const skipAmount = 2
+        const result = await contractsComponent.getContracts({ skip: skipAmount, first: 0, network: Network.MATIC })
+
+        expect(result.data.length).toBe(dbCollections.length - skipAmount)
+        expect(result.data[0].name).toBe(dbCollections[skipAmount].name)
+      })
     })
   })
 })
