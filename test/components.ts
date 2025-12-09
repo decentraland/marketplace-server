@@ -17,6 +17,7 @@ import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/c
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
+import { createContractsComponent } from '../src/ports/contracts/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { createENS } from '../src/ports/ens/component'
@@ -122,9 +123,11 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
+  const inMemoryCache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
@@ -155,6 +158,7 @@ async function initComponents(): Promise<TestComponents> {
 
   return {
     cache,
+    inMemoryCache,
     config,
     logs,
     server,
@@ -180,6 +184,7 @@ async function initComponents(): Promise<TestComponents> {
     eventPublisher,
     nfts,
     orders,
+    contracts,
     collections,
     accounts,
     owners,
