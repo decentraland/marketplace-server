@@ -840,7 +840,23 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
 
   // Handle onlyListing filter
   if (filters.onlyListing) {
-    query.append(SQL` AND (items.search_is_store_minter = false OR (items.search_is_store_minter = true AND items.available = 0))`)
+    // Match the logic from getOnlyListingsWhereWithTrades:
+    // - Items that are NOT minting (neither store minter nor marketplace_v3 minter)
+    // - OR store minter items that are sold out
+    // - OR marketplace_v3 minter items that have no active item trades (public_item_order)
+    query.append(SQL` AND (
+      (items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false)
+      OR (items.search_is_store_minter = true AND items.available = 0)
+      OR (items.search_is_marketplace_v3_minter = true AND NOT EXISTS (
+        SELECT 1
+        FROM marketplace.mv_trades AS t
+        WHERE t.status = 'open'
+          AND t.type = 'public_item_order'
+          AND (t.available IS NULL OR t.available > 0)
+          AND t.contract_address_sent = items.collection_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+      ))
+    )`)
     query
       .append(
         SQL` AND (
