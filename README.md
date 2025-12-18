@@ -60,7 +60,7 @@ The API is fully documented using the [OpenAPI standard](https://swagger.io/spec
 
 ### Authentication
 
-Most endpoints support optional authentication using Decentraland's signed fetch mechanism. The authentication method is Signed Fetch and follows the [ADR-44](https://adr.decentraland.org/adr/ADR-44) specification.
+Most endpoints require authentication using Decentraland's signed fetch mechanism or expect it optionally. The authentication method is Signed Fetch and follows the [ADR-44](https://adr.decentraland.org/adr/ADR-44) specification.
 
 Required authentication endpoints:
 
