@@ -2,15 +2,6 @@
 
 This document describes the database schema for the Marketplace Server. The schema uses PostgreSQL and is managed through migrations located in `src/migrations/`. The service uses multiple schemas and also integrates with external Squid indexer data.
 
-## Schemas Overview
-
-The database contains the following schemas:
-1. **`marketplace`** - Trade and order management
-2. **`favorites`** (public schema) - User favorites lists and picks
-3. **External**: Squid indexer schema (read-only, for on-chain NFT data)
-
----
-
 ## Database Schema Diagram
 
 ```mermaid
@@ -61,6 +52,7 @@ erDiagram
         TEXT name "List name"
         TEXT description "Description"
         TEXT user_address "Owner address"
+        BOOLEAN is_private "Privacy flag"
         TIMESTAMP created_at "Creation time"
         TIMESTAMP updated_at "Update time"
     }
@@ -91,6 +83,14 @@ erDiagram
     lists ||--o{ acl : "has permissions"
 ```
 
+## Schemas Overview
+
+The database contains the following schemas:
+
+1. **`marketplace`** - Trade and order management
+2. **`favorites`** (public schema) - User favorites lists and picks
+3. **External**: Squid indexer schema (read-only, for on-chain NFT data)
+
 **Relationship Notes:**
 - **Foreign Keys**: `marketplace_trade_assets.trade_id` → `marketplace.trades.id`, `picks.list_id` → `lists.id`, `acl.list_id` → `lists.id`
 - **Cascade Deletes**: All trade assets cascade delete when trade is deleted, picks and ACL cascade delete when list is deleted
@@ -113,10 +113,10 @@ Stores trade orders (bids, public orders) for the marketplace.
 | Column | Type | Nullable | Description |
 |--------|------|----------|-------------|
 | `id` | UUID | NOT NULL | **Primary Key**. Unique trade identifier. Auto-generated. |
-| `network` | TEXT | NOT NULL | Network name (e.g., `"ethereum"`, `"polygon"`). |
-| `chain_id` | INTEGER | NOT NULL | Blockchain chain ID. |
+| `network` | TEXT | NOT NULL | Network name (e.g., `"ETHEREUM"`, `"MATIC"`). |
+| `chain_id` | INTEGER | NOT NULL | Blockchain chain ID (1 for Ethereum, 137 for Polygon). |
 | `signature` | TEXT | NOT NULL | **Unique**. Trade signature. |
-| `hashed_signature` | TEXT | NOT NULL | **Unique**. Hashed version of signature. |
+| `hashed_signature` | TEXT | NOT NULL | **Unique**. Keccak-256 hashed version of signature. |
 | `checks` | JSONB | NOT NULL | Validation checks performed on the trade. |
 | `signer` | VARCHAR(42) | NOT NULL | Ethereum address of the trade signer. |
 | `type` | trade_type | NOT NULL | Type of trade. Valid values: `"BID"`, `"PUBLIC_ITEM_ORDER"`, `"PUBLIC_NFT_ORDER"`. |
@@ -133,9 +133,10 @@ Stores trade orders (bids, public orders) for the marketplace.
 
 ### Business Rules
 
-1. Trades represent marketplace orders (bids, public orders)
+1. Trades represent marketplace orders (bids, public item orders, public NFT orders)
 2. Signatures are unique to prevent duplicate trades
 3. Trades expire based on `expires_at` timestamp
+4. `effective_since` allows scheduling trades for future activation
 
 ---
 
@@ -150,20 +151,30 @@ Stores assets involved in trades (ERC20, ERC721, Collection Items).
 | `id` | UUID | NOT NULL | **Primary Key**. Unique asset identifier. Auto-generated. |
 | `trade_id` | UUID | NOT NULL | **Foreign Key** to `marketplace.trades.id`. Cascade delete. |
 | `direction` | asset_direction_type | NOT NULL | Asset direction. Valid values: `"SENT"`, `"RECEIVED"`. |
-| `asset_type` | SMALLINT | NOT NULL | Asset type. Values: `1` (ERC20), `2` (USD_PEGGED_MANA), `3` (ERC721), `4` (COLLECTION_ITEM). |
+| `asset_type` | SMALLINT | NOT NULL | Asset type code (see below). |
 | `contract_address` | VARCHAR(42) | NOT NULL | Contract address of the asset. |
 | `beneficiary` | VARCHAR(42) | NULL | Beneficiary address (if applicable). |
 | `extra` | TEXT | NULL | Additional asset data. |
 | `created_at` | TIMESTAMPTZ(3) | NOT NULL | Timestamp when the asset was created. Defaults to `now()`. |
 
+### Asset Type Values
+
+| Value | Type | Description |
+|-------|------|-------------|
+| `1` | ERC20 | Standard ERC20 token |
+| `2` | USD_PEGGED_MANA | USD-pegged MANA token |
+| `3` | ERC721 | Standard ERC721 NFT |
+| `4` | COLLECTION_ITEM | Decentraland collection item |
+
 ### Indexes
 
 - **Primary Key**: `id`
+- **Index**: `trade_id` for efficient trade lookups
 
 ### Business Rules
 
-1. Each trade can have multiple assets
-2. Asset direction indicates if asset is sent or received
+1. Each trade can have multiple assets (sent and received)
+2. Asset direction indicates if asset is sent or received in the trade
 3. Asset type determines which detail table contains specific data
 
 ---
@@ -199,7 +210,7 @@ Stores ERC20-specific details for trade assets.
 | Column | Type | Nullable | Description |
 |--------|------|----------|-------------|
 | `asset_id` | UUID | NOT NULL | **Foreign Key** to `marketplace.trade_assets.id`. Cascade delete. |
-| `amount` | NUMERIC(78,0) | NOT NULL | ERC20 amount. Must be >= 0 and < 2^256. |
+| `amount` | NUMERIC(78,0) | NOT NULL | ERC20 amount in wei. Must be >= 0 and < 2^256. |
 
 ### Indexes
 
@@ -257,6 +268,7 @@ Stores user-created favorites lists.
 | `name` | TEXT | NOT NULL | List name. |
 | `description` | TEXT | NULL | List description. |
 | `user_address` | TEXT | NOT NULL | Ethereum address of the list owner. |
+| `is_private` | BOOLEAN | NOT NULL | Privacy flag. `true` for private lists. Defaults to `false`. |
 | `created_at` | TIMESTAMP | NOT NULL | Timestamp when the list was created. Defaults to `now()`. |
 | `updated_at` | TIMESTAMP | NOT NULL | Timestamp when the list was last updated. Defaults to `now()`. |
 
@@ -264,12 +276,14 @@ Stores user-created favorites lists.
 
 - **Primary Key**: `id`
 - **Unique Constraint**: `(name, user_address)` - One list per name per user
+- **Index**: `user_address` for efficient user queries
 
 ### Business Rules
 
-1. Users can create multiple lists
+1. Users can create multiple lists with unique names
 2. List names must be unique per user
 3. Default list exists with ID `70ab6873-4a03-4eb2-b331-4b8be0e0b8af` for user `0x0000000000000000000000000000000000000000`
+4. Private lists are only visible to owner and users granted access via ACL
 
 ---
 
@@ -289,12 +303,13 @@ Stores items added to lists (favorites).
 ### Indexes
 
 - **Composite Primary Key**: `(item_id, user_address, list_id)` - One pick per item per user per list
-- **Index**: On `created_at` for chronological queries
+- **Index**: `created_at` for chronological queries
+- **Index**: `list_id` for efficient list lookups
 
 ### Business Rules
 
 1. Users can add items to multiple lists
-2. One pick per item per user per list
+2. Same item can appear in multiple lists for the same user
 3. Deleted lists cascade delete all picks
 
 ---
@@ -317,9 +332,11 @@ Stores access control list permissions for lists.
 
 ### Business Rules
 
-1. Controls who can view or edit lists
+1. Controls who can view or edit private lists
 2. Permissions are granted per list per user
 3. Deleted lists cascade delete all ACL entries
+4. `"view"` permission allows reading private list content
+5. `"edit"` permission allows adding/removing picks
 
 ---
 
@@ -342,18 +359,50 @@ Stores user voting power for governance features.
 
 1. One voting power record per user
 2. Used for governance and voting features
+3. Power values are synced from external snapshot sources
 
 ---
 
 ## External Schema: Squid Indexer
 
 The service also reads from an external Squid indexer PostgreSQL schema for on-chain NFT data. This schema is managed by the Squid indexer service and contains:
-- NFT metadata
-- Sales history
-- Order data
-- On-chain transaction data
 
-The marketplace server uses Foreign Data Wrappers (FDW) to access this external data.
+- NFT metadata (wearables, emotes, LAND, estates, ENS names)
+- Sales history and transaction data
+- Order and bid data
+- Collection information
+- Account statistics
+
+The marketplace server uses database connections to access this external data. Key tables include:
+- `nft` - NFT ownership and metadata
+- `order` - Active marketplace orders
+- `bid` - Active bids on items
+- `sale` - Completed sales
+- `item` - Collection item definitions
+- `collection` - Collection metadata
+- `account` - User account statistics
+
+---
+
+## Custom Types
+
+### trade_type (ENUM)
+
+```sql
+CREATE TYPE trade_type AS ENUM ('BID', 'PUBLIC_ITEM_ORDER', 'PUBLIC_NFT_ORDER');
+```
+
+### asset_direction_type (ENUM)
+
+```sql
+CREATE TYPE asset_direction_type AS ENUM ('SENT', 'RECEIVED');
+```
+
+### permissions (ENUM)
+
+```sql
+CREATE TYPE permissions AS ENUM ('edit', 'view');
+```
 
 ---
 
@@ -363,7 +412,7 @@ The marketplace server uses Foreign Data Wrappers (FDW) to access this external 
   - `dapps/`: Marketplace trades and orders migrations
   - `favorites/`: Favorites lists and picks migrations
   - `substreams/`: External data integration migrations
-- **Database Logic**: `src/logic/`
-- **Types**: `src/types/`
-- **Database Port**: `src/ports/postgres.ts`
-
+- **Database Components**: `src/ports/db/`
+- **Trade Logic**: `src/ports/trades/`
+- **Favorites Logic**: `src/ports/favorites/`
+- **Types**: `src/types.ts`
