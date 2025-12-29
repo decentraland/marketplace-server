@@ -150,7 +150,7 @@ export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilte
 
   let query = SQL`
     SELECT 
-      item_id as id,
+      nft.item_id as id,
       COUNT(*)::integer as sales,
       SUM(sale.price::numeric) as volume
     FROM `
@@ -173,10 +173,13 @@ export function getItemsSalesQuery(entity: RankingEntity, filters: RankingsFilte
   }
 
   query = query
+    .append(SQL` LEFT JOIN `)
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.nft ON nft.id = sale.nft_id`)
     .append(where.text && where.text.trim() ? SQL` WHERE `.append(where) : SQL``)
     .append(
       SQL`
-    GROUP BY item_id
+    GROUP BY nft.item_id
     ORDER BY `
         .append(orderBy)
         .append(SQL` `)
