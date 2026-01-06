@@ -3,38 +3,38 @@ info:
   title: Decentraland Marketplace Server API
   description: |
     ## Overview
-    
+
     The Decentraland Marketplace API provides comprehensive access to the Decentraland NFT marketplace,
     enabling developers to build applications that interact with digital assets in the metaverse.
-    
+
     ### Key Features
-    
+
     - **NFT Management**: Browse, search, and query NFTs including wearables, emotes, LAND parcels, and ENS names
     - **Trading Operations**: Create and manage trades, place bids, and view active orders
     - **Marketplace Catalog**: Access the full marketplace catalog with advanced filtering and sorting
     - **Favorites & Lists**: Create and manage personalized item collections with privacy controls
     - **Analytics**: Access sales history, price data, trending items, rankings, and volume metrics
     - **Payment Integration**: Support for fiat-to-crypto gateways (Wert, Transak)
-    
+
     ### Supported Networks
-    
+
     - **Ethereum Mainnet**: Primary network for LAND, premium wearables, and high-value items
     - **Polygon**: Layer 2 solution for wearables, emotes, and lower-cost transactions
-    
+
     ### Authentication
-    
+
     Most endpoints support optional authentication using Decentraland's signed fetch mechanism.
     Authenticated requests provide access to:
     - Private user lists and favorites
     - Personalized recommendations
     - User-specific data and permissions
-    
+
     Authentication uses the **SignedFetch** scheme (decentraland-crypto-middleware) with metadata validation
     following [ADR-44](http://adr.decentraland.org/adr/ADR-44). Required endpoints clearly indicate authentication
     in their documentation.    
         
     ### Base URLs
-    
+
     - Production: `https://marketplace-api.decentraland.org`
     - Development: `https://marketplace-api.decentraland.zone`
   version: 1.0.0
@@ -132,12 +132,259 @@ paths:
         Retrieves the marketplace catalog with items available for browsing and purchase.
         Supports filtering by category, price range, and various item attributes.
         Authentication is optional but recommended for personalized results.
-        
+
         **Note**: Consider using /v2/catalog for enhanced features and performance.
+
+        **Pagination:** Uses `first` and `skip` parameters.
+
+        This endpoint shares all the same filter parameters as /v1/items, plus catalog-specific options.
       operationId: getCatalog
       security:
         - SignedFetch: []
         - {}
+      parameters:
+        - name: first
+          in: query
+          required: false
+          description: 'Maximum number of items to return (default: 20)'
+          schema:
+            type: number
+            default: 20
+            example: 10
+        - name: skip
+          in: query
+          required: false
+          description: 'Number of items to skip for pagination (default: 0)'
+          schema:
+            type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum: [newest, recently_sold, cheapest, most_expensive, recently_listed]
+            example: cheapest
+        - name: sortDirection
+          in: query
+          required: false
+          description: 'Sort direction'
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: onlyListing
+          in: query
+          required: false
+          description: 'Show only items with active listings'
+          schema:
+            type: boolean
+        - name: onlyMinting
+          in: query
+          required: false
+          description: 'Show only items available for minting'
+          schema:
+            type: boolean
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category'
+          schema:
+            type: string
+            enum: [wearable, emote]
+        - name: creator
+          in: query
+          required: false
+          description: 'Filter by creator wallet address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: isSoldOut
+          in: query
+          required: false
+          description: 'Filter by sold out status'
+          schema:
+            type: boolean
+        - name: isOnSale
+          in: query
+          required: false
+          description: 'Filter by whether item is currently on sale'
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          required: false
+          description: 'Text search across item names and descriptions'
+          schema:
+            type: string
+        - name: isWearableHead
+          in: query
+          required: false
+          description: 'Filter for head wearables only'
+          schema:
+            type: boolean
+        - name: isWearableAccessory
+          in: query
+          required: false
+          description: 'Filter for accessory wearables only'
+          schema:
+            type: boolean
+        - name: isWearableSmart
+          in: query
+          required: false
+          description: 'Filter for smart wearables only'
+          schema:
+            type: boolean
+        - name: wearableCategory
+          in: query
+          required: false
+          description: 'Filter by specific wearable category'
+          schema:
+            type: string
+            enum:
+              [
+                eyebrows,
+                eyes,
+                facial_hair,
+                hair,
+                body_shape,
+                mouth,
+                upper_body,
+                lower_body,
+                feet,
+                earring,
+                eyewear,
+                hat,
+                helmet,
+                mask,
+                tiara,
+                top_head,
+                skin,
+                hands_wear
+              ]
+        - name: rarity
+          in: query
+          required: false
+          description: 'Filter by rarity. Can be repeated for multiple rarities.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [unique, mythic, exotic, legendary, epic, rare, uncommon, common]
+          style: form
+          explode: true
+        - name: wearableGender
+          in: query
+          required: false
+          description: 'Filter by wearable gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emoteCategory
+          in: query
+          required: false
+          description: 'Filter by emote category'
+          schema:
+            type: string
+            enum: [dance, stunt, greetings, fun, poses, reactions, horror, miscellaneous]
+        - name: emoteGender
+          in: query
+          required: false
+          description: 'Filter by emote gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emotePlayMode
+          in: query
+          required: false
+          description: 'Filter by emote play mode. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [simple, loop]
+          style: form
+          explode: true
+        - name: emoteHasGeometry
+          in: query
+          required: false
+          description: 'Filter for emotes with geometry/props'
+          schema:
+            type: boolean
+        - name: emoteHasSound
+          in: query
+          required: false
+          description: 'Filter for emotes with sound'
+          schema:
+            type: boolean
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by collection contract address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by specific item ID within a collection'
+          schema:
+            type: string
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+        - name: minPrice
+          in: query
+          required: false
+          description: 'Minimum price filter in ETH/MATIC'
+          schema:
+            type: string
+        - name: maxPrice
+          in: query
+          required: false
+          description: 'Maximum price filter in ETH/MATIC'
+          schema:
+            type: string
+        - name: urn
+          in: query
+          required: false
+          description: 'Filter by item URN(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: id
+          in: query
+          required: false
+          description: 'Filter by item ID(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
       responses:
         '200':
           description: Marketplace catalog
@@ -164,19 +411,267 @@ paths:
       summary: Get marketplace catalog (v2 - Recommended)
       description: |
         Retrieves the marketplace catalog with enhanced filtering and sorting capabilities.
-        Supports comprehensive filtering by:
+
+        **Supports comprehensive filtering by:**
         - Categories (wearables, emotes)
-        - Price ranges and sorting (newest, cheapest, most expensive, recently sold)
+        - Price ranges and sorting
         - Rarities and creator addresses
-        - Wearable-specific filters (gender, category, accessories)
-        - Emote-specific filters (category, play mode)
+        - Wearable-specific filters (gender, category, accessories, smart wearables)
+        - Emote-specific filters (category, play mode, sound, geometry)
         - Text search across item names and descriptions
-        
+
+        **Pagination:** Uses `first` and `skip` parameters.
+
         Authentication is optional but may provide personalized results and user-specific data.
+
+        This endpoint accepts all the same parameters as /v1/catalog.
       operationId: getCatalogV2
       security:
         - SignedFetch: []
         - {}
+      parameters:
+        - name: first
+          in: query
+          required: false
+          description: 'Maximum number of items to return (default: 20)'
+          schema:
+            type: number
+            default: 20
+            example: 10
+        - name: skip
+          in: query
+          required: false
+          description: 'Number of items to skip for pagination (default: 0)'
+          schema:
+            type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum: [newest, recently_sold, cheapest, most_expensive, recently_listed]
+            example: cheapest
+        - name: sortDirection
+          in: query
+          required: false
+          description: 'Sort direction'
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: onlyListing
+          in: query
+          required: false
+          description: 'Show only items with active listings'
+          schema:
+            type: boolean
+        - name: onlyMinting
+          in: query
+          required: false
+          description: 'Show only items available for minting'
+          schema:
+            type: boolean
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category'
+          schema:
+            type: string
+            enum: [wearable, emote]
+        - name: creator
+          in: query
+          required: false
+          description: 'Filter by creator wallet address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: isSoldOut
+          in: query
+          required: false
+          description: 'Filter by sold out status'
+          schema:
+            type: boolean
+        - name: isOnSale
+          in: query
+          required: false
+          description: 'Filter by whether item is currently on sale'
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          required: false
+          description: 'Text search across item names and descriptions'
+          schema:
+            type: string
+        - name: isWearableHead
+          in: query
+          required: false
+          description: 'Filter for head wearables only'
+          schema:
+            type: boolean
+        - name: isWearableAccessory
+          in: query
+          required: false
+          description: 'Filter for accessory wearables only'
+          schema:
+            type: boolean
+        - name: isWearableSmart
+          in: query
+          required: false
+          description: 'Filter for smart wearables only'
+          schema:
+            type: boolean
+        - name: wearableCategory
+          in: query
+          required: false
+          description: 'Filter by specific wearable category'
+          schema:
+            type: string
+            enum:
+              [
+                eyebrows,
+                eyes,
+                facial_hair,
+                hair,
+                body_shape,
+                mouth,
+                upper_body,
+                lower_body,
+                feet,
+                earring,
+                eyewear,
+                hat,
+                helmet,
+                mask,
+                tiara,
+                top_head,
+                skin,
+                hands_wear
+              ]
+        - name: rarity
+          in: query
+          required: false
+          description: 'Filter by rarity. Can be repeated for multiple rarities.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [unique, mythic, exotic, legendary, epic, rare, uncommon, common]
+          style: form
+          explode: true
+        - name: wearableGender
+          in: query
+          required: false
+          description: 'Filter by wearable gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emoteCategory
+          in: query
+          required: false
+          description: 'Filter by emote category'
+          schema:
+            type: string
+            enum: [dance, stunt, greetings, fun, poses, reactions, horror, miscellaneous]
+        - name: emoteGender
+          in: query
+          required: false
+          description: 'Filter by emote gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emotePlayMode
+          in: query
+          required: false
+          description: 'Filter by emote play mode. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [simple, loop]
+          style: form
+          explode: true
+        - name: emoteHasGeometry
+          in: query
+          required: false
+          description: 'Filter for emotes with geometry/props'
+          schema:
+            type: boolean
+        - name: emoteHasSound
+          in: query
+          required: false
+          description: 'Filter for emotes with sound'
+          schema:
+            type: boolean
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by collection contract address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by specific item ID within a collection'
+          schema:
+            type: string
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+        - name: minPrice
+          in: query
+          required: false
+          description: 'Minimum price filter in ETH/MATIC'
+          schema:
+            type: string
+        - name: maxPrice
+          in: query
+          required: false
+          description: 'Maximum price filter in ETH/MATIC'
+          schema:
+            type: string
+        - name: urn
+          in: query
+          required: false
+          description: 'Filter by item URN(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: id
+          in: query
+          required: false
+          description: 'Filter by item ID(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
       responses:
         '200':
           description: Marketplace catalog v2
@@ -205,7 +700,7 @@ paths:
         Signs a transaction for Wert payment gateway integration.
         Wert is a fiat-to-crypto payment solution that allows users to purchase NFTs with credit/debit cards.
         This endpoint validates and signs the transaction data before forwarding to Wert's infrastructure.
-        
+
         Authentication is optional but recommended for tracking user transactions.
       operationId: signWertTransaction
       security:
@@ -232,7 +727,7 @@ paths:
       description: |
         Retrieves detailed information about a Transak payment order.
         Transak is a fiat-to-crypto payment gateway that enables credit/debit card purchases.
-        
+
         Use this endpoint to check order status, amount, currency, and completion details.
         Authentication is optional but may provide access to user-specific order information.
       operationId: getTransakOrder
@@ -268,7 +763,7 @@ paths:
         Generates a visual representation (image) for an ENS (Ethereum Name Service) name.
         This is typically used to create profile images or avatar representations for ENS domains
         in the Decentraland marketplace.
-        
+
         The generated image can be used as a preview or thumbnail for ENS-based NFTs.
       operationId: generateENSImage
       security: []
@@ -285,26 +780,14 @@ paths:
         - Trades
       summary: List marketplace trades
       description: |
-        Retrieves a paginated list of trades in the marketplace.
+        Retrieves a list of trades in the marketplace.
         Trades represent peer-to-peer exchanges between users, including offers and accepted deals.
-        
-        Use pagination parameters (limit and offset) to navigate through large result sets.
-        Results are typically ordered by creation date (most recent first).
+
+        Results are ordered by creation date (most recent first).
+
+        **Note:** This endpoint currently returns all trades without pagination support.
       operationId: getTrades
       security: []
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          description: 'Maximum number of trades to return per request (default: 20, max: 100)'
-          schema:
-            type: number
-        - name: offset
-          in: query
-          required: false
-          description: 'Number of trades to skip for pagination (default: 0)'
-          schema:
-            type: number
       responses:
         '200':
           description: List of trades
@@ -320,13 +803,13 @@ paths:
       summary: Create a new trade
       description: |
         Creates a new trade offer in the marketplace.
-        
+
         **Authentication Required**: This endpoint requires Decentraland authentication with signed metadata.
         The authentication validates:
         - User identity via signed message (ADR-44l)
         - Authorized origins (dcl:marketplace or dcl:builder)
         - Metadata intent (dcl:create-trade)
-        
+
         The trade will be validated against blockchain data and marketplace rules before creation.
       operationId: createTrade
       security:
@@ -398,7 +881,7 @@ paths:
       description: |
         Retrieves information about a trade acceptance event using the hashed signature.
         This endpoint is used to verify and track when a trade offer was accepted on-chain.
-        
+
         The hashed signature serves as a unique identifier linking the off-chain trade
         to its blockchain transaction acceptance event.
       operationId: getTradeAcceptedEvent
@@ -431,12 +914,20 @@ paths:
       description: |
         Retrieves a paginated list of bids placed on marketplace items.
         Bids represent offers made by potential buyers on NFTs and items.
-        
-        Supports filtering by:
-        - Contract address and item ID
-        - Bid status (active, accepted, rejected)
+
+        **Filter options:**
         - Bidder and seller addresses
-        
+        - Contract address, token ID, and item ID
+        - Bid status (open, sold, cancelled)
+        - Network (Ethereum, Polygon)
+
+        **Sorting options:**
+        - recently_offered (default)
+        - recently_updated
+        - most_expensive
+
+        **Pagination:** Uses `limit` and `offset` parameters.
+
         Results include bid amounts, timestamps, and current status.
       operationId: getBids
       security: []
@@ -444,24 +935,127 @@ paths:
         - name: limit
           in: query
           required: false
-          description: 'Maximum number of bids to return per request (default: 20, max: 100)'
+          description: 'Maximum number of bids to return per request (default: 100, max: 100)'
           schema:
             type: number
+            default: 100
+            maximum: 100
+            example: 10
         - name: offset
           in: query
           required: false
           description: 'Number of bids to skip for pagination (default: 0)'
           schema:
             type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum: [recently_offered, recently_updated, most_expensive]
+            example: recently_offered
+        - name: bidder
+          in: query
+          required: false
+          description: 'Filter by bidder wallet address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: seller
+          in: query
+          required: false
+          description: 'Filter by seller wallet address'
+          schema:
+            type: string
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by NFT contract address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: tokenId
+          in: query
+          required: false
+          description: 'Filter by specific token ID'
+          schema:
+            type: string
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by item ID'
+          schema:
+            type: string
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
+        - name: status
+          in: query
+          required: false
+          description: 'Filter by bid/listing status'
+          schema:
+            type: string
+            enum: [open, sold, cancelled]
+            example: open
       responses:
         '200':
-          description: List of bids
+          description: Paginated list of bids
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Bid'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Bid'
+                      total:
+                        type: number
+                        description: Total number of bids matching the filters
+                      page:
+                        type: number
+                        description: Current page number (0-indexed)
+                      pages:
+                        type: number
+                        description: Total number of pages
+                      limit:
+                        type: number
+                        description: Number of items per page
+                    required:
+                      - results
+                      - total
+                      - page
+                      - pages
+                      - limit
+                required:
+                  - ok
+                  - data
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/nfts:
     get:
       tags:
@@ -469,49 +1063,343 @@ paths:
       summary: List and search NFTs
       description: |
         Retrieves NFTs from the Decentraland marketplace with comprehensive filtering capabilities.
-        
-        Supports multiple NFT types:
+
+        **Supports multiple NFT types:**
         - Wearables (clothing, accessories)
         - LAND parcels and Estates
         - ENS names
         - Emotes
-        
-        Advanced filtering options:
-        - Ownership and sale status
+
+        **Advanced filtering options:**
+        - Ownership and sale/rental status
         - Categories and search text
-        - Price ranges
+        - Price ranges (min/max)
         - LAND-specific: distance to plaza, adjacent to roads, estate size
-        - Rental status for LAND parcels
+        - Rental status and rental days for LAND parcels
+        - Wearable filters: category, gender, head/accessory/smart types
+        - Emote filters: category, play mode, sound, geometry
         - Network selection (Ethereum mainnet, Polygon)
-        - Sort by: newest, recently listed, price
-        
+        - Sort by: name, newest, recently listed/sold, cheapest, rental metrics
+
+        **Pagination:** Uses `first` and `skip` parameters (NOT `limit`/`offset`).
+
         Authentication is optional but provides access to user-specific data like favorites.
       operationId: getNFTs
       security:
         - SignedFetch: []
         - {}
       parameters:
-        - name: limit
+        - name: first
           in: query
           required: false
-          description: 'Maximum number of NFTs to return (default: 20, max: 100)'
+          description: 'Maximum number of NFTs to return (default: 100)'
           schema:
             type: number
-        - name: offset
+            default: 100
+            example: 10
+        - name: skip
           in: query
           required: false
           description: 'Number of NFTs to skip for pagination (default: 0)'
           schema:
             type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum:
+              [name, newest, recently_listed, recently_sold, cheapest, rental_listing_date, rented_date, max_rental_price, min_rental_price]
+            example: newest
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category'
+          schema:
+            type: string
+            enum: [parcel, estate, wearable, ens, emote]
+            example: wearable
+        - name: owner
+          in: query
+          required: false
+          description: 'Filter by owner wallet address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: isOnSale
+          in: query
+          required: false
+          description: 'Filter by whether NFT is currently on sale'
+          schema:
+            type: boolean
+            example: true
+        - name: isOnRent
+          in: query
+          required: false
+          description: 'Filter by whether NFT (LAND) is available for rent'
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          required: false
+          description: 'Text search across NFT names and descriptions'
+          schema:
+            type: string
+            example: 'genesis'
+        - name: isLand
+          in: query
+          required: false
+          description: 'Filter for LAND parcels and estates only'
+          schema:
+            type: boolean
+        - name: isWearableHead
+          in: query
+          required: false
+          description: 'Filter for head wearables only'
+          schema:
+            type: boolean
+        - name: isWearableAccessory
+          in: query
+          required: false
+          description: 'Filter for accessory wearables only'
+          schema:
+            type: boolean
+        - name: isWearableSmart
+          in: query
+          required: false
+          description: 'Filter for smart wearables only'
+          schema:
+            type: boolean
+        - name: wearableCategory
+          in: query
+          required: false
+          description: 'Filter by specific wearable category'
+          schema:
+            type: string
+            enum:
+              [
+                eyebrows,
+                eyes,
+                facial_hair,
+                hair,
+                body_shape,
+                mouth,
+                upper_body,
+                lower_body,
+                feet,
+                earring,
+                eyewear,
+                hat,
+                helmet,
+                mask,
+                tiara,
+                top_head,
+                skin,
+                hands_wear
+              ]
+            example: upper_body
+        - name: wearableGender
+          in: query
+          required: false
+          description: 'Filter by wearable gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emoteCategory
+          in: query
+          required: false
+          description: 'Filter by emote category'
+          schema:
+            type: string
+            enum: [dance, stunt, greetings, fun, poses, reactions, horror, miscellaneous]
+            example: dance
+        - name: emoteGender
+          in: query
+          required: false
+          description: 'Filter by emote gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emotePlayMode
+          in: query
+          required: false
+          description: 'Filter by emote play mode. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [simple, loop]
+          style: form
+          explode: true
+        - name: emoteHasGeometry
+          in: query
+          required: false
+          description: 'Filter for emotes with geometry/props'
+          schema:
+            type: boolean
+        - name: emoteHasSound
+          in: query
+          required: false
+          description: 'Filter for emotes with sound'
+          schema:
+            type: boolean
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by collection contract address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: creator
+          in: query
+          required: false
+          description: 'Filter by creator wallet address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: tokenId
+          in: query
+          required: false
+          description: 'Filter by specific token ID'
+          schema:
+            type: string
+        - name: itemRarity
+          in: query
+          required: false
+          description: 'Filter by item rarity. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [unique, mythic, exotic, legendary, epic, rare, uncommon, common]
+          style: form
+          explode: true
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by specific item ID within a collection'
+          schema:
+            type: string
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
+        - name: rentalStatus
+          in: query
+          required: false
+          description: 'Filter by rental status (for LAND). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [open, cancelled, executed, claimed]
+          style: form
+          explode: true
+        - name: adjacentToRoad
+          in: query
+          required: false
+          description: 'Filter for LAND parcels adjacent to roads'
+          schema:
+            type: boolean
+        - name: minDistanceToPlaza
+          in: query
+          required: false
+          description: 'Minimum distance to plaza (for LAND filtering)'
+          schema:
+            type: number
+        - name: maxDistanceToPlaza
+          in: query
+          required: false
+          description: 'Maximum distance to plaza (for LAND filtering)'
+          schema:
+            type: number
+        - name: tenant
+          in: query
+          required: false
+          description: 'Filter by tenant wallet address (for rented LAND)'
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          required: false
+          description: 'Minimum price filter in ETH/MATIC (e.g., "0.1")'
+          schema:
+            type: string
+            example: '0.1'
+        - name: maxPrice
+          in: query
+          required: false
+          description: 'Maximum price filter in ETH/MATIC (e.g., "100")'
+          schema:
+            type: string
+            example: '100'
+        - name: minEstateSize
+          in: query
+          required: false
+          description: 'Minimum estate size (number of parcels)'
+          schema:
+            type: number
+        - name: maxEstateSize
+          in: query
+          required: false
+          description: 'Maximum estate size (number of parcels)'
+          schema:
+            type: number
+        - name: rentalDays
+          in: query
+          required: false
+          description: 'Filter by rental period in days. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: number
+          style: form
+          explode: true
       responses:
         '200':
-          description: List of NFTs
+          description: List of NFTs with total count
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NFT'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NFT'
+                  total:
+                    type: number
+                    description: Total number of NFTs matching the filters
+                required:
+                  - data
+                  - total
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/orders:
     get:
       tags:
@@ -520,39 +1408,133 @@ paths:
       description: |
         Retrieves marketplace orders (listings) for NFTs and items.
         Orders represent sell listings created by item owners.
-        
-        Filter options:
-        - Contract address and item ID
-        - Order status (open, filled, cancelled)
+
+        **Filter options:**
+        - Contract address, token ID, and item ID
+        - Order status (open, sold, cancelled)
         - Owner (seller) or buyer addresses
+        - Marketplace address
+        - NFT name search
         - Network (Ethereum, Polygon)
-        - Sort by price (cheapest first)
-        
+
+        **Sorting options:**
+        - recently_listed, recently_updated, cheapest
+        - issued_id_asc, issued_id_desc, oldest
+
+        **Pagination:** Uses `first` and `skip` parameters (NOT `limit`/`offset`).
+
         Use this endpoint to find available items for purchase and their pricing.
       operationId: getOrders
       security: []
       parameters:
-        - name: limit
+        - name: first
           in: query
           required: false
-          description: 'Maximum number of orders to return (default: 20, max: 100)'
+          description: 'Maximum number of orders to return (default: 100)'
           schema:
             type: number
-        - name: offset
+            default: 100
+            example: 10
+        - name: skip
           in: query
           required: false
           description: 'Number of orders to skip for pagination (default: 0)'
           schema:
             type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum: [recently_listed, recently_updated, cheapest, issued_id_asc, issued_id_desc, oldest]
+            example: recently_listed
+        - name: marketplaceAddress
+          in: query
+          required: false
+          description: 'Filter by marketplace contract address'
+          schema:
+            type: string
+        - name: owner
+          in: query
+          required: false
+          description: 'Filter by owner (seller) wallet address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: buyer
+          in: query
+          required: false
+          description: 'Filter by buyer wallet address'
+          schema:
+            type: string
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by NFT contract address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: tokenId
+          in: query
+          required: false
+          description: 'Filter by specific token ID'
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: 'Filter by order status'
+          schema:
+            type: string
+            enum: [open, sold, cancelled]
+            example: open
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by item ID'
+          schema:
+            type: string
+        - name: nftName
+          in: query
+          required: false
+          description: 'Filter by NFT name'
+          schema:
+            type: string
       responses:
         '200':
-          description: List of orders
+          description: List of orders with total count
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Order'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  total:
+                    type: number
+                    description: Total number of orders matching the filters
+                required:
+                  - data
+                  - total
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/contracts:
     get:
       tags:
@@ -560,31 +1542,31 @@ paths:
       summary: List smart contracts and collections
       description: |
         Retrieves smart contract addresses and collection information available in the marketplace.
-        
+
         This endpoint returns both marketplace contracts (LAND, Estates, Names, etc.) 
         and collection contracts (primarily wearables) from the database.
-        
+
         **Contract Types:**
         - **Marketplace Contracts**: Core Decentraland contracts including LAND parcels, Estates, ENS Names, and legacy wearable collections
         - **Collection Contracts**: Third-party and creator collections, primarily wearables on Polygon network
-        
+
         **Filter Options:**
         - Category filtering (parcel, estate, ens, wearable, emote)
         - Network filtering
         - Pagination (first/skip)
-        
+
         **Pagination:**
         - Use `first` and `skip` parameters for pagination
         - `first=0` returns all results (no limit)
         - `skip` allows you to skip the first N results
         - Pagination is applied after category and network filters
-        
+
         **Use Cases:**
         - Retrieve contract addresses for specific NFT categories
         - List all available collections in the marketplace
         - Filter contracts by network
         - Paginate through large result sets
-        
+
         **Response Structure:**
         Each contract includes:
         - Contract address
@@ -592,7 +1574,7 @@ paths:
         - NFT category (parcel, estate, ens, wearable, emote)
         - Network
         - Chain ID
-        
+
         **Performance Notes:**
         - Collection contracts are cached for 1 hour to improve performance
         - Use category and network filters to reduce response size
@@ -655,44 +1637,280 @@ paths:
       description: |
         Retrieves items from marketplace collections.
         Items are templates/blueprints for NFTs in collections (e.g., wearable designs, emote templates).
-        
-        Filter capabilities:
+
+        **Filter capabilities:**
         - Specific contract address and item ID
-        - Category (wearable, emote, etc.)
-        - Creator address
+        - Category (wearable, emote)
+        - Creator addresses (multiple allowed)
         - Sale and sold-out status
-        - Search by name or description
-        - Wearable filters: category, gender, smart wearables
-        - Emote filters: category, play mode
-        - Network selection
-        
-        Authentication is optional and may provide personalized results.
+        - Text search by name or description
+        - Price range filtering
+        - Wearable filters: category, gender, head/accessory/smart types
+        - Emote filters: category, play mode, sound, geometry
+        - Network selection (Ethereum, Polygon)
+        - URN and ID filtering
+
+        **Pagination:** Uses `first` and `skip` parameters (NOT `limit`/`offset`).
+
+        Authentication is optional but may provide personalized results including pick statistics.
       operationId: getItems
       security:
         - SignedFetch: []
         - {}
       parameters:
-        - name: limit
+        - name: first
           in: query
           required: false
-          description: 'Maximum number of items to return (default: 20, max: 100)'
+          description: 'Maximum number of items to return (default: 100)'
           schema:
             type: number
-        - name: offset
+            default: 100
+            example: 10
+        - name: skip
           in: query
           required: false
           description: 'Number of items to skip for pagination (default: 0)'
           schema:
             type: number
+            default: 0
+            example: 0
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category'
+          schema:
+            type: string
+            enum: [wearable, emote]
+            example: wearable
+        - name: creator
+          in: query
+          required: false
+          description: 'Filter by creator wallet address(es). Can be repeated for multiple creators.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+          example: ['0x1234567890abcdef1234567890abcdef12345678']
+        - name: isSoldOut
+          in: query
+          required: false
+          description: 'Filter by sold out status'
+          schema:
+            type: boolean
+            example: false
+        - name: isOnSale
+          in: query
+          required: false
+          description: 'Filter by whether item is currently on sale'
+          schema:
+            type: boolean
+            example: true
+        - name: search
+          in: query
+          required: false
+          description: 'Text search across item names and descriptions'
+          schema:
+            type: string
+            example: 'cyberpunk'
+        - name: isWearableHead
+          in: query
+          required: false
+          description: 'Filter for head wearables only'
+          schema:
+            type: boolean
+        - name: isWearableAccessory
+          in: query
+          required: false
+          description: 'Filter for accessory wearables only'
+          schema:
+            type: boolean
+        - name: isWearableSmart
+          in: query
+          required: false
+          description: 'Filter for smart wearables only'
+          schema:
+            type: boolean
+        - name: wearableCategory
+          in: query
+          required: false
+          description: 'Filter by specific wearable category'
+          schema:
+            type: string
+            enum:
+              [
+                eyebrows,
+                eyes,
+                facial_hair,
+                hair,
+                body_shape,
+                mouth,
+                upper_body,
+                lower_body,
+                feet,
+                earring,
+                eyewear,
+                hat,
+                helmet,
+                mask,
+                tiara,
+                top_head,
+                skin,
+                hands_wear
+              ]
+            example: upper_body
+        - name: rarity
+          in: query
+          required: false
+          description: 'Filter by rarity. Can be repeated for multiple rarities.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [unique, mythic, exotic, legendary, epic, rare, uncommon, common]
+          style: form
+          explode: true
+          example: [legendary]
+        - name: wearableGender
+          in: query
+          required: false
+          description: 'Filter by wearable gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+          example: [unisex]
+        - name: emoteCategory
+          in: query
+          required: false
+          description: 'Filter by emote category'
+          schema:
+            type: string
+            enum: [dance, stunt, greetings, fun, poses, reactions, horror, miscellaneous]
+            example: dance
+        - name: emoteGender
+          in: query
+          required: false
+          description: 'Filter by emote gender compatibility. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [male, female, unisex]
+          style: form
+          explode: true
+        - name: emotePlayMode
+          in: query
+          required: false
+          description: 'Filter by emote play mode. Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [simple, loop]
+          style: form
+          explode: true
+          example: [loop]
+        - name: emoteHasGeometry
+          in: query
+          required: false
+          description: 'Filter for emotes with geometry/props'
+          schema:
+            type: boolean
+        - name: emoteHasSound
+          in: query
+          required: false
+          description: 'Filter for emotes with sound'
+          schema:
+            type: boolean
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by collection contract address(es). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+          example: ['0x1234567890abcdef1234567890abcdef12345678']
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by specific item ID within a collection'
+          schema:
+            type: string
+            example: '0'
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
+        - name: minPrice
+          in: query
+          required: false
+          description: 'Minimum price filter in ETH/MATIC (e.g., "0.1")'
+          schema:
+            type: string
+            example: '0.1'
+        - name: maxPrice
+          in: query
+          required: false
+          description: 'Maximum price filter in ETH/MATIC (e.g., "100")'
+          schema:
+            type: string
+            example: '100'
+        - name: urn
+          in: query
+          required: false
+          description: 'Filter by item URN(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: id
+          in: query
+          required: false
+          description: 'Filter by item ID(s). Can be repeated.'
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
       responses:
         '200':
-          description: List of items
+          description: List of items with total count
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Item'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Item'
+                  total:
+                    type: number
+                    description: Total number of items matching the filters
+                required:
+                  - data
+                  - total
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/sales:
     get:
       tags:
@@ -701,41 +1919,165 @@ paths:
       description: |
         Retrieves historical sales transactions from the marketplace.
         Sales represent completed purchases of NFTs and items.
-        
-        Use this endpoint to:
+
+        **Use this endpoint to:**
         - Track sales history and market activity
         - Analyze price trends
         - View transaction details (buyer, seller, price, timestamp)
-        
-        Filter options:
-        - Category (wearable, emote, etc.)
-        - Contract address and item ID
+
+        **Filter options:**
+        - Sale type (order, bid, mint)
+        - Categories (wearable, emote, parcel, estate, ens)
+        - Seller and buyer addresses
+        - Contract address, token ID, and item ID
+        - Time range filtering (from/to timestamps)
+        - Price range (min/max)
         - Network (Ethereum, Polygon)
-        - Sort by: recently sold, price
+
+        **Sorting options:**
+        - recently_sold (default)
+        - most_expensive
+
+        **Pagination:** Uses `first` and `skip` parameters (NOT `limit`/`offset`).
       operationId: getSales
       security: []
       parameters:
-        - name: limit
+        - name: first
           in: query
           required: false
-          description: 'Maximum number of sales to return (default: 20, max: 100)'
+          description: 'Maximum number of sales to return (default: 100)'
           schema:
             type: number
-        - name: offset
+            default: 100
+            example: 10
+        - name: skip
           in: query
           required: false
           description: 'Number of sales to skip for pagination (default: 0)'
           schema:
             type: number
+            default: 0
+            example: 0
+        - name: sortBy
+          in: query
+          required: false
+          description: 'Sort results by specified criteria'
+          schema:
+            type: string
+            enum: [recently_sold, most_expensive]
+            example: recently_sold
+        - name: type
+          in: query
+          required: false
+          description: 'Filter by sale type'
+          schema:
+            type: string
+            enum: [order, bid, mint]
+            example: order
+        - name: category
+          in: query
+          required: false
+          description: 'Filter by NFT category. Can be repeated for multiple categories.'
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [parcel, estate, wearable, ens, emote]
+          style: form
+          explode: true
+          example: [wearable]
+        - name: seller
+          in: query
+          required: false
+          description: 'Filter by seller wallet address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: buyer
+          in: query
+          required: false
+          description: 'Filter by buyer wallet address'
+          schema:
+            type: string
+        - name: contractAddress
+          in: query
+          required: false
+          description: 'Filter by NFT contract address'
+          schema:
+            type: string
+            example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: tokenId
+          in: query
+          required: false
+          description: 'Filter by specific token ID'
+          schema:
+            type: string
+        - name: itemId
+          in: query
+          required: false
+          description: 'Filter by item ID'
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: 'Filter sales from this Unix timestamp (in seconds)'
+          schema:
+            type: number
+            example: 1640000000
+        - name: to
+          in: query
+          required: false
+          description: 'Filter sales up to this Unix timestamp (in seconds)'
+          schema:
+            type: number
+            example: 1650000000
+        - name: minPrice
+          in: query
+          required: false
+          description: 'Minimum sale price filter'
+          schema:
+            type: string
+            example: '0.1'
+        - name: maxPrice
+          in: query
+          required: false
+          description: 'Maximum sale price filter'
+          schema:
+            type: string
+            example: '100'
+        - name: network
+          in: query
+          required: false
+          description: 'Filter by blockchain network'
+          schema:
+            type: string
+            enum: [ETHEREUM, MATIC]
+            example: MATIC
       responses:
         '200':
-          description: List of sales
+          description: List of sales with total count
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Sale'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Sale'
+                  total:
+                    type: number
+                    description: Total number of sales matching the filters
+                required:
+                  - data
+                  - total
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/prices:
     get:
       tags:
@@ -743,12 +2085,12 @@ paths:
       summary: Get current market prices
       description: |
         Retrieves current cryptocurrency and token price information used in the marketplace.
-        
+
         Returns price data for:
         - MANA (Decentraland's native token)
         - ETH (Ethereum)
         - Other supported currencies
-        
+
         Prices are typically provided in USD and updated regularly.
         Use this endpoint to display current conversion rates and calculate fiat equivalents.
       operationId: getPrices
@@ -767,13 +2109,13 @@ paths:
       summary: Get trending marketplace items
       description: |
         Retrieves currently trending items in the marketplace based on various metrics.
-        
+
         Trending scores are calculated from:
         - Recent sales volume
         - Number of views and interactions
         - Price movements
         - Time-weighted activity
-        
+
         Use this endpoint to display popular items and identify market trends.
         Results are updated periodically and represent the most active items in the marketplace.
       operationId: getTrendings
@@ -794,19 +2136,19 @@ paths:
       summary: Get marketplace statistics
       description: |
         Retrieves specific statistical data for marketplace categories.
-        
+
         Common categories:
         - wearable: Statistics for wearable items
         - emote: Statistics for emotes
         - land: Statistics for LAND parcels
         - ens: Statistics for ENS names
-        
+
         Common stat types:
         - sales_volume: Total sales volume in specified timeframe
         - average_price: Average sale price
         - unique_buyers: Number of unique buyers
         - unique_sellers: Number of unique sellers
-        
+
         Use this endpoint for analytics dashboards and market insights.
       operationId: getStats
       security: []
@@ -838,19 +2180,19 @@ paths:
       summary: Get marketplace rankings
       description: |
         Retrieves ranked lists of marketplace entities based on various metrics and timeframes.
-        
+
         Entity types:
         - collections: Top-performing collections
         - creators: Most active or highest-earning creators
         - items: Best-selling items
         - sellers: Top sellers by volume
-        
+
         Timeframes:
         - day: Last 24 hours
         - week: Last 7 days
         - month: Last 30 days
         - all: All-time rankings
-        
+
         Rankings are calculated based on sales volume, transaction count, and other relevant metrics.
       operationId: getRankings
       security: []
@@ -883,18 +2225,18 @@ paths:
       summary: Get trading volume data
       description: |
         Retrieves total trading volume for the marketplace within a specified timeframe.
-        
+
         Volume metrics include:
         - Total sales amount (in MANA and USD)
         - Number of transactions
         - Unique traders (buyers and sellers)
-        
+
         Available timeframes:
         - day: Last 24 hours
         - week: Last 7 days
         - month: Last 30 days
         - all: All-time volume
-        
+
         Use this data for market health monitoring and trend analysis.
       operationId: getVolume
       security: []
@@ -922,7 +2264,7 @@ paths:
       description: |
         Retrieves all items (picks) that have been added to a specific favorites list.
         Lists are user-curated collections of marketplace items.
-        
+
         Authentication is optional but recommended to access private lists or user-specific data.
       operationId: getListPicks
       security:
@@ -951,7 +2293,7 @@ paths:
       summary: Add item to favorites list
       description: |
         Adds an item (pick) to a user's favorites list.
-        
+
         **Authentication Required**: User must be authenticated and authorized to modify the list.
         Only list owners and users with granted access can add items.
       operationId: addPickToList
@@ -997,7 +2339,7 @@ paths:
       summary: Remove item from favorites list
       description: |
         Removes a specific item (pick) from a favorites list.
-        
+
         **Authentication Required**: User must be authenticated and authorized to modify the list.
         Only list owners and users with granted access can remove items.
       operationId: removePickFromList
@@ -1045,12 +2387,12 @@ paths:
       summary: Get statistics for a specific item
       description: |
         Retrieves pick statistics for a specific marketplace item.
-        
+
         Returns:
         - Total number of times the item has been picked (added to lists)
         - Number of different lists containing this item
         - Popularity metrics
-        
+
         Authentication is optional but may provide additional user-specific data.
       operationId: getPickStats
       security:
@@ -1077,12 +2419,12 @@ paths:
       summary: Get global pick statistics
       description: |
         Retrieves aggregated statistics across all picks in the marketplace.
-        
+
         Returns:
         - Total number of picks across all lists
         - Total number of unique items that have been picked
         - Total number of active lists
-        
+
         Use this endpoint for global marketplace analytics and engagement metrics.
       operationId: getAllPicksStats
       security: []
@@ -1101,7 +2443,7 @@ paths:
       description: |
         Retrieves all pick instances for a specific marketplace item.
         Shows which lists contain this item and associated pick metadata.
-        
+
         Authentication is optional but may provide access to private lists if the user has permissions.
       operationId: getPicksForItem
       security:
@@ -1129,13 +2471,13 @@ paths:
       summary: Bulk pick/unpick operation
       description: |
         Adds or removes an item from multiple favorites lists in a single operation.
-        
+
         **Authentication Required**: User must be authenticated and authorized.
-        
+
         Use cases:
         - Add an item to multiple lists at once
         - Remove an item from multiple lists at once
-        
+
         This is more efficient than making individual pick/unpick requests when managing multiple lists.
       operationId: bulkPickUnpick
       security:
@@ -1179,14 +2521,14 @@ paths:
       summary: Get favorites list details
       description: |
         Retrieves detailed information about a specific favorites list.
-        
+
         Returns:
         - List name and description
         - Owner information
         - Privacy settings (public/private)
         - Item count
         - Creation and update timestamps
-        
+
         Authentication may be required for private lists depending on access permissions.
       operationId: getListDetails
       security:
@@ -1217,9 +2559,9 @@ paths:
       summary: Update favorites list
       description: |
         Updates an existing favorites list's properties.
-        
+
         **Authentication Required**: Only the list owner can update list details.
-        
+
         Updatable fields:
         - List name
         - Description
@@ -1271,9 +2613,9 @@ paths:
       summary: Delete favorites list
       description: |
         Permanently deletes a favorites list and all its picks.
-        
+
         **Authentication Required**: Only the list owner can delete the list.
-        
+
         **Warning**: This action is irreversible. All items in the list will be removed.
       operationId: deleteList
       security:
@@ -1320,9 +2662,9 @@ paths:
       summary: Get user's favorites lists
       description: |
         Retrieves all favorites lists owned by the authenticated user.
-        
+
         **Authentication Required**: User must be authenticated to view their lists.
-        
+
         Returns both public and private lists owned by the user, including:
         - List metadata (name, description, privacy settings)
         - Item counts
@@ -1357,14 +2699,14 @@ paths:
       summary: Create new favorites list
       description: |
         Creates a new favorites list for the authenticated user.
-        
+
         **Authentication Required**: User must be authenticated.
-        
+
         When creating a list, specify:
         - List name (required)
         - Description (optional)
         - Privacy setting: public or private (required)
-        
+
         Public lists can be viewed by anyone, while private lists are only accessible to the owner
         and users who have been granted explicit access.
       operationId: createList
@@ -1403,19 +2745,19 @@ paths:
       description: |
         Retrieves accounts with their marketplace activity statistics including sales, purchases, 
         earnings, spending, royalties, and collection counts.
-        
+
         Supports filtering and sorting by various metrics:
         - Most sales, purchases, collections created
         - Highest earnings, spending, or royalties earned
         - Specific accounts by address or ID
         - Network filtering (Ethereum, Polygon)
-        
+
         Use this endpoint to:
         - Display marketplace leaderboards
         - Track user trading statistics
         - Analyze account activity and performance
         - Identify top sellers, buyers, and creators
-        
+
         Results are paginated and can be sorted by different ranking criteria.
       operationId: getAccounts
       security: []
@@ -1519,27 +2861,27 @@ paths:
       summary: List and search marketplace collections
       description: |
         Retrieves marketplace collections with their metadata and statistics.
-        
+
         Supports comprehensive filtering:
         - Search by collection name or text
         - Filter by creator address
         - Filter by contract address or URN
         - Show only collections with items on sale
         - Network filtering
-        
+
         Sorting options:
         - Newest collections
         - Recently reviewed
         - Alphabetical by name
         - By collection size (item count)
         - Recently listed
-        
+
         Use this endpoint to:
         - Browse marketplace collections
         - Search for specific creator's collections
         - Display collection catalogs
         - Track new collection launches
-        
+
         Results include collection metadata, item counts, and listing status.
       operationId: getCollections
       security: []
@@ -1664,9 +3006,9 @@ paths:
       summary: Grant access to private list
       description: |
         Grants a user access to a private favorites list.
-        
+
         **Authentication Required**: Only the list owner can grant access.
-        
+
         Use this endpoint to share private lists with specific users by providing their
         wallet address and desired permissions. This allows collaborative list management
         without making the list public.
@@ -1720,9 +3062,9 @@ paths:
       summary: Revoke access from private list
       description: |
         Revokes a user's access to a private favorites list.
-        
+
         **Authentication Required**: Only the list owner can revoke access.
-        
+
         After revocation, the specified user will no longer be able to view or modify
         the private list. Use this endpoint to manage access control for collaborative lists.
       operationId: revokeListAccess
@@ -1949,30 +3291,62 @@ components:
         - hashedSignature
     Bid:
       type: object
+      description: A bid placed on an NFT or item in the marketplace
       properties:
         id:
           type: string
-          description: Bid ID
+          description: Unique bid identifier
         bidder:
           type: string
-          description: Bidder address
-        item:
-          $ref: '#/components/schemas/Item'
-        amount:
-          type: number
-          description: Bid amount
+          description: Bidder wallet address
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        seller:
+          type: string
+          description: Seller wallet address
+          example: '0x1234567890abcdef1234567890abcdef12345678'
+        price:
+          type: string
+          description: Bid price in Wei
+          example: '1000000000000000000'
+        fingerprint:
+          type: string
+          description: Bid fingerprint for verification
         status:
           type: string
-          enum: [active, accepted, rejected]
-          description: Bid status
-        createdAt:
+          enum: [open, sold, cancelled]
+          description: Current bid status
+        blockchainId:
           type: string
-          format: date-time
-          description: Bid creation timestamp
+          description: Blockchain transaction ID
+        blockNumber:
+          type: string
+          description: Block number when bid was created
+        expiresAt:
+          type: number
+          description: Expiration timestamp (Unix epoch in milliseconds)
+        createdAt:
+          type: number
+          description: Creation timestamp (Unix epoch in milliseconds)
+        updatedAt:
+          type: number
+          description: Last update timestamp (Unix epoch in milliseconds)
+        contractAddress:
+          type: string
+          description: NFT contract address
+        tokenId:
+          type: string
+          description: Token ID being bid on
+        network:
+          type: string
+          enum: [ETHEREUM, MATIC]
+          description: Blockchain network
+        chainId:
+          type: number
+          description: Chain ID
       required:
         - id
         - bidder
-        - amount
+        - price
         - status
     NFT:
       type: object
@@ -2485,12 +3859,12 @@ components:
         name:
           type: string
           description: Human-readable name of the contract or collection
-          example: "Decentraland Wearables"
+          example: 'Decentraland Wearables'
         address:
           type: string
           pattern: '^0x[a-fA-F0-9]{40}$'
           description: Contract address
-          example: "0x123456789abcdef123456789abcdef0123456789"
+          example: '0x123456789abcdef123456789abcdef0123456789'
         category:
           type: string
           enum: [parcel, estate, ens, wearable, emote]
