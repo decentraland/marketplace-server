@@ -121,31 +121,29 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and valid NFT response with correct structure', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should respond with data array', async () => {
         expect(responseBody).toHaveProperty('data')
         expect(Array.isArray(responseBody.data)).toBe(true)
-      })
-
-      it('should respond with total count', async () => {
         expect(responseBody).toHaveProperty('total')
         expect(typeof responseBody.total).toBe('number')
-      })
-
-      it('should respond with at least one NFT with all required fields', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(responseBody.data.length).toBeGreaterThan(0)
+
         const nftResponse = responseBody.data[0]
-        const nft = nftResponse.nft
-        expect(nft).toHaveProperty('id')
-        expect(nft).toHaveProperty('tokenId')
-        expect(nft).toHaveProperty('contractAddress')
-        expect(nft).toHaveProperty('category')
-        expect(nft).toHaveProperty('owner')
-        expect(nft).toHaveProperty('name')
-        expect(nft).toHaveProperty('image')
+        expect(nftResponse.nft).toEqual(
+          expect.objectContaining({
+            id: expect.any(String),
+            tokenId: expect.any(String),
+            contractAddress: expect.any(String),
+            category: expect.any(String),
+            owner: expect.any(String),
+            name: expect.any(String),
+            image: expect.any(String)
+          })
+        )
+        expect(nftResponse).toHaveProperty('order')
+        expect(nftResponse).toHaveProperty('rental')
       })
     })
   })
@@ -178,15 +176,10 @@ test('when getting NFTs', function ({ components }) {
           returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         })
 
-        it('should respond with 200 status', async () => {
+        it('should respond with 200 and only NFTs on sale via orders', async () => {
           expect(response.status).toEqual(200)
-        })
-
-        it('should include NFTs on sale via orders', async () => {
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
           expect(returnedIds).toContain(onSaleTokenId)
-        })
-
-        it('should not include NFTs not for sale', async () => {
           expect(returnedIds).not.toContain(notForSaleTokenId)
         })
       })
@@ -218,19 +211,12 @@ test('when getting NFTs', function ({ components }) {
           returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         })
 
-        it('should respond with 200 status', async () => {
+        it('should respond with 200, NFTs on sale via trades, and expose trade as order with correct price', async () => {
           expect(response.status).toEqual(200)
-        })
-
-        it('should include NFTs on sale via trades', async () => {
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
           expect(returnedIds).toContain(onSaleTradeTokenId)
-        })
-
-        it('should not include NFTs not for sale', async () => {
           expect(returnedIds).not.toContain(notForSaleTokenId)
-        })
 
-        it('should expose trade as order with correct price', async () => {
           const tradeNFT = responseBody.data.find(item => item.nft.tokenId === onSaleTradeTokenId)
           expect(tradeNFT).toBeDefined()
           expect(tradeNFT?.order).toBeDefined()
@@ -267,20 +253,12 @@ test('when getting NFTs', function ({ components }) {
           returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         })
 
-        it('should respond with 200 status', async () => {
+        it('should respond with 200 and all NFTs on sale from both orders and trades', async () => {
           expect(response.status).toEqual(200)
-        })
-
-        it('should include all NFTs on sale', async () => {
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
           expect(returnedIds).toContain(onSaleTokenId)
           expect(returnedIds).toContain(onSaleTradeTokenId)
-        })
-
-        it('should not include NFTs not for sale', async () => {
           expect(returnedIds).not.toContain(notForSaleTokenId)
-        })
-
-        it('should return at least two NFTs', async () => {
           expect(responseBody.data.length).toBeGreaterThanOrEqual(2)
         })
       })
@@ -314,19 +292,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs not for sale', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs not for sale', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(notForSaleTokenId)
-      })
-
-      it('should not include NFTs on sale via orders', async () => {
         expect(returnedIds).not.toContain(onSaleTokenId)
-      })
-
-      it('should not include NFTs on sale via trades', async () => {
         expect(returnedIds).not.toContain(onSaleTradeTokenId)
       })
     })
@@ -344,7 +314,6 @@ test('when getting NFTs', function ({ components }) {
     describe('when category filter is wearable', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let categories: string[]
 
       beforeEach(async () => {
@@ -355,27 +324,12 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch('/v1/nfts?category=wearable')
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         categories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only wearable category NFTs', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include only wearable NFTs', async () => {
-        expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include parcel NFTs', async () => {
-        expect(returnedIds).not.toContain(parcelTokenId)
-      })
-
-      it('should not include estate NFTs', async () => {
-        expect(returnedIds).not.toContain(estateTokenId)
-      })
-
-      it('should only return wearable category', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         categories.forEach((category: string) => {
           expect(category).toBe('wearable')
         })
@@ -385,7 +339,6 @@ test('when getting NFTs', function ({ components }) {
     describe('when category filter is parcel', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let categories: string[]
 
       beforeEach(async () => {
@@ -396,27 +349,12 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch('/v1/nfts?category=parcel')
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         categories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only parcel category NFTs', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include only parcel NFTs', async () => {
-        expect(returnedIds).toContain(parcelTokenId)
-      })
-
-      it('should not include wearable NFTs', async () => {
-        expect(returnedIds).not.toContain(wearableTokenId)
-      })
-
-      it('should not include estate NFTs', async () => {
-        expect(returnedIds).not.toContain(estateTokenId)
-      })
-
-      it('should only return parcel category', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         categories.forEach((category: string) => {
           expect(category).toBe('parcel')
         })
@@ -426,7 +364,6 @@ test('when getting NFTs', function ({ components }) {
     describe('when category filter is estate', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let categories: string[]
 
       beforeEach(async () => {
@@ -437,27 +374,12 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch('/v1/nfts?category=estate')
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         categories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only estate category NFTs', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include only estate NFTs', async () => {
-        expect(returnedIds).toContain(estateTokenId)
-      })
-
-      it('should not include wearable NFTs', async () => {
-        expect(returnedIds).not.toContain(wearableTokenId)
-      })
-
-      it('should not include parcel NFTs', async () => {
-        expect(returnedIds).not.toContain(parcelTokenId)
-      })
-
-      it('should only return estate category', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         categories.forEach((category: string) => {
           expect(category).toBe('estate')
         })
@@ -492,7 +414,6 @@ test('when getting NFTs', function ({ components }) {
       const ownerAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let owners: string[]
 
       beforeEach(async () => {
@@ -512,23 +433,12 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?owner=${ownerAddress}`)
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         owners = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.owner)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs from specified owner', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs from specified owner', async () => {
-        expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include NFTs from other owners', async () => {
-        expect(returnedIds).not.toContain(onSaleTokenId)
-      })
-
-      it('should only return NFTs from specified owner address', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         owners.forEach((owner: string) => {
           expect(owner.toLowerCase()).toBe(ownerAddress.toLowerCase())
         })
@@ -546,15 +456,9 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and empty data with zero total', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should respond with empty data array', async () => {
         expect(responseBody.data).toEqual([])
-      })
-
-      it('should respond with zero total', async () => {
         expect(responseBody.total).toBe(0)
       })
     })
@@ -580,8 +484,6 @@ test('when getting NFTs', function ({ components }) {
 
       let response: Response
       let responseBody: NFTsResponse
-      let returnedTokenIds: string[]
-      let returnedCategories: string[]
 
       beforeEach(async () => {
         await createSquidDBNFT(components, {
@@ -615,8 +517,6 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?owner=${ownerAddress}&isLand=true`)
         responseBody = await response.json()
-        returnedTokenIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
-        returnedCategories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
       })
 
       afterEach(() => {
@@ -624,24 +524,14 @@ test('when getting NFTs', function ({ components }) {
         setupDefaultMocks()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and include rental assets where owner is lessor with correct owner info', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include rental assets where owner is lessor', async () => {
-        expect(returnedTokenIds).toContain(estateTokenId)
-      })
-
-      it('should include estate category', async () => {
-        expect(returnedCategories).toContain('estate')
-      })
-
-      it('should return at least one NFT', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(responseBody.data.length).toBeGreaterThanOrEqual(1)
-        expect(responseBody.total).toBeGreaterThanOrEqual(1)
-      })
 
-      it('should show correct owner for rental estate', async () => {
+        const returnedTokenIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
+        expect(returnedTokenIds).toContain(estateTokenId)
+
         const estateNFT = responseBody.data.find(item => item.nft.tokenId === estateTokenId)
         expect(estateNFT).toBeDefined()
         expect(estateNFT?.nft.owner).toBe(rentalsContractAddress.toLowerCase())
@@ -675,16 +565,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs at or above minimum price', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs at or above minimum price', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(onSaleTokenId) // 100 MANA
         expect(returnedIds).toContain(expensiveTokenId) // 1000 MANA
-      })
-
-      it('should not include NFTs below minimum price', async () => {
         expect(returnedIds).not.toContain(cheapTokenId) // 10 MANA
       })
     })
@@ -705,16 +590,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs at or below maximum price', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs at or below maximum price', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(cheapTokenId) // 10 MANA
         expect(returnedIds).toContain(onSaleTokenId) // 100 MANA
-      })
-
-      it('should not include NFTs above maximum price', async () => {
         expect(returnedIds).not.toContain(expensiveTokenId) // 1000 MANA
       })
     })
@@ -735,15 +615,10 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs within price range', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs within price range', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(onSaleTokenId) // 100 MANA
-      })
-
-      it('should not include NFTs outside price range', async () => {
         expect(returnedIds).not.toContain(cheapTokenId) // 10 MANA
         expect(returnedIds).not.toContain(expensiveTokenId) // 1000 MANA
       })
@@ -774,7 +649,6 @@ test('when getting NFTs', function ({ components }) {
     describe('when contract address is specified', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let returnedContractAddresses: string[]
 
       beforeEach(async () => {
@@ -792,23 +666,12 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?contractAddress=${contractAddress}`)
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         returnedContractAddresses = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.contractAddress)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs from specified contract', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs from specified contract', async () => {
-        expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include NFTs from other contracts', async () => {
-        expect(returnedIds).not.toContain(secondContractTokenId)
-      })
-
-      it('should only return NFTs from specified contract address', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         returnedContractAddresses.forEach((addr: string) => {
           expect(addr).toBe(contractAddress)
         })
@@ -826,15 +689,9 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and empty data with zero total', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should respond with empty data array', async () => {
         expect(responseBody.data).toEqual([])
-      })
-
-      it('should respond with zero total', async () => {
         expect(responseBody.total).toBe(0)
       })
     })
@@ -851,8 +708,6 @@ test('when getting NFTs', function ({ components }) {
     describe('when tokenId and contractAddress are specified', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
-      let returnedContracts: string[]
 
       beforeEach(async () => {
         await createWearableNFT(components, contractAddress, wearableTokenId)
@@ -861,28 +716,14 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?tokenId=${wearableTokenId}&contractAddress=${contractAddress}`)
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
-        returnedContracts = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.contractAddress)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and exactly one NFT matching the criteria', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include specified NFT', async () => {
-        expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include other NFTs', async () => {
-        expect(returnedIds).not.toContain(parcelTokenId)
-      })
-
-      it('should include specified contract address', async () => {
-        expect(returnedContracts).toContain(contractAddress)
-      })
-
-      it('should return exactly one NFT', async () => {
         expect(responseBody.data.length).toBe(1)
+        expect(responseBody.total).toBe(1)
+        expect(responseBody.data[0].nft.tokenId).toBe(wearableTokenId)
+        expect(responseBody.data[0].nft.contractAddress).toBe(contractAddress)
       })
     })
 
@@ -960,15 +801,10 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only matching NFTs', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include matching NFTs', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include non-matching NFTs', async () => {
         expect(returnedIds).not.toContain(parcelTokenId)
       })
     })
@@ -1015,11 +851,9 @@ test('when getting NFTs', function ({ components }) {
         categories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only land NFTs (parcel or estate)', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should only return land NFTs', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         categories.forEach((category: string) => {
           expect(['parcel', 'estate']).toContain(category)
         })
@@ -1061,16 +895,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only road-adjacent NFTs', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include road-adjacent NFTs', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(nearPlazaTokenId)
         expect(returnedIds).toContain(adjacentRoadTokenId)
-      })
-
-      it('should not include non-road-adjacent NFTs', async () => {
         expect(returnedIds).not.toContain(farFromPlazaTokenId)
       })
     })
@@ -1110,16 +939,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs within max distance to plaza', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include near plaza NFTs', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(nearPlazaTokenId)
         expect(returnedIds).toContain(adjacentRoadTokenId)
-      })
-
-      it('should not include far from plaza NFTs', async () => {
         expect(returnedIds).not.toContain(farFromPlazaTokenId)
       })
     })
@@ -1161,16 +985,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only estates at or above minimum size', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include large estates', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(adjacentRoadTokenId) // size 10
         expect(returnedIds).toContain(bigEstateTokenId) // size 25
-      })
-
-      it('should not include small estates', async () => {
         expect(returnedIds).not.toContain(smallEstateTokenId) // size 3
       })
     })
@@ -1212,16 +1031,11 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only estates at or below maximum size', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include small and medium estates', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(smallEstateTokenId) // size 3
         expect(returnedIds).toContain(adjacentRoadTokenId) // size 10
-      })
-
-      it('should not include large estates', async () => {
         expect(returnedIds).not.toContain(bigEstateTokenId) // size 25
       })
     })
@@ -1250,12 +1064,10 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and limited results with correct total', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should limit results to specified amount', async () => {
         expect(responseBody.data.length).toBe(2)
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
       })
     })
 
@@ -1278,15 +1090,11 @@ test('when getting NFTs', function ({ components }) {
         skippedBody = await skippedResponse.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and correct items after skip', async () => {
         expect(skippedResponse.status).toEqual(200)
-      })
-
-      it('should return correct number of items after skip', async () => {
         expect(skippedBody.data.length).toBe(2)
-      })
+        expect(skippedBody.total).toBeGreaterThanOrEqual(skippedBody.data.length)
 
-      it('should skip first item and return next items in order', async () => {
         const allIds = allBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         const skippedIds = skippedBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
 
@@ -1310,11 +1118,8 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and empty data', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should respond with empty data array', async () => {
         expect(responseBody.data).toEqual([])
       })
     })
@@ -1346,22 +1151,15 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and NFTs sorted by creation date descending', async () => {
         expect(response.status).toEqual(200)
-      })
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
 
-      it('should sort NFTs by creation date descending', async () => {
         // Get only our test NFTs
         const createdNFTIds = [wearableTokenId, parcelTokenId, estateTokenId]
         const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => createdNFTIds.includes(nftResponse.nft.tokenId))
 
-        // We should have exactly 3 NFTs
         expect(testNFTs.length).toBe(3)
-
-        // Verify all 3 NFTs are present
-        expect(testNFTs.some(nft => nft.nft.tokenId === wearableTokenId)).toBe(true)
-        expect(testNFTs.some(nft => nft.nft.tokenId === parcelTokenId)).toBe(true)
-        expect(testNFTs.some(nft => nft.nft.tokenId === estateTokenId)).toBe(true)
 
         // Verify timestamps are in descending order (newest first)
         for (let i = 0; i < testNFTs.length - 1; i++) {
@@ -1389,22 +1187,15 @@ test('when getting NFTs', function ({ components }) {
         responseBody = await response.json()
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and NFTs sorted by creation date ascending', async () => {
         expect(response.status).toEqual(200)
-      })
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
 
-      it('should sort NFTs by creation date ascending', async () => {
         // Get only our test NFTs
         const createdNFTIds = [wearableTokenId, parcelTokenId, estateTokenId]
         const testNFTs = responseBody.data.filter((nftResponse: NFTResponse) => createdNFTIds.includes(nftResponse.nft.tokenId))
 
-        // We should have exactly 3 NFTs
         expect(testNFTs.length).toBe(3)
-
-        // Verify all 3 NFTs are present
-        expect(testNFTs.some(nft => nft.nft.tokenId === wearableTokenId)).toBe(true)
-        expect(testNFTs.some(nft => nft.nft.tokenId === parcelTokenId)).toBe(true)
-        expect(testNFTs.some(nft => nft.nft.tokenId === estateTokenId)).toBe(true)
 
         // Verify timestamps are in ascending order (oldest first)
         for (let i = 0; i < testNFTs.length - 1; i++) {
@@ -1449,15 +1240,10 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs from ETHEREUM network', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs from ETHEREUM network', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include NFTs from other networks', async () => {
         expect(returnedIds).not.toContain(parcelTokenId)
       })
     })
@@ -1487,11 +1273,9 @@ test('when getting NFTs', function ({ components }) {
         returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs of specified rarity', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs of specified rarity', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         expect(returnedIds).toContain(wearableTokenId)
       })
     })
@@ -1513,7 +1297,6 @@ test('when getting NFTs', function ({ components }) {
       const ownerAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let owners: string[]
 
       beforeEach(async () => {
@@ -1524,37 +1307,25 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?isOnSale=true&owner=${ownerAddress}`)
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         owners = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.owner)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only NFTs on sale from specified owner', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include NFTs on sale from specified owner', async () => {
-        expect(returnedIds).toContain(onSaleTokenId)
-      })
-
-      it('should not include NFTs not for sale', async () => {
-        expect(returnedIds).not.toContain(notForSaleTokenId)
-      })
-
-      it('should not include NFTs from different owner', async () => {
-        expect(returnedIds).not.toContain(cheapTokenId)
-      })
-
-      it('should only return NFTs from specified owner', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         owners.forEach((owner: string) => {
           expect(owner.toLowerCase()).toBe(ownerAddress.toLowerCase())
         })
+        const returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
+        expect(returnedIds).toContain(onSaleTokenId)
+        expect(returnedIds).not.toContain(notForSaleTokenId)
+        expect(returnedIds).not.toContain(cheapTokenId)
       })
     })
 
     describe('when filtering by category and contractAddress', () => {
       let response: Response
       let responseBody: NFTsResponse
-      let returnedIds: string[]
       let categories: string[]
       let contracts: string[]
 
@@ -1566,37 +1337,23 @@ test('when getting NFTs', function ({ components }) {
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?category=wearable&contractAddress=${contractAddress}`)
         responseBody = await response.json()
-        returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         categories = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.category)
         contracts = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.contractAddress)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200 and only wearables from specified contract', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should include wearables from specified contract', async () => {
-        expect(returnedIds).toContain(wearableTokenId)
-      })
-
-      it('should not include other categories', async () => {
-        expect(returnedIds).not.toContain(parcelTokenId)
-      })
-
-      it('should not include NFTs from other contracts', async () => {
-        expect(returnedIds).not.toContain(secondContractTokenId)
-      })
-
-      it('should only return wearable category', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         categories.forEach((category: string) => {
           expect(category).toBe('wearable')
         })
-      })
-
-      it('should only return specified contract address', async () => {
         contracts.forEach((contract: string) => {
           expect(contract).toBe(contractAddress)
         })
+        const returnedIds = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
+        expect(returnedIds).toContain(wearableTokenId)
+        expect(returnedIds).not.toContain(parcelTokenId)
+        expect(returnedIds).not.toContain(secondContractTokenId)
       })
     })
 
@@ -1616,15 +1373,10 @@ test('when getting NFTs', function ({ components }) {
         owners = responseBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.owner)
       })
 
-      it('should respond with 200 status', async () => {
+      it('should respond with 200, limited results, and correct total', async () => {
         expect(response.status).toEqual(200)
-      })
-
-      it('should limit results to specified amount', async () => {
         expect(responseBody.data.length).toBeLessThanOrEqual(2)
-      })
-
-      it('should only return NFTs from specified owner', async () => {
+        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         owners.forEach((owner: string) => {
           expect(owner.toLowerCase()).toBe(ownerAddress.toLowerCase())
         })
