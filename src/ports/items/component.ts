@@ -33,7 +33,8 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function getItems(filters: ItemFilters) {
-    const result = await database.query<DBItem>(getItemsQuery(filters))
+    const query = getItemsQuery(filters)
+    const result = await database.query<DBItem>(query)
     const items: DBItem[] = result.rows
 
     if (result.rowCount > 0 && filters.contractAddresses && filters.contractAddresses.length === 1 && filters.itemId) {

@@ -8,7 +8,8 @@ import {
   NFT,
   BodyShape,
   WearableCategory,
-  EmoteCategory
+  EmoteCategory,
+  EmoteOutcomeType
 } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 import { ItemType } from '../items'
@@ -62,6 +63,7 @@ export type DBNFT = {
   loop?: boolean
   has_sound?: boolean
   has_geometry?: boolean
+  emote_outcome_type?: EmoteOutcomeType
   estate_parcels?: { x: number; y: number }[]
   parcel_estate_token_id?: string
   parcel_estate_name?: string

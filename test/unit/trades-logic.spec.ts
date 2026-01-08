@@ -31,7 +31,7 @@ describe('when verifying the trade signature', () => {
     wallet = Wallet.createRandom()
     signerAddress = (await wallet.getAddress()).toLowerCase()
     chainId = ChainId.ETHEREUM_SEPOLIA
-    const offChainMarketplaceContract: ContractData = getContract(ContractName.OffChainMarketplace, chainId)
+    const offChainMarketplaceContract: ContractData = getContract(ContractName.OffChainMarketplaceV2, chainId)
     trade = {
       signer: signerAddress,
       chainId: chainId,

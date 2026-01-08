@@ -1,5 +1,6 @@
 import SQL from 'sql-template-strings'
 import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import { recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
@@ -70,9 +71,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidOwnerError()
     }
 
+    const tradeContract = getContract(ContractName.OffChainMarketplaceV2, trade.chainId)
+
     const insertedTrade = await pg.withTransaction(
       async client => {
-        const insertedTrade = await client.query<DBTrade>(getInsertTradeQuery(trade, signer))
+        const query = getInsertTradeQuery({ ...trade, contract: tradeContract.address }, signer)
+        const insertedTrade = await client.query<DBTrade>(query)
         const assets = await Promise.all(
           [
             ...trade.sent.map(asset => ({ ...asset, direction: TradeAssetDirection.SENT })),
@@ -109,7 +113,8 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
   }
 
   async function getTrade(id: string) {
-    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(getTradeAssetsWithValuesByIdQuery(id))
+    const query = getTradeAssetsWithValuesByIdQuery(id)
+    const result = await pg.query<DBTrade & DBTradeAssetWithValue>(query)
 
     if (!result.rowCount) {
       throw new TradeNotFoundError(id)

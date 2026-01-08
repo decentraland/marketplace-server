@@ -20,10 +20,14 @@ describe('when getting the wert signer and session creator handler', () => {
   let verification: authorizationMiddleware.DecentralandSignatureData | undefined
 
   beforeEach(() => {
+    url = {} as URL
     components = {
       wertSigner: wertSignerMock,
       wertApi: wertApiMock
     }
+    request = {} as HandlerContextWithPath<'wertSigner' | 'wertApi', '/v1/wert/sign'>['request']
+    params = {} as HandlerContextWithPath<'wertSigner' | 'wertApi', '/v1/wert/sign'>['params']
+    verification = undefined
     wertSignerMock.signMessage.mockReset()
     wertApiMock.createSession.mockReset()
   })

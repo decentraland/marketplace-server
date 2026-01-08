@@ -24,6 +24,7 @@ export type DBTrade = {
   signature: string
   signer: string
   type: TradeType
+  contract: string
 }
 
 export type DBTradeAsset = {
@@ -57,5 +58,6 @@ export type DBTradeWithAssets = {
   signature: string
   signer: string
   type: TradeType
+  contract: string
   assets: DBTradeAssetWithValue[]
 }

@@ -54,7 +54,8 @@ beforeEach(() => {
       externalChecks: [],
       signerSignatureIndex: 1
     },
-    created_at: new Date()
+    created_at: new Date(),
+    contract: 'OffChainMarketplace'
   }
 
   dbTradeAssetWithValue = {
@@ -95,7 +96,8 @@ describe('when adapting a db trade with its assets to a trade', () => {
       checks: dbTrade.checks,
       createdAt: dbTrade.created_at.getTime(),
       sent: [fromDBTradeAssetWithValueToTradeAsset(dbTradeAssetWithValue)],
-      received: [fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(dbTradeAssetWithValueWithBeneficiary)]
+      received: [fromDBTradeAssetWithValueToTradeAssetWithBeneficiary(dbTradeAssetWithValueWithBeneficiary)],
+      contract: dbTrade.contract
     })
   })
 })
@@ -291,7 +293,8 @@ describe('when adapting a trade and its assets to a notification event', () => {
           extra: '',
           beneficiary: '0x9876543210'
         }
-      ]
+      ],
+      contract: 'OffChainMarketplace'
     }
   })
   describe('when the trade is a bid', () => {

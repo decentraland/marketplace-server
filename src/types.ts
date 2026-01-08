@@ -6,11 +6,16 @@ import type {
   IBaseComponent,
   IMetricsComponent
 } from '@well-known-components/interfaces'
+import type { ICacheStorageComponent } from '@dcl/core-commons'
+import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
+import { IAccountsComponent } from './ports/accounts/types'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
+import { ICollectionsComponent } from './ports/collections/types'
+import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
 import { IENSComponent } from './ports/ens/types'
 import { IEventPublisherComponent } from './ports/events/types'
@@ -22,15 +27,16 @@ import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
+import { IOwnersComponent } from './ports/owners/types'
 import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
-import { ISchemaValidatorComponent } from './ports/schema-validator'
 import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
+import { IUserAssetsComponent } from './ports/user-assets/types'
 import { IVolumeComponent } from './ports/volume/types'
 import { IWertApiComponent } from './ports/wert/api/types'
 import { IWertSignerComponent } from './ports/wert/signer/types'
@@ -42,6 +48,8 @@ export type GlobalContext = {
 // components used in every environment
 export type BaseComponents = {
   config: IConfigComponent
+  cache: ICacheStorageComponent
+  inMemoryCache: ICacheStorageComponent
   logs: ILoggerComponent
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
@@ -55,7 +63,7 @@ export type BaseComponents = {
   transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
-  schemaValidator: ISchemaValidatorComponent
+  schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent
   picks: IPicksComponent
@@ -66,6 +74,7 @@ export type BaseComponents = {
   eventPublisher: IEventPublisherComponent
   nfts: INFTsComponent
   orders: IOrdersComponent
+  owners: IOwnersComponent
   rentals: IRentalsComponent
   sales: ISalesComponent
   trendings: ITrendingsComponent
@@ -74,6 +83,10 @@ export type BaseComponents = {
   rankings: IItemsDayDataComponent
   volumes: IVolumeComponent
   analyticsData: IAnalyticsDayDataComponent
+  userAssets: IUserAssetsComponent
+  contracts: IContractsComponent
+  collections: ICollectionsComponent
+  accounts: IAccountsComponent
 }
 
 // components used in runtime

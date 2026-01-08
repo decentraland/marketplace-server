@@ -60,7 +60,7 @@ const getItemIdsByTagOrNameQuery = (filters: CatalogQueryFilters) => {
         items.id AS id,
         CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
         word.text AS word,
-        similarity(word.text, ${search}) AS word_similarity
+        similarity(lower(word.text), lower(${search})) AS word_similarity
       `
       .append(' FROM ')
       .append(MARKETPLACE_SQUID_SCHEMA)
@@ -111,11 +111,11 @@ const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
 
 const getLatestMetadataCTE = () => {
   return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (wearable_id)
+        SELECT DISTINCT ON (COALESCE(m.wearable_id::text, m.emote_id::text))
           CASE 
             WHEN m.network = 'ETHEREUM' 
-                THEN w.collection || '-' || m.id  -- Use collection + '-' + metadata.id for L1 items
-            ELSE m.wearable_id::text  
+                 THEN (COALESCE(w.collection, e.collection)) || '-' || m.id -- Use collection + '-' + metadata.id for L1 items
+            ELSE COALESCE(m.wearable_id::text, m.emote_id::text) 
             END AS item_id,
         m.id AS latest_metadata_id,
           m.item_type,
@@ -126,12 +126,17 @@ const getLatestMetadataCTE = () => {
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(
       SQL`.metadata as m
-          JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.wearable AS w
-        ON w.id = m.wearable_id
-        ORDER BY
-          wearable_id DESC
+          LEFT JOIN `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.wearable AS w
+          ON w.id = m.wearable_id
+          LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.emote AS e
+        ON e.id = m.emote_id
+        ORDER BY COALESCE(m.wearable_id::text, m.emote_id::text) DESC
       )
     `)
+        )
     )
 }
 
@@ -260,10 +265,7 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
 }
 
 export const getSearchWhere = (filters: CatalogFilters) => {
-  if (filters.category === NFTCategory.EMOTE || filters.category === NFTCategory.WEARABLE) {
-    return SQL`word::text % ${filters.search}`
-  }
-  return SQL`word::text % ${filters.search}`
+  return SQL`lower(word::text) % lower(${filters.search})`
 }
 
 export const getIsSoldOutWhere = () => {
@@ -278,11 +280,11 @@ export const getIsOnSale = (filters: CatalogFilters) => {
 
 export const getIsOnSaleWithTrades = (filters: CatalogFilters) => {
   if (filters.onlyMinting && filters.isOnSale) {
-    return SQL`((search_is_store_minter = true AND available > 0) OR offchain_orders.count IS NOT NULL)`
+    return SQL`((search_is_store_minter = true OR (search_is_marketplace_v3_minter = true AND offchain_orders.count IS NOT NULL)) AND available > 0)`
   }
   return filters.isOnSale
-    ? SQL`((search_is_store_minter = true AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.count IS NOT NULL))`
-    : SQL`((search_is_store_minter = false OR available = 0) AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL))`
+    ? SQL`(((search_is_store_minter = true OR (search_is_marketplace_v3_minter = true AND offchain_orders.count IS NOT NULL)) AND available > 0) OR (nfts_with_orders.orders_listings_count IS NOT NULL OR offchain_orders.nfts_listings_count IS NOT NULL))`
+    : SQL`(((search_is_store_minter = false AND search_is_marketplace_v3_minter = false) OR available = 0) OR (search_is_marketplace_v3_minter = true AND (nfts_with_orders.orders_listings_count IS NULL AND offchain_orders.count IS NULL)))`
 }
 
 export const getIsWearableHeadAccessoryWhere = () => {
@@ -330,7 +332,7 @@ export const getMinPriceWhere = (filters: CatalogFilters) => {
   } else if (filters.onlyListing) {
     return SQL`min_price >= ${filters.minPrice}`
   }
-  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
 }
 
 export const getMaxPriceWhere = (filters: CatalogFilters) => {
@@ -339,7 +341,7 @@ export const getMaxPriceWhere = (filters: CatalogFilters) => {
   } else if (filters.onlyListing) {
     return SQL`max_price <= ${filters.maxPrice}`
   }
-  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND search_is_store_minter = true))`
+  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -351,7 +353,7 @@ export const getOnlyListingsWhere = () => {
 }
 
 export const getOnlyListingsWhereWithTrades = () => {
-  return SQL`(items.search_is_store_minter = false OR (items.search_is_store_minter = true AND available = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
+  return SQL`((items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false) OR (items.search_is_store_minter = true AND available = 0) OR (items.search_is_marketplace_v3_minter = true AND COALESCE(offchain_orders.items_listings_count, 0) = 0)) AND (COALESCE(nfts_with_orders.orders_listings_count, 0) + COALESCE(offchain_orders.nfts_listings_count, 0)) > 0`
 }
 
 export const getOnlyMintingWhere = () => {
@@ -359,7 +361,7 @@ export const getOnlyMintingWhere = () => {
 }
 
 export const getOnlyMintingWhereWithTrades = () => {
-  return SQL`((items.search_is_store_minter = true AND available > 0) OR (offchain_orders.count IS NOT NULL))`
+  return SQL`(((items.search_is_store_minter = true OR (items.search_is_marketplace_v3_minter = true AND offchain_orders.count IS NOT NULL))) AND available > 0)`
 }
 
 export const getIdsWhere = (filters: CatalogFilters) => {
@@ -374,12 +376,55 @@ export const getHasGeometryWhere = () => {
   return SQL`items.search_emote_has_geometry = true`
 }
 
+// For now, let's filter if the outcome type is not null
+export const getHasOutcomeTypeWhere = (_filters: CatalogFilters) => {
+  return SQL`items.search_emote_outcome_type IS NOT NULL`
+}
+
 export const getUrnsWhere = (filters: CatalogFilters) => {
   return SQL`items.urn = ANY(${filters.urns})`
 }
 
 export const getNetworkWhere = (filters: CatalogFilters) => {
-  return SQL`items.network = ${filters.network}`
+  return SQL`items.network = ${filters.network === Network.MATIC ? 'POLYGON' : filters.network}`
+}
+
+/** Helper to build WHERE clause with item-level filters only (no joins needed) */
+const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
+  const conditions = [
+    filters.category ? getCategoryWhere(filters) : undefined,
+    filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
+    filters.creator?.length ? getCreatorWhere(filters) : undefined,
+    filters.isSoldOut ? getIsSoldOutWhere() : undefined,
+    filters.isWearableHead ? getIsWearableHeadAccessoryWhere() : undefined,
+    filters.isWearableAccessory ? getWearableAccessoryWhere() : undefined,
+    filters.wearableCategory ? getWearableCategoryWhere(filters) : undefined,
+    filters.wearableGenders?.length ? getWearableGenderWhere(filters) : undefined,
+    filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
+    filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
+    filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
+    filters.ids?.length ? getIdsWhere(filters) : undefined,
+    filters.emoteHasSound ? getHasSoundWhere() : undefined,
+    filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
+    filters.emoteOutcomeType ? getHasOutcomeTypeWhere(filters) : undefined,
+    filters.urns?.length ? getUrnsWhere(filters) : undefined,
+    filters.network ? getNetworkWhere(filters) : undefined
+  ].filter(Boolean)
+
+  const whereClause = SQL`WHERE items.search_is_collection_approved = true`
+  if (conditions.length > 0) {
+    whereClause.append(SQL` AND `)
+    conditions.forEach((condition, index) => {
+      if (condition) {
+        whereClause.append(condition)
+        if (conditions[index + 1]) {
+          whereClause.append(SQL` AND `)
+        }
+      }
+    })
+  }
+
+  return whereClause
 }
 
 export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
@@ -403,6 +448,7 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.ids?.length ? getIdsWhere(filters) : undefined,
     filters.emoteHasSound ? getHasSoundWhere() : undefined,
     filters.emoteHasGeometry ? getHasGeometryWhere() : undefined,
+    filters.emoteOutcomeType ? getHasOutcomeTypeWhere(filters) : undefined,
     filters.urns?.length ? getUrnsWhere(filters) : undefined,
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
@@ -437,7 +483,7 @@ const MAX_NUMERIC_NUMBER = '1157920892373161954235709850086879078532699846656405
 
 const getMinPriceCase = (filters: CatalogQueryFilters) => {
   return SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
     .append(` THEN LEAST(items.price, nfts_with_orders.min_price) 
                 ELSE nfts_with_orders.min_price 
@@ -451,7 +497,7 @@ const getMinPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
     To avoid this, we add the COALESCE with a very high number, so it will always pick the other value.
   */
   return SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `
     .append(filters.minPrice ? SQL`AND items.price >= ${filters.minPrice}` : SQL``)
     .append(
@@ -495,7 +541,7 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
           END AS max_price
           `)
     : SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND items.search_is_store_minter = true
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, nfts_with_orders.max_price)
           ELSE nfts_with_orders.max_price 
@@ -506,14 +552,14 @@ const getMaxPriceCase = (filters: CatalogQueryFilters) => {
 const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
   return filters.onlyMinting
     ? SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
               ELSE GREATEST(offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
           END AS max_price
           `)
     : SQL`CASE
-                WHEN items.available > 0 AND items.search_is_store_minter = true 
+                WHEN items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true)
                 `.append(filters.maxPrice ? SQL`AND items.price <= ${filters.maxPrice}` : SQL``)
         .append(` THEN GREATEST(items.price, nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
               ELSE GREATEST(nfts_with_orders.max_price, offchain_orders.max_order_amount_received, offchain_orders.open_item_trade_price)
@@ -560,7 +606,8 @@ LEFT JOIN (
     emote.name, 
     emote.loop,
     emote.has_sound,
-    emote.has_geometry
+    emote.has_geometry,
+    emote.outcome_type
   FROM `
             .append(MARKETPLACE_SQUID_SCHEMA)
             .append(
@@ -605,6 +652,7 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
             SELECT 
               COUNT(id),
               COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
+              COUNT(id) FILTER (WHERE status = 'open' and type = 'public_item_order') AS items_listings_count,
               contract_address_sent,
               -- Add both MIN and MAX for order_amount_received
               MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
@@ -670,12 +718,15 @@ const getTopNItemsCTE = (filters: CatalogQueryFilters) => {
   if (filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)) {
     const limit = filters.first ?? 10
     const offset = filters.skip ?? 0
+
     return SQL`
       , top_n_items AS (
         SELECT * FROM `
       .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(SQL`.item AS items `)
+      .append(getItemLevelFiltersWhere(filters))
       .append(
-        SQL`.item AS items
+        SQL`
         ORDER BY items.`.append(filters.sortBy === CatalogSortBy.NEWEST ? 'first_listed_at' : 'sold_at').append(SQL` DESC
         LIMIT ${limit}
         OFFSET ${offset}
@@ -701,27 +752,136 @@ const getMinItemCreatedAtCTE = () => {
 }
 
 export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
-  return SQL``
-    .append(getTradesCTE())
-    .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
-    .append(getMinItemCreatedAtCTE())
-    .append(
-      SQL`
-        SELECT COUNT(*) as total
-        FROM `
-    )
+  // Optimized count query: no metadata joins, no owners, use NOT EXISTS for performance
+  // Add metadata joins only when needed for category/playMode filters
+  const needsMetadataJoins = filters.wearableCategory || filters.emoteCategory || filters.emotePlayMode?.length
+
+  const query = SQL`
+    SELECT COUNT(*) as total
+    FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(SQL`.item AS items`)
-    .append(filters.isOnSale === false ? getOwnersJoin() : SQL``)
-    .append(
-      filters.onlyMinting
-        ? SQL``
-        : SQL`
-        LEFT JOIN nfts_with_orders ON nfts_with_orders.item_id = items.id`
-    )
-    .append(getMetadataJoins())
-    .append(getTradesJoin(filters))
-    .append(getCollectionsQueryWhere(filters, true))
+    .append(SQL`.item AS items `)
+
+  // Add metadata joins conditionally
+  if (needsMetadataJoins) {
+    query.append(getMetadataJoins())
+  }
+
+  query.append(getItemLevelFiltersWhere(filters))
+
+  // Handle isOnSale filter with NOT EXISTS (more efficient than LEFT JOIN + IS NULL)
+  if (filters.isOnSale === false) {
+    // Not on sale: no minting AND no listings (neither onchain nor offchain)
+    query.append(SQL` AND (items.search_is_store_minter = false OR items.available = 0)`)
+
+    // No onchain orders
+    query
+      .append(
+        SQL` AND NOT EXISTS (
+      SELECT 1
+      FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+      WHERE o.status = 'open'
+        AND o.expires_at_normalized > NOW()
+        AND o.item_id = items.id
+    )`)
+
+    // No offchain trades
+    query.append(SQL` AND NOT EXISTS (
+      SELECT 1
+      FROM marketplace.mv_trades AS t
+      WHERE t.status = 'open'
+        AND (t.available IS NULL OR t.available > 0)
+        AND t.contract_address_sent = items.collection_id
+        AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+    )`)
+  } else if (filters.isOnSale === true) {
+    // On sale: minting OR has listings
+    query
+      .append(
+        SQL` AND (
+      (items.search_is_store_minter = true AND items.available > 0)
+      OR EXISTS (
+        SELECT 1
+        FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+        WHERE o.status = 'open'
+          AND o.expires_at_normalized > NOW()
+          AND o.item_id = items.id
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM marketplace.mv_trades AS t
+        WHERE t.status = 'open'
+          AND (t.available IS NULL OR t.available > 0)
+          AND t.contract_address_sent = items.collection_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+      )
+    )`)
+  }
+
+  // Handle onlyMinting filter
+  if (filters.onlyMinting) {
+    query.append(SQL` AND (
+      (items.search_is_store_minter = true AND items.available > 0)
+      OR EXISTS (
+        SELECT 1
+        FROM marketplace.mv_trades AS t
+        WHERE t.status = 'open'
+          AND t.type = 'public_item_order'
+          AND (t.available IS NULL OR t.available > 0)
+          AND t.contract_address_sent = items.collection_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+      )
+    )`)
+  }
+
+  // Handle onlyListing filter
+  if (filters.onlyListing) {
+    // Match the logic from getOnlyListingsWhereWithTrades:
+    // - Items that are NOT minting (neither store minter nor marketplace_v3 minter)
+    // - OR store minter items that are sold out
+    // - OR marketplace_v3 minter items that have no active item trades (public_item_order)
+    query.append(SQL` AND (
+      (items.search_is_store_minter = false AND items.search_is_marketplace_v3_minter = false)
+      OR (items.search_is_store_minter = true AND items.available = 0)
+      OR (items.search_is_marketplace_v3_minter = true AND NOT EXISTS (
+        SELECT 1
+        FROM marketplace.mv_trades AS t
+        WHERE t.status = 'open'
+          AND t.type = 'public_item_order'
+          AND (t.available IS NULL OR t.available > 0)
+          AND t.contract_address_sent = items.collection_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+      ))
+    )`)
+    query
+      .append(
+        SQL` AND (
+      EXISTS (
+        SELECT 1
+        FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+        WHERE o.status = 'open'
+          AND o.expires_at_normalized > NOW()
+          AND o.item_id = items.id
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM marketplace.mv_trades AS t
+        WHERE t.status = 'open'
+          AND t.type = 'public_nft_order'
+          AND (t.available IS NULL OR t.available > 0)
+          AND t.contract_address_sent = items.collection_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+      )
+    )`)
+  }
+
+  return query
 }
 
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
@@ -750,6 +910,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               items.price,
               items.available,
               items.search_is_store_minter,
+              items.search_is_marketplace_v3_minter,
               items.creator,
               items.beneficiary,
               items.created_at,
@@ -875,6 +1036,7 @@ export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) =>
               items.price,
               items.available,
               items.search_is_store_minter,
+              items.search_is_marketplace_v3_minter,
               items.creator,
               items.beneficiary,
               items.created_at,

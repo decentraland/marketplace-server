@@ -24,6 +24,7 @@ export function getBidTradesQuery(): string {
   return `
     SELECT
       id as trade_id,
+      trade_contract_address,
       signer as bidder,
       created_at,
       created_at as updated_at,

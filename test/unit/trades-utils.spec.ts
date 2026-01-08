@@ -15,6 +15,7 @@ import {
   Event,
   EmoteCategory
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { getCategoryFromDBItem } from '../../src/adapters/items'
 import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeLogicUtils from '../../src/logic/trades/utils'
@@ -44,6 +45,7 @@ describe('when calling getNotificationEventForTrade function', () => {
     } as unknown as IPgComponent
 
     trade = {
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_SEPOLIA).address,
       id: '1',
       createdAt: Date.now(),
       signature: '0xsignature',
@@ -175,6 +177,7 @@ describe('when calling getNotificationEventForTrade function', () => {
           wearable_body_shapes: [],
           first_listed_at: new Date(),
           search_is_store_minter: false,
+          search_is_marketplace_v3_minter: false,
           network: SquidNetwork.ETHEREUM,
           id: '1',
           contract_address: '0xaddr',
@@ -236,6 +239,7 @@ describe("when validating the trade to see if it's a correct estate trade", () =
 
   beforeEach(() => {
     trade = {
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_SEPOLIA).address,
       id: '1',
       createdAt: Date.now(),
       signature: '0xsignature',
@@ -401,6 +405,7 @@ describe('when validating trade by type', () => {
     jest.spyOn(chainIdUtils, 'getEthereumChainId').mockImplementation(() => ChainId.ETHEREUM_SEPOLIA)
 
     trade = {
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_SEPOLIA).address,
       id: '1',
       createdAt: Date.now(),
       signature: '0xsignature',

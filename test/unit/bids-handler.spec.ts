@@ -14,6 +14,7 @@ describe('when fetching bids', () => {
   beforeEach(() => {
     bids = [
       {
+        tradeContractAddress: '0x1',
         id: '123',
         status: ListingStatus.CANCELLED,
         seller: '',

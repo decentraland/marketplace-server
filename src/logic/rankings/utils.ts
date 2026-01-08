@@ -10,8 +10,14 @@ import {
 
 export function getUniqueItemsFromItemsDayData(itemDayDataFragments: ItemsDayDataFragment[], filters: RankingsFilters) {
   return itemDayDataFragments.reduce((acc, itemDayData) => {
-    // if we're querying the total, we don't need to parse the itemId out of the fragment
-    const itemId = filters.from === 0 ? itemDayData.id : itemDayData.id.slice(itemDayData.id.indexOf('-') + 1)
+    // If the ID already comes in format "contractAddress-itemId" (from the new sales query), use it directly
+    // Otherwise, use the original logic for items_day_data
+    const itemId = itemDayData.id.includes('-')
+      ? itemDayData.id // ID from sales query
+      : filters.from === 0
+      ? itemDayData.id // ID original for from=0
+      : itemDayData.id.slice(itemDayData.id.indexOf('-') + 1) // Original logic for day_data
+
     const rankingItem = acc[itemId]
     if (rankingItem) {
       rankingItem.sales += itemDayData.sales

@@ -1,4 +1,4 @@
-import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId } from '@dcl/schemas'
+import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId, EmoteOutcomeType } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
 import { CollectionsItemDBResult } from './types'
 
@@ -68,7 +68,16 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
       break
     }
     case FragmentItemType.EMOTE_V1: {
-      const { name: emoteName, body_shapes, description, loop, category: emoteCategory, hasGeometry, hasSound } = dbItem.metadata || {}
+      const {
+        name: emoteName,
+        body_shapes,
+        description,
+        loop,
+        category: emoteCategory,
+        has_geometry,
+        has_sound,
+        outcome_type
+      } = dbItem.metadata || {}
       ;(name = emoteName), (category = NFTCategory.EMOTE)
       data = {
         emote: {
@@ -77,14 +86,24 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
           bodyShapes: body_shapes as BodyShape[],
           rarity: dbItem.rarity as Rarity,
           loop: !!loop,
-          hasGeometry: !!hasGeometry,
-          hasSound: !!hasSound
+          hasGeometry: !!has_geometry,
+          hasSound: !!has_sound,
+          outcomeType: outcome_type as EmoteOutcomeType
         }
       }
       break
     }
     default: {
       throw new Error(`Unknown itemType=${dbItem.item_type}`)
+    }
+  }
+
+  let price = '0'
+  if (+dbItem.available > 0) {
+    if (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter) {
+      price = dbItem.open_item_trade_price ?? '0'
+    } else if (dbItem.search_is_store_minter) {
+      price = dbItem.price
     }
   }
 
@@ -101,12 +120,13 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     contractAddress: dbItem.collection_id,
     rarity: dbItem.rarity as Rarity,
     available: +dbItem.available,
-    isOnSale: !!(dbItem.search_is_store_minter || dbItem.open_item_trade_id) && +dbItem.available > 0,
+    isOnSale:
+      !!(dbItem.search_is_store_minter || (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter)) && +dbItem.available > 0,
     creator: dbItem.creator,
     data,
     network: itemNetwork.toUpperCase() === 'POLYGON' ? Network.MATIC : Network.ETHEREUM,
     chainId: itemNetwork === Network.ETHEREUM ? getEthereumChainId() : getPolygonChainId(),
-    price: dbItem.open_item_trade_id && dbItem.open_item_trade_price && +dbItem.available > 0 ? dbItem.open_item_trade_price : dbItem.price,
+    price,
     createdAt: Number(dbItem.created_at),
     updatedAt: Number(dbItem.updated_at),
     reviewedAt: Number(dbItem.reviewed_at),

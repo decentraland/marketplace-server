@@ -40,12 +40,22 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
       rarity: dbItem.rarity,
       loop: dbItem.loop || false,
       hasSound: dbItem.has_sound || false,
-      hasGeometry: dbItem.has_geometry || false
+      hasGeometry: dbItem.has_geometry || false,
+      outcomeType: dbItem.emote_outcome_type || null
     }
   }
 }
 
 export function fromDBItemToItem(dbItem: DBItem): Item {
+  let price = '0'
+  if (dbItem.available > 0) {
+    if (dbItem.trade_id && dbItem.search_is_marketplace_v3_minter) {
+      price = dbItem.trade_price ?? '0'
+    } else if (dbItem.search_is_store_minter) {
+      price = dbItem.price
+    }
+  }
+
   const beneficiary = dbItem.trade_beneficiary || dbItem.beneficiary
   return {
     id: dbItem.id,
@@ -56,11 +66,10 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     contractAddress: dbItem.contract_address,
     itemId: dbItem.item_id,
     rarity: dbItem.rarity,
-    price: dbItem.trade_id ? dbItem.trade_price : dbItem.price,
+    price,
     available: dbItem.available,
-    isOnSale: !!(dbItem.search_is_store_minter || dbItem.trade_id) && dbItem.available > 0,
+    isOnSale: (dbItem.search_is_store_minter || (!!dbItem.trade_id && dbItem.search_is_marketplace_v3_minter)) && dbItem.available > 0,
     creator: dbItem.creator,
-    tradeId: dbItem.trade_id,
     beneficiary: isAddressZero(beneficiary) ? null : beneficiary,
     createdAt: dbItem.created_at,
     updatedAt: dbItem.updated_at,
@@ -71,8 +80,11 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     chainId: getNetworkChainId(dbItem.network),
     urn: fixUrn(dbItem.urn),
     firstListedAt: dbItem.first_listed_at?.getTime(),
-    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     picks: { count: 0 }, // TODO: check this
-    utility: dbItem.utility
+    utility: dbItem.utility,
+    // trade fields
+    tradeId: dbItem.trade_id,
+    tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
+    tradeContractAddress: dbItem.trade_contract as string
   }
 }

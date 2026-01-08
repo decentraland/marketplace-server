@@ -84,7 +84,7 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
 
   let offChainMarketplaceContract: ContractData
   try {
-    offChainMarketplaceContract = getContract(ContractName.OffChainMarketplace, trade.chainId)
+    offChainMarketplaceContract = getContract(ContractName.OffChainMarketplaceV2, trade.chainId)
   } catch (e) {
     throw new MarketplaceContractNotFound(trade.chainId, trade.network)
   }
