@@ -23,6 +23,8 @@ SNAPSHOT_SPACE=daotest.dcl.eth
 DCL_LISTS_SERVER=https://dcl-lists.decentraland.org
 RENTALS_SUBGRAPH_URL=https://api.studio.thegraph.com/query/49472/rentals-ethereum-mainnet/version/latest
 SIGNATURES_SERVER_URL=https://signatures-api.decentraland.zone
+
+RENTALS_SUBGRAPH_URL=https://subgraph.decentraland.org/rentals-ethereum-mainnet
 SEGMENT_WRITE_KEY=test_segment_key
 
 # Wert Configuration
@@ -38,3 +40,4 @@ MARKETPLACE_BASE_URL=https://decentraland.org/marketplace
 
 # Optional Redis (will use in-memory cache if not set)
 # REDIS_URL=
+

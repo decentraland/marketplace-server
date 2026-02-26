@@ -11,6 +11,11 @@ export enum FragmentItemType {
 
 // The thumbnail urls indexed are wrong, so we need to fix them by appending the blockchainId to the URN in the middle
 function fixThumbnail(thumbnail: string, blockchainId: string) {
+  // Handle null/undefined thumbnails
+  if (!thumbnail) {
+    return ''
+  }
+
   // temporary fix on the thumbnail url to use the correct domain, this should be removed once the testnet thumbnail urls are fixed
   const polygonChain = getPolygonChainId()
   const ethereumChain = getEthereumChainId()
