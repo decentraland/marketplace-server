@@ -5,6 +5,7 @@ export type CreateDBItemOptions = {
   itemId: string
   contractAddress: string
   isStoreMinterSet?: boolean
+  isMarketplaceV3MinterSet?: boolean
   available?: number
   collectionApproved?: boolean
   price?: string
@@ -44,6 +45,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
     itemId,
     contractAddress,
     isStoreMinterSet = false,
+    isMarketplaceV3MinterSet = false,
     available = 1,
     collectionApproved = true,
     price = '100000000000000000000'
@@ -76,6 +78,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
       sales,
       volume,
       search_is_store_minter,
+      search_is_marketplace_v3_minter,
       search_is_collection_approved,
       unique_collectors,
       unique_collectors_total,
@@ -107,6 +110,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
       0,
       0,
       ${isStoreMinterSet ? 'true' : 'false'},
+      ${isMarketplaceV3MinterSet ? 'true' : 'false'},
       ${collectionApproved ? 'true' : 'false'},
       ARRAY[]::text[],
       0,
@@ -114,6 +118,7 @@ export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dapps
       'matic'
     ) ON CONFLICT (id) DO UPDATE SET
       search_is_store_minter = ${isStoreMinterSet ? 'true' : 'false'},
+      search_is_marketplace_v3_minter = ${isMarketplaceV3MinterSet ? 'true' : 'false'},
       available = ${available},
       search_is_collection_approved = ${collectionApproved ? 'true' : 'false'},
       price = ${price}

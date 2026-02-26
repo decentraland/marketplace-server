@@ -241,6 +241,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         "search_emote_has_sound" boolean,
         "search_emote_has_geometry" boolean,
         "search_emote_outcome_type" character varying(16),
+        "search_is_marketplace_v3_minter" boolean,
         "unique_collectors" text array NOT NULL,
         "unique_collectors_total" integer NOT NULL,
         "collection_id" character varying,

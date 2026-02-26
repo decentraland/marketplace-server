@@ -60,6 +60,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
         t.network,
         t.expires_at,
+        MAX(t.contract) AS trade_contract,
 
         CASE
             WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'

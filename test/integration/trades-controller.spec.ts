@@ -12,7 +12,9 @@ import {
   TradeAssetDirection,
   ChainId
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import * as chainIdUtils from '../../src/logic/chainIds'
+import { getPolygonChainId } from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
@@ -26,11 +28,13 @@ test('trades controller', function ({ components }) {
   })
 
   describe('when inserting a bid', () => {
-    let bid: TradeCreation
+    let bid: TradeCreation & { contract: string }
     let response: Response
     let signer: string
+    let contract: string
 
     beforeEach(() => {
+      contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
       bid = {
         signature: Math.random().toString(),
         signer: '0xtest', // the value stored will be change in the test as the signer is the one that signed the request
@@ -46,6 +50,7 @@ test('trades controller', function ({ components }) {
           salt: '0x',
           uses: 1
         },
+        contract,
         network: Network.ETHEREUM,
         sent: [
           {
@@ -291,7 +296,7 @@ test('trades controller', function ({ components }) {
   })
 
   describe('when getting a trade', () => {
-    let trade: TradeCreation
+    let trade: TradeCreation & { contract: string }
     let response: Response
 
     beforeEach(async () => {
@@ -300,6 +305,7 @@ test('trades controller', function ({ components }) {
         intent: 'dcl:create-trade',
         signer: 'dcl:marketplace'
       })
+      const contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
       trade = {
         signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
         signer: signedRequest.identity.realAccount.address.toLowerCase(),
@@ -315,6 +321,7 @@ test('trades controller', function ({ components }) {
           salt: '0x',
           uses: 1
         },
+        contract,
         network: Network.ETHEREUM,
         sent: [
           {

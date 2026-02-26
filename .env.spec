@@ -41,3 +41,5 @@ MARKETPLACE_BASE_URL=https://decentraland.org/marketplace
 # Optional Redis (will use in-memory cache if not set)
 # REDIS_URL=
 
+ETHEREUM_CHAIN_ID=1
+POLYGON_CHAIN_ID=137
