@@ -24,7 +24,7 @@ jobs:
       - name: test
         run: npm run test
       - name: Report coverage
-        uses: coverallsapp/github-action@master
+        uses: coverallsapp/github-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: false
