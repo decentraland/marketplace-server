@@ -7,7 +7,13 @@ import {
   createItemNotForSale,
   createItemMintingAndListing,
   createItemNotApproved,
-  deleteSquidDBItem
+  createSquidDBItem,
+  createSquidDBNFT,
+  createSquidDBTrade,
+  deleteSquidDBItem,
+  deleteSquidDBNFT,
+  deleteSquidDBTrade,
+  refreshTradesMaterializedView
 } from './utils/dbItems'
 
 test('when fetching items from the catalog', function ({ components }) {
@@ -1153,6 +1159,148 @@ test('when fetching items from the catalog', function ({ components }) {
           expect(returnedIds).toContain(cheapMintingItemId)
           expect(returnedIds).toContain(midMintingItemId)
           expect(returnedIds).toContain(expensiveMintingItemId)
+        })
+      })
+    })
+
+    describe('and verifying total matches data count with price filters and offchain trades only (no onlyMinting/onlyListing)', () => {
+      const tradeContract = '0xcccc000000000000000000000000000000000001'
+      const tradeItemId = '6001'
+      const tradeTokenId = '6001'
+      const tradeOwner = '0x1234567890123456789012345678901234567890'
+      let tradeId: string
+
+      afterEach(async () => {
+        if (tradeId) {
+          await deleteSquidDBTrade(components, tradeId)
+        }
+        await deleteSquidDBNFT(components, tradeTokenId, tradeContract)
+        await deleteSquidDBItem(components, tradeItemId, tradeContract)
+      })
+
+      describe('when an item has only an offchain trade listing and minPrice is set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          // Create a non-mintable item
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          // Create an NFT for the item (needed for the MV to link the trade)
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          // Create an offchain trade at 100 MANA (no on-chain order)
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '100000000000000000000', // 100 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?minPrice=50&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
+        })
+      })
+
+      describe('when an item has only an offchain trade listing and maxPrice is set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '10000000000000000000', // 10 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?maxPrice=50&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
+        })
+      })
+
+      describe('when an item has only an offchain trade listing and both minPrice and maxPrice are set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '100000000000000000000', // 100 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?minPrice=50&maxPrice=500&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
         })
       })
     })
