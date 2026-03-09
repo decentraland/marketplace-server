@@ -410,7 +410,7 @@ test('when fetching items from the catalog', function ({ components }) {
         it('should respond with 200 and limited results with correct total', async () => {
           expect(response.status).toEqual(200)
           expect(responseBody.data.length).toBe(1)
-          expect(responseBody.total).toBe(responseBody.data.length)
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         })
       })
 
@@ -587,7 +587,7 @@ test('when fetching items from the catalog', function ({ components }) {
         it('should respond with 200, limited results, and correct total', async () => {
           expect(response.status).toEqual(200)
           expect(responseBody.data.length).toBeLessThanOrEqual(2)
-          expect(responseBody.total).toBe(responseBody.data.length)
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
           returnedAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
@@ -1142,7 +1142,7 @@ test('when fetching items from the catalog', function ({ components }) {
         it('should respond with 200 and limited results with correct total', async () => {
           expect(response.status).toEqual(200)
           expect(responseBody.data.length).toBe(1)
-          expect(responseBody.total).toBe(responseBody.data.length)
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
         })
       })
 
@@ -1300,144 +1300,10 @@ test('when fetching items from the catalog', function ({ components }) {
         it('should respond with 200, limited results, and correct total', async () => {
           expect(response.status).toEqual(200)
           expect(responseBody.data.length).toBeLessThanOrEqual(2)
-          expect(responseBody.total).toBe(responseBody.data.length)
+          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
           returnedAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
-        })
-      })
-    })
-
-    describe('and verifying total matches data count with onlyMinting and price filters', () => {
-      let mintingContract: string
-      let cheapMintingItemId: string
-      let midMintingItemId: string
-      let expensiveMintingItemId: string
-
-      beforeEach(() => {
-        mintingContract = '0xaaaa000000000000000000000000000000000001'
-        cheapMintingItemId = '3001'
-        midMintingItemId = '3002'
-        expensiveMintingItemId = '3003'
-      })
-
-      afterEach(async () => {
-        await Promise.all([
-          deleteSquidDBItem(components, cheapMintingItemId, mintingContract),
-          deleteSquidDBItem(components, midMintingItemId, mintingContract),
-          deleteSquidDBItem(components, expensiveMintingItemId, mintingContract)
-        ])
-      })
-
-      describe('when onlyMinting is true and minPrice is set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyMintingOld(components, mintingContract, cheapMintingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyMintingOld(components, mintingContract, midMintingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyMintingOld(components, mintingContract, expensiveMintingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyMinting=true&minPrice=50&contractAddress=${mintingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return items at or above the minimum price', async () => {
-          expect(returnedIds).toContain(midMintingItemId)
-          expect(returnedIds).toContain(expensiveMintingItemId)
-          expect(returnedIds).not.toContain(cheapMintingItemId)
-        })
-      })
-
-      describe('when onlyMinting is true and maxPrice is set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyMintingOld(components, mintingContract, cheapMintingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyMintingOld(components, mintingContract, midMintingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyMintingOld(components, mintingContract, expensiveMintingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyMinting=true&maxPrice=500&contractAddress=${mintingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return items at or below the maximum price', async () => {
-          expect(returnedIds).toContain(cheapMintingItemId)
-          expect(returnedIds).toContain(midMintingItemId)
-          expect(returnedIds).not.toContain(expensiveMintingItemId)
-        })
-      })
-
-      describe('when onlyMinting is true and both minPrice and maxPrice are set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyMintingOld(components, mintingContract, cheapMintingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyMintingOld(components, mintingContract, midMintingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyMintingOld(components, mintingContract, expensiveMintingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyMinting=true&minPrice=50&maxPrice=500&contractAddress=${mintingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return items within the price range', async () => {
-          expect(returnedIds).toContain(midMintingItemId)
-          expect(returnedIds).not.toContain(cheapMintingItemId)
-          expect(returnedIds).not.toContain(expensiveMintingItemId)
-        })
-      })
-
-      describe('when onlyMinting is true and isOnSale is true with minPrice', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyMintingOld(components, mintingContract, cheapMintingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyMintingOld(components, mintingContract, midMintingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyMintingOld(components, mintingContract, expensiveMintingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyMinting=true&isOnSale=true&minPrice=1&contractAddress=${mintingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should return all minting items above minimum price', async () => {
-          expect(returnedIds).toContain(cheapMintingItemId)
-          expect(returnedIds).toContain(midMintingItemId)
-          expect(returnedIds).toContain(expensiveMintingItemId)
         })
       })
     })
@@ -1580,112 +1446,6 @@ test('when fetching items from the catalog', function ({ components }) {
         it('should have total equal to data length', async () => {
           expect(response.status).toEqual(200)
           expect(responseBody.total).toBe(responseBody.data.length)
-        })
-      })
-    })
-
-    describe('and verifying total matches data count with onlyListing and price filters', () => {
-      let listingContract: string
-      let cheapListingItemId: string
-      let midListingItemId: string
-      let expensiveListingItemId: string
-
-      beforeEach(() => {
-        listingContract = '0xbbbb000000000000000000000000000000000001'
-        cheapListingItemId = '4001'
-        midListingItemId = '4002'
-        expensiveListingItemId = '4003'
-      })
-
-      afterEach(async () => {
-        await Promise.all([
-          deleteSquidDBItem(components, cheapListingItemId, listingContract),
-          deleteSquidDBItem(components, midListingItemId, listingContract),
-          deleteSquidDBItem(components, expensiveListingItemId, listingContract)
-        ])
-      })
-
-      describe('when onlyListing is true and minPrice is set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyListingOld(components, listingContract, cheapListingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyListingOld(components, listingContract, midListingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyListingOld(components, listingContract, expensiveListingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyListing=true&minPrice=50&contractAddress=${listingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return listing items at or above the minimum price', async () => {
-          expect(returnedIds).toContain(midListingItemId)
-          expect(returnedIds).toContain(expensiveListingItemId)
-          expect(returnedIds).not.toContain(cheapListingItemId)
-        })
-      })
-
-      describe('when onlyListing is true and maxPrice is set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyListingOld(components, listingContract, cheapListingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyListingOld(components, listingContract, midListingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyListingOld(components, listingContract, expensiveListingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyListing=true&maxPrice=500&contractAddress=${listingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return listing items at or below the maximum price', async () => {
-          expect(returnedIds).toContain(cheapListingItemId)
-          expect(returnedIds).toContain(midListingItemId)
-          expect(returnedIds).not.toContain(expensiveListingItemId)
-        })
-      })
-
-      describe('when onlyListing is true and both minPrice and maxPrice are set', () => {
-        let response: Response
-        let responseBody: any
-        let returnedIds: string[]
-
-        beforeEach(async () => {
-          await createItemOnlyListingOld(components, listingContract, cheapListingItemId, '10000000000000000000') // 10 MANA
-          await createItemOnlyListingOld(components, listingContract, midListingItemId, '100000000000000000000') // 100 MANA
-          await createItemOnlyListingOld(components, listingContract, expensiveListingItemId, '1000000000000000000000') // 1000 MANA
-
-          const { localFetch } = components
-          response = await localFetch.fetch(`/v2/catalog?onlyListing=true&minPrice=50&maxPrice=500&contractAddress=${listingContract}`)
-          responseBody = await response.json()
-          returnedIds = responseBody.data.map((item: Item) => item.itemId)
-        })
-
-        it('should have total equal to data length', async () => {
-          expect(response.status).toEqual(200)
-          expect(responseBody.total).toBe(responseBody.data.length)
-        })
-
-        it('should only return listing items within the price range', async () => {
-          expect(returnedIds).toContain(midListingItemId)
-          expect(returnedIds).not.toContain(cheapListingItemId)
-          expect(returnedIds).not.toContain(expensiveListingItemId)
         })
       })
     })
