@@ -67,7 +67,11 @@ export async function createCatalogComponent(
         }
       }
       query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
+      // console.log('query', query.text)
+      // console.log('query values', query.values)
       const totalQuery = getCollectionsItemsCountQuery(filters)
+      // console.log('totalQuery', totalQuery.text)
+      // console.log('totalQuery values', totalQuery.values)
       const [items, totalItems] = await Promise.all([
         client.query<CollectionsItemDBResult>(query),
         client.query<{ total: number }>(totalQuery)

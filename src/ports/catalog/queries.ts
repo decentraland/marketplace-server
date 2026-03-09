@@ -326,22 +326,32 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
   return SQL``
 }
 
-export const getMinPriceWhere = (filters: CatalogFilters) => {
+export const getMinPriceWhere = (filters: CatalogFilters, isV2 = false) => {
   if (filters.onlyMinting) {
     return SQL`(price >= ${filters.minPrice} AND price IS DISTINCT FROM ${MAX_NUMERIC_NUMBER})`
   } else if (filters.onlyListing) {
     return SQL`min_price >= ${filters.minPrice}`
   }
-  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
+  const base = SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true))`
+  if (isV2) {
+    base.append(SQL` OR offchain_orders.min_order_amount_received >= ${filters.minPrice}`)
+  }
+  base.append(SQL`)`)
+  return base
 }
 
-export const getMaxPriceWhere = (filters: CatalogFilters) => {
+export const getMaxPriceWhere = (filters: CatalogFilters, isV2 = false) => {
   if (filters.onlyMinting) {
     return SQL`price <= ${filters.maxPrice}`
   } else if (filters.onlyListing) {
     return SQL`max_price <= ${filters.maxPrice}`
   }
-  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
+  const base = SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true))`
+  if (isV2) {
+    base.append(SQL` OR offchain_orders.max_order_amount_received <= ${filters.maxPrice}`)
+  }
+  base.append(SQL`)`)
+  return base
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -441,8 +451,8 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
     filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
-    filters.minPrice ? getMinPriceWhere(filters) : undefined,
-    filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
+    filters.minPrice ? getMinPriceWhere(filters, isV2) : undefined,
+    filters.maxPrice ? getMaxPriceWhere(filters, isV2) : undefined,
     filters.onlyListing ? (isV2 ? getOnlyListingsWhereWithTrades() : getOnlyListingsWhere()) : undefined,
     filters.onlyMinting ? (isV2 ? getOnlyMintingWhereWithTrades() : getOnlyMintingWhere()) : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined,

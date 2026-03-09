@@ -23,6 +23,8 @@ jobs:
         if: ${{ always() }}
       - name: test
         run: npm run test
+      - name: integration test
+        run: npm run test:integration
       - name: Report coverage
         uses: coverallsapp/github-action@main
         with:
