@@ -36,6 +36,7 @@ TRANSAK_API_URL=https://api.transak.com/partners/api
 TRANSAK_API_GATEWAY_URL=https://api-gateway.transak.com/api
 TRANSAK_API_KEY=test_key
 TRANSAK_API_SECRET=test_secret
+TRANSAK_REFRESH_ACCESS_TOKEN_AUTH=refresh_test_token
 MARKETPLACE_BASE_URL=https://decentraland.org/marketplace
 
 # Optional Redis (will use in-memory cache if not set)
