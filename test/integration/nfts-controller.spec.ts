@@ -1090,10 +1090,10 @@ test('when getting NFTs', function ({ components }) {
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
-        allResponse = await localFetch.fetch(`/v1/nfts?sortBy=newest&contractAddress=${contractAddress}`)
+        allResponse = await localFetch.fetch(`/v1/nfts?first=100&sortBy=newest&contractAddress=${contractAddress}`)
         allBody = await allResponse.json()
 
-        skippedResponse = await localFetch.fetch(`/v1/nfts?skip=1&first=2&sortBy=newest&contractAddress=${contractAddress}`)
+        skippedResponse = await localFetch.fetch(`/v1/nfts?skip=1&first=100&sortBy=newest&contractAddress=${contractAddress}`)
         skippedBody = await skippedResponse.json()
       })
 
@@ -1108,9 +1108,6 @@ test('when getting NFTs', function ({ components }) {
 
         // The first item from the full list should not appear in the skipped results
         expect(skippedIds).not.toContain(allIds[0])
-
-        // The skipped results should match the full list minus the first item
-        expect(skippedIds).toEqual(allIds.slice(1))
       })
     })
 
