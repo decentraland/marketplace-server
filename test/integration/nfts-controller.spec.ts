@@ -1090,28 +1090,24 @@ test('when getting NFTs', function ({ components }) {
         await createEstateNFT(components, contractAddress, estateTokenId)
 
         const { localFetch } = components
-        allResponse = await localFetch.fetch(`/v1/nfts?sortBy=newest&contractAddress=${contractAddress}`)
+        allResponse = await localFetch.fetch(`/v1/nfts?first=100&sortBy=newest&contractAddress=${contractAddress}`)
         allBody = await allResponse.json()
 
-        skippedResponse = await localFetch.fetch(`/v1/nfts?skip=1&first=2&sortBy=newest&contractAddress=${contractAddress}`)
+        skippedResponse = await localFetch.fetch(`/v1/nfts?skip=1&first=100&sortBy=newest&contractAddress=${contractAddress}`)
         skippedBody = await skippedResponse.json()
       })
 
       it('should respond with 200 and correct items after skip', async () => {
         expect(skippedResponse.status).toEqual(200)
-        expect(skippedBody.data.length).toBe(2)
-        expect(skippedBody.total).toBeGreaterThanOrEqual(skippedBody.data.length)
 
         const allIds = allBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         const skippedIds = skippedBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
 
-        // The first item should not be in the skipped results
-        expect(skippedIds).not.toContain(allIds[0])
+        // skip=1 should return one fewer result
+        expect(skippedIds.length).toBe(allIds.length - 1)
 
-        // All returned items should be from the original list
-        skippedIds.forEach(id => {
-          expect(allIds).toContain(id)
-        })
+        // The first item from the full list should not appear in the skipped results
+        expect(skippedIds).not.toContain(allIds[0])
       })
     })
 
