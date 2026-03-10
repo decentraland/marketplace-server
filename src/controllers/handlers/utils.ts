@@ -18,11 +18,20 @@ import {
   EmoteOutcomeType
 } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
+import { HttpError } from '../../logic/http/response'
 import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
 import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { ContractFilters, ContractSortBy } from '../../ports/contracts/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
 import { HTTPResponse, StatusCode } from '../../types'
+
+function parsePrice(value: string, paramName: string): string {
+  try {
+    return ethers.parseEther(value).toString()
+  } catch {
+    throw new HttpError(`Invalid ${paramName} value: ${value}`, 400)
+  }
+}
 
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
@@ -50,8 +59,8 @@ export const getItemsParams = (params: Params) => {
     contractAddresses: params.getAddressList('contractAddress'),
     itemId: params.getString('itemId'),
     network: params.getValue<Network>('network', Network),
-    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? parsePrice(maxPrice, 'maxPrice') : undefined,
+    minPrice: minPrice && minPrice.trim() ? parsePrice(minPrice, 'minPrice') : undefined,
     urns: params.getList('urn'),
     ids: params.getList('id')
   }
@@ -89,8 +98,8 @@ export const getNFTParams = (params: Params): NFTFilters => {
     minDistanceToPlaza: params.getNumber('minDistanceToPlaza'),
     maxDistanceToPlaza: params.getNumber('maxDistanceToPlaza'),
     tenant: params.getAddress('tenant')?.toLowerCase(),
-    maxPrice: maxPrice && maxPrice.trim() ? ethers.parseEther(maxPrice).toString() : undefined,
-    minPrice: minPrice && minPrice.trim() ? ethers.parseEther(minPrice).toString() : undefined,
+    maxPrice: maxPrice && maxPrice.trim() ? parsePrice(maxPrice, 'maxPrice') : undefined,
+    minPrice: minPrice && minPrice.trim() ? parsePrice(minPrice, 'minPrice') : undefined,
     minEstateSize: params.getNumber('minEstateSize'),
     maxEstateSize: params.getNumber('maxEstateSize'),
     emoteHasGeometry: params.getBoolean('emoteHasGeometry'),

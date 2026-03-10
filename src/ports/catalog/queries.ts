@@ -326,22 +326,32 @@ export const getOrderRangePriceWhere = (filters: CatalogFilters) => {
   return SQL``
 }
 
-export const getMinPriceWhere = (filters: CatalogFilters) => {
+export const getMinPriceWhere = (filters: CatalogFilters, isV2 = false) => {
   if (filters.onlyMinting) {
     return SQL`(price >= ${filters.minPrice} AND price IS DISTINCT FROM ${MAX_NUMERIC_NUMBER})`
   } else if (filters.onlyListing) {
     return SQL`min_price >= ${filters.minPrice}`
   }
-  return SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
+  const base = SQL`(min_price >= ${filters.minPrice} OR (price >= ${filters.minPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true))`
+  if (isV2) {
+    base.append(SQL` OR offchain_orders.min_order_amount_received >= ${filters.minPrice}`)
+  }
+  base.append(SQL`)`)
+  return base
 }
 
-export const getMaxPriceWhere = (filters: CatalogFilters) => {
+export const getMaxPriceWhere = (filters: CatalogFilters, isV2 = false) => {
   if (filters.onlyMinting) {
     return SQL`price <= ${filters.maxPrice}`
   } else if (filters.onlyListing) {
     return SQL`max_price <= ${filters.maxPrice}`
   }
-  return SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true)))`
+  const base = SQL`(max_price <= ${filters.maxPrice} OR (price <= ${filters.maxPrice} AND available > 0 AND (search_is_store_minter = true OR search_is_marketplace_v3_minter = true))`
+  if (isV2) {
+    base.append(SQL` OR offchain_orders.max_order_amount_received <= ${filters.maxPrice}`)
+  }
+  base.append(SQL`)`)
+  return base
 }
 
 export const getContractAddressWhere = (filters: CatalogFilters) => {
@@ -441,8 +451,8 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.emoteCategory ? getEmoteCategoryWhere(filters) : undefined,
     filters.emotePlayMode?.length ? getEmotePlayModeWhere(filters) : undefined,
     filters.contractAddresses?.length ? getContractAddressWhere(filters) : undefined,
-    filters.minPrice ? getMinPriceWhere(filters) : undefined,
-    filters.maxPrice ? getMaxPriceWhere(filters) : undefined,
+    filters.minPrice ? getMinPriceWhere(filters, isV2) : undefined,
+    filters.maxPrice ? getMaxPriceWhere(filters, isV2) : undefined,
     filters.onlyListing ? (isV2 ? getOnlyListingsWhereWithTrades() : getOnlyListingsWhere()) : undefined,
     filters.onlyMinting ? (isV2 ? getOnlyMintingWhereWithTrades() : getOnlyMintingWhere()) : undefined,
     filters.ids?.length ? getIdsWhere(filters) : undefined,
@@ -833,7 +843,16 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           AND t.type = 'public_item_order'
           AND (t.available IS NULL OR t.available > 0)
           AND t.contract_address_sent = items.collection_id
-          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id`)
+    if (filters.minPrice) {
+      query.append(SQL`
+          AND t.amount_received >= ${filters.minPrice}`)
+    }
+    if (filters.maxPrice) {
+      query.append(SQL`
+          AND t.amount_received <= ${filters.maxPrice}`)
+    }
+    query.append(SQL`
       )
     )`)
   }
@@ -879,6 +898,132 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
       )
     )`)
+  }
+
+  // Handle minPrice filter
+  if (filters.minPrice) {
+    if (filters.onlyMinting) {
+      query.append(SQL` AND items.price >= ${filters.minPrice} AND items.price IS DISTINCT FROM ${MAX_NUMERIC_NUMBER}`)
+    } else if (filters.onlyListing) {
+      query
+        .append(
+          SQL` AND (
+        EXISTS (
+          SELECT 1
+          FROM `
+        )
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS o
+          WHERE o.status = 'open'
+            AND o.expires_at_normalized > NOW()
+            AND o.item_id = items.id
+            AND o.price >= ${filters.minPrice}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM marketplace.mv_trades AS t
+          WHERE t.status = 'open'
+            AND t.type = 'public_nft_order'
+            AND (t.available IS NULL OR t.available > 0)
+            AND t.contract_address_sent = items.collection_id
+            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.amount_received >= ${filters.minPrice}
+        )
+      )`
+        )
+    } else {
+      query
+        .append(
+          SQL` AND (
+        (items.price >= ${filters.minPrice} AND items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true))
+        OR EXISTS (
+          SELECT 1
+          FROM `
+        )
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS o
+          WHERE o.status = 'open'
+            AND o.expires_at_normalized > NOW()
+            AND o.item_id = items.id
+            AND o.price >= ${filters.minPrice}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM marketplace.mv_trades AS t
+          WHERE t.status = 'open'
+            AND (t.available IS NULL OR t.available > 0)
+            AND t.contract_address_sent = items.collection_id
+            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.amount_received >= ${filters.minPrice}
+        )
+      )`
+        )
+    }
+  }
+
+  // Handle maxPrice filter
+  if (filters.maxPrice) {
+    if (filters.onlyMinting) {
+      query.append(SQL` AND items.price <= ${filters.maxPrice}`)
+    } else if (filters.onlyListing) {
+      query
+        .append(
+          SQL` AND (
+        EXISTS (
+          SELECT 1
+          FROM `
+        )
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS o
+          WHERE o.status = 'open'
+            AND o.expires_at_normalized > NOW()
+            AND o.item_id = items.id
+            AND o.price <= ${filters.maxPrice}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM marketplace.mv_trades AS t
+          WHERE t.status = 'open'
+            AND t.type = 'public_nft_order'
+            AND (t.available IS NULL OR t.available > 0)
+            AND t.contract_address_sent = items.collection_id
+            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.amount_received <= ${filters.maxPrice}
+        )
+      )`
+        )
+    } else {
+      query
+        .append(
+          SQL` AND (
+        (items.price <= ${filters.maxPrice} AND items.available > 0 AND (items.search_is_store_minter = true OR items.search_is_marketplace_v3_minter = true))
+        OR EXISTS (
+          SELECT 1
+          FROM `
+        )
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.order AS o
+          WHERE o.status = 'open'
+            AND o.expires_at_normalized > NOW()
+            AND o.item_id = items.id
+            AND o.price <= ${filters.maxPrice}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM marketplace.mv_trades AS t
+          WHERE t.status = 'open'
+            AND (t.available IS NULL OR t.available > 0)
+            AND t.contract_address_sent = items.collection_id
+            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.amount_received <= ${filters.maxPrice}
+        )
+      )`
+        )
+    }
   }
 
   return query

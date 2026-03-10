@@ -27,19 +27,26 @@ interface NFTsResponse {
 
 // Helper functions for mocks
 function mockSignaturesAPI(): void {
+  const emptyRentalsResponse = {
+    ok: true,
+    data: {
+      results: [],
+      total: 0,
+      page: 1,
+      pages: 1,
+      limit: 24
+    }
+  }
+
   nock('https://signatures-api.decentraland.zone')
     .persist()
     .get(/\/v1\/rentals-listings.*/)
-    .reply(200, {
-      ok: true,
-      data: {
-        results: [],
-        total: 0,
-        page: 1,
-        pages: 1,
-        limit: 24
-      }
-    })
+    .reply(200, emptyRentalsResponse)
+
+  nock('https://signatures-api.decentraland.org')
+    .persist()
+    .get(/\/v1\/rentals-listings.*/)
+    .reply(200, emptyRentalsResponse)
 }
 
 function mockRentalsSubgraph(
@@ -71,7 +78,7 @@ function setupDefaultMocks(): void {
   mockSignaturesAPI()
   mockRentalsSubgraph()
   nock.disableNetConnect()
-  nock.enableNetConnect('localhost')
+  nock.enableNetConnect(/(localhost|0\.0\.0\.0)/)
 }
 
 test('when getting NFTs', function ({ components }) {
@@ -512,7 +519,7 @@ test('when getting NFTs', function ({ components }) {
           }
         ])
         nock.disableNetConnect()
-        nock.enableNetConnect('localhost')
+        nock.enableNetConnect(/(localhost|0\.0\.0\.0)/)
 
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?owner=${ownerAddress}&isLand=true`)

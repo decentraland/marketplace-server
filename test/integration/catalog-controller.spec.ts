@@ -7,7 +7,13 @@ import {
   createItemNotForSale,
   createItemMintingAndListing,
   createItemNotApproved,
-  deleteSquidDBItem
+  createSquidDBItem,
+  createSquidDBNFT,
+  createSquidDBTrade,
+  deleteSquidDBItem,
+  deleteSquidDBNFT,
+  deleteSquidDBTrade,
+  refreshTradesMaterializedView
 } from './utils/dbItems'
 
 test('when fetching items from the catalog', function ({ components }) {
@@ -56,7 +62,7 @@ test('when fetching items from the catalog', function ({ components }) {
         expect(Array.isArray(responseBody.data)).toBe(true)
         expect(responseBody).toHaveProperty('total')
         expect(typeof responseBody.total).toBe('number')
-        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+        expect(responseBody.total).toBe(responseBody.data.length)
         expect(responseBody.data.length).toBeGreaterThan(0)
 
         const item = responseBody.data[0]
@@ -93,7 +99,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only minting items', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).not.toContain(listingItemId)
           expect(returnedIds).not.toContain(notForSaleItemId)
@@ -118,7 +124,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only listing items', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(listingItemId)
           expect(returnedIds).not.toContain(mintingItemId)
           expect(returnedIds).not.toContain(notForSaleItemId)
@@ -144,7 +150,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items on sale', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).toContain(listingItemId)
           expect(returnedIds).toContain(hybridItemId)
@@ -171,7 +177,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items not on sale', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(notForSaleItemId)
           expect(returnedIds).not.toContain(mintingItemId)
           expect(returnedIds).not.toContain(listingItemId)
@@ -181,14 +187,21 @@ test('when fetching items from the catalog', function ({ components }) {
 
       describe('when onlyMinting and onlyListing are both true', () => {
         let response: Response
+        let responseBody: any
 
         beforeEach(async () => {
+          await createItemOnlyMintingOld(components, contractAddress, mintingItemId, '100000000000000000000')
+          await createItemOnlyListingOld(components, contractAddress, listingItemId, '50000000000000000000')
+
           const { localFetch } = components
           response = await localFetch.fetch('/v1/catalog?onlyMinting=true&onlyListing=true')
+          responseBody = await response.json()
         })
 
-        it('should respond with 400 status for conflicting filters', async () => {
-          expect(response.status).toEqual(400)
+        it('should respond with 200 and empty data since the filters are contradictory', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.data).toEqual([])
+          expect(responseBody.total).toBe(0)
         })
       })
     })
@@ -210,7 +223,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
       it('should respond with 200 and only approved collection items', async () => {
         expect(response.status).toEqual(200)
-        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+        expect(responseBody.total).toBe(responseBody.data.length)
         expect(returnedIds).toContain(mintingItemId)
         expect(returnedIds).not.toContain(notApprovedItemId)
       })
@@ -236,7 +249,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items at or above minimum price', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId) // 100 MANA
           expect(returnedIds).toContain(expensiveItemId) // 1000 MANA
           expect(returnedIds).not.toContain(cheapItemId) // 10 MANA
@@ -263,7 +276,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items at or below maximum price', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(cheapItemId) // 10 MANA
           expect(returnedIds).toContain(listingItemId) // 50 MANA
           expect(returnedIds).toContain(mintingItemId) // 100 MANA
@@ -290,7 +303,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items within price range', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(listingItemId) // 50 MANA
           expect(returnedIds).toContain(mintingItemId) // 100 MANA
           expect(returnedIds).not.toContain(cheapItemId) // 10 MANA
@@ -306,8 +319,6 @@ test('when fetching items from the catalog', function ({ components }) {
           response = await localFetch.fetch('/v1/catalog?minPrice=invalid&maxPrice=also_invalid')
         })
 
-        // TODO: This should return 400, but currently returns 500 due to ethers.parseEther throwing an unhandled error.
-        // See getItemsParams in src/controllers/handlers/utils.ts - needs validation before calling ethers.parseEther
         it('should respond with 400 status for invalid price parameters', async () => {
           expect(response.status).toEqual(400)
         })
@@ -332,7 +343,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items from specified contract', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           returnedContractAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
@@ -356,7 +367,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and items from all specified contracts', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).toContain(secondContractItemId)
         })
@@ -462,7 +473,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and items sorted by price ascending', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           for (let i = 0; i < responseBody.data.length - 1; i++) {
             const currentPrice = parseFloat(responseBody.data[i].price || '0')
             const nextPrice = parseFloat(responseBody.data[i + 1].price || '0')
@@ -487,7 +498,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and items sorted by price descending', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           for (let i = 0; i < responseBody.data.length - 1; i++) {
             const currentPrice = parseFloat(responseBody.data[i].price || '0')
             const nextPrice = parseFloat(responseBody.data[i + 1].price || '0')
@@ -518,7 +529,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only minting items from specified contract', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           returnedAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
@@ -549,7 +560,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items on sale within price range', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId) // 100 MANA, on sale
           expect(returnedIds).not.toContain(listingItemId) // 50 MANA, below min
           expect(returnedIds).not.toContain(notForSaleItemId)
@@ -603,7 +614,7 @@ test('when fetching items from the catalog', function ({ components }) {
         expect(Array.isArray(responseBody.data)).toBe(true)
         expect(responseBody).toHaveProperty('total')
         expect(typeof responseBody.total).toBe('number')
-        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+        expect(responseBody.total).toBe(responseBody.data.length)
       })
     })
 
@@ -626,10 +637,170 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only minting items', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).not.toContain(listingItemId)
           expect(returnedIds).not.toContain(notForSaleItemId)
+        })
+
+        describe('and minPrice is set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await createItemOnlyMintingOld(components, mintingContract, '3001', '10000000000000000000') // 10 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3002', '100000000000000000000') // 100 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(`/v2/catalog?onlyMinting=true&minPrice=50&contractAddress=${mintingContract}`)
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '3001', mintingContract),
+              deleteSquidDBItem(components, '3002', mintingContract),
+              deleteSquidDBItem(components, '3003', mintingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return items at or above the minimum price', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('3002')
+            expect(priceReturnedIds).toContain('3003')
+            expect(priceReturnedIds).not.toContain('3001')
+          })
+        })
+
+        describe('and maxPrice is set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await createItemOnlyMintingOld(components, mintingContract, '3001', '10000000000000000000') // 10 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3002', '100000000000000000000') // 100 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(`/v2/catalog?onlyMinting=true&maxPrice=500&contractAddress=${mintingContract}`)
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '3001', mintingContract),
+              deleteSquidDBItem(components, '3002', mintingContract),
+              deleteSquidDBItem(components, '3003', mintingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return items at or below the maximum price', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('3001')
+            expect(priceReturnedIds).toContain('3002')
+            expect(priceReturnedIds).not.toContain('3003')
+          })
+        })
+
+        describe('and both minPrice and maxPrice are set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await createItemOnlyMintingOld(components, mintingContract, '3001', '10000000000000000000') // 10 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3002', '100000000000000000000') // 100 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(
+              `/v2/catalog?onlyMinting=true&minPrice=50&maxPrice=500&contractAddress=${mintingContract}`
+            )
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '3001', mintingContract),
+              deleteSquidDBItem(components, '3002', mintingContract),
+              deleteSquidDBItem(components, '3003', mintingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return items within the price range', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('3002')
+            expect(priceReturnedIds).not.toContain('3001')
+            expect(priceReturnedIds).not.toContain('3003')
+          })
+        })
+
+        describe('and isOnSale is true with minPrice', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await createItemOnlyMintingOld(components, mintingContract, '3001', '10000000000000000000') // 10 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3002', '100000000000000000000') // 100 MANA
+            await createItemOnlyMintingOld(components, mintingContract, '3003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(
+              `/v2/catalog?onlyMinting=true&isOnSale=true&minPrice=1&contractAddress=${mintingContract}`
+            )
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const mintingContract = '0xaaaa000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '3001', mintingContract),
+              deleteSquidDBItem(components, '3002', mintingContract),
+              deleteSquidDBItem(components, '3003', mintingContract)
+            ])
+          })
+
+          it('should have total equal to data length and return all minting items above minimum price', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('3001')
+            expect(priceReturnedIds).toContain('3002')
+            expect(priceReturnedIds).toContain('3003')
+          })
         })
       })
 
@@ -651,10 +822,129 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only listing items', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(listingItemId)
           expect(returnedIds).not.toContain(mintingItemId)
           expect(returnedIds).not.toContain(notForSaleItemId)
+        })
+
+        describe('and minPrice is set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await createItemOnlyListingOld(components, listingContract, '4001', '10000000000000000000') // 10 MANA
+            await createItemOnlyListingOld(components, listingContract, '4002', '100000000000000000000') // 100 MANA
+            await createItemOnlyListingOld(components, listingContract, '4003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(`/v2/catalog?onlyListing=true&minPrice=50&contractAddress=${listingContract}`)
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '4001', listingContract),
+              deleteSquidDBItem(components, '4002', listingContract),
+              deleteSquidDBItem(components, '4003', listingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return listing items at or above the minimum price', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('4002')
+            expect(priceReturnedIds).toContain('4003')
+            expect(priceReturnedIds).not.toContain('4001')
+          })
+        })
+
+        describe('and maxPrice is set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await createItemOnlyListingOld(components, listingContract, '4001', '10000000000000000000') // 10 MANA
+            await createItemOnlyListingOld(components, listingContract, '4002', '100000000000000000000') // 100 MANA
+            await createItemOnlyListingOld(components, listingContract, '4003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(`/v2/catalog?onlyListing=true&maxPrice=500&contractAddress=${listingContract}`)
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '4001', listingContract),
+              deleteSquidDBItem(components, '4002', listingContract),
+              deleteSquidDBItem(components, '4003', listingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return listing items at or below the maximum price', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('4001')
+            expect(priceReturnedIds).toContain('4002')
+            expect(priceReturnedIds).not.toContain('4003')
+          })
+        })
+
+        describe('and both minPrice and maxPrice are set', () => {
+          let priceResponse: Response
+          let priceBody: any
+          let priceReturnedIds: string[]
+
+          beforeEach(async () => {
+            await deleteSquidDBItem(components, mintingItemId, contractAddress)
+            await deleteSquidDBItem(components, listingItemId, contractAddress)
+            await deleteSquidDBItem(components, notForSaleItemId, contractAddress)
+
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await createItemOnlyListingOld(components, listingContract, '4001', '10000000000000000000') // 10 MANA
+            await createItemOnlyListingOld(components, listingContract, '4002', '100000000000000000000') // 100 MANA
+            await createItemOnlyListingOld(components, listingContract, '4003', '1000000000000000000000') // 1000 MANA
+
+            const { localFetch } = components
+            priceResponse = await localFetch.fetch(
+              `/v2/catalog?onlyListing=true&minPrice=50&maxPrice=500&contractAddress=${listingContract}`
+            )
+            priceBody = await priceResponse.json()
+            priceReturnedIds = priceBody.data.map((item: Item) => item.itemId)
+          })
+
+          afterEach(async () => {
+            const listingContract = '0xbbbb000000000000000000000000000000000001'
+            await Promise.all([
+              deleteSquidDBItem(components, '4001', listingContract),
+              deleteSquidDBItem(components, '4002', listingContract),
+              deleteSquidDBItem(components, '4003', listingContract)
+            ])
+          })
+
+          it('should have total equal to data length and only return listing items within the price range', async () => {
+            expect(priceResponse.status).toEqual(200)
+            expect(priceBody.total).toBe(priceBody.data.length)
+            expect(priceReturnedIds).toContain('4002')
+            expect(priceReturnedIds).not.toContain('4001')
+            expect(priceReturnedIds).not.toContain('4003')
+          })
         })
       })
 
@@ -677,7 +967,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items on sale', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).toContain(listingItemId)
           expect(returnedIds).toContain(hybridItemId)
@@ -692,9 +982,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         beforeEach(async () => {
           await createItemOnlyMintingOld(components, contractAddress, mintingItemId, '100000000000000000000')
-          await createItemOnlyListingOld(components, contractAddress, listingItemId, '50000000000000000000')
           await createItemNotForSale(components, contractAddress, notForSaleItemId)
-          await createItemMintingAndListing(components, contractAddress, hybridItemId, '200000000000000000000', '75000000000000000000')
 
           const { localFetch } = components
           response = await localFetch.fetch('/v2/catalog?isOnSale=false')
@@ -704,11 +992,9 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items not on sale', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(notForSaleItemId)
           expect(returnedIds).not.toContain(mintingItemId)
-          expect(returnedIds).not.toContain(listingItemId)
-          expect(returnedIds).not.toContain(hybridItemId)
         })
       })
     })
@@ -730,7 +1016,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
       it('should respond with 200 and only approved collection items', async () => {
         expect(response.status).toEqual(200)
-        expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+        expect(responseBody.total).toBe(responseBody.data.length)
         expect(returnedIds).not.toContain(notApprovedItemId)
       })
     })
@@ -754,7 +1040,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items at or above minimum price', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).toContain(expensiveItemId)
           expect(returnedIds).not.toContain(cheapItemId)
@@ -779,7 +1065,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items at or below maximum price', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(cheapItemId)
           expect(returnedIds).toContain(mintingItemId)
           expect(returnedIds).not.toContain(expensiveItemId)
@@ -804,7 +1090,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items within price range', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId) // 100 MANA
           expect(returnedIds).not.toContain(cheapItemId) // 10 MANA
           expect(returnedIds).not.toContain(expensiveItemId) // 1000 MANA
@@ -830,7 +1116,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items from specified contract', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           returnedContractAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
@@ -903,7 +1189,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and items sorted by price ascending', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           for (let i = 0; i < responseBody.data.length - 1; i++) {
             const currentPrice = parseFloat(responseBody.data[i].price || '0')
             const nextPrice = parseFloat(responseBody.data[i + 1].price || '0')
@@ -928,7 +1214,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and items sorted by price descending', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           for (let i = 0; i < responseBody.data.length - 1; i++) {
             const currentPrice = parseFloat(responseBody.data[i].price || '0')
             const nextPrice = parseFloat(responseBody.data[i + 1].price || '0')
@@ -958,7 +1244,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only minting items from specified contract', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           returnedAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
@@ -988,7 +1274,7 @@ test('when fetching items from the catalog', function ({ components }) {
 
         it('should respond with 200 and only items on sale within price range', async () => {
           expect(response.status).toEqual(200)
-          expect(responseBody.total).toBeGreaterThanOrEqual(responseBody.data.length)
+          expect(responseBody.total).toBe(responseBody.data.length)
           expect(returnedIds).toContain(mintingItemId) // 100 MANA, on sale
           expect(returnedIds).not.toContain(listingItemId) // 50 MANA, below min
           expect(returnedIds).not.toContain(notForSaleItemId)
@@ -1018,6 +1304,148 @@ test('when fetching items from the catalog', function ({ components }) {
           returnedAddresses.forEach((addr: string) => {
             expect(addr).toBe(contractAddress)
           })
+        })
+      })
+    })
+
+    describe('and verifying total matches data count with price filters and offchain trades only (no onlyMinting/onlyListing)', () => {
+      const tradeContract = '0xcccc000000000000000000000000000000000001'
+      const tradeItemId = '6001'
+      const tradeTokenId = '6001'
+      const tradeOwner = '0x1234567890123456789012345678901234567890'
+      let tradeId: string
+
+      afterEach(async () => {
+        if (tradeId) {
+          await deleteSquidDBTrade(components, tradeId)
+        }
+        await deleteSquidDBNFT(components, tradeTokenId, tradeContract)
+        await deleteSquidDBItem(components, tradeItemId, tradeContract)
+      })
+
+      describe('when an item has only an offchain trade listing and minPrice is set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          // Create a non-mintable item
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          // Create an NFT for the item (needed for the MV to link the trade)
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          // Create an offchain trade at 100 MANA (no on-chain order)
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '100000000000000000000', // 100 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?minPrice=50&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
+        })
+      })
+
+      describe('when an item has only an offchain trade listing and maxPrice is set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '10000000000000000000', // 10 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?maxPrice=50&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
+        })
+      })
+
+      describe('when an item has only an offchain trade listing and both minPrice and maxPrice are set', () => {
+        let response: Response
+        let responseBody: any
+
+        beforeEach(async () => {
+          await createSquidDBItem(components, {
+            itemId: tradeItemId,
+            contractAddress: tradeContract,
+            isStoreMinterSet: false,
+            isMarketplaceV3MinterSet: false,
+            available: 0,
+            collectionApproved: true
+          })
+
+          await createSquidDBNFT(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            isOnSale: false
+          })
+
+          tradeId = await createSquidDBTrade(components, {
+            tokenId: tradeTokenId,
+            contractAddress: tradeContract,
+            owner: tradeOwner,
+            price: '100000000000000000000', // 100 MANA
+            type: 'public_nft_order'
+          })
+          await refreshTradesMaterializedView(components)
+
+          const { localFetch } = components
+          response = await localFetch.fetch(`/v2/catalog?minPrice=50&maxPrice=500&contractAddress=${tradeContract}`)
+          responseBody = await response.json()
+        })
+
+        it('should have total equal to data length', async () => {
+          expect(response.status).toEqual(200)
+          expect(responseBody.total).toBe(responseBody.data.length)
         })
       })
     })

@@ -8,7 +8,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Start postgres
-        run: docker compose up -d --wait --renew-anon-volumes
+        run: docker compose up -d --renew-anon-volumes
+      - name: Wait for databases to be ready
+        run: |
+          for port in 5432 5433 5434; do
+            echo "Waiting for postgres on port $port..."
+            for i in $(seq 1 30); do
+              if pg_isready -h localhost -p $port -q 2>/dev/null; then
+                echo "Postgres on port $port is ready"
+                break
+              fi
+              if [ $i -eq 30 ]; then
+                echo "Timed out waiting for postgres on port $port"
+                docker compose logs
+                exit 1
+              fi
+              sleep 2
+            done
+          done
       - name: Use Node.js 20.x
         uses: actions/setup-node@v6
         with:
@@ -23,7 +40,10 @@ jobs:
         if: ${{ always() }}
       - name: test
         run: npm run test
+      - name: integration test
+        run: npm run test:integration
       - name: Report coverage
-        uses: coverallsapp/github-action@master
+        uses: coverallsapp/github-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-error: false

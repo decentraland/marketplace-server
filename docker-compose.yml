@@ -1,11 +1,9 @@
 # Utilitarian compose file to locally run postgres service
 # for integration testing purposes.
 
-version: '3.8'
-
 services:
   marketplace_db:
-    image: postgres
+    image: postgres:17
     restart: always
     environment:
       - POSTGRES_USER=marketplace_admin
@@ -18,7 +16,7 @@ services:
       - ./test/db/init-favorites-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
 
   dapps_db:
-    image: postgres
+    image: postgres:17
     restart: always
     environment:
       - POSTGRES_USER=dapps_admin
@@ -33,7 +31,7 @@ services:
       - builder_db
 
   builder_db:
-    image: postgres
+    image: postgres:17
     restart: always
     environment:
       - POSTGRES_USER=builder_admin
