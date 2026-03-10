@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
 import { TradeType, TradeAssetDirection } from '@dcl/schemas'
+import { ChainId } from '@dcl/schemas/dist/dapps/chain-id'
+import { ContractName, getContract } from 'decentraland-transactions'
 
 export const SCHEMA = 'marketplace'
 
@@ -14,6 +17,10 @@ export const ASSET_DIRECTION_TYPE = 'asset_direction_type'
 export const shorthands: ColumnDefinitions | undefined = undefined
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
+  const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
+  const polygonChainId = await config.requireString('POLYGON_CHAIN_ID')
+  const polygonMarketplaceContractAddress = getContract(ContractName.OffChainMarketplace, polygonChainId as unknown as ChainId)
+
   pgm.createType({ schema: SCHEMA, name: TRADE_TYPE }, [TradeType.BID])
 
   pgm.createTable(
@@ -35,6 +42,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       type: { type: TRADE_TYPE, notNull: true },
       expires_at: { type: 'timestamptz(3)', notNull: true },
       effective_since: { type: 'timestamptz(3)', notNull: true },
+      contract: {
+        type: 'text',
+        notNull: true,
+        default: polygonMarketplaceContractAddress.address
+      },
       created_at: { type: 'timestamptz(3)', notNull: true, default: pgm.func('now()::timestamptz(3)') }
     }
   )

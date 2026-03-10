@@ -24,7 +24,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
         notNull: true,
         default: polygonMarketplaceContractAddress.address
       }
-    }
+    },
+    { ifNotExists: true }
   )
 
   // Update existing ethereum trades to have their address correctly
