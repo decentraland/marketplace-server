@@ -1099,19 +1099,18 @@ test('when getting NFTs', function ({ components }) {
 
       it('should respond with 200 and correct items after skip', async () => {
         expect(skippedResponse.status).toEqual(200)
-        expect(skippedBody.data.length).toBe(2)
-        expect(skippedBody.total).toBeGreaterThanOrEqual(skippedBody.data.length)
 
         const allIds = allBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
         const skippedIds = skippedBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
 
-        // The first item should not be in the skipped results
+        // skip=1 should return one fewer result
+        expect(skippedIds.length).toBe(allIds.length - 1)
+
+        // The first item from the full list should not appear in the skipped results
         expect(skippedIds).not.toContain(allIds[0])
 
-        // All returned items should be from the original list
-        skippedIds.forEach(id => {
-          expect(allIds).toContain(id)
-        })
+        // The skipped results should match the full list minus the first item
+        expect(skippedIds).toEqual(allIds.slice(1))
       })
     })
 
