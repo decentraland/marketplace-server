@@ -1,4 +1,4 @@
-import { ChainId, ListingStatus } from '@dcl/schemas'
+import { ChainId, ListingStatus, Network } from '@dcl/schemas'
 import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { test } from '../components'
@@ -445,6 +445,74 @@ test('bids controller', function ({ components }) {
           const body = await response.json()
           expect(response.status).toBe(200)
           expect(body.data.results).not.toEqual(expect.arrayContaining([expect.objectContaining({ tradeId })]))
+        })
+      })
+    })
+
+    describe('and there are bids on different networks', () => {
+      let maticTradeId: string
+      let ethereumLegacyBidId: string
+      const contractAddress = '0x7777000000000000000000000000000000000001'
+      const tokenId = '1000'
+
+      beforeEach(async () => {
+        maticTradeId = await createSquidDBBidTrade(components, {
+          contractAddress,
+          tokenId,
+          bidder: '0x8888000000000000000000000000000000000001',
+          price: '100',
+          network: Network.MATIC
+        })
+        ethereumLegacyBidId = await createSquidDBLegacyBid(components, {
+          contractAddress,
+          tokenId,
+          bidder: '9999000000000000000000000000000000000001',
+          price: '200',
+          status: 'open',
+          network: 'ETHEREUM'
+        })
+      })
+
+      afterEach(async () => {
+        await deleteSquidDBTrade(components, maticTradeId)
+        await deleteSquidDBLegacyBid(components, ethereumLegacyBidId)
+      })
+
+      describe('and filtering by MATIC network', () => {
+        it('should respond with a 200 and only the MATIC bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&network=${Network.MATIC}&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.total).toBe(1)
+          expect(body.data.results[0]).toEqual(
+            expect.objectContaining({
+              tradeId: expect.any(String),
+              price: '100',
+              network: Network.MATIC
+            })
+          )
+        })
+      })
+
+      describe('and filtering by ETHEREUM network', () => {
+        it('should respond with a 200 and only the ETHEREUM bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&network=${Network.ETHEREUM}&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.total).toBe(1)
+          expect(body.data.results[0]).toEqual(
+            expect.objectContaining({
+              id: ethereumLegacyBidId,
+              price: '200',
+              network: Network.ETHEREUM
+            })
+          )
         })
       })
     })
