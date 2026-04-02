@@ -252,9 +252,7 @@ test('bids controller', function ({ components }) {
 
       it('should return paginated results with correct total count', async () => {
         const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?contractAddress=${contractAddress}&status=${ListingStatus.OPEN}&limit=2&offset=0`
-        )
+        const response = await localFetch.fetch(`/v1/bids?contractAddress=${contractAddress}&status=${ListingStatus.OPEN}&limit=2&offset=0`)
         const body = await response.json()
         expect(response.status).toBe(200)
         expect(body.data.results.length).toBe(2)
@@ -317,9 +315,7 @@ test('bids controller', function ({ components }) {
           expect(response.status).toBe(200)
           // Only the trade bid should appear, not the legacy bid
           expect(body.data.total).toBe(1)
-          expect(body.data.results[0]).toEqual(
-            expect.objectContaining({ tradeId: expect.any(String) })
-          )
+          expect(body.data.results[0]).toEqual(expect.objectContaining({ tradeId: expect.any(String) }))
         } finally {
           await deleteSquidDBLegacyBid(components, legacyBidId)
         }
@@ -509,9 +505,7 @@ test('bids controller', function ({ components }) {
 
       it('should return the bid when filtering by seller', async () => {
         const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?seller=${nftOwner}&status=${ListingStatus.OPEN}&limit=10&offset=0`
-        )
+        const response = await localFetch.fetch(`/v1/bids?seller=${nftOwner}&status=${ListingStatus.OPEN}&limit=10&offset=0`)
         const body = await response.json()
         expect(response.status).toBe(200)
         expect(body.data.results).toEqual(
@@ -535,11 +529,7 @@ test('bids controller', function ({ components }) {
         )
         const body = await response.json()
         expect(response.status).toBe(200)
-        expect(body.data.results).not.toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ tradeId })
-          ])
-        )
+        expect(body.data.results).not.toEqual(expect.arrayContaining([expect.objectContaining({ tradeId })]))
       })
     })
   })

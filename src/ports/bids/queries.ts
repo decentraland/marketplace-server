@@ -1,4 +1,4 @@
-import SQL, { SQLStatement } from 'sql-template-strings'
+import SQL from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
@@ -82,7 +82,15 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
-  const COMMON_FILTERS = [FILTER_BY_BIDDER, FILTER_BY_SELLER, FILTER_BY_CONTRACT_ADDRESS, FILTER_BY_TOKEN_ID, FILTER_BY_NETWORK, FILTER_BY_STATUS, FILTER_NOT_EXPIRED]
+  const COMMON_FILTERS = [
+    FILTER_BY_BIDDER,
+    FILTER_BY_SELLER,
+    FILTER_BY_CONTRACT_ADDRESS,
+    FILTER_BY_TOKEN_ID,
+    FILTER_BY_NETWORK,
+    FILTER_BY_STATUS,
+    FILTER_NOT_EXPIRED
+  ]
 
   const FILTER_TRADE_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
   // Legacy bids don't have item_id, so if filtering by item_id, exclude all legacy bids

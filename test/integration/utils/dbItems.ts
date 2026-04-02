@@ -954,10 +954,7 @@ export async function createSquidDBLegacyBid(
   return bidId
 }
 
-export async function deleteSquidDBLegacyBid(
-  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
-  bidId: string
-): Promise<void> {
+export async function deleteSquidDBLegacyBid(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, bidId: string): Promise<void> {
   const { dappsDatabase } = dbComponent
   await dappsDatabase.query(`DELETE FROM squid_marketplace."bid" WHERE id = '${bidId}'`)
 }
