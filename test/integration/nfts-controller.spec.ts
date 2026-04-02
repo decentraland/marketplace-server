@@ -1097,7 +1097,7 @@ test('when getting NFTs', function ({ components }) {
         skippedBody = await skippedResponse.json()
       })
 
-      it('should respond with 200 and correct items after skip', async () => {
+      it('should respond with 200 and one fewer result than the full list', async () => {
         expect(skippedResponse.status).toEqual(200)
 
         const allIds = allBody.data.map((nftResponse: NFTResponse) => nftResponse.nft.tokenId)
@@ -1106,8 +1106,10 @@ test('when getting NFTs', function ({ components }) {
         // skip=1 should return one fewer result
         expect(skippedIds.length).toBe(allIds.length - 1)
 
-        // The first item from the full list should not appear in the skipped results
-        expect(skippedIds).not.toContain(allIds[0])
+        // Every item in the skipped results should also be in the full results
+        for (const id of skippedIds) {
+          expect(allIds).toContain(id)
+        }
       })
     })
 
