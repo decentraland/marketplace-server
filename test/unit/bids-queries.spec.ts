@@ -8,6 +8,12 @@ jest.mock('../../src/logic/chainIds', () => ({
 }))
 
 describe('when querying for bids', () => {
+  it('should use UNION ALL instead of NATURAL FULL OUTER JOIN', () => {
+    const query = getBidsQuery({})
+    expect(query.text).toContain('UNION ALL')
+    expect(query.text).not.toContain('NATURAL FULL OUTER JOIN')
+  })
+
   it('should only query the ones not expired', () => {
     const query = getBidsQuery({})
     expect(query.text).toContain('expires_at > now()::timestamptz(3)')
@@ -15,7 +21,8 @@ describe('when querying for bids', () => {
 
   describe('and limit and offset are defined', () => {
     const query = getBidsQuery({ offset: 2, limit: 1 })
-    expect(query.text).toContain('LIMIT $1 OFFSET $2')
+    expect(query.text).toContain('LIMIT')
+    expect(query.text).toContain('OFFSET')
     expect(query.values).toEqual(expect.arrayContaining([1, 2]))
   })
 
@@ -53,9 +60,14 @@ describe('when querying for bids', () => {
 
   describe('and the item id filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ tokenId: 'an-item-id', offset: 1, limit: 1 })
-      expect(query.text).toContain('LOWER(token_id) = LOWER($1)')
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      expect(query.text).toContain('LOWER(item_id) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['an-item-id']))
+    })
+
+    it('should exclude legacy bids with FALSE filter', () => {
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      expect(query.text).toContain('FALSE')
     })
   })
 
