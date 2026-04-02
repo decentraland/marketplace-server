@@ -1,11 +1,8 @@
-import { Authenticator } from '@dcl/crypto'
-import { ChainId, ListingStatus, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
+import { ChainId, ListingStatus } from '@dcl/schemas'
 import * as chainIdUtils from '../../src/logic/chainIds'
-import { getPolygonChainId } from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { test } from '../components'
-import { getSignedFetchRequest } from '../utils'
+import { createBidViaAPI } from './utils/bids'
 import {
   createSquidDBBidTrade,
   createSquidDBLegacyBid,
@@ -23,8 +20,8 @@ test('bids controller', function ({ components }) {
   })
 
   describe('when fetching bids', () => {
-    describe('and there are no bids', () => {
-      it('should return an empty result', async () => {
+    describe('and there are no matching bids', () => {
+      it('should respond with a 200 and an empty result', async () => {
         const { localFetch } = components
         const response = await localFetch.fetch('/v1/bids?contractAddress=0xnonexistent&status=open&limit=10&offset=0')
         const body = await response.json()
@@ -42,99 +39,53 @@ test('bids controller', function ({ components }) {
       const tokenId = '200'
 
       beforeEach(async () => {
-        const { localFetch } = components
-        const contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
-        const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-          intent: 'dcl:create-trade',
-          signer: 'dcl:marketplace'
-        })
-        signer = signedRequest.identity.realAccount.address.toLowerCase()
-        const bid: TradeCreation & { contract: string } = {
-          signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
-          signer,
-          chainId: 1,
-          type: TradeType.BID,
-          checks: {
-            effective: Date.now(),
-            expiration: Date.now() + 1000000,
-            allowedRoot: '0x',
-            contractSignatureIndex: 0,
-            signerSignatureIndex: 0,
-            externalChecks: [],
-            salt: '0x',
-            uses: 1
-          },
-          contract,
-          network: Network.ETHEREUM,
-          sent: [
-            {
-              assetType: TradeAssetType.ERC20,
-              contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-              extra: '0x',
-              amount: '500'
-            }
-          ],
-          received: [
-            {
-              assetType: TradeAssetType.ERC721,
-              contractAddress,
-              tokenId,
-              extra: '0x',
-              beneficiary: contractAddress
-            }
-          ]
-        }
-
-        const createResponse = await localFetch.fetch('/v1/trades', {
-          method: signedRequest.method,
-          body: JSON.stringify(bid),
-          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
-        })
-        const createBody = await createResponse.json()
-        tradeId = createBody.data.id
+        const result = await createBidViaAPI(components, { contractAddress, tokenId, price: '500' })
+        tradeId = result.tradeId
+        signer = result.signer
       })
 
       afterEach(async () => {
-        if (tradeId) {
-          await deleteSquidDBTrade(components, tradeId)
-        }
+        await deleteSquidDBTrade(components, tradeId)
       })
 
-      it('should return the bid when filtering by contractAddress and tokenId', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
-        )
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.ok).toBe(true)
-        expect(body.data.results.length).toBeGreaterThanOrEqual(1)
-        expect(body.data.results).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              tradeId,
-              contractAddress,
-              tokenId,
-              bidder: signer,
-              price: '500'
-            })
-          ])
-        )
+      describe('and filtering by contractAddress and tokenId', () => {
+        it('should respond with a 200 and the matching bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.ok).toBe(true)
+          expect(body.data.results).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                tradeId,
+                contractAddress,
+                tokenId,
+                bidder: signer,
+                price: '500'
+              })
+            ])
+          )
+        })
       })
 
-      it('should return the bid when filtering by bidder', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(`/v1/bids?bidder=${signer}&status=${ListingStatus.OPEN}&limit=10&offset=0`)
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.data.results).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              tradeId,
-              bidder: signer
-            })
-          ])
-        )
+      describe('and filtering by bidder', () => {
+        it('should respond with a 200 and the bid for that bidder', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(`/v1/bids?bidder=${signer}&status=${ListingStatus.OPEN}&limit=10&offset=0`)
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.results).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                tradeId,
+                bidder: signer
+              })
+            ])
+          )
+        })
       })
     })
 
@@ -159,7 +110,7 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBLegacyBid(components, legacyBidId)
       })
 
-      it('should return the legacy bid when filtering by contractAddress and tokenId', async () => {
+      it('should respond with a 200 and the legacy bid', async () => {
         const { localFetch } = components
         const response = await localFetch.fetch(
           `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=open&limit=10&offset=0`
@@ -167,7 +118,6 @@ test('bids controller', function ({ components }) {
         const body = await response.json()
         expect(response.status).toBe(200)
         expect(body.ok).toBe(true)
-        expect(body.data.results.length).toBeGreaterThanOrEqual(1)
         expect(body.data.results).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
@@ -182,65 +132,19 @@ test('bids controller', function ({ components }) {
       })
     })
 
-    describe('and pagination is used', () => {
-      let tradeIds: string[] = []
-      let signer: string
+    describe('and there are multiple bids with pagination', () => {
+      let tradeIds: string[]
       const contractAddress = '0xaaaa000000000000000000000000000000000001'
 
       beforeEach(async () => {
-        const { localFetch } = components
-        const contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
         tradeIds = []
-
         for (let i = 0; i < 3; i++) {
-          const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
-            intent: 'dcl:create-trade',
-            signer: 'dcl:marketplace'
+          const result = await createBidViaAPI(components, {
+            contractAddress,
+            tokenId: `${500 + i}`,
+            price: `${(i + 1) * 100}`
           })
-          signer = signedRequest.identity.realAccount.address.toLowerCase()
-          const bid: TradeCreation & { contract: string } = {
-            signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
-            signer,
-            chainId: 1,
-            type: TradeType.BID,
-            checks: {
-              effective: Date.now(),
-              expiration: Date.now() + 1000000,
-              allowedRoot: '0x',
-              contractSignatureIndex: 0,
-              signerSignatureIndex: 0,
-              externalChecks: [],
-              salt: '0x',
-              uses: 1
-            },
-            contract,
-            network: Network.ETHEREUM,
-            sent: [
-              {
-                assetType: TradeAssetType.ERC20,
-                contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
-                extra: '0x',
-                amount: `${(i + 1) * 100}`
-              }
-            ],
-            received: [
-              {
-                assetType: TradeAssetType.ERC721,
-                contractAddress,
-                tokenId: `${500 + i}`,
-                extra: '0x',
-                beneficiary: contractAddress
-              }
-            ]
-          }
-
-          const createResponse = await localFetch.fetch('/v1/trades', {
-            method: signedRequest.method,
-            body: JSON.stringify(bid),
-            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
-          })
-          const createBody = await createResponse.json()
-          tradeIds.push(createBody.data.id)
+          tradeIds.push(result.tradeId)
         }
       })
 
@@ -250,7 +154,7 @@ test('bids controller', function ({ components }) {
         }
       })
 
-      it('should return paginated results with correct total count', async () => {
+      it('should respond with the limited results and the correct total count', async () => {
         const { localFetch } = components
         const response = await localFetch.fetch(`/v1/bids?contractAddress=${contractAddress}&status=${ListingStatus.OPEN}&limit=2&offset=0`)
         const body = await response.json()
@@ -279,46 +183,53 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBTrade(components, tradeId)
       })
 
-      it('should return the bid when filtering by contractAddress and itemId', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?contractAddress=${contractAddress}&itemId=${itemId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
-        )
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.data.results.length).toBe(1)
-        expect(body.data.results[0]).toEqual(
-          expect.objectContaining({
-            tradeId: expect.any(String),
-            contractAddress,
-            itemId,
-            bidder,
-            price: '999'
-          })
-        )
-      })
-
-      it('should exclude legacy bids when filtering by itemId', async () => {
-        const legacyBidId = await createSquidDBLegacyBid(components, {
-          contractAddress,
-          tokenId: '1',
-          price: '500',
-          status: 'open'
-        })
-
-        try {
+      describe('and filtering by contractAddress and itemId', () => {
+        it('should respond with a 200 and the item bid', async () => {
           const { localFetch } = components
           const response = await localFetch.fetch(
             `/v1/bids?contractAddress=${contractAddress}&itemId=${itemId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
           )
           const body = await response.json()
           expect(response.status).toBe(200)
-          // Only the trade bid should appear, not the legacy bid
+          expect(body.data.results.length).toBe(1)
+          expect(body.data.results[0]).toEqual(
+            expect.objectContaining({
+              tradeId: expect.any(String),
+              contractAddress,
+              itemId,
+              bidder,
+              price: '999'
+            })
+          )
+        })
+      })
+
+      describe('and there is also a legacy bid for the same contract', () => {
+        let legacyBidId: string
+
+        beforeEach(async () => {
+          legacyBidId = await createSquidDBLegacyBid(components, {
+            contractAddress,
+            tokenId: '1',
+            price: '500',
+            status: 'open'
+          })
+        })
+
+        afterEach(async () => {
+          await deleteSquidDBLegacyBid(components, legacyBidId)
+        })
+
+        it('should exclude the legacy bid and only return the trade bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?contractAddress=${contractAddress}&itemId=${itemId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
           expect(body.data.total).toBe(1)
           expect(body.data.results[0]).toEqual(expect.objectContaining({ tradeId: expect.any(String) }))
-        } finally {
-          await deleteSquidDBLegacyBid(components, legacyBidId)
-        }
+        })
       })
     })
 
@@ -351,7 +262,7 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBLegacyBid(components, legacyBidId)
       })
 
-      it('should return bids from both sources', async () => {
+      it('should respond with a 200 and bids from both sources', async () => {
         const { localFetch } = components
         const response = await localFetch.fetch(
           `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
@@ -413,7 +324,7 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBTrade(components, expiredTradeId)
       })
 
-      it('should not return expired bids', async () => {
+      it('should respond with a 200 and only the non-expired bid', async () => {
         const { localFetch } = components
         const response = await localFetch.fetch(
           `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
@@ -430,7 +341,7 @@ test('bids controller', function ({ components }) {
       })
     })
 
-    describe('and filtering by status', () => {
+    describe('and there are bids with different statuses', () => {
       let openBidId: string
       let cancelledBidId: string
       const contractAddress = '0x3333000000000000000000000000000000000001'
@@ -457,24 +368,26 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBLegacyBid(components, cancelledBidId)
       })
 
-      it('should only return bids matching the requested status', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
-        )
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.data.total).toBe(1)
-        expect(body.data.results[0]).toEqual(
-          expect.objectContaining({
-            id: openBidId,
-            price: '100'
-          })
-        )
+      describe('and filtering by open status', () => {
+        it('should respond with a 200 and only the open bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.total).toBe(1)
+          expect(body.data.results[0]).toEqual(
+            expect.objectContaining({
+              id: openBidId,
+              price: '100'
+            })
+          )
+        })
       })
     })
 
-    describe('and filtering by seller on a trade bid', () => {
+    describe('and there is a trade bid with an NFT owner as seller', () => {
       let tradeId: string
       const contractAddress = '0x4444000000000000000000000000000000000001'
       const tokenId = '950'
@@ -482,7 +395,6 @@ test('bids controller', function ({ components }) {
       const bidder = '0x6666000000000000000000000000000000000001'
 
       beforeEach(async () => {
-        // Create the NFT in squid_marketplace so the LEFT JOIN populates owner_address as seller
         await createSquidDBNFT(components, {
           contractAddress,
           tokenId,
@@ -503,33 +415,37 @@ test('bids controller', function ({ components }) {
         await deleteSquidDBNFT(components, tokenId, contractAddress)
       })
 
-      it('should return the bid when filtering by seller', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(`/v1/bids?seller=${nftOwner}&status=${ListingStatus.OPEN}&limit=10&offset=0`)
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.data.results).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              tradeId: expect.any(String),
-              contractAddress,
-              tokenId,
-              bidder,
-              seller: nftOwner,
-              price: '1200'
-            })
-          ])
-        )
+      describe('and filtering by the matching seller', () => {
+        it('should respond with a 200 and the bid with the seller populated', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(`/v1/bids?seller=${nftOwner}&status=${ListingStatus.OPEN}&limit=10&offset=0`)
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.results).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                tradeId: expect.any(String),
+                contractAddress,
+                tokenId,
+                bidder,
+                seller: nftOwner,
+                price: '1200'
+              })
+            ])
+          )
+        })
       })
 
-      it('should not return the bid when filtering by a different seller', async () => {
-        const { localFetch } = components
-        const response = await localFetch.fetch(
-          `/v1/bids?seller=0x0000000000000000000000000000000000000099&status=${ListingStatus.OPEN}&limit=10&offset=0`
-        )
-        const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.data.results).not.toEqual(expect.arrayContaining([expect.objectContaining({ tradeId })]))
+      describe('and filtering by a non-matching seller', () => {
+        it('should respond with a 200 and not include the bid', async () => {
+          const { localFetch } = components
+          const response = await localFetch.fetch(
+            `/v1/bids?seller=0x0000000000000000000000000000000000000099&status=${ListingStatus.OPEN}&limit=10&offset=0`
+          )
+          const body = await response.json()
+          expect(response.status).toBe(200)
+          expect(body.data.results).not.toEqual(expect.arrayContaining([expect.objectContaining({ tradeId })]))
+        })
       })
     })
   })
