@@ -1,13 +1,5 @@
 import SQL from 'sql-template-strings'
-import {
-  CatalogFilters,
-  EmoteCategory,
-  EmotePlayMode,
-  GenderFilterOption,
-  NFTCategory,
-  Network,
-  WearableCategory
-} from '@dcl/schemas'
+import { CatalogFilters, EmoteCategory, EmotePlayMode, GenderFilterOption, NFTCategory, Network, WearableCategory } from '@dcl/schemas'
 import { FragmentItemType } from '../utils'
 
 export const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]

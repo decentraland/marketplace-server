@@ -1,16 +1,8 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import {
-  CatalogFilters,
-  CatalogSortBy,
-  CatalogSortDirection,
-  EmoteCategory,
-  NFTCategory,
-  NFTSortBy
-} from '@dcl/schemas'
+import { CatalogFilters, CatalogSortBy, CatalogSortDirection, EmoteCategory, NFTCategory, NFTSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../../constants'
 import { CatalogQueryFilters } from '../types'
-import { getOrderRangePriceWhere } from './filters'
-import { getItemLevelFiltersWhere } from './filters'
+import { getOrderRangePriceWhere, getItemLevelFiltersWhere } from './filters'
 
 export const MAX_ORDER_TIMESTAMP = 253378408747000 // some orders have a timestmap that can't be cast by Postgres, this is the max possible value
 
