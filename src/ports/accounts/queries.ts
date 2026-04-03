@@ -1,6 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { AccountFilters, AccountSortBy } from './types'
 
@@ -23,13 +24,6 @@ function getAccountsSortByStatement(filters: AccountFilters): SQLStatement {
   }
 }
 
-function getAccountsLimitAndOffsetStatement(filters: AccountFilters): SQLStatement {
-  const MAX_LIMIT = 1000
-  const limit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : MAX_LIMIT
-  const offset = filters?.skip ? filters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
-}
 
 function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
   // Fetch by id using -ETHEREUM and -POLYGON suffixes
@@ -43,7 +37,7 @@ function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
 
 export function getAccountsQuery(filters: AccountFilters): SQLStatement {
   return SQL`
-    SELECT 
+    SELECT
       id,
       address,
       sales,
@@ -51,14 +45,13 @@ export function getAccountsQuery(filters: AccountFilters): SQLStatement {
       spent,
       earned,
       royalties,
-      collections,
-      COUNT(*) OVER() as count
+      collections
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.account`)
     .append(getAccountsWhereStatement(filters))
     .append(getAccountsSortByStatement(filters))
-    .append(getAccountsLimitAndOffsetStatement(filters))
+    .append(getLimitAndOffsetStatement(filters, { maxLimit: 1000 }))
 }
 
 export function getAccountsCountQuery(filters: AccountFilters): SQLStatement {
