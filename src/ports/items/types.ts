@@ -19,7 +19,6 @@ export enum ItemType {
 }
 
 export type DBItem = {
-  count: number
   id: string
   image: string
   uri: string

@@ -3,6 +3,7 @@ import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeTyp
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { ItemType } from './types'
 import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
@@ -15,12 +16,6 @@ export function getItemById(itemId: string) {
       `)
 }
 
-function getItemsLimitAndOffsetStatement(filters: ItemFilters) {
-  const limit = filters?.first ? filters.first : DEFAULT_LIMIT
-  const offset = filters?.skip ? filters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
-}
 
 function getGenderWhereStatement(isEmote: boolean, genders?: (WearableGender | GenderFilterOption)[]): SQLStatement | null {
   if (!genders || !genders.length) {
@@ -135,7 +130,6 @@ export function getItemsQuery(filters: ItemFilters = {}) {
   }).append(
     SQL`
     SELECT
-      COUNT(*) OVER() as count,
       item.id,
       item.image,
       item.uri,
@@ -196,7 +190,47 @@ export function getItemsQuery(filters: ItemFilters = {}) {
                         ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
                       )
                       .append(getItemsWhereStatement(filters))
-                      .append(getItemsLimitAndOffsetStatement(filters))
+                      .append(getLimitAndOffsetStatement(filters, { defaultLimit: DEFAULT_LIMIT }))
+                  )
+              )
+          )
+      )
+  )
+}
+
+export function getItemsCountQuery(filters: ItemFilters = {}) {
+  return getTradesCTE({
+    category: filters.category,
+    first: filters.first,
+    skip: filters.skip
+  }).append(
+    SQL`
+    SELECT COUNT(*) as count
+    FROM
+      `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item item
+    LEFT JOIN `
+          .append(MARKETPLACE_SQUID_SCHEMA)
+          .append(
+            SQL`.metadata metadata on
+      item.metadata_id = metadata.id
+    LEFT JOIN `
+              .append(MARKETPLACE_SQUID_SCHEMA)
+              .append(
+                SQL`.wearable wearable on
+      metadata.wearable_id = wearable.id
+    LEFT JOIN `
+                  .append(MARKETPLACE_SQUID_SCHEMA)
+                  .append(
+                    SQL`.emote emote on
+      metadata.emote_id = emote.id
+  `
+                      .append(
+                        ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
+                      )
+                      .append(getItemsWhereStatement(filters))
                   )
               )
           )
