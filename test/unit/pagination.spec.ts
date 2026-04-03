@@ -85,12 +85,14 @@ describe('extractCount', () => {
 
   describe('when the rows array is undefined', () => {
     it('should return 0', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect(extractCount({ rows: undefined } as any)).toBe(0)
     })
   })
 
   describe('when the count property is missing from the row', () => {
     it('should return 0', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect(extractCount({ rows: [{}] } as any)).toBe(0)
     })
   })

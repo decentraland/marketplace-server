@@ -22,7 +22,6 @@ function getCollectionsSortByStatement(filters: CollectionFilters): SQLStatement
   }
 }
 
-
 function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement {
   const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL`id = ${filters.contractAddress.toLowerCase()}` : null
   const FILTER_BY_CREATOR = filters.creator ? SQL`creator = ${filters.creator.toLowerCase()}` : null

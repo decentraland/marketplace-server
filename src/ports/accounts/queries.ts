@@ -24,7 +24,6 @@ function getAccountsSortByStatement(filters: AccountFilters): SQLStatement {
   }
 }
 
-
 function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
   // Fetch by id using -ETHEREUM and -POLYGON suffixes
   const FILTER_BY_ID = filters.id ? SQL`id = ANY(${[filters.id, `${filters.id}-ETHEREUM`, `${filters.id}-POLYGON`]})` : null

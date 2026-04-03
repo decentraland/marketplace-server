@@ -5,10 +5,7 @@ export type PaginationParams = {
   skip?: number
 }
 
-export function getLimitAndOffsetStatement(
-  params: PaginationParams,
-  options?: { defaultLimit?: number; maxLimit?: number }
-): SQLStatement {
+export function getLimitAndOffsetStatement(params: PaginationParams, options?: { defaultLimit?: number; maxLimit?: number }): SQLStatement {
   const { defaultLimit = 1000, maxLimit } = options ?? {}
   const limit = params.first ? (maxLimit ? Math.min(params.first, maxLimit) : params.first) : defaultLimit
   const offset = params.skip ?? 0
