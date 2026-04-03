@@ -215,8 +215,7 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
           .append(MARKETPLACE_SQUID_SCHEMA)
           .append(
             SQL`."order" as ord
-      `
-              .append(getWhereStatementFromFilters(ordersFilters))
+      `.append(getWhereStatementFromFilters(ordersFilters))
           )
       )
       .append(SQL`) as count`)
