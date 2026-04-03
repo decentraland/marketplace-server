@@ -1,3 +1,4 @@
+import { SQLStatement } from 'sql-template-strings'
 import { Network } from '@dcl/schemas'
 import { getAddressFilter, getMaxPriceFilter, getMinPriceFilter, getNetworkFilter } from '../../src/ports/filters'
 import { SquidNetwork } from '../../src/types'
@@ -10,28 +11,49 @@ describe('getNetworkFilter', () => {
   })
 
   describe('when network is MATIC', () => {
-    it('should return a filter with MATIC and POLYGON variants', () => {
-      const filter = getNetworkFilter(Network.MATIC)
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getNetworkFilter(Network.MATIC)
+    })
+
+    it('should return a filter containing the network column', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('network')
-      expect(filter!.text).toContain('= ANY')
-      expect(filter!.values).toEqual([[Network.MATIC, SquidNetwork.POLYGON]])
+      expect((filter as SQLStatement).text).toContain('network')
+    })
+
+    it('should return a filter with ANY operator', () => {
+      expect((filter as SQLStatement).text).toContain('= ANY')
+    })
+
+    it('should include MATIC and POLYGON network variants', () => {
+      expect((filter as SQLStatement).values).toEqual([[Network.MATIC, SquidNetwork.POLYGON]])
     })
   })
 
   describe('when network is ETHEREUM', () => {
-    it('should return a filter with ETHEREUM variants', () => {
-      const filter = getNetworkFilter(Network.ETHEREUM)
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getNetworkFilter(Network.ETHEREUM)
+    })
+
+    it('should include ETHEREUM network variants', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.values).toEqual([[Network.ETHEREUM, SquidNetwork.ETHEREUM]])
+      expect((filter as SQLStatement).values).toEqual([[Network.ETHEREUM, SquidNetwork.ETHEREUM]])
     })
   })
 
   describe('when a custom column is provided', () => {
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getNetworkFilter(Network.MATIC, 'c.network')
+    })
+
     it('should use the custom column name', () => {
-      const filter = getNetworkFilter(Network.MATIC, 'c.network')
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('c.network')
+      expect((filter as SQLStatement).text).toContain('c.network')
     })
   })
 })
@@ -44,20 +66,33 @@ describe('getMinPriceFilter', () => {
   })
 
   describe('when minPrice is provided', () => {
-    it('should return a >= filter', () => {
-      const filter = getMinPriceFilter('1000')
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getMinPriceFilter('1000')
+    })
+
+    it('should return a >= filter on the price column', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('price')
-      expect(filter!.text).toContain('>=')
-      expect(filter!.values).toEqual(['1000'])
+      expect((filter as SQLStatement).text).toContain('price')
+      expect((filter as SQLStatement).text).toContain('>=')
+    })
+
+    it('should include the price value as a parameter', () => {
+      expect((filter as SQLStatement).values).toEqual(['1000'])
     })
   })
 
   describe('when a custom column is provided', () => {
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getMinPriceFilter('1000', 'item.price')
+    })
+
     it('should use the custom column name', () => {
-      const filter = getMinPriceFilter('1000', 'item.price')
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('item.price')
+      expect((filter as SQLStatement).text).toContain('item.price')
     })
   })
 })
@@ -70,12 +105,20 @@ describe('getMaxPriceFilter', () => {
   })
 
   describe('when maxPrice is provided', () => {
-    it('should return a <= filter', () => {
-      const filter = getMaxPriceFilter('5000')
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getMaxPriceFilter('5000')
+    })
+
+    it('should return a <= filter on the price column', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('price')
-      expect(filter!.text).toContain('<=')
-      expect(filter!.values).toEqual(['5000'])
+      expect((filter as SQLStatement).text).toContain('price')
+      expect((filter as SQLStatement).text).toContain('<=')
+    })
+
+    it('should include the price value as a parameter', () => {
+      expect((filter as SQLStatement).values).toEqual(['5000'])
     })
   })
 })
@@ -88,19 +131,32 @@ describe('getAddressFilter', () => {
   })
 
   describe('when address is provided', () => {
-    it('should return a filter with lowercased address', () => {
-      const filter = getAddressFilter('0xABC123', 'contract_address')
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getAddressFilter('0xABC123', 'contract_address')
+    })
+
+    it('should return a filter on the specified column', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.text).toContain('contract_address')
-      expect(filter!.values).toEqual(['0xabc123'])
+      expect((filter as SQLStatement).text).toContain('contract_address')
+    })
+
+    it('should lowercase the address value', () => {
+      expect((filter as SQLStatement).values).toEqual(['0xabc123'])
     })
   })
 
   describe('when address is already lowercase', () => {
-    it('should keep it lowercase', () => {
-      const filter = getAddressFilter('0xabc123', 'owner')
+    let filter: SQLStatement | null
+
+    beforeEach(() => {
+      filter = getAddressFilter('0xabc123', 'owner')
+    })
+
+    it('should keep the address lowercase', () => {
       expect(filter).not.toBeNull()
-      expect(filter!.values).toEqual(['0xabc123'])
+      expect((filter as SQLStatement).values).toEqual(['0xabc123'])
     })
   })
 })
