@@ -16,7 +16,6 @@ export function getItemById(itemId: string) {
       `)
 }
 
-
 function getGenderWhereStatement(isEmote: boolean, genders?: (WearableGender | GenderFilterOption)[]): SQLStatement | null {
   if (!genders || !genders.length) {
     return null
