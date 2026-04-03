@@ -16,12 +16,14 @@ describe('when fetching bids', () => {
   describe('and there are no bids for the specified filters', () => {
     beforeEach(() => {
       pgComponent = createTestPgComponent()
-      ;(pgComponent.query as jest.Mock).mockResolvedValue({ rows: [], count: 0 })
+      ;(pgComponent.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
       bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
     })
 
-    it('should return empty data with 0 count', async () => {
-      expect(await bidsComponent.getBids({ limit: 10, offset: 0 })).toEqual({ data: [], count: 0 })
+    it('should return empty data with 0 total', async () => {
+      expect(await bidsComponent.getBids({ limit: 10, offset: 0 })).toEqual({ data: [], total: 0 })
     })
   })
 
@@ -32,7 +34,6 @@ describe('when fetching bids', () => {
       bids = [
         {
           trade_contract_address: '0x1',
-          bids_count: 10,
           trade_id: '1',
           price: '10',
           token_id: '1',
@@ -50,12 +51,14 @@ describe('when fetching bids', () => {
         }
       ]
       pgComponent = createTestPgComponent()
-      ;(pgComponent.query as jest.Mock).mockResolvedValue({ rows: bids, count: 1 })
+      ;(pgComponent.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: bids })
+        .mockResolvedValueOnce({ rows: [{ count: '10' }] })
       bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
     })
 
-    it('should return the bids with the count', async () => {
-      expect(await bidsComponent.getBids({ limit: 1, offset: 0 })).toEqual({ data: [fromDBBidToBid(bids[0])], count: bids[0].bids_count })
+    it('should return the bids with the total', async () => {
+      expect(await bidsComponent.getBids({ limit: 1, offset: 0 })).toEqual({ data: [fromDBBidToBid(bids[0])], total: 10 })
     })
   })
 })

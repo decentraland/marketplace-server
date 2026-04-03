@@ -32,7 +32,7 @@ describe('when fetching bids', () => {
       }
     ]
 
-    getBidsMock = jest.fn().mockResolvedValue({ data: bids, count: 1 })
+    getBidsMock = jest.fn().mockResolvedValue({ data: bids, total: 1 })
 
     context = {
       url: new URL('http://localhost:3000/v1/bids'),

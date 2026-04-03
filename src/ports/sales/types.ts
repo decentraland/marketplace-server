@@ -11,7 +11,6 @@ export type GetSalesResponse = {
 }
 
 export type DBSale = {
-  sales_count: number
   id: string
   type: SaleType
   buyer: string

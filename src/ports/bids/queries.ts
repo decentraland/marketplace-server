@@ -89,7 +89,7 @@ export function getBidsQuery(options: GetBidsParameters) {
     FILTER_NOT_EXPIRED
   ])
 
-  return SQL`SELECT *, COUNT(*) OVER() as bids_count`
+  return SQL`SELECT *`
     .append(SQL` FROM `)
     .append(BID_TRADES)
     .append(SQL` NATURAL FULL OUTER JOIN `)
@@ -97,4 +97,36 @@ export function getBidsQuery(options: GetBidsParameters) {
     .append(FILTERS)
     .append(getBidsSortByQuery(options.sortBy))
     .append(SQL` LIMIT ${options.limit} OFFSET ${options.offset} `)
+}
+
+export function getBidsCountQuery(options: GetBidsParameters) {
+  const BID_TRADES = ` (${getBidTradesQuery()}) as bid_trades `
+  const LEGACY_BIDS = ` (${getLegacyBidsQuery()}) as legacy_bids`
+
+  const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
+  const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
+  const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
+  const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
+  const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
+  const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
+  const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
+  const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
+
+  const FILTERS = getWhereStatementFromFilters([
+    FILTER_BY_BIDDER,
+    FILTER_BY_SELLER,
+    FILTER_BY_CONTRACT_ADDRESS,
+    FILTER_BY_TOKEN_ID,
+    FILTER_BY_ITEM_ID,
+    FILTER_BY_NETWORK,
+    FILTER_BY_STATUS,
+    FILTER_NOT_EXPIRED
+  ])
+
+  return SQL`SELECT COUNT(*) as count`
+    .append(SQL` FROM `)
+    .append(BID_TRADES)
+    .append(SQL` NATURAL FULL OUTER JOIN `)
+    .append(LEGACY_BIDS)
+    .append(FILTERS)
 }

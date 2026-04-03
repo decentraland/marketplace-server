@@ -1,18 +1,22 @@
 import { GetBidsParameters } from '@dcl/schemas'
 import { fromDBBidToBid } from '../../adapters/bids/bids'
 import { AppComponents } from '../../types'
-import { getBidsQuery } from './queries'
+import { extractCount } from '../pagination'
+import { getBidsCountQuery, getBidsQuery } from './queries'
 import { DBBid, IBidsComponent } from './types'
 
 export function createBidsComponents(components: Pick<AppComponents, 'dappsDatabase'>): IBidsComponent {
   const { dappsDatabase: pg } = components
 
   async function getBids(options: GetBidsParameters) {
-    const result = await pg.query<DBBid>(getBidsQuery(options))
+    const [result, count] = await Promise.all([
+      pg.query<DBBid>(getBidsQuery(options)),
+      pg.query<{ count: string }>(getBidsCountQuery(options))
+    ])
 
     return {
       data: result.rows.map(fromDBBidToBid),
-      count: result.rows.length ? Number(result.rows[0].bids_count) : 0
+      total: extractCount(count)
     }
   }
 
