@@ -1,7 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getDBNetworks } from '../../utils'
+import { getAddressFilter, getNetworkFilter } from '../filters'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -68,10 +68,10 @@ export function getLegacyBidsQuery(): string {
 function getBidsFilters(options: GetBidsParameters): SQLStatement {
   const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
-  const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
+  const FILTER_BY_CONTRACT_ADDRESS = getAddressFilter(options.contractAddress, 'contract_address')
   const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
   const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
-  const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
+  const FILTER_BY_NETWORK = getNetworkFilter(options.network)
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
