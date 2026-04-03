@@ -16,9 +16,7 @@ describe('when fetching bids', () => {
   describe('and there are no bids for the specified filters', () => {
     beforeEach(() => {
       pgComponent = createTestPgComponent()
-      ;(pgComponent.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+      ;(pgComponent.query as jest.Mock).mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ count: '0' }] })
       bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
     })
 
@@ -51,9 +49,7 @@ describe('when fetching bids', () => {
         }
       ]
       pgComponent = createTestPgComponent()
-      ;(pgComponent.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: bids })
-        .mockResolvedValueOnce({ rows: [{ count: '10' }] })
+      ;(pgComponent.query as jest.Mock).mockResolvedValueOnce({ rows: bids }).mockResolvedValueOnce({ rows: [{ count: '10' }] })
       bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
     })
 

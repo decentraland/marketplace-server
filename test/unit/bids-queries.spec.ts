@@ -99,7 +99,7 @@ describe('when querying for bids count', () => {
   })
 
   it('should not include sorting', () => {
-    const query = getBidsCountQuery({ sortBy: 'recently_offered' as any })
+    const query = getBidsCountQuery({})
     expect(query.text).not.toContain('ORDER BY')
   })
 

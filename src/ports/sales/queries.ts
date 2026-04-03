@@ -84,7 +84,5 @@ export function getSalesQuery(filters: SaleFilters = {}) {
 export function getSalesCountQuery(filters: SaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
 
-  return SQL`SELECT COUNT(*) as count`
-    .append(SQL` FROM `)
-    .append(LEGACY_SALES)
+  return SQL`SELECT COUNT(*) as count`.append(SQL` FROM `).append(LEGACY_SALES)
 }
