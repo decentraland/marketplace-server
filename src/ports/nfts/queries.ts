@@ -113,7 +113,11 @@ function getFilteredNFTCTE(nftFilters: GetNFTsFilters, uncapped = false): SQLSta
   const sortBy = getNFTsSortByStatement(nftFilters.sortBy)
   const pagination = shouldApplyLimitOffsetInCTE(nftFilters, uncapped) ? getNFTLimitAndOffsetStatement(nftFilters) : SQL``
 
-  return from.append(whereClause).append(sortBy).append(pagination).append(SQL`)`)
+  return from
+    .append(whereClause)
+    .append(sortBy)
+    .append(pagination)
+    .append(SQL`)`)
 }
 
 function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
@@ -143,7 +147,9 @@ function getFilteredEstateCTE(filters: GetNFTsFilters): SQLStatement {
           JSON_BUILD_OBJECT('x', est_parcel.x, 'y', est_parcel.y)
         ) AS estate_parcels
       FROM
-        `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.estate est`)
+        `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.estate est`)
 
   const join = SQL`
       LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.parcel est_parcel ON est.id = est_parcel.estate_id
@@ -174,14 +180,24 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
         par_est.token_id AS parcel_estate_token_id,
         est_data.name AS parcel_estate_name
       FROM
-        `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.parcel par`)
+        `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.parcel par`)
 
   const joins = SQL`
-      LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.estate par_est ON par.estate_id = par_est.id AND par_est.size > 0
-      LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data est_data ON par_est.data_id = est_data.id
+      LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.estate par_est ON par.estate_id = par_est.id AND par_est.size > 0
+      LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data est_data ON par_est.data_id = est_data.id
       `)
 
-  return select.append(joins).append(where).append(SQL`)`)
+  return select
+    .append(joins)
+    .append(where)
+    .append(SQL`)`)
 }
 
 export function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
@@ -289,25 +305,48 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
       filtered_nft nft`
 
   const joins = SQL`
-    LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.metadata metadata ON nft.metadata_id = metadata.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.wearable wearable ON metadata.wearable_id = wearable.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.emote emote ON metadata.emote_id = emote.id
+    LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.metadata metadata ON nft.metadata_id = metadata.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.wearable wearable ON metadata.wearable_id = wearable.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.emote emote ON metadata.emote_id = emote.id
     LEFT JOIN parcel_estate_data parcel ON nft.id = parcel.id
     LEFT JOIN filtered_estate estate ON nft.id = estate.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data land_data ON (
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.data land_data ON (
       estate.data_id = land_data.id OR parcel.id = land_data.id
     )
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.ens ens ON ens.id = nft.ens_id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.account account ON nft.owner_id = account.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item item ON item.id = nft.item_id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.ens ens ON ens.id = nft.ens_id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.account account ON nft.owner_id = account.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item item ON item.id = nft.item_id
     LEFT JOIN trades ON trades.sent_contract_address = nft.contract_address AND trades.sent_token_id::numeric = nft.token_id AND trades.status = 'open' AND trades.signer = account.address
     `)
 
   const where = getNFTWhereStatement(nftFilters)
   const orderBy = getMainQuerySortByStatement(nftFilters.sortBy)
-  const pagination = uncapped || shouldApplyLimitOffsetInCTE(nftFilters, uncapped)
-    ? SQL``
-    : getNFTLimitAndOffsetStatement(nftFilters)
+  const pagination = uncapped || shouldApplyLimitOffsetInCTE(nftFilters, uncapped) ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters)
 
   return cte.append(select).append(joins).append(where).append(orderBy).append(pagination)
 }
@@ -456,11 +495,16 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
           nft.id AS nft_id
         FROM marketplace.trade_assets ta
         LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
-        LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft nft ON (
+        LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft nft ON (
           ta.contract_address = nft.contract_address
           AND erc721_asset.token_id::numeric = nft.token_id
         )
-        `).append(whereClauseForTradeNFTsIds).append(SQL`
+        `
+    )
+    .append(whereClauseForTradeNFTsIds).append(SQL`
       ) assets_with_values ON t.id = assets_with_values.trade_id
       WHERE t.type = 'public_nft_order'
       ORDER BY assets_with_values.nft_id, t.created_at DESC
@@ -474,13 +518,22 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
         unified_trades.created_at AS trade_created_at,
         unified_trades.assets,
         'trade' AS reason
-      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft nft
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft nft
       LEFT JOIN unified_trades ON (
         unified_trades.assets -> 'sent' ->> 'token_id' = nft.token_id::TEXT
         AND unified_trades.assets -> 'sent' ->> 'contract_address' = nft.contract_address
       )
-            `).append(whereClauseForNFTsWithTrades).append(SQL`
-      ORDER BY unified_trades.created_at DESC `).append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+            `
+    )
+    .append(whereClauseForNFTsWithTrades)
+    .append(
+      SQL`
+      ORDER BY unified_trades.created_at DESC `
+    )
+    .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     )`)
 
   // CTE: filtered_orders
@@ -493,11 +546,16 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   const filteredOrdersCTE = SQL`,
     filtered_orders AS (
       SELECT nft_id
-      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`."order"
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`."order"
       WHERE
         status = 'open'
         AND expires_at_normalized > NOW()
-        `).append(categoryFilter).append(SQL`
+        `
+    )
+    .append(categoryFilter).append(SQL`
       ORDER BY expires_at_normalized DESC NULLS LAST
       LIMIT 24
     )`)
@@ -510,10 +568,19 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
         NULL::timestamp AS trade_created_at,
         NULL::json AS trade_assets,
         'order' AS reason
-      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft
       JOIN filtered_orders ON nft.id = filtered_orders.nft_id
-      `).append(whereClauseForNFTsWithOrders).append(SQL`
-      ORDER BY search_order_created_at DESC NULLS LAST `).append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+      `
+    )
+    .append(whereClauseForNFTsWithOrders)
+    .append(
+      SQL`
+      ORDER BY search_order_created_at DESC NULLS LAST `
+    )
+    .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     )`)
 
   // Main SELECT
@@ -576,30 +643,81 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   // JOINs for the main SELECT
   const parcelSubquery = SQL`(
       SELECT par.*, par_est.token_id AS parcel_estate_token_id, est_data.name AS parcel_estate_name
-      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.parcel par
-      LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.estate par_est ON par.estate_id = par_est.id
-      LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data est_data ON par_est.data_id = est_data.id
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.parcel par
+      LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.estate par_est ON par.estate_id = par_est.id
+      LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data est_data ON par_est.data_id = est_data.id
     ) AS parcel ON combined.id = parcel.id`)
 
   const estateSubquery = SQL`(
       SELECT est.id, est.token_id, est.size, est.data_id, array_agg(json_build_object('x', est_parcel.x, 'y', est_parcel.y)) AS estate_parcels
-      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.estate est
-      LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.parcel est_parcel ON est.id = est_parcel.estate_id
+      FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.estate est
+      LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.parcel est_parcel ON est.id = est_parcel.estate_id
       GROUP BY est.id, est.token_id, est.size, est.data_id
     ) AS estate ON combined.id = estate.id`)
 
   const joins = SQL`
-    LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.metadata metadata ON combined.metadata_id = metadata.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.wearable wearable ON metadata.wearable_id = wearable.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.emote emote ON metadata.emote_id = emote.id
-    LEFT JOIN `).append(parcelSubquery).append(SQL`
-    LEFT JOIN `).append(estateSubquery).append(SQL`
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.data land_data ON (estate.data_id = land_data.id OR parcel.id = land_data.id)
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.ens ens ON ens.id = combined.ens_id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.account account ON combined.owner_id = account.id
-    LEFT JOIN `).append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item item ON item.id = combined.item_id
+    LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.metadata metadata ON combined.metadata_id = metadata.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.wearable wearable ON metadata.wearable_id = wearable.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.emote emote ON metadata.emote_id = emote.id
+    LEFT JOIN `
+    )
+    .append(parcelSubquery)
+    .append(
+      SQL`
+    LEFT JOIN `
+    )
+    .append(estateSubquery)
+    .append(
+      SQL`
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.data land_data ON (estate.data_id = land_data.id OR parcel.id = land_data.id)
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.ens ens ON ens.id = combined.ens_id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.account account ON combined.owner_id = account.id
+    LEFT JOIN `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item item ON item.id = combined.item_id
     ORDER BY sort_field DESC
-    `).append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+    `
+    )
+    .append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
     `)
 
   return cte
