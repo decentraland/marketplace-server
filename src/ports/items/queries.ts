@@ -121,13 +121,70 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   ])
 }
 
-export function getItemsQuery(filters: ItemFilters = {}) {
+function getItemsCTE(filters: ItemFilters) {
   return getTradesCTE({
     category: filters.category,
     first: filters.first,
     skip: filters.skip
-  }).append(
-    SQL`
+  })
+}
+
+function getMetadataJoin() {
+  return SQL`
+    LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.metadata metadata ON item.metadata_id = metadata.id`)
+}
+
+function getWearableJoin() {
+  return SQL`
+    LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.wearable wearable ON metadata.wearable_id = wearable.id`)
+}
+
+function getEmoteJoin() {
+  return SQL`
+    LEFT JOIN `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.emote emote ON metadata.emote_id = emote.id`)
+}
+
+function getTradesJoin() {
+  return SQL` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
+}
+
+function getAllItemsJoins() {
+  return getMetadataJoin().append(getWearableJoin()).append(getEmoteJoin()).append(getTradesJoin())
+}
+
+function needsWearableJoin(filters: ItemFilters): boolean {
+  return !!filters.wearableCategory
+}
+
+function needsEmoteJoin(filters: ItemFilters): boolean {
+  return !!(filters.emoteCategory || filters.emoteHasSound || filters.emoteHasGeometry || filters.emoteOutcomeType)
+}
+
+function needsTradesJoin(filters: ItemFilters): boolean {
+  return !!(filters.isOnSale || filters.minPrice || filters.maxPrice)
+}
+
+function getCountItemsJoins(filters: ItemFilters) {
+  const needsMetadata = needsWearableJoin(filters) || needsEmoteJoin(filters)
+  const joins = SQL``
+  if (needsMetadata) {
+    joins.append(getMetadataJoin())
+    if (needsWearableJoin(filters)) joins.append(getWearableJoin())
+    if (needsEmoteJoin(filters)) joins.append(getEmoteJoin())
+  }
+  if (needsTradesJoin(filters)) joins.append(getTradesJoin())
+  return joins
+}
+
+export function getItemsQuery(filters: ItemFilters = {}) {
+  const cte = getItemsCTE(filters)
+  const select = SQL`
     SELECT
       item.id,
       item.image,
@@ -166,75 +223,26 @@ export function getItemsQuery(filters: ItemFilters = {}) {
       unified_trades.assets -> 'received' ->> 'amount' as trade_price
     FROM
       `
-      .append(MARKETPLACE_SQUID_SCHEMA)
-      .append(
-        SQL`.item item
-    LEFT JOIN `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(
-            SQL`.metadata metadata on
-      item.metadata_id = metadata.id
-    LEFT JOIN `
-              .append(MARKETPLACE_SQUID_SCHEMA)
-              .append(
-                SQL`.wearable wearable on
-      metadata.wearable_id = wearable.id
-    LEFT JOIN `
-                  .append(MARKETPLACE_SQUID_SCHEMA)
-                  .append(
-                    SQL`.emote emote on
-      metadata.emote_id = emote.id
-  `
-                      .append(
-                        ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
-                      )
-                      .append(getItemsWhereStatement(filters))
-                      .append(getLimitAndOffsetStatement(filters, { defaultLimit: DEFAULT_LIMIT }))
-                  )
-              )
-          )
-      )
-  )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.item item`)
+  const joins = getAllItemsJoins()
+  const where = getItemsWhereStatement(filters)
+  const pagination = getLimitAndOffsetStatement(filters, { defaultLimit: DEFAULT_LIMIT })
+
+  return cte.append(select).append(joins).append(where).append(pagination)
 }
 
 export function getItemsCountQuery(filters: ItemFilters = {}) {
-  return getTradesCTE({
-    category: filters.category,
-    first: filters.first,
-    skip: filters.skip
-  }).append(
-    SQL`
+  const cte = getItemsCTE(filters)
+  const select = SQL`
     SELECT COUNT(*) as count
-    FROM
-      `
-      .append(MARKETPLACE_SQUID_SCHEMA)
-      .append(
-        SQL`.item item
-    LEFT JOIN `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(
-            SQL`.metadata metadata on
-      item.metadata_id = metadata.id
-    LEFT JOIN `
-              .append(MARKETPLACE_SQUID_SCHEMA)
-              .append(
-                SQL`.wearable wearable on
-      metadata.wearable_id = wearable.id
-    LEFT JOIN `
-                  .append(MARKETPLACE_SQUID_SCHEMA)
-                  .append(
-                    SQL`.emote emote on
-      metadata.emote_id = emote.id
-  `
-                      .append(
-                        ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
-                      )
-                      .append(getItemsWhereStatement(filters))
-                  )
-              )
-          )
-      )
-  )
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.item item`)
+  const joins = getCountItemsJoins(filters)
+  const where = getItemsWhereStatement(filters)
+
+  return cte.append(select).append(joins).append(where)
 }
 
 export function getUtilityByItem(contractAddress: string, itemId: string) {
