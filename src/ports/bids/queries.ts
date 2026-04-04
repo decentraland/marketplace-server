@@ -1,4 +1,4 @@
-import SQL from 'sql-template-strings'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
@@ -65,10 +65,7 @@ export function getLegacyBidsQuery(): string {
   `
 }
 
-export function getBidsQuery(options: GetBidsParameters) {
-  const BID_TRADES = ` (${getBidTradesQuery()}) as bid_trades `
-  const LEGACY_BIDS = ` (${getLegacyBidsQuery()}) as legacy_bids`
-
+function getBidsFilters(options: GetBidsParameters): SQLStatement {
   const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
   const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
@@ -78,7 +75,7 @@ export function getBidsQuery(options: GetBidsParameters) {
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
-  const FILTERS = getWhereStatementFromFilters([
+  return getWhereStatementFromFilters([
     FILTER_BY_BIDDER,
     FILTER_BY_SELLER,
     FILTER_BY_CONTRACT_ADDRESS,
@@ -88,45 +85,35 @@ export function getBidsQuery(options: GetBidsParameters) {
     FILTER_BY_STATUS,
     FILTER_NOT_EXPIRED
   ])
+}
+
+function getBidsFromClause(): { BID_TRADES: string; LEGACY_BIDS: string } {
+  return {
+    BID_TRADES: ` (${getBidTradesQuery()}) as bid_trades `,
+    LEGACY_BIDS: ` (${getLegacyBidsQuery()}) as legacy_bids`
+  }
+}
+
+export function getBidsQuery(options: GetBidsParameters) {
+  const { BID_TRADES, LEGACY_BIDS } = getBidsFromClause()
 
   return SQL`SELECT *`
     .append(SQL` FROM `)
     .append(BID_TRADES)
     .append(SQL` NATURAL FULL OUTER JOIN `)
     .append(LEGACY_BIDS)
-    .append(FILTERS)
+    .append(getBidsFilters(options))
     .append(getBidsSortByQuery(options.sortBy))
     .append(SQL` LIMIT ${options.limit} OFFSET ${options.offset} `)
 }
 
 export function getBidsCountQuery(options: GetBidsParameters) {
-  const BID_TRADES = ` (${getBidTradesQuery()}) as bid_trades `
-  const LEGACY_BIDS = ` (${getLegacyBidsQuery()}) as legacy_bids`
-
-  const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
-  const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
-  const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
-  const FILTER_BY_TOKEN_ID = options.tokenId ? SQL` LOWER(token_id) = LOWER(${options.tokenId}) ` : null
-  const FILTER_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
-  const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
-  const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
-  const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
-
-  const FILTERS = getWhereStatementFromFilters([
-    FILTER_BY_BIDDER,
-    FILTER_BY_SELLER,
-    FILTER_BY_CONTRACT_ADDRESS,
-    FILTER_BY_TOKEN_ID,
-    FILTER_BY_ITEM_ID,
-    FILTER_BY_NETWORK,
-    FILTER_BY_STATUS,
-    FILTER_NOT_EXPIRED
-  ])
+  const { BID_TRADES, LEGACY_BIDS } = getBidsFromClause()
 
   return SQL`SELECT COUNT(*) as count`
     .append(SQL` FROM `)
     .append(BID_TRADES)
     .append(SQL` NATURAL FULL OUTER JOIN `)
     .append(LEGACY_BIDS)
-    .append(FILTERS)
+    .append(getBidsFilters(options))
 }
