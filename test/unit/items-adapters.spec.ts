@@ -7,7 +7,6 @@ let dbItem: DBItem
 
 beforeEach(() => {
   dbItem = {
-    count: 1,
     id: '1',
     available: 0,
     beneficiary: '0x',

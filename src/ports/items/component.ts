@@ -3,8 +3,9 @@ import { fromDBItemToItem } from '../../adapters/items'
 import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { QueryFailure } from '../favorites/lists/errors'
+import { extractCount } from '../pagination'
 import { ItemNotFoundError } from './errors'
-import { getItemById, getItemsQuery, getUtilityByItem } from './queries'
+import { getItemById, getItemsCountQuery, getItemsQuery, getUtilityByItem } from './queries'
 import { DBItem, IItemsComponent } from './types'
 
 export function createItemsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IItemsComponent {
@@ -33,8 +34,10 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function getItems(filters: ItemFilters) {
-    const query = getItemsQuery(filters)
-    const result = await database.query<DBItem>(query)
+    const [result, count] = await Promise.all([
+      database.query<DBItem>(getItemsQuery(filters)),
+      database.query<{ count: string }>(getItemsCountQuery(filters))
+    ])
     const items: DBItem[] = result.rows
 
     if (result.rowCount > 0 && filters.contractAddresses && filters.contractAddresses.length === 1 && filters.itemId) {
@@ -43,7 +46,7 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
 
     return {
       data: items.map(fromDBItemToItem),
-      total: result.rowCount > 0 ? Number(items[0].count) : 0
+      total: extractCount(count)
     }
   }
 

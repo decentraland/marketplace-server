@@ -173,7 +173,6 @@ describe('when calling getNotificationEventForTrade function', () => {
           ]
         }
         dbItem = {
-          count: 1,
           wearable_body_shapes: [],
           first_listed_at: new Date(),
           search_is_store_minter: false,
