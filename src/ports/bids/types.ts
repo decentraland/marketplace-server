@@ -2,10 +2,8 @@ import { ChainId, Network, Bid, ListingStatus, GetBidsParameters } from '@dcl/sc
 import { SquidNetwork } from '../../types'
 
 export type IBidsComponent = {
-  getBids(options: GetBidsParameters): Promise<{ data: Bid[]; count: number }>
+  getBids(options: GetBidsParameters): Promise<{ data: Bid[]; total: number }>
 }
-
-export type WithCount<T> = T & { bids_count: number }
 
 export type DBNetwork = SquidNetwork | Network.ETHEREUM | Network.MATIC
 
@@ -38,4 +36,4 @@ export type DBLegacyBid = DBBaseBid & {
   trade_id: null // This is to correctly identify the type
 }
 
-export type DBBid = WithCount<DBTradeBid | DBLegacyBid>
+export type DBBid = DBTradeBid | DBLegacyBid

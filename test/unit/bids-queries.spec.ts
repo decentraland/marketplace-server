@@ -1,5 +1,5 @@
 import { Network, ChainId, ListingStatus } from '@dcl/schemas'
-import { getBidsQuery } from '../../src/ports/bids/queries'
+import { getBidsCountQuery, getBidsQuery } from '../../src/ports/bids/queries'
 import { SquidNetwork } from '../../src/types'
 
 jest.mock('../../src/logic/chainIds', () => ({
@@ -80,6 +80,53 @@ describe('when querying for bids', () => {
   describe('and the status is defined', () => {
     it('should add the filter to the query', () => {
       const query = getBidsQuery({ status: ListingStatus.OPEN })
+      expect(query.text).toContain('status = $1')
+      expect(query.values).toEqual(expect.arrayContaining(['open']))
+    })
+  })
+})
+
+describe('when querying for bids count', () => {
+  it('should select COUNT(*) as count', () => {
+    const query = getBidsCountQuery({})
+    expect(query.text).toContain('SELECT COUNT(*) as count')
+  })
+
+  it('should not include pagination', () => {
+    const query = getBidsCountQuery({ limit: 10, offset: 5 })
+    expect(query.text).not.toContain('LIMIT')
+    expect(query.text).not.toContain('OFFSET')
+  })
+
+  it('should not include sorting', () => {
+    const query = getBidsCountQuery({})
+    expect(query.text).not.toContain('ORDER BY')
+  })
+
+  it('should only query the ones not expired', () => {
+    const query = getBidsCountQuery({})
+    expect(query.text).toContain('expires_at > now()::timestamptz(3)')
+  })
+
+  describe('and the bidder filter is defined', () => {
+    it('should add the filter to the count query', () => {
+      const query = getBidsCountQuery({ bidder: '0x1' })
+      expect(query.text).toContain('LOWER(bidder) = LOWER($1)')
+      expect(query.values).toEqual(expect.arrayContaining(['0x1']))
+    })
+  })
+
+  describe('and the network is defined', () => {
+    it('should add the filter to the count query', () => {
+      const query = getBidsCountQuery({ network: Network.MATIC })
+      expect(query.text).toContain('network = ANY')
+      expect(query.values).toEqual(expect.arrayContaining([[Network.MATIC, SquidNetwork.POLYGON]]))
+    })
+  })
+
+  describe('and the status is defined', () => {
+    it('should add the filter to the count query', () => {
+      const query = getBidsCountQuery({ status: ListingStatus.OPEN })
       expect(query.text).toContain('status = $1')
       expect(query.values).toEqual(expect.arrayContaining(['open']))
     })

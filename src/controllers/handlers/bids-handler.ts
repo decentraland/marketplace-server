@@ -23,7 +23,7 @@ export async function getBidsHandler(
     const network = getParameter<Network>('network', url.searchParams, Object.values(Network) as Network[])
     const status = getParameter<ListingStatus>('status', url.searchParams, Object.values(ListingStatus) as ListingStatus[])
 
-    const { data, count } = await bids.getBids({ limit, offset, bidder, seller, sortBy, contractAddress, tokenId, itemId, network, status })
+    const { data, total } = await bids.getBids({ limit, offset, bidder, seller, sortBy, contractAddress, tokenId, itemId, network, status })
 
     return {
       status: StatusCode.OK,
@@ -31,9 +31,9 @@ export async function getBidsHandler(
         ok: true,
         data: {
           results: data,
-          total: count,
+          total,
           page: Math.floor(offset / limit),
-          pages: data.length > 0 ? Math.ceil(count / limit) : 0,
+          pages: data.length > 0 ? Math.ceil(total / limit) : 0,
           limit
         }
       }

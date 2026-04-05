@@ -2,16 +2,8 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { SaleFilters, SaleSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
-
-const DEFAULT_LIMIT = 100
-
-function getSalesLimitAndOffsetStatement(filters: SaleFilters) {
-  const limit = filters?.first ? filters.first : DEFAULT_LIMIT
-  const offset = filters?.skip ? filters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
-}
 
 function getSalesSortByStatement(sortBy?: SaleSortBy) {
   switch (sortBy) {
@@ -82,9 +74,15 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
 export function getSalesQuery(filters: SaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
 
-  return SQL`SELECT *, COUNT(*) OVER() as sales_count`
+  return SQL`SELECT *`
     .append(SQL` FROM `)
     .append(LEGACY_SALES)
     .append(getSalesSortByStatement(filters.sortBy))
-    .append(getSalesLimitAndOffsetStatement(filters))
+    .append(getLimitAndOffsetStatement(filters, { defaultLimit: 100 }))
+}
+
+export function getSalesCountQuery(filters: SaleFilters = {}) {
+  const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
+
+  return SQL`SELECT COUNT(*) as count`.append(SQL` FROM `).append(LEGACY_SALES)
 }

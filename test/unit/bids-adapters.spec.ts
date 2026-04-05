@@ -1,16 +1,15 @@
 import { ChainId, ListingStatus, Network } from '@dcl/schemas'
 import { fromDBBidToBid, fromDBNetworkToNetwork, getChainIdFromDBBid } from '../../src/adapters/bids/bids'
-import { DBBid, DBLegacyBid, DBTradeBid, WithCount } from '../../src/ports/bids'
+import { DBBid, DBLegacyBid, DBTradeBid } from '../../src/ports/bids'
 import { SquidNetwork } from '../../src/types'
 
 describe('when adapting a db bid to a bid', () => {
   describe('and it is a bid trade', () => {
-    let dbBid: WithCount<DBTradeBid>
+    let dbBid: DBTradeBid
 
     describe('and the bid is for an nft', () => {
       beforeEach(() => {
         dbBid = {
-          bids_count: 10,
           trade_id: '1',
           trade_contract_address: '0x1',
           price: '10',
@@ -57,7 +56,6 @@ describe('when adapting a db bid to a bid', () => {
       beforeEach(() => {
         dbBid = {
           trade_contract_address: '0x1',
-          bids_count: 10,
           trade_id: '1',
           price: '10',
           token_id: null,
@@ -101,11 +99,10 @@ describe('when adapting a db bid to a bid', () => {
   })
 
   describe('and it is a legacy bid', () => {
-    let dbBid: WithCount<DBLegacyBid>
+    let dbBid: DBLegacyBid
 
     beforeEach(() => {
       dbBid = {
-        bids_count: 10,
         trade_id: null,
         price: '10',
         token_id: 'token-id',
