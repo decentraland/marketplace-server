@@ -3,6 +3,7 @@ import { OrderFilters, OrderSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
@@ -25,10 +26,7 @@ function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
 }
 
 function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const limit = filters?.first ? filters.first : 1000
-  const offset = filters?.skip ? filters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
+  return getLimitAndOffsetStatement(filters)
 }
 
 function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
@@ -145,14 +143,14 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   }
   const commonQueryParts = getOrdersSortByStatement(filters).append(getInnerOrdersLimitAndOffsetStatement(filters))
 
-  const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  const orderTradesQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getTradesOrdersQuery(filters))
     .append(SQL`) as order_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
     .append(commonQueryParts)
 
-  const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  const legacyOrdersQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
     .append(getWhereStatementFromFilters(ordersFilters))
@@ -197,55 +195,29 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, pr
 export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
   const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
 
+  if (filters.tokenId) {
+    ordersFilters.push(SQL` nft.token_id = ${filters.tokenId} `)
+    tradesFilters.push(SQL` token_id = ${filters.tokenId} `)
+  }
+
   return getTradesCTE({ first: filters.first, skip: filters.skip }).append(
     SQL`
-    ,aggregated_counts AS (
-      SELECT 
-        SUM(COALESCE(trades_count, 0)) AS total_trades,
-        SUM(COALESCE(orders_count, 0)) AS total_orders
-      FROM (
-        -- Trades Count
-        SELECT COUNT(*) AS trades_count, 
-               NULL::bigint AS orders_count
-        FROM (
-          SELECT *, 
-                 COUNT(*) OVER() AS trades_count
-          FROM (
-            `
+    SELECT (
+      SELECT COUNT(*) FROM (
+        `
       .append(getTradesOrdersQuery(filters))
+      .append(SQL`) as trades_filtered`)
+      .append(getWhereStatementFromFilters(tradesFilters))
       .append(
         SQL`
-          ) AS trades_filtered
-          `
-          .append(getWhereStatementFromFilters(tradesFilters))
+    ) + (
+      SELECT COUNT(*) FROM `
+          .append(MARKETPLACE_SQUID_SCHEMA)
           .append(
-            SQL`
-        ) AS trades_final
-        
-        UNION ALL
-        
-        -- Orders Count
-        SELECT NULL::bigint AS trades_count, 
-               COUNT(*) AS orders_count
-        FROM (
-          SELECT id
-          FROM `
-              .append(MARKETPLACE_SQUID_SCHEMA)
-              .append(
-                SQL`."order" as ord
-          `.append(getWhereStatementFromFilters(ordersFilters)).append(SQL`
-        ) AS orders_filtered
-      ) AS counts_combined
-    )
-    SELECT *,
-           (SELECT total_trades + total_orders FROM aggregated_counts) AS count
-    FROM (
-      SELECT *
-      FROM   aggregated_counts
-    ) AS combined_counts
-  `)
-              )
+            SQL`."order" as ord
+      `.append(getWhereStatementFromFilters(ordersFilters))
           )
       )
+      .append(SQL`) as count`)
   )
 }

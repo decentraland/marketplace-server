@@ -4,6 +4,7 @@ import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE, MAX_ORDER_TIMESTAMP } from '../catalog/queries'
 import { ItemType } from '../items'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { getENSs } from './ensQueries'
 import { getAllLANDsQuery, getLandsOnSaleQuery } from './landQueries'
@@ -200,10 +201,7 @@ function getParcelEstateDataCTE(filters: GetNFTsFilters): SQLStatement {
 }
 
 export function getNFTLimitAndOffsetStatement(nftFilters?: GetNFTsFilters) {
-  const limit = nftFilters?.first ? nftFilters.first : 100
-  const offset = nftFilters?.skip ? nftFilters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
+  return getLimitAndOffsetStatement(nftFilters ?? {}, { defaultLimit: 100 })
 }
 
 export function getNFTsSortByStatement(sortBy?: NFTSortBy) {

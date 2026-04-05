@@ -7,7 +7,6 @@ export type IOrdersComponent = {
 
 export type DBOrder = {
   id: string
-  count: number
   marketplace_address: string
   category: NFTCategory
   nft_address: string

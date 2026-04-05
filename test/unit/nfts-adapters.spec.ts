@@ -394,7 +394,6 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
     const orders: DBOrder[] = [
       {
         id: '1',
-        count: 1,
         marketplace_address: '0xabc123',
         category: NFTCategory.WEARABLE,
         nft_address: '0x123abc',
@@ -414,7 +413,6 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
       },
       {
         id: '2',
-        count: 1,
         marketplace_address: '0xdef456',
         category: NFTCategory.PARCEL,
         nft_address: '0x456def',

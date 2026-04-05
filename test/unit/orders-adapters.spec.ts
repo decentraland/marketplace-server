@@ -21,7 +21,6 @@ describe('fromDBOrderToOrder', () => {
       network: SquidNetwork.ETHEREUM,
       issued_id: 'abc123',
       trade_id: 'def456',
-      count: 1,
       category: NFTCategory.ENS,
       item_id: 'ghi789',
       nft_id: 'jkl012'
