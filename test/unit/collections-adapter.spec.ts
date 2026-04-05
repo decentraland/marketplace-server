@@ -25,8 +25,7 @@ describe('when transforming a DBCollection to Collection', () => {
     search_text: 'test collection',
     base_uri: 'https://example.com/',
     chain_id: ChainId.MATIC_MAINNET,
-    network: SquidNetwork.POLYGON,
-    count: 1
+    network: SquidNetwork.POLYGON
   }
 
   describe('and all fields are present', () => {
