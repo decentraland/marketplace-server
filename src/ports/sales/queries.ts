@@ -1,7 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { SaleFilters, SaleSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getDBNetworks } from '../../utils'
+import { getNetworkFilter } from '../filters'
 import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -25,7 +25,7 @@ function getLegacySalesQueryWhereStatement(filters: SaleFilters): SQLStatement {
     : null
   const FILTER_BY_ITEM_ID = filters.itemId ? SQL` search_item_id = ${filters.itemId} ` : null
   const FILTER_BY_TOKEN_ID = filters.tokenId ? SQL` search_token_id = ${filters.tokenId} ` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY (${getDBNetworks(filters.network)}) ` : null
+  const FILTER_BY_NETWORK = getNetworkFilter(filters.network)
   const FILTER_BY_MIN_PRICE = filters.minPrice ? SQL` price >= ${filters.minPrice} ` : null
   const FILTER_BY_MAX_PRICE = filters.maxPrice ? SQL` price <= ${filters.maxPrice} ` : null
   const FILTER_BY_CATEGORY = filters.categories && filters.categories.length ? SQL` search_category = ANY (${filters.categories}) ` : null

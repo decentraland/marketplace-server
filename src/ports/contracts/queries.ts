@@ -1,13 +1,13 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getDBNetworks } from '../../utils'
+import { getNetworkFilter } from '../filters'
 import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { ContractFilters } from './types'
 
 function getContractsWhereStatement(filters: ContractFilters): SQLStatement {
   const FILTER_BY_APPROVED = SQL`c.is_approved = true`
-  const FILTER_BY_NETWORK = filters.network ? SQL`c.network = ANY(${getDBNetworks(filters.network)})` : null
+  const FILTER_BY_NETWORK = getNetworkFilter(filters.network, 'c.network')
 
   return getWhereStatementFromFilters([FILTER_BY_APPROVED, FILTER_BY_NETWORK])
 }

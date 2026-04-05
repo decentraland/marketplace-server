@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getDBNetworks } from '../../utils'
+import { getNetworkFilter } from '../filters'
 import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { AccountFilters, AccountSortBy } from './types'
@@ -29,7 +29,7 @@ function getAccountsWhereStatement(filters: AccountFilters): SQLStatement {
   const FILTER_BY_ID = filters.id ? SQL`id = ANY(${[filters.id, `${filters.id}-ETHEREUM`, `${filters.id}-POLYGON`]})` : null
   const FILTER_BY_ADDRESS =
     filters.address && filters.address.length > 0 ? SQL`address = ANY(${filters.address.map(addr => addr.toLowerCase())})` : null
-  const FILTER_BY_NETWORK = filters.network ? SQL`network = ANY(${getDBNetworks(filters.network)})` : null
+  const FILTER_BY_NETWORK = getNetworkFilter(filters.network)
 
   return getWhereStatementFromFilters([FILTER_BY_ID, FILTER_BY_ADDRESS, FILTER_BY_NETWORK])
 }
