@@ -1,5 +1,5 @@
 import { Network, ChainId, ListingStatus } from '@dcl/schemas'
-import { getBidsQuery } from '../../src/ports/bids/queries'
+import { BID_COLUMNS, getBidTradesQuery, getBidsQuery, getLegacyBidsQuery } from '../../src/ports/bids/queries'
 import { SquidNetwork } from '../../src/types'
 
 jest.mock('../../src/logic/chainIds', () => ({
@@ -7,7 +7,55 @@ jest.mock('../../src/logic/chainIds', () => ({
   getPolygonChainId: () => ChainId.MATIC_AMOY
 }))
 
+function extractColumnAliases(sql: string): string[] {
+  const selectMatch = sql.match(/SELECT\s+([\s\S]*?)\s+FROM\s/i)
+  if (!selectMatch) return []
+  // Split on commas that are not inside parentheses
+  const columns: string[] = []
+  let depth = 0
+  let current = ''
+  for (const char of selectMatch[1]) {
+    if (char === '(') depth++
+    else if (char === ')') depth--
+    else if (char === ',' && depth === 0) {
+      columns.push(current.trim())
+      current = ''
+      continue
+    }
+    current += char
+  }
+  if (current.trim()) columns.push(current.trim())
+
+  return columns.map(col => {
+    const asMatch = col.match(/\bas\s+(\w+)\s*$/i)
+    if (asMatch) return asMatch[1]
+    // Strip type casts like ::text, ::numeric(78)
+    const stripped = col.replace(/::\w+(\(\d+\))?/g, '').trim()
+    const parts = stripped.split('.')
+    return (parts.pop() ?? '').trim()
+  })
+}
+
+describe('when checking UNION ALL column alignment', () => {
+  it('should have getBidTradesQuery and getLegacyBidsQuery output identical columns in BID_COLUMNS order', () => {
+    const tradeColumns = extractColumnAliases(getBidTradesQuery())
+    const legacyColumns = extractColumnAliases(getLegacyBidsQuery())
+
+    // Length check as a failsafe — catches parser regressions before the deep-equal
+    expect(tradeColumns).toHaveLength(BID_COLUMNS.length)
+    expect(legacyColumns).toHaveLength(BID_COLUMNS.length)
+    expect(tradeColumns).toEqual([...BID_COLUMNS])
+    expect(legacyColumns).toEqual([...BID_COLUMNS])
+  })
+})
+
 describe('when querying for bids', () => {
+  it('should use UNION ALL instead of NATURAL FULL OUTER JOIN', () => {
+    const query = getBidsQuery({})
+    expect(query.text).toContain('UNION ALL')
+    expect(query.text).not.toContain('NATURAL FULL OUTER JOIN')
+  })
+
   it('should only query the ones not expired', () => {
     const query = getBidsQuery({})
     expect(query.text).toContain('expires_at > now()::timestamptz(3)')
@@ -15,7 +63,8 @@ describe('when querying for bids', () => {
 
   describe('and limit and offset are defined', () => {
     const query = getBidsQuery({ offset: 2, limit: 1 })
-    expect(query.text).toContain('LIMIT $1 OFFSET $2')
+    expect(query.text).toContain('LIMIT')
+    expect(query.text).toContain('OFFSET')
     expect(query.values).toEqual(expect.arrayContaining([1, 2]))
   })
 
@@ -53,9 +102,18 @@ describe('when querying for bids', () => {
 
   describe('and the item id filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ tokenId: 'an-item-id', offset: 1, limit: 1 })
-      expect(query.text).toContain('LOWER(token_id) = LOWER($1)')
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      expect(query.text).toContain('LOWER(item_id) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['an-item-id']))
+    })
+
+    it('should exclude legacy bids with FALSE filter in the legacy branch WHERE clause', () => {
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      // Split the query at UNION ALL and verify FALSE appears only in the legacy (second) branch
+      const parts = query.text.split('UNION ALL')
+      expect(parts).toHaveLength(2)
+      expect(parts[0]).not.toContain('FALSE')
+      expect(parts[1]).toContain('FALSE')
     })
   })
 

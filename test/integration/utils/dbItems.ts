@@ -750,3 +750,218 @@ export async function refreshTradesMaterializedView(dbComponent: Pick<BaseCompon
     await dappsDatabase.query('REFRESH MATERIALIZED VIEW marketplace.mv_trades')
   }
 }
+
+export async function createSquidDBBidTrade(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: {
+    contractAddress: string
+    tokenId?: string
+    itemId?: string
+    bidder?: string
+    price?: string
+    signature?: string
+    network?: string
+    expiresInMs?: number
+  }
+): Promise<string> {
+  const { dappsDatabase } = dbComponent
+  const {
+    contractAddress,
+    tokenId,
+    itemId,
+    bidder = '0x1234567890123456789012345678901234567890',
+    price = '100000000000000000000',
+    signature = `bid_signature_${Date.now()}_${Math.random()}`,
+    network = 'matic',
+    expiresInMs = 86400000
+  } = options
+
+  const client = await dappsDatabase.getPool().connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const tradeResult = await client.query(`
+      INSERT INTO marketplace.trades (
+        signature,
+        hashed_signature,
+        signer,
+        type,
+        network,
+        chain_id,
+        checks,
+        expires_at,
+        effective_since
+      ) VALUES (
+        '${signature}',
+        '${signature}',
+        '${bidder.toLowerCase()}',
+        'bid',
+        '${network}',
+        80002,
+        '{"uses": 1, "effective": ${Date.now()}, "expiration": ${
+      Date.now() + expiresInMs
+    }, "allowedRoot": "0x", "contractSignatureIndex": 0, "signerSignatureIndex": 0, "externalChecks": [], "salt": "0x"}',
+        NOW() + INTERVAL '${Math.floor(expiresInMs / 1000)} seconds',
+        NOW()
+      ) RETURNING id
+    `)
+
+    const tradeId = tradeResult.rows[0].id
+
+    // Insert the sent asset (ERC20 payment)
+    const sentAssetResult = await client.query(`
+      INSERT INTO marketplace.trade_assets (
+        trade_id,
+        direction,
+        asset_type,
+        contract_address,
+        beneficiary,
+        extra
+      ) VALUES (
+        '${tradeId}',
+        'sent',
+        1,
+        '0x9d32aac179153a991e832550d9f96441ea27763a',
+        '${bidder.toLowerCase()}',
+        '0x'
+      ) RETURNING id
+    `)
+
+    await client.query(`
+      INSERT INTO marketplace.trade_assets_erc20 (
+        asset_id,
+        amount
+      ) VALUES (
+        '${sentAssetResult.rows[0].id}',
+        '${price}'
+      )
+    `)
+
+    // Insert the received asset (NFT or Item)
+    const assetType = tokenId ? 3 : 4 // ERC721 = 3, COLLECTION_ITEM = 4
+    const receivedAssetResult = await client.query(`
+      INSERT INTO marketplace.trade_assets (
+        trade_id,
+        direction,
+        asset_type,
+        contract_address,
+        beneficiary,
+        extra
+      ) VALUES (
+        '${tradeId}',
+        'received',
+        ${assetType},
+        '${contractAddress.toLowerCase()}',
+        '${bidder.toLowerCase()}',
+        '0x'
+      ) RETURNING id
+    `)
+
+    if (tokenId) {
+      await client.query(`
+        INSERT INTO marketplace.trade_assets_erc721 (
+          asset_id,
+          token_id
+        ) VALUES (
+          '${receivedAssetResult.rows[0].id}',
+          '${tokenId}'
+        )
+      `)
+    } else if (itemId) {
+      await client.query(`
+        INSERT INTO marketplace.trade_assets_item (
+          asset_id,
+          item_id
+        ) VALUES (
+          '${receivedAssetResult.rows[0].id}',
+          '${itemId}'
+        )
+      `)
+    }
+
+    await client.query('COMMIT')
+
+    return tradeId
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    await client.release()
+  }
+}
+
+export async function createSquidDBLegacyBid(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: {
+    contractAddress: string
+    tokenId: string
+    bidder?: string
+    seller?: string
+    price?: string
+    status?: string
+    network?: string
+    bidId?: string
+    expiresAt?: number
+  }
+): Promise<string> {
+  const { dappsDatabase } = dbComponent
+  const {
+    contractAddress,
+    tokenId,
+    bidder = '1234567890123456789012345678901234567890',
+    seller = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+    price = '100000000000000000000',
+    status = 'open',
+    network = 'matic',
+    bidId = `legacy_bid_${Date.now()}_${Math.random()}`,
+    expiresAt = Date.now() + 86400000
+  } = options
+
+  const createdAt = Math.floor(Date.now() / 1000)
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."bid" (
+      id,
+      bid_address,
+      category,
+      nft_address,
+      token_id,
+      bidder,
+      seller,
+      price,
+      fingerprint,
+      status,
+      blockchain_id,
+      block_number,
+      expires_at,
+      created_at,
+      updated_at,
+      network
+    ) VALUES (
+      '${bidId}',
+      '0x8de9c5a032463c561423387a9648c5c7bcc5bc90',
+      'wearable',
+      '${contractAddress.toLowerCase()}',
+      ${tokenId},
+      decode('${bidder}', 'hex'),
+      decode('${seller}', 'hex'),
+      ${price},
+      decode('', 'hex'),
+      '${status}',
+      'blockchain_${bidId}',
+      1000000,
+      ${expiresAt},
+      ${createdAt},
+      ${createdAt},
+      '${network}'
+    )
+  `)
+
+  return bidId
+}
+
+export async function deleteSquidDBLegacyBid(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, bidId: string): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."bid" WHERE id = '${bidId}'`)
+}

@@ -253,6 +253,45 @@ test('trades controller', function ({ components }) {
           })
         })
       })
+
+      describe('and there is already another item bid for that signer', () => {
+        beforeEach(async () => {
+          const { localFetch } = components
+          const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+            intent: 'dcl:create-trade',
+            signer: 'dcl:marketplace'
+          })
+          signer = signedRequest.identity.realAccount.address.toLowerCase()
+          const signature = Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
+
+          await localFetch.fetch('/v1/trades', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...bid,
+              signer,
+              signature
+            }),
+            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+          })
+          response = await localFetch.fetch('/v1/trades', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...bid,
+              signer,
+              signature
+            }),
+            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+          })
+        })
+
+        it('should respond with a 409 conflict error', async () => {
+          expect(response.status).toEqual(StatusCode.CONFLICT)
+          expect(await response.json()).toEqual({
+            message: 'There is already a bid with the same parameters',
+            ok: false
+          })
+        })
+      })
     })
 
     describe('and there is already another bid for that item of that signer', () => {
