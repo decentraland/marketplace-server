@@ -59,20 +59,10 @@ describe('when querying for bids', () => {
   })
 
   describe('and limit and offset are defined', () => {
-    it('should apply outer LIMIT and OFFSET', () => {
-      const query = getBidsQuery({ offset: 2, limit: 1 })
-      expect(query.text).toContain('LIMIT')
-      expect(query.text).toContain('OFFSET')
-      expect(query.values).toEqual(expect.arrayContaining([1, 2]))
-    })
-
-    it('should push inner LIMIT into both subqueries before UNION ALL', () => {
-      const query = getBidsQuery({ offset: 10, limit: 5 })
-      const parts = query.text.split('UNION ALL')
-      expect(parts).toHaveLength(2)
-      // Inner limit should be limit + offset = 15 in each branch
-      expect(query.values).toEqual(expect.arrayContaining([15]))
-    })
+    const query = getBidsQuery({ offset: 2, limit: 1 })
+    expect(query.text).toContain('LIMIT')
+    expect(query.text).toContain('OFFSET')
+    expect(query.values).toEqual(expect.arrayContaining([1, 2]))
   })
 
   describe('and the bidder filter is defined', () => {

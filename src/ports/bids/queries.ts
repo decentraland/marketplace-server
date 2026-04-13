@@ -131,35 +131,22 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   }
 }
 
-function getInnerBidsLimitStatement(options: GetBidsParameters) {
-  const limit = options.limit ?? 100
-  const offset = options.offset ?? 0
-  // For inner queries, fetch enough records to account for the final offset
-  // and potential records from the other UNION branch
-  const innerLimit = limit + offset
-
-  return SQL` LIMIT ${innerLimit}`
-}
-
 export function getBidsQuery(options: GetBidsParameters) {
   const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options)
-  const innerLimit = getInnerBidsLimitStatement(options)
-  const sortBy = getBidsSortByQuery(options.sortBy)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
     .append(getBidTradesQuery())
     .append(SQL`) as bid_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
-    .append(sortBy)
-    .append(innerLimit)
 
   const legacyBidsQuery = SQL`SELECT * FROM (`
     .append(getLegacyBidsQuery())
     .append(SQL`) as legacy_bids`)
     .append(getWhereStatementFromFilters(legacyFilters))
-    .append(sortBy)
-    .append(innerLimit)
 
+  // Note: inner LIMIT pushdown per branch (like orders use) is intentionally omitted here
+  // because COUNT(*) OVER() needs the full UNION ALL result to report accurate totals.
+  // If bid volumes grow significantly, consider a separate count query (see getOrdersCountQuery).
   return SQL`SELECT *, COUNT(*) OVER() as bids_count FROM (`
     .append(SQL`(`)
     .append(bidTradesQuery)
