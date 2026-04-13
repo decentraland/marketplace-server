@@ -41,6 +41,9 @@ describe('when checking UNION ALL column alignment', () => {
     const tradeColumns = extractColumnAliases(getBidTradesQuery())
     const legacyColumns = extractColumnAliases(getLegacyBidsQuery())
 
+    // Length check as a failsafe — catches parser regressions before the deep-equal
+    expect(tradeColumns).toHaveLength(BID_COLUMNS.length)
+    expect(legacyColumns).toHaveLength(BID_COLUMNS.length)
     expect(tradeColumns).toEqual([...BID_COLUMNS])
     expect(legacyColumns).toEqual([...BID_COLUMNS])
   })

@@ -779,6 +779,8 @@ export async function createSquidDBBidTrade(
   const client = await dappsDatabase.getPool().connect()
 
   try {
+    await client.query('BEGIN')
+
     const tradeResult = await client.query(`
       INSERT INTO marketplace.trades (
         signature,
@@ -878,7 +880,12 @@ export async function createSquidDBBidTrade(
       `)
     }
 
+    await client.query('COMMIT')
+
     return tradeId
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
   } finally {
     await client.release()
   }
