@@ -5,6 +5,32 @@ import { getDBNetworks } from '../../utils'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
+/**
+ * Canonical column order for both bid subqueries.
+ * getBidTradesQuery() and getLegacyBidsQuery() MUST SELECT these columns in this exact order.
+ */
+export const BID_COLUMNS = [
+  'trade_id',
+  'legacy_bid_id',
+  'trade_contract_address',
+  'bid_address',
+  'blockchain_id',
+  'block_number',
+  'bidder',
+  'created_at',
+  'updated_at',
+  'expires_at',
+  'network',
+  'chain_id',
+  'price',
+  'token_id',
+  'item_id',
+  'contract_address',
+  'fingerprint',
+  'seller',
+  'status'
+] as const
+
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
   switch (sortBy) {
     case BidSortBy.RECENTLY_OFFERED:
@@ -82,6 +108,9 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
 
+  // Note: these SQLStatement instances are shared by reference between the trades and legacy arrays.
+  // This is safe because getWhereStatementFromFilters only appends them onto a separate accumulator
+  // and never mutates the filter objects themselves.
   const COMMON_FILTERS = [
     FILTER_BY_BIDDER,
     FILTER_BY_SELLER,
@@ -102,18 +131,34 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   }
 }
 
+function getInnerBidsLimitStatement(options: GetBidsParameters) {
+  const limit = options.limit ?? 100
+  const offset = options.offset ?? 0
+  // For inner queries, fetch enough records to account for the final offset
+  // and potential records from the other UNION branch
+  const innerLimit = limit + offset
+
+  return SQL` LIMIT ${innerLimit}`
+}
+
 export function getBidsQuery(options: GetBidsParameters) {
   const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options)
+  const innerLimit = getInnerBidsLimitStatement(options)
+  const sortBy = getBidsSortByQuery(options.sortBy)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
     .append(getBidTradesQuery())
     .append(SQL`) as bid_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
+    .append(sortBy)
+    .append(innerLimit)
 
   const legacyBidsQuery = SQL`SELECT * FROM (`
     .append(getLegacyBidsQuery())
     .append(SQL`) as legacy_bids`)
     .append(getWhereStatementFromFilters(legacyFilters))
+    .append(sortBy)
+    .append(innerLimit)
 
   return SQL`SELECT *, COUNT(*) OVER() as bids_count FROM (`
     .append(SQL`(`)
