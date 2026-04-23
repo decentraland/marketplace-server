@@ -66,7 +66,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidTradeSignatureError()
     }
 
-    // vaidate signature
+    // validate signature
     if (!validateTradeSignature(trade, signer)) {
       throw new InvalidTradeSignatureError()
     }
