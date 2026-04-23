@@ -152,6 +152,18 @@ describe('when adding a new trade', () => {
     })
   })
 
+  describe('when the trade signature length is not 132 characters', () => {
+    beforeEach(() => {
+      mockTrade.signature = '0xshort'
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+    })
+
+    it('should throw an InvalidTradeSignatureError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidTradeSignatureError())
+    })
+  })
+
   describe('when the trade signature is invalid', () => {
     beforeEach(() => {
       jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(false)
