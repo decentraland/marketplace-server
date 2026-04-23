@@ -61,6 +61,11 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       throw new InvalidEstateTrade()
     }
 
+    // validate signature length (0x + 130 hex chars for a standard ECDSA signature)
+    if (trade.signature.length !== 132) {
+      throw new InvalidTradeSignatureError()
+    }
+
     // vaidate signature
     if (!validateTradeSignature(trade, signer)) {
       throw new InvalidTradeSignatureError()
