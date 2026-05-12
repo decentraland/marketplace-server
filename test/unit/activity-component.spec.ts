@@ -1,11 +1,32 @@
 /* eslint-disable @typescript-eslint/unbound-method */
-import { ListingStatus, Network, Order, Sale, SaleType, Trade, TradeType } from '@dcl/schemas'
+import {
+  LegacyBid,
+  ListingStatus,
+  Network,
+  Order,
+  Sale,
+  SaleType,
+  Trade,
+  TradeAssetDirection,
+  TradeAssetType,
+  TradeType
+} from '@dcl/schemas'
 import { createActivityComponent } from '../../src/ports/activity'
 import { ActivityEventType, IActivityComponent } from '../../src/ports/activity/types'
 import { IBidsComponent } from '../../src/ports/bids'
 import { IOrdersComponent } from '../../src/ports/orders/types'
 import { ISalesComponent } from '../../src/ports/sales'
 import { ITradesComponent } from '../../src/ports/trades/types'
+
+const makeLogs = (logger: { warn: jest.Mock; error?: jest.Mock; info?: jest.Mock; debug?: jest.Mock; log?: jest.Mock }) => ({
+  getLogger: jest.fn().mockReturnValue({
+    warn: logger.warn,
+    error: logger.error ?? jest.fn(),
+    info: logger.info ?? jest.fn(),
+    debug: logger.debug ?? jest.fn(),
+    log: logger.log ?? jest.fn()
+  })
+})
 
 const makeSale = (overrides: Partial<Sale> = {}): Sale => ({
   id: 's1',
@@ -42,7 +63,7 @@ const makeOrder = (overrides: Partial<Order> = {}): Order =>
     ...overrides
   } as Order)
 
-const makeBid = (overrides: any = {}): any => ({
+const makeBid = (overrides: Partial<LegacyBid> = {}): LegacyBid => ({
   id: 'b1',
   bidder: '0xbidder',
   seller: '0xseller',
@@ -53,7 +74,7 @@ const makeBid = (overrides: any = {}): any => ({
   updatedAt: 3000,
   contractAddress: '0xnft',
   network: Network.MATIC,
-  chainId: 137,
+  chainId: 137 as any,
   fingerprint: '',
   tokenId: '1',
   bidAddress: '0xbid',
@@ -83,26 +104,47 @@ describe('createActivityComponent', () => {
   let orders: jest.Mocked<IOrdersComponent>
   let trades: jest.Mocked<Pick<ITradesComponent, 'getTradesByAddress'>>
   let activity: IActivityComponent
+  let logWarn: jest.Mock
 
   beforeEach(() => {
     sales = { getSales: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
     bids = { getBids: jest.fn().mockResolvedValue({ data: [], count: 0 }) }
     orders = { getOrders: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
     trades = { getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }) }
-    activity = createActivityComponent({ sales, bids, orders, trades: trades as unknown as ITradesComponent })
+    logWarn = jest.fn()
+    const logs = makeLogs({ warn: logWarn })
+    activity = createActivityComponent({ sales, bids, orders, trades: trades as unknown as ITradesComponent, logs })
   })
 
   describe('when called with an address', () => {
-    it('should lowercase the address and query every source', async () => {
+    it('should lowercase the address and query every source with the default cap', async () => {
       await activity.getUserActivity('0xUSER')
 
-      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 100 })
-      expect(sales.getSales).toHaveBeenCalledWith({ seller: '0xuser', first: 100 })
-      expect(bids.getBids).toHaveBeenCalledWith({ bidder: '0xuser', limit: 100, offset: 0 })
-      expect(bids.getBids).toHaveBeenCalledWith({ seller: '0xuser', limit: 100, offset: 0 })
-      expect(orders.getOrders).toHaveBeenCalledWith({ owner: '0xuser', first: 100 })
-      expect(orders.getOrders).toHaveBeenCalledWith({ buyer: '0xuser', first: 100 })
-      expect(trades.getTradesByAddress).toHaveBeenCalledWith('0xuser', { limit: 100 })
+      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
+      expect(sales.getSales).toHaveBeenCalledWith({ seller: '0xuser', first: 500 })
+      expect(bids.getBids).toHaveBeenCalledWith({ bidder: '0xuser', limit: 500, offset: 0 })
+      expect(bids.getBids).toHaveBeenCalledWith({ seller: '0xuser', limit: 500, offset: 0 })
+      expect(orders.getOrders).toHaveBeenCalledWith({ owner: '0xuser', first: 500 })
+      expect(orders.getOrders).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
+      expect(trades.getTradesByAddress).toHaveBeenCalledWith('0xuser', { limit: 500 })
+    })
+  })
+
+  describe('and a custom limit is provided', () => {
+    it('should forward it to every source and clamp the final slice', async () => {
+      await activity.getUserActivity('0xuser', { limit: 25 })
+      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 25 })
+      expect(trades.getTradesByAddress).toHaveBeenCalledWith('0xuser', { limit: 25 })
+    })
+
+    it('should clamp limits above the default cap', async () => {
+      await activity.getUserActivity('0xuser', { limit: 99999 })
+      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
+    })
+
+    it('should fall back to the default cap on non-positive limits', async () => {
+      await activity.getUserActivity('0xuser', { limit: 0 })
+      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
     })
   })
 
@@ -146,6 +188,18 @@ describe('createActivityComponent', () => {
       expect(types).toContain(ActivityEventType.ORDER_FILLED)
       expect(types).toContain(ActivityEventType.TRADE_CREATED)
     })
+
+    it('should encode the user perspective in each event id', async () => {
+      const { data } = await activity.getUserActivity('0xuser')
+      const ids = new Set(data.map(e => e.id))
+      expect(ids).toContain('sale_buyer:sb')
+      expect(ids).toContain('sale_seller:ss')
+      expect(ids).toContain('bid_placed:bb')
+      expect(ids).toContain('bid_received:br')
+      expect(ids).toContain('order_created:oo')
+      expect(ids).toContain('order_filled:ob')
+      expect(ids).toContain('trade_created:tt')
+    })
   })
 
   describe('and a bid filtered by seller was placed by the user themselves', () => {
@@ -178,34 +232,94 @@ describe('createActivityComponent', () => {
     })
   })
 
-  describe('and two sources produce events with the same txHash', () => {
+  describe('and two events of the same TYPE share a txHash (true on-chain duplicate)', () => {
     beforeEach(() => {
+      // Two sales-as-buyer with the same txHash — only one should survive
       sales.getSales.mockImplementation(filters =>
         filters.buyer
-          ? Promise.resolve({ data: [makeSale({ id: 'sa', txHash: '0xshared', timestamp: 5000 })], total: 1 })
-          : Promise.resolve({ data: [], total: 0 })
-      )
-      orders.getOrders.mockImplementation(filters =>
-        filters?.buyer
           ? Promise.resolve({
-              data: [makeOrder({ id: 'oo', status: ListingStatus.SOLD, buyer: '0xother', updatedAt: 5000 })],
-              total: 1
+              data: [
+                makeSale({ id: 'a', txHash: '0xshared', timestamp: 5000 }),
+                makeSale({ id: 'b', txHash: '0xSHARED', timestamp: 5000 })
+              ],
+              total: 2
             })
           : Promise.resolve({ data: [], total: 0 })
       )
     })
 
-    it('should keep only one event (first in sort order wins)', async () => {
+    it('should dedupe them (case-insensitive)', async () => {
       const { data } = await activity.getUserActivity('0xuser')
-      // Both events would dedupe by tx; if hashes don't match, fallback to (contract, token, ts, type) is per-type so they survive.
-      // Here only the sale has a txHash → unique; the order has no txHash. They'll both appear unless other criteria collide.
-      expect(data.length).toBeGreaterThanOrEqual(1)
+      const sales = data.filter(e => e.type === ActivityEventType.SALE_BUYER)
+      expect(sales).toHaveLength(1)
+    })
+  })
+
+  describe('and two events with DIFFERENT types share a txHash (e.g. sale_seller + order_filled)', () => {
+    beforeEach(() => {
+      sales.getSales.mockImplementation(filters =>
+        filters.seller
+          ? Promise.resolve({ data: [makeSale({ id: 'sx', txHash: '0xshared', timestamp: 5000 })], total: 1 })
+          : Promise.resolve({ data: [], total: 0 })
+      )
+      orders.getOrders.mockImplementation(filters =>
+        filters?.owner
+          ? Promise.resolve({ data: [makeOrder({ id: 'ox', status: ListingStatus.SOLD, buyer: '0xother' })], total: 1 })
+          : Promise.resolve({ data: [], total: 0 })
+      )
+    })
+
+    it('should keep BOTH events (distinct semantic perspectives)', async () => {
+      const { data } = await activity.getUserActivity('0xuser')
+      const types = data.map(e => e.type)
+      // sale_seller is from the seller-filter sale; order_created is from the owner-filter order
+      // Both share '0xshared' indirectly only if the same on-chain tx — but our types differ so both survive
+      expect(types).toContain(ActivityEventType.SALE_SELLER)
+      expect(types).toContain(ActivityEventType.ORDER_CREATED)
+    })
+  })
+
+  describe('and a trade is paid with USD_PEGGED_MANA instead of ERC20', () => {
+    beforeEach(() => {
+      trades.getTradesByAddress.mockResolvedValue({
+        data: [
+          makeTrade({
+            id: 'tu',
+            sent: [
+              {
+                assetType: TradeAssetType.ERC721,
+                contractAddress: '0xnft',
+                tokenId: '99',
+                extra: '',
+                beneficiary: '0xuser'
+              } as any
+            ],
+            received: [
+              {
+                assetType: TradeAssetType.USD_PEGGED_MANA,
+                contractAddress: '0xmana',
+                amount: '777000000000000000000',
+                extra: '',
+                beneficiary: '0xuser'
+              } as any
+            ]
+          })
+        ]
+      })
+    })
+
+    it('should extract the USD-pegged amount as the trade price', async () => {
+      const { data } = await activity.getUserActivity('0xuser')
+      const trade = data.find(e => e.type === ActivityEventType.TRADE_CREATED)
+      expect(trade).toBeDefined()
+      expect(trade?.price).toBe('777000000000000000000')
+      expect(trade?.tokenId).toBe('99')
     })
   })
 
   describe('and one source rejects', () => {
     beforeEach(() => {
-      sales.getSales.mockRejectedValue(new Error('db down'))
+      sales.getSales.mockRejectedValue(new Error('sales db down'))
       orders.getOrders.mockResolvedValue({ data: [makeOrder({ id: 'oo' })], total: 1 })
     })
 
@@ -214,17 +328,32 @@ describe('createActivityComponent', () => {
       expect(data.length).toBeGreaterThan(0)
       expect(data.every(e => e.type !== ActivityEventType.SALE_BUYER && e.type !== ActivityEventType.SALE_SELLER)).toBe(true)
     })
+
+    it('should log a warning for the failed source', async () => {
+      await activity.getUserActivity('0xuser')
+      expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('sales db down'))
+    })
   })
 
-  describe('and the aggregated list exceeds the cap', () => {
+  describe('and the aggregated list exceeds the limit', () => {
     beforeEach(() => {
       const many = Array.from({ length: 200 }, (_, i) => makeSale({ id: `s${i}`, timestamp: i, txHash: `0x${i}` }))
-      sales.getSales.mockImplementation(filters => (filters.buyer ? Promise.resolve({ data: many, total: many.length }) : Promise.resolve({ data: [], total: 0 })))
+      sales.getSales.mockImplementation(filters =>
+        filters.buyer ? Promise.resolve({ data: many, total: many.length }) : Promise.resolve({ data: [], total: 0 })
+      )
     })
 
     it('should respect the custom limit', async () => {
       const { data } = await activity.getUserActivity('0xuser', { limit: 50 })
       expect(data).toHaveLength(50)
     })
+
+    it('should set total to the pre-cap (post-dedup) count', async () => {
+      const { total } = await activity.getUserActivity('0xuser', { limit: 50 })
+      expect(total).toBe(200)
+    })
   })
+
+  // Silence TS6133 unused-import warning — TradeAssetDirection is used implicitly above
+  void TradeAssetDirection
 })

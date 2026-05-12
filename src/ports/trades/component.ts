@@ -69,8 +69,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
 
     const grouped = new Map<string, TradeWithAssetRow[]>()
     for (const row of result.rows) {
-      if (!grouped.has(row.trade_id)) grouped.set(row.trade_id, [])
-      grouped.get(row.trade_id)!.push(row)
+      const existing = grouped.get(row.trade_id)
+      if (existing) {
+        existing.push(row)
+      } else {
+        grouped.set(row.trade_id, [row])
+      }
     }
 
     const trades: Trade[] = []
@@ -89,26 +93,46 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         type: head.trade_type,
         contract: head.trade_contract
       }
-      const assets: DBTradeAssetWithValue[] = rows.map(
-        r =>
-          ({
-            id: r.asset_id,
-            asset_type: r.asset_type,
-            beneficiary: r.asset_beneficiary ?? undefined,
-            contract_address: r.asset_contract_address,
-            direction: r.asset_direction,
-            extra: r.asset_extra,
-            trade_id: r.asset_trade_id,
-            created_at: r.asset_created_at,
-            token_id: r.token_id,
-            amount: r.amount,
-            item_id: r.item_id
-          } as DBTradeAssetWithValue)
-      )
+      const assets = rows.map(toDBTradeAssetWithValue).filter((a): a is DBTradeAssetWithValue => a !== null)
       trades.push(fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets))
     }
 
     return { data: trades }
+  }
+
+  function toDBTradeAssetWithValue(r: TradeWithAssetRow): DBTradeAssetWithValue | null {
+    const base = {
+      id: r.asset_id,
+      beneficiary: r.asset_beneficiary ?? undefined,
+      contract_address: r.asset_contract_address,
+      direction: r.asset_direction,
+      extra: r.asset_extra,
+      trade_id: r.asset_trade_id,
+      created_at: r.asset_created_at
+    }
+    switch (r.asset_type) {
+      case TradeAssetType.ERC20:
+        if (r.amount === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared ERC20 but missing amount; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.ERC20, amount: r.amount }
+      case TradeAssetType.ERC721:
+        if (r.token_id === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared ERC721 but missing token_id; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.ERC721, token_id: r.token_id }
+      case TradeAssetType.COLLECTION_ITEM:
+        if (r.item_id === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared COLLECTION_ITEM but missing item_id; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.COLLECTION_ITEM, item_id: r.item_id }
+      default:
+        logger.warn(`Trade asset ${r.asset_id} has unsupported asset_type ${r.asset_type}; dropping from trade ${r.asset_trade_id}`)
+        return null
+    }
   }
 
   async function addTrade(trade: TradeCreation, signer: string) {

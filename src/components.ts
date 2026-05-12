@@ -160,7 +160,7 @@ export async function initComponents(): Promise<AppComponents> {
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
-  const activity = createActivityComponent({ sales, bids, orders, trades })
+  const activity = createActivityComponent({ sales, bids, orders, trades, logs })
 
   const transak = await createTransakComponent(
     { fetch, logs, cache },

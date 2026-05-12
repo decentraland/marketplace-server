@@ -1,11 +1,21 @@
-import { isErrorWithMessage } from '../../logic/errors'
+import { getNumberParameter } from '../../logic/http'
 import { ActivityEvent } from '../../ports/activity/types'
-import { HandlerContextWithPath, HTTPResponse, StatusCode } from '../../types'
+import { HandlerContextWithPath, StatusCode } from '../../types'
 
 export async function getActivityHandler(
-  context: Pick<HandlerContextWithPath<'activity', '/v1/activity'>, 'components' | 'verification'>
-): Promise<HTTPResponse<{ data: ActivityEvent[]; total: number }>> {
-  const address = context.verification?.auth.toLowerCase()
+  context: Pick<HandlerContextWithPath<'activity' | 'logs', '/v1/activity'>, 'components' | 'url' | 'verification'>
+): Promise<{
+  status: StatusCode
+  body: { data: ActivityEvent[]; total: number } | { ok: false; message: string }
+}> {
+  const {
+    components: { activity, logs },
+    url,
+    verification
+  } = context
+  const logger = logs.getLogger('Activity handler')
+
+  const address = verification?.auth.toLowerCase()
   if (!address) {
     return {
       status: StatusCode.UNAUTHORIZED,
@@ -14,21 +24,17 @@ export async function getActivityHandler(
   }
 
   try {
-    const { data, total } = await context.components.activity.getUserActivity(address)
+    const limit = getNumberParameter('limit', url.searchParams) ?? undefined
+    const { data, total } = await activity.getUserActivity(address, { limit })
     return {
       status: StatusCode.OK,
-      body: {
-        ok: true,
-        data: { data, total }
-      }
+      body: { data, total }
     }
   } catch (e) {
+    logger.error(`Failed to fetch activity for ${address}: ${e instanceof Error ? e.message : String(e)}`)
     return {
       status: StatusCode.ERROR,
-      body: {
-        ok: false,
-        message: isErrorWithMessage(e) ? e.message : 'Could not fetch activity'
-      }
+      body: { ok: false, message: 'Could not fetch activity' }
     }
   }
 }

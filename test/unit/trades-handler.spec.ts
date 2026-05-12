@@ -166,7 +166,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
+            getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockResolvedValue(trade),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -202,7 +202,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
+            getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -239,7 +239,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
-          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
+            getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)

@@ -319,10 +319,10 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
     LEFT JOIN marketplace.trade_assets_item AS item ON ta.id = item.asset_id
     WHERE t.id IN (
       SELECT t2.id FROM marketplace.trades AS t2
-      WHERE LOWER(t2.signer) = ${lowered}
+      WHERE t2.signer = ${lowered}
          OR EXISTS (
            SELECT 1 FROM marketplace.trade_assets AS ta2
-           WHERE ta2.trade_id = t2.id AND LOWER(ta2.beneficiary) = ${lowered}
+           WHERE ta2.trade_id = t2.id AND ta2.beneficiary = ${lowered}
          )
       ORDER BY t2.created_at DESC
       LIMIT ${options.limit}

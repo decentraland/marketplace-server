@@ -156,7 +156,7 @@ async function initComponents(): Promise<TestComponents> {
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
-  const activity = createActivityComponent({ sales, bids, orders, trades })
+  const activity = createActivityComponent({ sales, bids, orders, trades, logs })
 
   return {
     cache,

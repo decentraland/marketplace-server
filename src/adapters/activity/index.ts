@@ -1,4 +1,4 @@
-import { Bid, ListingStatus, Order, Sale, Trade, TradeAssetType } from '@dcl/schemas'
+import { Bid, ListingStatus, Order, Sale, Trade, TradeAsset, TradeAssetType } from '@dcl/schemas'
 import {
   ActivityEvent,
   ActivityEventType,
@@ -11,75 +11,64 @@ import {
   TradeCreatedEvent
 } from '../../ports/activity/types'
 
-function pickTokenOrItem(b: Bid): { tokenId?: string; itemId?: string } {
+const nullToUndefined = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v)
+
+const pickTokenOrItem = (b: Bid): { tokenId?: string; itemId?: string } => {
   if ('tokenId' in b && b.tokenId) return { tokenId: b.tokenId }
   if ('itemId' in b && b.itemId) return { itemId: b.itemId }
   return {}
 }
 
-export function toSaleBuyerEvent(sale: Sale): SaleBuyerEvent {
+const isPaymentAsset = (a: TradeAsset): a is TradeAsset & { amount: string } =>
+  a.assetType === TradeAssetType.ERC20 || a.assetType === TradeAssetType.USD_PEGGED_MANA
+
+function toSaleEvent<T extends ActivityEventType.SALE_BUYER | ActivityEventType.SALE_SELLER>(
+  sale: Sale,
+  type: T,
+  counterparty: string
+): T extends ActivityEventType.SALE_BUYER ? SaleBuyerEvent : SaleSellerEvent {
   return {
-    id: `sale:${sale.id}`,
-    type: ActivityEventType.SALE_BUYER,
+    id: `${type}:${sale.id}`,
+    type,
     timestamp: sale.timestamp,
     network: sale.network,
     txHash: sale.txHash,
     contractAddress: sale.contractAddress,
     tokenId: sale.tokenId,
-    itemId: sale.itemId ?? undefined,
+    itemId: nullToUndefined(sale.itemId),
     price: sale.price,
-    counterparty: sale.seller,
+    counterparty,
     details: { sale }
-  }
+  } as never
 }
 
-export function toSaleSellerEvent(sale: Sale): SaleSellerEvent {
-  return {
-    id: `sale:${sale.id}`,
-    type: ActivityEventType.SALE_SELLER,
-    timestamp: sale.timestamp,
-    network: sale.network,
-    txHash: sale.txHash,
-    contractAddress: sale.contractAddress,
-    tokenId: sale.tokenId,
-    itemId: sale.itemId ?? undefined,
-    price: sale.price,
-    counterparty: sale.buyer,
-    details: { sale }
-  }
-}
+export const toSaleBuyerEvent = (sale: Sale): SaleBuyerEvent => toSaleEvent(sale, ActivityEventType.SALE_BUYER, sale.seller)
+export const toSaleSellerEvent = (sale: Sale): SaleSellerEvent => toSaleEvent(sale, ActivityEventType.SALE_SELLER, sale.buyer)
 
-export function toBidPlacedEvent(bid: Bid): BidPlacedEvent {
+function toBidEvent<T extends ActivityEventType.BID_PLACED | ActivityEventType.BID_RECEIVED>(
+  bid: Bid,
+  type: T,
+  counterparty: string
+): T extends ActivityEventType.BID_PLACED ? BidPlacedEvent : BidReceivedEvent {
   return {
-    id: `bid:${bid.id}`,
-    type: ActivityEventType.BID_PLACED,
+    id: `${type}:${bid.id}`,
+    type,
     timestamp: bid.createdAt,
     network: bid.network,
     contractAddress: bid.contractAddress,
     ...pickTokenOrItem(bid),
     price: bid.price,
-    counterparty: bid.seller,
+    counterparty,
     details: { bid }
-  }
+  } as never
 }
 
-export function toBidReceivedEvent(bid: Bid): BidReceivedEvent {
-  return {
-    id: `bid:${bid.id}`,
-    type: ActivityEventType.BID_RECEIVED,
-    timestamp: bid.createdAt,
-    network: bid.network,
-    contractAddress: bid.contractAddress,
-    ...pickTokenOrItem(bid),
-    price: bid.price,
-    counterparty: bid.bidder,
-    details: { bid }
-  }
-}
+export const toBidPlacedEvent = (bid: Bid): BidPlacedEvent => toBidEvent(bid, ActivityEventType.BID_PLACED, bid.seller)
+export const toBidReceivedEvent = (bid: Bid): BidReceivedEvent => toBidEvent(bid, ActivityEventType.BID_RECEIVED, bid.bidder)
 
 export function toOrderCreatedEvent(order: Order): OrderCreatedEvent {
   return {
-    id: `order:${order.id}`,
+    id: `${ActivityEventType.ORDER_CREATED}:${order.id}`,
     type: ActivityEventType.ORDER_CREATED,
     timestamp: order.createdAt,
     network: order.network,
@@ -92,7 +81,7 @@ export function toOrderCreatedEvent(order: Order): OrderCreatedEvent {
 
 export function toOrderFilledEvent(order: Order): OrderFilledEvent {
   return {
-    id: `order-filled:${order.id}`,
+    id: `${ActivityEventType.ORDER_FILLED}:${order.id}`,
     type: ActivityEventType.ORDER_FILLED,
     timestamp: order.updatedAt,
     network: order.network,
@@ -105,40 +94,37 @@ export function toOrderFilledEvent(order: Order): OrderFilledEvent {
 }
 
 export function toTradeCreatedEvent(trade: Trade): TradeCreatedEvent {
-  const firstNonERC20 = [...trade.sent, ...trade.received].find(a => a.assetType !== TradeAssetType.ERC20)
-  const erc20 = [...trade.sent, ...trade.received].find(a => a.assetType === TradeAssetType.ERC20)
+  const assets = [...trade.sent, ...trade.received]
+  const nonPayment = assets.find(a => !isPaymentAsset(a))
+  const payment = assets.find(isPaymentAsset)
   return {
-    id: `trade:${trade.id}`,
+    id: `${ActivityEventType.TRADE_CREATED}:${trade.id}`,
     type: ActivityEventType.TRADE_CREATED,
     timestamp: trade.createdAt,
     network: trade.network,
-    contractAddress: firstNonERC20?.contractAddress,
-    tokenId: firstNonERC20 && 'tokenId' in firstNonERC20 ? firstNonERC20.tokenId : undefined,
-    itemId: firstNonERC20 && 'itemId' in firstNonERC20 ? firstNonERC20.itemId : undefined,
-    price: erc20 && 'amount' in erc20 ? erc20.amount : undefined,
+    contractAddress: nonPayment?.contractAddress,
+    tokenId: nonPayment && 'tokenId' in nonPayment ? nonPayment.tokenId : undefined,
+    itemId: nonPayment && 'itemId' in nonPayment ? nonPayment.itemId : undefined,
+    price: payment?.amount,
     details: { trade }
   }
 }
 
-export function isOrderFilled(order: Order): boolean {
-  return order.status === ListingStatus.SOLD && !!order.buyer
-}
+export const isOrderFilled = (order: Order): boolean => order.status === ListingStatus.SOLD && !!order.buyer
 
-export function sortByTimestampDesc(events: ActivityEvent[]): ActivityEvent[] {
-  return [...events].sort((a, b) => b.timestamp - a.timestamp)
-}
+export const sortByTimestampDesc = (events: ActivityEvent[]): ActivityEvent[] => [...events].sort((a, b) => b.timestamp - a.timestamp)
 
-// Drops server-side duplicates: when the same on-chain event appears in two sources
-// (e.g. an order filled via the new trades pipeline shows up both as a sale and a trade,
-// or `orders.getOrders({ buyer })` returns trade-orders with an empty buyer).
-// Keep the first occurrence in the sorted list — sources are intentionally added in
-// the aggregator in the order we want to win (sales/bids/orders first, trades last).
+// Dedup keeps the first event in sort order (the aggregator orders sources so the canonical
+// source wins). Key includes `type` because the same on-chain tx can legitimately emit
+// distinct semantic events for the same user — e.g. `sale_seller` AND `order_filled` both
+// describe "someone bought your listing" from different model angles, with different
+// counterparty fields, so both must survive.
 export function dedupeEvents(events: ActivityEvent[]): ActivityEvent[] {
   const seen = new Set<string>()
   const out: ActivityEvent[] = []
   for (const ev of events) {
     const key = ev.txHash
-      ? `tx:${ev.txHash.toLowerCase()}`
+      ? `tx:${ev.txHash.toLowerCase()}:${ev.type}`
       : `${ev.contractAddress ?? '-'}|${ev.tokenId ?? ev.itemId ?? '-'}|${ev.timestamp}|${ev.type}`
     if (seen.has(key)) continue
     seen.add(key)
