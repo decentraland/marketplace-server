@@ -34,6 +34,7 @@ describe('when handling the creation of a new trade', () => {
         trades: {
           recreateMaterializedView: jest.fn().mockResolvedValue({}),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
           addTrade: jest.fn().mockResolvedValue({}),
           getTrade: jest.fn().mockResolvedValue({} as Trade),
           getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -165,6 +166,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockResolvedValue(trade),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -200,6 +202,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -236,6 +239,7 @@ describe('when handling the retrieval of a trade', () => {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
             getTrade: jest.fn().mockRejectedValue(error),
             getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -269,6 +273,7 @@ describe('when handling the retrieval of a trade accepted event', () => {
         trades: {
           recreateMaterializedView: jest.fn().mockResolvedValue({}),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
+          getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
           addTrade: jest.fn().mockResolvedValue({}),
           getTrade: jest.fn().mockResolvedValue({}),
           getTradeAcceptedEvent: jest.fn().mockResolvedValue({} as Event)
@@ -358,6 +363,7 @@ describe('when handling the retrieval of a trade accepted event', () => {
           trades: {
             recreateMaterializedView: recreateMaterializedViewMock,
             getTrades: jest.fn(),
+            getTradesByAddress: jest.fn(),
             addTrade: jest.fn(),
             getTrade: jest.fn(),
             getTradeAcceptedEvent: jest.fn()

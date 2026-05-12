@@ -2,6 +2,7 @@ import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection,
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
+  getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: Trade[] }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
   getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>

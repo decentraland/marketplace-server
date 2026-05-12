@@ -13,6 +13,7 @@ import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createAccountsComponent } from '../src/ports/accounts/component'
+import { createActivityComponent } from '../src/ports/activity'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
@@ -155,6 +156,7 @@ async function initComponents(): Promise<TestComponents> {
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
+  const activity = createActivityComponent({ sales, bids, orders, trades })
 
   return {
     cache,
@@ -197,7 +199,8 @@ async function initComponents(): Promise<TestComponents> {
     rankings,
     analyticsData,
     volumes,
-    userAssets
+    userAssets,
+    activity
   }
 }
 
