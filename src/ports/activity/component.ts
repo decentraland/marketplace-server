@@ -1,3 +1,4 @@
+import { isErrorWithMessage } from '../../logic/errors'
 import {
   dedupeEvents,
   isOrderFilled,
@@ -10,14 +11,14 @@ import {
   toSaleSellerEvent,
   toTradeCreatedEvent
 } from '../../adapters/activity'
-import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { ActivityEvent, IActivityComponent } from './types'
 
-// Per-source cap matches the total cap on purpose: a power user whose history is dominated
-// by one source (e.g. 400 sales, 20 bids, 5 orders) still sees their newest activity instead
-// of getting bins truncated to 100 per source. Trade-off: heavier query for the dominated
-// source, but bounded by `limit` which the caller can lower if needed.
+// Hard cap on the work we'll do per request: every page hit refetches all 7 sources, sorts,
+// dedupes and then slices. We bound that work at 500 deduped events regardless of `limit`.
+// `MAX_LIMIT` is the largest single-page response the API will produce.
+const INTERNAL_FETCH_CAP = 500
+const MAX_LIMIT = 500
 const DEFAULT_LIMIT = 500
 
 export function createActivityComponent(
@@ -36,9 +37,11 @@ export function createActivityComponent(
     }
   }
 
-  async function getUserActivity(address: string, options: { limit?: number } = {}) {
-    const limit = options.limit && options.limit > 0 ? Math.min(options.limit, DEFAULT_LIMIT) : DEFAULT_LIMIT
-    const per = limit
+  async function getUserActivity(address: string, options: { limit?: number; offset?: number } = {}) {
+    const requested = options.limit && options.limit > 0 ? options.limit : DEFAULT_LIMIT
+    const limit = Math.min(requested, MAX_LIMIT)
+    const offset = options.offset && options.offset > 0 ? options.offset : 0
+    const per = INTERNAL_FETCH_CAP
     const lower = address.toLowerCase()
 
     const [salesAsBuyer, salesAsSeller, bidsAsBidder, bidsAsSeller, ordersAsOwner, ordersAsBuyer, userTrades] = await Promise.all([
@@ -63,9 +66,9 @@ export function createActivityComponent(
 
     const sorted = sortByTimestampDesc(events)
     const deduped = dedupeEvents(sorted)
-    const capped = deduped.slice(0, limit)
+    const page = deduped.slice(offset, offset + limit)
 
-    return { data: capped, total: deduped.length }
+    return { data: page, total: deduped.length }
   }
 
   return { getUserActivity }

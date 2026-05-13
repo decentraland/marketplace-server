@@ -62,9 +62,9 @@ describe('when fetching the user activity', () => {
   })
 
   describe('and the request is signed', () => {
-    it('should call the activity component with the lowercased address', async () => {
+    it('should call the activity component with the lowercased address and no paging params', async () => {
       await getActivityHandler(context)
-      expect(getUserActivityMock).toHaveBeenCalledWith('0xuser', { limit: undefined })
+      expect(getUserActivityMock).toHaveBeenCalledWith('0xuser', { limit: undefined, offset: undefined })
     })
 
     it('should respond with 200 and the aggregated events (no ok envelope, matching sales/orders shape)', async () => {
@@ -83,7 +83,18 @@ describe('when fetching the user activity', () => {
 
     it('should forward the limit to the activity component', async () => {
       await getActivityHandler(context)
-      expect(getUserActivityMock).toHaveBeenCalledWith('0xuser', { limit: 25 })
+      expect(getUserActivityMock).toHaveBeenCalledWith('0xuser', { limit: 25, offset: undefined })
+    })
+  })
+
+  describe('and ?offset is provided', () => {
+    beforeEach(() => {
+      context.url = new URL('http://localhost:3000/v1/activity?limit=20&offset=40')
+    })
+
+    it('should forward both limit and offset', async () => {
+      await getActivityHandler(context)
+      expect(getUserActivityMock).toHaveBeenCalledWith('0xuser', { limit: 20, offset: 40 })
     })
   })
 

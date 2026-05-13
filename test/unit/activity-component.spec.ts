@@ -131,20 +131,62 @@ describe('createActivityComponent', () => {
   })
 
   describe('and a custom limit is provided', () => {
-    it('should forward it to every source and clamp the final slice', async () => {
-      await activity.getUserActivity('0xuser', { limit: 25 })
-      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 25 })
-      expect(trades.getTradesByAddress).toHaveBeenCalledWith('0xuser', { limit: 25 })
-    })
-
-    it('should clamp limits above the default cap', async () => {
-      await activity.getUserActivity('0xuser', { limit: 99999 })
+    it('should still fetch up to the internal cap from every source (so dedupe + sort is correct) but slice the final response', async () => {
+      const many = Array.from({ length: 200 }, (_, i) => makeSale({ id: `s${i}`, timestamp: i, txHash: `0x${i}` }))
+      sales.getSales.mockImplementation(filters =>
+        filters.buyer ? Promise.resolve({ data: many, total: many.length }) : Promise.resolve({ data: [], total: 0 })
+      )
+      const { data, total } = await activity.getUserActivity('0xuser', { limit: 25 })
+      expect(data).toHaveLength(25)
+      expect(total).toBe(200)
       expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
     })
 
-    it('should fall back to the default cap on non-positive limits', async () => {
-      await activity.getUserActivity('0xuser', { limit: 0 })
-      expect(sales.getSales).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
+    it('should clamp limits above MAX_LIMIT (500)', async () => {
+      const many = Array.from({ length: 600 }, (_, i) => makeSale({ id: `s${i}`, timestamp: i, txHash: `0x${i}` }))
+      sales.getSales.mockImplementation(filters =>
+        filters.buyer ? Promise.resolve({ data: many, total: many.length }) : Promise.resolve({ data: [], total: 0 })
+      )
+      const { data } = await activity.getUserActivity('0xuser', { limit: 99999 })
+      expect(data.length).toBeLessThanOrEqual(500)
+    })
+
+    it('should fall back to the default limit on non-positive limits', async () => {
+      const many = Array.from({ length: 100 }, (_, i) => makeSale({ id: `s${i}`, timestamp: i, txHash: `0x${i}` }))
+      sales.getSales.mockImplementation(filters =>
+        filters.buyer ? Promise.resolve({ data: many, total: many.length }) : Promise.resolve({ data: [], total: 0 })
+      )
+      const { data } = await activity.getUserActivity('0xuser', { limit: 0 })
+      expect(data).toHaveLength(100)
+    })
+  })
+
+  describe('and an offset is provided', () => {
+    beforeEach(() => {
+      const events = Array.from({ length: 50 }, (_, i) => makeSale({ id: `s${i}`, timestamp: 1000 - i, txHash: `0x${i}` }))
+      sales.getSales.mockImplementation(filters =>
+        filters.buyer ? Promise.resolve({ data: events, total: events.length }) : Promise.resolve({ data: [], total: 0 })
+      )
+    })
+
+    it('should return the slice starting at offset', async () => {
+      const { data, total } = await activity.getUserActivity('0xuser', { limit: 10, offset: 20 })
+      expect(data).toHaveLength(10)
+      expect(total).toBe(50)
+      // Sorted DESC by timestamp; offset=20 means the 21st-30th event
+      expect(data[0].id).toBe('sale_buyer:s20')
+      expect(data[9].id).toBe('sale_buyer:s29')
+    })
+
+    it('should return empty data when offset is past total but keep total accurate', async () => {
+      const { data, total } = await activity.getUserActivity('0xuser', { limit: 10, offset: 1000 })
+      expect(data).toHaveLength(0)
+      expect(total).toBe(50)
+    })
+
+    it('should treat negative offset as 0', async () => {
+      const { data } = await activity.getUserActivity('0xuser', { limit: 10, offset: -5 })
+      expect(data[0].id).toBe('sale_buyer:s0')
     })
   })
 

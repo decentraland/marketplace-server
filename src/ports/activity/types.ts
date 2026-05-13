@@ -72,5 +72,5 @@ export type GetUserActivityResponse = {
 }
 
 export type IActivityComponent = {
-  getUserActivity(address: string, options?: { limit?: number }): Promise<GetUserActivityResponse>
+  getUserActivity(address: string, options?: { limit?: number; offset?: number }): Promise<GetUserActivityResponse>
 }
