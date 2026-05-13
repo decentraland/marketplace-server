@@ -140,25 +140,6 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/sales', getSalesHandler)
   router.get(
     '/v1/activity',
-    // DEBUG: pre-auth logger to inspect incoming signed-fetch headers + metadata when the
-    // auth middleware short-circuits with a 4xx before the handler runs.
-    // TODO(juanmahidalgo): remove after debugging is done.
-    async (ctx, next) => {
-      const logger = components.logs.getLogger('Activity pre-auth')
-      const headerNames = ['x-identity-auth-chain-0', 'x-identity-auth-chain-1', 'x-identity-timestamp', 'x-identity-metadata']
-      const present: Record<string, string | null> = {}
-      for (const h of headerNames) present[h] = ctx.request.headers.get(h)
-      let parsedMetadata: unknown = null
-      try {
-        parsedMetadata = present['x-identity-metadata'] ? JSON.parse(present['x-identity-metadata']) : null
-      } catch (e) {
-        parsedMetadata = `unparseable: ${e instanceof Error ? e.message : String(e)}`
-      }
-      logger.info(`[/v1/activity] incoming; headers=${JSON.stringify(present)} metadata=${JSON.stringify(parsedMetadata)}`)
-      const response = await next()
-      logger.info(`[/v1/activity] response status=${response?.status ?? 'unknown'}`)
-      return response
-    },
     authorizationMiddleware.wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,

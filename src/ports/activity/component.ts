@@ -14,12 +14,12 @@ import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { ActivityEvent, IActivityComponent } from './types'
 
-// Hard cap on the work we'll do per request: every page hit refetches all 7 sources, sorts,
-// dedupes and then slices. We bound that work at 500 deduped events regardless of `limit`.
-// `MAX_LIMIT` is the largest single-page response the API will produce.
+// Every request refetches all 7 sources, sorts and dedupes them. `INTERNAL_FETCH_CAP` is
+// how many rows we pull from each source — bounds the worst-case work per request.
+// `MAX_PAGE_SIZE` is both the default and the hard cap for the response slice; a client
+// that doesn't pass `limit` gets the largest meaningful page (no surprise paging by us).
 const INTERNAL_FETCH_CAP = 500
-const MAX_LIMIT = 500
-const DEFAULT_LIMIT = 500
+const MAX_PAGE_SIZE = 500
 
 export function createActivityComponent(
   components: Pick<AppComponents, 'sales' | 'bids' | 'orders' | 'trades' | 'logs'>
@@ -38,8 +38,8 @@ export function createActivityComponent(
   }
 
   async function getUserActivity(address: string, options: { limit?: number; offset?: number } = {}) {
-    const requested = options.limit && options.limit > 0 ? options.limit : DEFAULT_LIMIT
-    const limit = Math.min(requested, MAX_LIMIT)
+    const requested = options.limit && options.limit > 0 ? options.limit : MAX_PAGE_SIZE
+    const limit = Math.min(requested, MAX_PAGE_SIZE)
     const offset = options.offset && options.offset > 0 ? options.offset : 0
     const per = INTERNAL_FETCH_CAP
     const lower = address.toLowerCase()

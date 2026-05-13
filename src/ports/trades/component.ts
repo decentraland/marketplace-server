@@ -117,6 +117,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
           return null
         }
         return { ...base, asset_type: TradeAssetType.ERC20, amount: r.amount }
+      case TradeAssetType.USD_PEGGED_MANA:
+        if (r.amount === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared USD_PEGGED_MANA but missing amount; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.USD_PEGGED_MANA, amount: r.amount }
       case TradeAssetType.ERC721:
         if (r.token_id === null) {
           logger.warn(`Trade asset ${r.asset_id} declared ERC721 but missing token_id; dropping from trade ${r.asset_trade_id}`)

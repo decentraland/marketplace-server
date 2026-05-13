@@ -68,6 +68,12 @@ export type ActivityEvent =
 
 export type GetUserActivityResponse = {
   data: ActivityEvent[]
+  /**
+   * Post-dedup count of events visible to this user across the configured sources, capped
+   * at the aggregator's INTERNAL_FETCH_CAP (per-source). This is the "recent activity
+   * window" total — NOT the user's full lifetime event count. Paginating clients should
+   * stop when `offset + data.length >= total`.
+   */
   total: number
 }
 

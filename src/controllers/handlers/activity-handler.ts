@@ -15,16 +15,8 @@ export async function getActivityHandler(
   } = context
   const logger = logs.getLogger('Activity handler')
 
-  logger.info(
-    `[/v1/activity] handler reached. verification=${JSON.stringify({
-      auth: verification?.auth,
-      authMetadata: verification?.authMetadata
-    })} search=${url.search}`
-  )
-
   const address = verification?.auth.toLowerCase()
   if (!address) {
-    logger.warn('[/v1/activity] no verified address; returning 401')
     return {
       status: StatusCode.UNAUTHORIZED,
       body: { ok: false, message: 'Unauthorized' }
@@ -34,15 +26,13 @@ export async function getActivityHandler(
   try {
     const limit = getNumberParameter('limit', url.searchParams) ?? undefined
     const offset = getNumberParameter('offset', url.searchParams) ?? undefined
-    logger.info(`[/v1/activity] fetching activity for ${address} limit=${limit ?? 'default'} offset=${offset ?? 0}`)
     const { data, total } = await activity.getUserActivity(address, { limit, offset })
-    logger.info(`[/v1/activity] success for ${address}: ${data.length} events (total=${total})`)
     return {
       status: StatusCode.OK,
       body: { data, total }
     }
   } catch (e) {
-    logger.error(`[/v1/activity] failed for ${address}: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`)
+    logger.error(`Failed to fetch activity for ${address} (limit=${url.searchParams.get('limit') ?? 'default'}, offset=${url.searchParams.get('offset') ?? '0'}): ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`)
     return {
       status: StatusCode.ERROR,
       body: { ok: false, message: 'Could not fetch activity' }

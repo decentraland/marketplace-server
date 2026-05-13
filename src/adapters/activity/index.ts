@@ -27,6 +27,9 @@ function toSaleEvent<T extends ActivityEventType.SALE_BUYER | ActivityEventType.
   type: T,
   counterparty: string
 ): T extends ActivityEventType.SALE_BUYER ? SaleBuyerEvent : SaleSellerEvent {
+  // `as never` is the standard TS escape hatch for conditional return types: the
+  // narrowing TS does on the call site (returns SaleBuyerEvent when T=SALE_BUYER) can't be
+  // proven from inside the function body. The shape is identical for both branches.
   return {
     id: `${type}:${sale.id}`,
     type,
@@ -50,6 +53,7 @@ function toBidEvent<T extends ActivityEventType.BID_PLACED | ActivityEventType.B
   type: T,
   counterparty: string
 ): T extends ActivityEventType.BID_PLACED ? BidPlacedEvent : BidReceivedEvent {
+  // See `toSaleEvent` for the rationale on `as never` with a conditional return type.
   return {
     id: `${type}:${bid.id}`,
     type,

@@ -25,6 +25,8 @@ export function fromDBTradeAssetWithValueToTradeAsset(dbTradeAsset: DBTradeAsset
   switch (dbTradeAsset.asset_type) {
     case TradeAssetType.ERC20:
       return { ...tradeBaseValues, assetType: TradeAssetType.ERC20, amount: dbTradeAsset.amount }
+    case TradeAssetType.USD_PEGGED_MANA:
+      return { ...tradeBaseValues, assetType: TradeAssetType.USD_PEGGED_MANA, amount: dbTradeAsset.amount }
     case TradeAssetType.ERC721:
       return { ...tradeBaseValues, assetType: TradeAssetType.ERC721, tokenId: dbTradeAsset.token_id }
     case TradeAssetType.COLLECTION_ITEM:

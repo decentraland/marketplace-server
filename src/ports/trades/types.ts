@@ -42,10 +42,15 @@ export type DBTradeAsset = {
 export type DBTradeAssetValue = { token_id: string } | { item_id: string } | { amount: string }
 
 export type DBTradeAssetWithERC20Value = DBTradeAsset & { asset_type: TradeAssetType.ERC20; amount: string }
+export type DBTradeAssetWithUSDPeggedManaValue = DBTradeAsset & { asset_type: TradeAssetType.USD_PEGGED_MANA; amount: string }
 export type DBTradeAssetWithERC721Value = DBTradeAsset & { asset_type: TradeAssetType.ERC721; token_id: string }
 export type DBTradeAssetWithCollectionItemValue = DBTradeAsset & { asset_type: TradeAssetType.COLLECTION_ITEM; item_id: string }
 
-export type DBTradeAssetWithValue = DBTradeAssetWithERC20Value | DBTradeAssetWithERC721Value | DBTradeAssetWithCollectionItemValue
+export type DBTradeAssetWithValue =
+  | DBTradeAssetWithERC20Value
+  | DBTradeAssetWithUSDPeggedManaValue
+  | DBTradeAssetWithERC721Value
+  | DBTradeAssetWithCollectionItemValue
 
 export type DBTradeWithAssets = {
   count: number

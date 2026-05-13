@@ -126,6 +126,28 @@ describe('when adapting a db trade asset with value to a trade asset', () => {
       })
     })
 
+    describe('and it is a USD_PEGGED_MANA asset', () => {
+      let usdPeggedAsset: DBTradeAssetWithValue
+
+      beforeEach(() => {
+        usdPeggedAsset = {
+          ...dbTradeAssetWithValue,
+          asset_type: TradeAssetType.USD_PEGGED_MANA,
+          amount: '777'
+        }
+      })
+
+      it('should return trade asset with amount', () => {
+        const result = fromDBTradeAssetWithValueToTradeAsset(usdPeggedAsset)
+        expect(result).toEqual({
+          assetType: TradeAssetType.USD_PEGGED_MANA,
+          contractAddress: usdPeggedAsset.contract_address,
+          extra: usdPeggedAsset.extra,
+          amount: '777'
+        })
+      })
+    })
+
     describe('and it is an ERC721 asset', () => {
       let erc721Asset: DBTradeAssetWithERC721Value
 
