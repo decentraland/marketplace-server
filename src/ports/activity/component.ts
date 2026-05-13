@@ -1,4 +1,3 @@
-import { isErrorWithMessage } from '../../logic/errors'
 import {
   dedupeEvents,
   isOrderFilled,
@@ -11,6 +10,7 @@ import {
   toSaleSellerEvent,
   toTradeCreatedEvent
 } from '../../adapters/activity'
+import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { ActivityEvent, IActivityComponent } from './types'
 
