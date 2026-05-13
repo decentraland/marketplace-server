@@ -32,7 +32,11 @@ export async function getActivityHandler(
       body: { data, total }
     }
   } catch (e) {
-    logger.error(`Failed to fetch activity for ${address} (limit=${url.searchParams.get('limit') ?? 'default'}, offset=${url.searchParams.get('offset') ?? '0'}): ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`)
+    logger.error(
+      `Failed to fetch activity for ${address} (limit=${url.searchParams.get('limit') ?? 'default'}, offset=${
+        url.searchParams.get('offset') ?? '0'
+      }): ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`
+    )
     return {
       status: StatusCode.ERROR,
       body: { ok: false, message: 'Could not fetch activity' }
