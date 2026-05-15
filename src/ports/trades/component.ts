@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { Event, TradeAssetDirection, TradeCreation } from '@dcl/schemas'
+import { Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -23,10 +23,36 @@ import {
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
-  getTradeAssetsWithValuesByIdQuery
+  getTradeAssetsWithValuesByIdQuery,
+  getTradesByAddressQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
 import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
+
+type TradeWithAssetRow = {
+  trade_id: string
+  trade_chain_id: number
+  trade_checks: DBTrade['checks']
+  trade_created_at: Date
+  trade_effective_since: Date
+  trade_expires_at: Date
+  trade_network: string
+  trade_signature: string
+  trade_signer: string
+  trade_type: TradeType
+  trade_contract: string
+  asset_id: string
+  asset_type: TradeAssetType
+  asset_beneficiary: string | null
+  asset_contract_address: string
+  asset_direction: TradeAssetDirection
+  asset_extra: string
+  asset_trade_id: string
+  asset_created_at: Date
+  token_id: string | null
+  amount: string | null
+  item_id: string | null
+}
 
 export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
   const { dappsDatabase: pg, eventPublisher, logs } = components
@@ -35,6 +61,84 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
   async function getTrades() {
     const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
     return { data: result.rows, count: result.rowCount }
+  }
+
+  async function getTradesByAddress(address: string, options: { limit?: number; offset?: number } = {}) {
+    const limit = options.limit ?? 100
+    const result = await pg.query<TradeWithAssetRow>(getTradesByAddressQuery(address, { limit, offset: options.offset }))
+
+    const grouped = new Map<string, TradeWithAssetRow[]>()
+    for (const row of result.rows) {
+      const existing = grouped.get(row.trade_id)
+      if (existing) {
+        existing.push(row)
+      } else {
+        grouped.set(row.trade_id, [row])
+      }
+    }
+
+    const trades: Trade[] = []
+    for (const rows of grouped.values()) {
+      const head = rows[0]
+      const dbTrade: DBTrade = {
+        id: head.trade_id,
+        chain_id: head.trade_chain_id,
+        checks: head.trade_checks,
+        created_at: head.trade_created_at,
+        effective_since: head.trade_effective_since,
+        expires_at: head.trade_expires_at,
+        network: head.trade_network,
+        signature: head.trade_signature,
+        signer: head.trade_signer,
+        type: head.trade_type,
+        contract: head.trade_contract
+      }
+      const assets = rows.map(toDBTradeAssetWithValue).filter((a): a is DBTradeAssetWithValue => a !== null)
+      trades.push(fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets))
+    }
+
+    return { data: trades }
+  }
+
+  function toDBTradeAssetWithValue(r: TradeWithAssetRow): DBTradeAssetWithValue | null {
+    const base = {
+      id: r.asset_id,
+      beneficiary: r.asset_beneficiary ?? undefined,
+      contract_address: r.asset_contract_address,
+      direction: r.asset_direction,
+      extra: r.asset_extra,
+      trade_id: r.asset_trade_id,
+      created_at: r.asset_created_at
+    }
+    switch (r.asset_type) {
+      case TradeAssetType.ERC20:
+        if (r.amount === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared ERC20 but missing amount; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.ERC20, amount: r.amount }
+      case TradeAssetType.USD_PEGGED_MANA:
+        if (r.amount === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared USD_PEGGED_MANA but missing amount; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.USD_PEGGED_MANA, amount: r.amount }
+      case TradeAssetType.ERC721:
+        if (r.token_id === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared ERC721 but missing token_id; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.ERC721, token_id: r.token_id }
+      case TradeAssetType.COLLECTION_ITEM:
+        if (r.item_id === null) {
+          logger.warn(`Trade asset ${r.asset_id} declared COLLECTION_ITEM but missing item_id; dropping from trade ${r.asset_trade_id}`)
+          return null
+        }
+        return { ...base, asset_type: TradeAssetType.COLLECTION_ITEM, item_id: r.item_id }
+      default:
+        logger.warn(`Trade asset ${r.asset_id} has unsupported asset_type ${r.asset_type}; dropping from trade ${r.asset_trade_id}`)
+        return null
+    }
   }
 
   async function addTrade(trade: TradeCreation, signer: string) {
@@ -154,6 +258,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
 
   return {
     getTrades,
+    getTradesByAddress,
     addTrade,
     getTrade,
     getTradeAcceptedEvent,

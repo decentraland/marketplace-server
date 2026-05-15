@@ -6,6 +6,7 @@ import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
 import { getAccountsHandler } from './handlers/accounts-handler'
+import { getActivityHandler } from './handlers/activity-handler'
 import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
@@ -137,6 +138,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/sales', getSalesHandler)
+  router.get(
+    '/v1/activity',
+    authorizationMiddleware.wellKnownComponents({
+      optional: false,
+      expiration: FIVE_MINUTES,
+      verifyMetadataContent: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], undefined)
+    }),
+    getActivityHandler
+  )
   router.get('/v1/prices', getPricesHandler)
   router.get('/v1/trendings', getTrendingsHandler)
   router.get('/v1/stats/:category/:stat', getStatsHandler)

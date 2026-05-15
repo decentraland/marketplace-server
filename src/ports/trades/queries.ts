@@ -282,3 +282,51 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
 export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: string) {
   return getTradeAssetsWithValuesQuery(SQL`t.hashed_signature = ${hashedSignature}`)
 }
+
+// Returns flat (trade × asset) rows with explicit aliases so the join's overlapping
+// `id` and `trade_id` columns can be disambiguated when grouping by trade in JS.
+export function getTradesByAddressQuery(address: string, options: { limit: number; offset?: number }) {
+  const lowered = address.toLowerCase()
+  const offset = options.offset ?? 0
+  return SQL`
+    SELECT
+      t.id           AS trade_id,
+      t.chain_id     AS trade_chain_id,
+      t.checks       AS trade_checks,
+      t.created_at   AS trade_created_at,
+      t.effective_since AS trade_effective_since,
+      t.expires_at   AS trade_expires_at,
+      t.network      AS trade_network,
+      t.signature    AS trade_signature,
+      t.signer       AS trade_signer,
+      t.type         AS trade_type,
+      t.contract     AS trade_contract,
+      ta.id              AS asset_id,
+      ta.asset_type      AS asset_type,
+      ta.beneficiary     AS asset_beneficiary,
+      ta.contract_address AS asset_contract_address,
+      ta.direction       AS asset_direction,
+      ta.extra           AS asset_extra,
+      ta.trade_id        AS asset_trade_id,
+      ta.created_at      AS asset_created_at,
+      erc721.token_id    AS token_id,
+      erc20.amount       AS amount,
+      item.item_id       AS item_id
+    FROM marketplace.trades AS t
+    JOIN marketplace.trade_assets AS ta ON t.id = ta.trade_id
+    LEFT JOIN marketplace.trade_assets_erc721 AS erc721 ON ta.id = erc721.asset_id
+    LEFT JOIN marketplace.trade_assets_erc20 AS erc20 ON ta.id = erc20.asset_id
+    LEFT JOIN marketplace.trade_assets_item AS item ON ta.id = item.asset_id
+    WHERE t.id IN (
+      SELECT t2.id FROM marketplace.trades AS t2
+      WHERE t2.signer = ${lowered}
+         OR EXISTS (
+           SELECT 1 FROM marketplace.trade_assets AS ta2
+           WHERE ta2.trade_id = t2.id AND ta2.beneficiary = ${lowered}
+         )
+      ORDER BY t2.created_at DESC
+      LIMIT ${options.limit}
+      OFFSET ${offset}
+    )
+    ORDER BY t.created_at DESC, ta.direction ASC`
+}

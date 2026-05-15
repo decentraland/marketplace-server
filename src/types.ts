@@ -11,6 +11,7 @@ import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAccountsComponent } from './ports/accounts/types'
+import { IActivityComponent } from './ports/activity/types'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
@@ -87,6 +88,7 @@ export type BaseComponents = {
   contracts: IContractsComponent
   collections: ICollectionsComponent
   accounts: IAccountsComponent
+  activity: IActivityComponent
 }
 
 // components used in runtime
