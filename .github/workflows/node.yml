@@ -43,7 +43,7 @@ jobs:
       - name: integration test
         run: npm run test:integration
       - name: Report coverage
-        uses: coverallsapp/github-action@0a51d2e0b5417d06e4ecceb534aec87defc53926 # @main
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # @main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: false
