@@ -184,7 +184,7 @@ describe('when validating the estate signature', () => {
     beforeEach(() => {
       ;(Contract as jest.Mock).mockImplementationOnce(() => {
         return {
-          getFingerprint: () => Promise.resolve(fingerprint)
+          getFingerprintV2: () => Promise.resolve(fingerprint)
         }
       })
     })
@@ -198,7 +198,7 @@ describe('when validating the estate signature', () => {
     beforeEach(() => {
       ;(Contract as jest.Mock).mockImplementationOnce(() => {
         return {
-          getFingerprint: () => Promise.resolve('0x')
+          getFingerprintV2: () => Promise.resolve('0x')
         }
       })
     })

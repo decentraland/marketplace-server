@@ -151,10 +151,10 @@ export async function isEstateFingerprintValid(
   chainId: ChainId,
   fingerprint: string
 ): Promise<boolean> {
-  const abi = ['function getFingerprint(uint256 tokenId) view returns (bytes32)']
+  const abi = ['function getFingerprintV2(uint256 tokenId) view returns (bytes32)']
   const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
   const contract = new Contract(contractAddress, abi, provider)
-  const estateFingerprint = await contract.getFingerprint(tokenId)
+  const estateFingerprint = await contract.getFingerprintV2(tokenId)
   return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
 }
 
