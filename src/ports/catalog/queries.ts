@@ -767,7 +767,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   const needsMetadataJoins = filters.wearableCategory || filters.emoteCategory || filters.emotePlayMode?.length
 
   const query = SQL`
-    SELECT COUNT(*) as total
+    SELECT COUNT(*) as count
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.item AS items `)
