@@ -4,6 +4,7 @@ import { OwnersFilters, OwnersSortBy } from './types'
 
 export const OWNERS_QUERY_DEFAULT_OFFSET = 0
 export const OWNERS_QUERY_DEFAULT_LIMIT = 20
+export const OWNERS_QUERY_MAX_LIMIT = 1000
 
 export const getOwnersQuery = (
   filters: OwnersFilters & {
@@ -56,7 +57,7 @@ export const getOwnersQuery = (
     }
     query.append(skip !== undefined ? SQL` OFFSET ${skip}` : SQL` OFFSET ${OWNERS_QUERY_DEFAULT_OFFSET}`)
 
-    query.append(first !== undefined ? SQL` LIMIT ${first}` : SQL` LIMIT ${OWNERS_QUERY_DEFAULT_LIMIT}`)
+    query.append(first !== undefined ? SQL` LIMIT ${Math.min(first, OWNERS_QUERY_MAX_LIMIT)}` : SQL` LIMIT ${OWNERS_QUERY_DEFAULT_LIMIT}`)
   }
 
   return query
