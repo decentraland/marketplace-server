@@ -701,7 +701,14 @@ paths:
         Wert is a fiat-to-crypto payment solution that allows users to purchase NFTs with credit/debit cards.
         This endpoint validates and signs the transaction data before forwarding to Wert's infrastructure.
 
-        Authentication is optional but recommended for tracking user transactions.
+        For security, the server only signs calls to an allowlisted set of Decentraland contracts and
+        functions, selected by the `target`:
+          - `default`: `register` on the `DCLControllerV2` contract (MANA name purchases).
+          - `publicationFees`: `createCollection` on the `CollectionManager` contract (collection publication fees).
+
+        Requests whose `sc_address` or `sc_input_data` function selector are not allowed for the
+        target are rejected with a 400. The authenticated address must match both `message.address`
+        and `session.wallet_address`.
       operationId: signWertTransaction
       security:
         - SignedFetch: []
@@ -719,6 +726,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WertSignResponse'
+        '400':
+          description: Invalid request body, target, contract address, or contract call
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The authenticated address does not match the message or session wallet address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/transak/orders/{id}:
     get:
       tags:
@@ -3168,28 +3187,77 @@ components:
     WertSignRequest:
       type: object
       properties:
-        transaction:
+        message:
+          type: object
+          description: |
+            The Wert smart-contract order to sign. The `sc_address` and the function selector
+            encoded in `sc_input_data` must be allowlisted for the chosen `target`.
+          properties:
+            address:
+              type: string
+              description: Wallet address of the buyer. Must match the authenticated address.
+            commodity:
+              type: string
+              description: Crypto asset to be spent (e.g. MANA).
+            commodity_amount:
+              type: number
+              description: Amount of the commodity to spend.
+            network:
+              type: string
+              description: Network where the transaction will be broadcast (e.g. ethereum, polygon).
+            sc_address:
+              type: string
+              description: Target contract address. Must be an allowlisted Decentraland contract for the target.
+            sc_input_data:
+              type: string
+              description: ABI-encoded calldata. Its function selector must be allowlisted for the target.
+          required:
+            - address
+            - commodity
+            - commodity_amount
+            - network
+            - sc_address
+            - sc_input_data
+        session:
           type: object
           additionalProperties: true
-          description: |
-            Transaction data (TODO: align with precise source types)
-        signature:
+          description: Wert session parameters. `wallet_address` must match the authenticated address.
+          properties:
+            flow_type:
+              type: string
+              enum: [simple, simple_full_restrict]
+          required:
+            - flow_type
+        target:
           type: string
-          description: Transaction signature
+          enum: [default, publicationFees]
+          description: |
+            Selects the allowlisted contract/function and the signing key.
+            Defaults to `default` (MANA name purchases) when omitted.
       required:
-        - transaction
+        - message
+        - session
     WertSignResponse:
       type: object
       properties:
-        signedTransaction:
-          type: string
-          description: Signed transaction
-        success:
+        ok:
           type: boolean
-          description: Signing success status
+          description: Whether the request succeeded.
+        data:
+          type: object
+          properties:
+            signature:
+              type: string
+              description: The signed Wert message signature.
+            sessionId:
+              type: string
+              description: The created Wert session identifier.
+          required:
+            - signature
+            - sessionId
       required:
-        - signedTransaction
-        - success
+        - ok
+        - data
     TransakOrder:
       type: object
       properties:
