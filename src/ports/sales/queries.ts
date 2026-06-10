@@ -5,9 +5,10 @@ import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
 
 const DEFAULT_LIMIT = 100
+const MAX_LIMIT = 1000
 
 function getSalesLimitAndOffsetStatement(filters: SaleFilters) {
-  const limit = filters?.first ? filters.first : DEFAULT_LIMIT
+  const limit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : DEFAULT_LIMIT
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `

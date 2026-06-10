@@ -6,6 +6,7 @@ import { AppComponents, AuthenticatedContext } from '../../types'
 import { getItemsParams } from './utils'
 
 const DEFAULT_PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 1000
 
 export function createCatalogHandler(
   components: Pick<AppComponents, 'catalog'>
@@ -23,7 +24,7 @@ export function createCatalogHandler(
     const sortBy = params.getValue<CatalogSortBy>('sortBy', CatalogSortBy) || CatalogSortBy.CHEAPEST
     const sortDirection = params.getValue<CatalogSortDirection>('sortDirection', CatalogSortDirection) || CatalogSortDirection.ASC
 
-    const limit = params.getNumber('first', DEFAULT_PAGE_SIZE)
+    const limit = Math.min(params.getNumber('first', DEFAULT_PAGE_SIZE) ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
     const offset = params.getNumber('skip', 0)
     // @TODO: add favorites logic
     const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
