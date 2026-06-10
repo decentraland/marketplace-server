@@ -1,4 +1,5 @@
 import { Interface } from 'ethers'
+import { ChainId } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../../logic/chainIds'
 import { Target } from '../types'
@@ -20,17 +21,33 @@ type WertTargetRules = {
 }
 
 /**
- * Builds the case-insensitive set of allowed contract addresses for a target from the address
- * resolved via `decentraland-transactions` plus an optional comma-separated env override. The
- * override lets non-production environments allowlist additional contracts (e.g. the dev fiat
- * names controller) without code changes.
+ * Well-known Decentraland contracts used by official clients that are not (yet) resolvable via
+ * `decentraland-transactions`, keyed by target and chain id. They are merged into the allowlist on
+ * top of the library-resolved address so the legitimate flows keep working out of the box.
+ *
+ * The marketplace dev environment signs name purchases against a dedicated fiat names controller
+ * (`CONTROLLER_V2_CONTRACT_ADDRESS_FIAT`) that differs from the `DCLControllerV2` address the
+ * library ships for Sepolia.
  */
-function buildAllowedAddresses(resolvedAddress: string, envOverride: string | undefined): Set<string> {
+const ADDITIONAL_ALLOWED_CONTRACTS: Record<Target, Partial<Record<ChainId, string[]>>> = {
+  [Target.DEFAULT]: {
+    [ChainId.ETHEREUM_SEPOLIA]: ['0x39421866645065c8d53e2d36906946f33465743d']
+  },
+  [Target.PUBLICATION_FEES]: {}
+}
+
+/**
+ * Builds the case-insensitive set of allowed contract addresses for a target from the addresses
+ * resolved via `decentraland-transactions` (and the well-known additions) plus an optional
+ * comma-separated env override. The override lets any environment allowlist further contracts
+ * without code changes.
+ */
+function buildAllowedAddresses(baseAddresses: string[], envOverride: string | undefined): Set<string> {
   const extraAddresses = (envOverride ?? '')
     .split(',')
     .map(address => address.trim().toLowerCase())
     .filter(Boolean)
-  return new Set([resolvedAddress.toLowerCase(), ...extraAddresses])
+  return new Set([...baseAddresses.map(address => address.toLowerCase()), ...extraAddresses])
 }
 
 /**
@@ -52,17 +69,27 @@ function getFunctionSelector(abi: object[], functionName: string): string {
 function getRulesForTarget(target: Target): WertTargetRules {
   switch (target) {
     case Target.PUBLICATION_FEES: {
-      const contract = getContract(ContractName.CollectionManager, getPolygonChainId())
+      const chainId = getPolygonChainId()
+      const contract = getContract(ContractName.CollectionManager, chainId)
+      const additionalAddresses = ADDITIONAL_ALLOWED_CONTRACTS[Target.PUBLICATION_FEES][chainId] ?? []
       return {
-        allowedContractAddresses: buildAllowedAddresses(contract.address, process.env.WERT_PUBLICATION_FEES_ALLOWED_CONTRACTS),
+        allowedContractAddresses: buildAllowedAddresses(
+          [contract.address, ...additionalAddresses],
+          process.env.WERT_PUBLICATION_FEES_ALLOWED_CONTRACTS
+        ),
         allowedFunctionSelectors: new Set([getFunctionSelector(contract.abi, 'createCollection')])
       }
     }
     case Target.DEFAULT:
     default: {
-      const contract = getContract(ContractName.DCLControllerV2, getEthereumChainId())
+      const chainId = getEthereumChainId()
+      const contract = getContract(ContractName.DCLControllerV2, chainId)
+      const additionalAddresses = ADDITIONAL_ALLOWED_CONTRACTS[Target.DEFAULT][chainId] ?? []
       return {
-        allowedContractAddresses: buildAllowedAddresses(contract.address, process.env.WERT_DEFAULT_ALLOWED_CONTRACTS),
+        allowedContractAddresses: buildAllowedAddresses(
+          [contract.address, ...additionalAddresses],
+          process.env.WERT_DEFAULT_ALLOWED_CONTRACTS
+        ),
         allowedFunctionSelectors: new Set([getFunctionSelector(contract.abi, 'register')])
       }
     }

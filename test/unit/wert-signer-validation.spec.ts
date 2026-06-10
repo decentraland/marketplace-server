@@ -1,4 +1,5 @@
 import { Interface } from 'ethers'
+import { ChainId } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { getEthereumChainId, getPolygonChainId } from '../../src/logic/chainIds'
 import { InvalidWertMessageError } from '../../src/ports/wert/signer/errors'
@@ -118,6 +119,28 @@ describe('when validating a wert message', () => {
       })
 
       it('should accept the additional contract address and not throw', () => {
+        expect(() => validateWertMessage(message, Target.DEFAULT)).not.toThrow()
+      })
+    })
+
+    describe('and the configured ethereum chain is sepolia and the dev fiat names controller is used', () => {
+      let originalEthereumChainId: string | undefined
+
+      beforeEach(() => {
+        originalEthereumChainId = process.env.ETHEREUM_CHAIN_ID
+        process.env.ETHEREUM_CHAIN_ID = ChainId.ETHEREUM_SEPOLIA.toString()
+        message.sc_address = '0x39421866645065c8d53e2d36906946f33465743d'
+      })
+
+      afterEach(() => {
+        if (originalEthereumChainId === undefined) {
+          delete process.env.ETHEREUM_CHAIN_ID
+        } else {
+          process.env.ETHEREUM_CHAIN_ID = originalEthereumChainId
+        }
+      })
+
+      it('should accept the seeded dev contract and not throw', () => {
         expect(() => validateWertMessage(message, Target.DEFAULT)).not.toThrow()
       })
     })
