@@ -1119,3 +1119,44 @@ export async function deleteSquidDBEmoteNFT(
   await dappsDatabase.query(`DELETE FROM squid_marketplace."metadata" WHERE id = '${nftId}-metadata'`)
   await dappsDatabase.query(`DELETE FROM squid_marketplace."emote" WHERE id = '${nftId}-emote'`)
 }
+
+export type CreateDBSaleOptions = {
+  itemId: string
+  contractAddress: string
+  saleId?: string
+  price?: string
+  timestamp?: number
+}
+
+// Seeds a recent sale for an item so it shows up in the trending endpoint (which reads from the sale table).
+export async function createSquidDBSale(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, options: CreateDBSaleOptions): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const {
+    itemId,
+    contractAddress,
+    saleId = `sale_${contractAddress}_${itemId}`,
+    price = '100000000000000000000',
+    timestamp = Math.floor(Date.now() / 1000)
+  } = options
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."sale" (
+      id, type, buyer, seller, price, timestamp, tx_hash, search_token_id,
+      search_contract_address, search_category, search_item_id, network
+    ) VALUES (
+      '${saleId}', 'order', '0x1234567890123456789012345678901234567890', '0x1234567890123456789012345678901234567890',
+      ${price}, ${timestamp}, '0xtxhash_${saleId}', ${itemId}, '${contractAddress}', 'emote', ${itemId}, 'matic'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
+}
+
+export async function deleteSquidDBSale(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  itemId: string,
+  contractAddress: string
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  await dappsDatabase.query(
+    `DELETE FROM squid_marketplace."sale" WHERE search_contract_address = '${contractAddress}' AND search_item_id = ${itemId}`
+  )
+}
