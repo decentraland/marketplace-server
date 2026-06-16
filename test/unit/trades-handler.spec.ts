@@ -8,8 +8,10 @@ import {
 } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
+  DuplicateItemOrderError,
   EstateContractNotFoundForChainId,
   InvalidEstateTrade,
+  InvalidOwnerError,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
@@ -101,7 +103,9 @@ describe('when handling the creation of a new trade', () => {
         error: new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET),
         code: StatusCode.BAD_REQUEST
       },
-      { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT }
+      { errorName: 'InvalidOwnerError', error: new InvalidOwnerError(), code: StatusCode.BAD_REQUEST },
+      { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT },
+      { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
       beforeEach(() => {
         body = { type: 'bid' } as TradeCreation
