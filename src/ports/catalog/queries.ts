@@ -421,7 +421,8 @@ const getItemLevelFiltersWhere = (filters: CatalogQueryFilters) => {
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
-  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const whereClause = SQL`WHERE items.search_is_collection_approved = true`
   if (filters.includeSocialEmotes === false) {
     whereClause.append(SQL` AND items.search_emote_outcome_type IS NULL`)
@@ -467,7 +468,8 @@ export const getCollectionsQueryWhere = (filters: CatalogQueryFilters, isV2 = fa
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
-  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const result = SQL`WHERE items.search_is_collection_approved = true `
   if (filters.includeSocialEmotes === false) {
     result.append(SQL` AND items.search_emote_outcome_type IS NULL `)

@@ -399,7 +399,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     nftFilters.bannedNames && nftFilters.bannedNames.length
       ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `
       : null
-  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const EXCLUDE_SOCIAL_EMOTES = nftFilters.includeSocialEmotes === false ? SQL` emote.outcome_type IS NULL ` : null
 
   return getWhereStatementFromFilters([

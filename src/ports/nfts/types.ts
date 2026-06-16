@@ -15,10 +15,12 @@ import { SquidNetwork } from '../../types'
 import { ItemType } from '../items'
 
 export type INFTsComponent = {
-  getNFTs(filters?: NFTFilters, caller?: string): Promise<GetNFTsResponse>
+  getNFTs(filters?: NFTQueryFilters, caller?: string): Promise<GetNFTsResponse>
 }
 
-export type GetNFTsFilters = NFTFilters & { bannedNames?: string[]; includeSocialEmotes?: boolean }
+export type NFTQueryFilters = NFTFilters & { includeSocialEmotes?: boolean }
+
+export type GetNFTsFilters = NFTQueryFilters & { bannedNames?: string[] }
 
 export type NFTResult = {
   nft: NFT
