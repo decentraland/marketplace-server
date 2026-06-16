@@ -17,13 +17,15 @@ export async function getTrendingsHandler(
     }
 
     const size = params.getNumber('size')
+    // Social emotes are included by default; excluded only when includeSocialEmotes=false is explicitly set
+    const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
 
     const pickedBy: string | undefined = context.verification?.auth.toLowerCase()
 
     return {
       status: StatusCode.OK,
       headers: responseHeaders, //TODO: see headers
-      body: { data: await trendings.fetch({ size, pickedBy }) }
+      body: { data: await trendings.fetch({ size, pickedBy, includeSocialEmotes }) }
     }
   } catch (e) {
     return {
