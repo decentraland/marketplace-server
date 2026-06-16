@@ -145,14 +145,17 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   }
   const commonQueryParts = getOrdersSortByStatement(filters).append(getInnerOrdersLimitAndOffsetStatement(filters))
 
-  const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  // No COUNT(*) OVER() here: the data query's row count is never read (the orders component and the
+  // nfts component both ignore it and the total comes from getOrdersCountQuery). Dropping the window
+  // aggregate lets the ORDER BY + LIMIT short-circuit to a top-N instead of scanning the full set.
+  const orderTradesQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getTradesOrdersQuery(filters))
     .append(SQL`) as order_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
     .append(commonQueryParts)
 
-  const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  const legacyOrdersQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
     .append(getWhereStatementFromFilters(ordersFilters))
@@ -208,8 +211,8 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
         SELECT COUNT(*) AS trades_count, 
                NULL::bigint AS orders_count
         FROM (
-          SELECT *, 
-                 COUNT(*) OVER() AS trades_count
+          -- inner window count removed: the outer COUNT(*) above already produces the total
+          SELECT 1
           FROM (
             `
       .append(getTradesOrdersQuery(filters))
