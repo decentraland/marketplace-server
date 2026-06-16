@@ -49,9 +49,10 @@ export type CatalogQueryFilters = Omit<CatalogFilters, 'sortBy' | 'sortDirection
   sortDirection?: CatalogSortDirection
   limit?: number
   offset?: number
+  includeSocialEmotes?: boolean
 }
 
-export type CatalogOptions = CatalogFilters & { pickedBy?: string }
+export type CatalogOptions = CatalogFilters & { pickedBy?: string; includeSocialEmotes?: boolean }
 
 export interface ICatalogComponent {
   fetch(

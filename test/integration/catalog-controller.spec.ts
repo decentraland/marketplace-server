@@ -13,7 +13,9 @@ import {
   deleteSquidDBItem,
   deleteSquidDBNFT,
   deleteSquidDBTrade,
-  refreshTradesMaterializedView
+  refreshTradesMaterializedView,
+  createSquidDBEmoteItem,
+  deleteSquidDBEmoteItem
 } from './utils/dbItems'
 
 test('when fetching items from the catalog', function ({ components }) {
@@ -1447,6 +1449,68 @@ test('when fetching items from the catalog', function ({ components }) {
           expect(response.status).toEqual(200)
           expect(responseBody.total).toBe(responseBody.data.length)
         })
+      })
+    })
+  })
+
+  describe('and a social emote and a regular emote exist', () => {
+    const socialEmoteItemId = '7001'
+    const regularEmoteItemId = '7002'
+    let response: Response
+    let responseBody: { data: Item[]; total: number }
+    let returnedIds: string[]
+
+    beforeEach(async () => {
+      await createSquidDBEmoteItem(components, { itemId: socialEmoteItemId, contractAddress, outcomeType: 'multiple_outcome' })
+      await createSquidDBEmoteItem(components, { itemId: regularEmoteItemId, contractAddress, outcomeType: null })
+    })
+
+    afterEach(async () => {
+      await Promise.all([
+        deleteSquidDBEmoteItem(components, socialEmoteItemId, contractAddress),
+        deleteSquidDBEmoteItem(components, regularEmoteItemId, contractAddress)
+      ])
+    })
+
+    describe('and includeSocialEmotes is not provided', () => {
+      beforeEach(async () => {
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/catalog?contractAddress=${contractAddress}`)
+        responseBody = await response.json()
+        returnedIds = responseBody.data.map(item => item.id)
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedIds).toContain(`${contractAddress}_${regularEmoteItemId}`)
+      })
+
+      it('should include the social emote', () => {
+        expect(returnedIds).toContain(`${contractAddress}_${socialEmoteItemId}`)
+      })
+    })
+
+    describe('and includeSocialEmotes is false', () => {
+      beforeEach(async () => {
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/catalog?contractAddress=${contractAddress}&includeSocialEmotes=false`)
+        responseBody = await response.json()
+        returnedIds = responseBody.data.map(item => item.id)
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedIds).toContain(`${contractAddress}_${regularEmoteItemId}`)
+      })
+
+      it('should not include the social emote', () => {
+        expect(returnedIds).not.toContain(`${contractAddress}_${socialEmoteItemId}`)
       })
     })
   })

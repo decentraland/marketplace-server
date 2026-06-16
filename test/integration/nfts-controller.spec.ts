@@ -11,7 +11,9 @@ import {
   createEstateNFT,
   deleteSquidDBNFT,
   createNFTOnSaleTrade,
-  deleteSquidDBTrade
+  deleteSquidDBTrade,
+  createSquidDBEmoteNFT,
+  deleteSquidDBEmoteNFT
 } from './utils/dbItems'
 
 interface NFTResponse {
@@ -1402,6 +1404,161 @@ test('when getting NFTs', function ({ components }) {
 
       it('should respond with 400 status', async () => {
         expect(response.status).toEqual(400)
+      })
+    })
+  })
+
+  describe('and filtering emotes by their social outcome', () => {
+    const socialEmoteTokenId = '7201'
+    const regularEmoteTokenId = '7202'
+
+    describe('and a social emote and a regular emote both exist', () => {
+      let response: Response
+      let responseBody: NFTsResponse
+      let returnedTokenIds: string[]
+
+      beforeEach(async () => {
+        await createSquidDBEmoteNFT(components, { tokenId: socialEmoteTokenId, contractAddress, outcomeType: 'multiple_outcome' })
+        await createSquidDBEmoteNFT(components, { tokenId: regularEmoteTokenId, contractAddress, outcomeType: null })
+
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/nfts?contractAddress=${contractAddress}`)
+        responseBody = await response.json()
+        returnedTokenIds = responseBody.data.map(nftResponse => nftResponse.nft.tokenId)
+      })
+
+      afterEach(async () => {
+        await Promise.all([
+          deleteSquidDBEmoteNFT(components, socialEmoteTokenId, contractAddress),
+          deleteSquidDBEmoteNFT(components, regularEmoteTokenId, contractAddress)
+        ])
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedTokenIds).toContain(regularEmoteTokenId)
+      })
+
+      it('should include the social emote', () => {
+        expect(returnedTokenIds).toContain(socialEmoteTokenId)
+      })
+    })
+
+    describe('and both emotes are on sale and sorted by recently listed', () => {
+      let response: Response
+      let responseBody: NFTsResponse
+      let returnedTokenIds: string[]
+
+      beforeEach(async () => {
+        await createSquidDBEmoteNFT(components, {
+          tokenId: socialEmoteTokenId,
+          contractAddress,
+          outcomeType: 'multiple_outcome',
+          isOnSale: true
+        })
+        await createSquidDBEmoteNFT(components, { tokenId: regularEmoteTokenId, contractAddress, outcomeType: null, isOnSale: true })
+
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/nfts?contractAddress=${contractAddress}&sortBy=recently_listed`)
+        responseBody = await response.json()
+        returnedTokenIds = responseBody.data.map(nftResponse => nftResponse.nft.tokenId)
+      })
+
+      afterEach(async () => {
+        await Promise.all([
+          deleteSquidDBEmoteNFT(components, socialEmoteTokenId, contractAddress),
+          deleteSquidDBEmoteNFT(components, regularEmoteTokenId, contractAddress)
+        ])
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedTokenIds).toContain(regularEmoteTokenId)
+      })
+
+      it('should include the social emote', () => {
+        expect(returnedTokenIds).toContain(socialEmoteTokenId)
+      })
+    })
+
+    describe('and both emotes are on sale and sorted by recently listed with a price range filter', () => {
+      let response: Response
+      let responseBody: NFTsResponse
+      let returnedTokenIds: string[]
+
+      beforeEach(async () => {
+        await createSquidDBEmoteNFT(components, {
+          tokenId: socialEmoteTokenId,
+          contractAddress,
+          outcomeType: 'multiple_outcome',
+          isOnSale: true
+        })
+        await createSquidDBEmoteNFT(components, { tokenId: regularEmoteTokenId, contractAddress, outcomeType: null, isOnSale: true })
+
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/nfts?contractAddress=${contractAddress}&sortBy=recently_listed&minPrice=1&maxPrice=1000`)
+        responseBody = await response.json()
+        returnedTokenIds = responseBody.data.map(nftResponse => nftResponse.nft.tokenId)
+      })
+
+      afterEach(async () => {
+        await Promise.all([
+          deleteSquidDBEmoteNFT(components, socialEmoteTokenId, contractAddress),
+          deleteSquidDBEmoteNFT(components, regularEmoteTokenId, contractAddress)
+        ])
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedTokenIds).toContain(regularEmoteTokenId)
+      })
+
+      it('should include the social emote', () => {
+        expect(returnedTokenIds).toContain(socialEmoteTokenId)
+      })
+    })
+
+    describe('and includeSocialEmotes is false', () => {
+      let response: Response
+      let responseBody: NFTsResponse
+      let returnedTokenIds: string[]
+
+      beforeEach(async () => {
+        await createSquidDBEmoteNFT(components, { tokenId: socialEmoteTokenId, contractAddress, outcomeType: 'multiple_outcome' })
+        await createSquidDBEmoteNFT(components, { tokenId: regularEmoteTokenId, contractAddress, outcomeType: null })
+
+        const { localFetch } = components
+        response = await localFetch.fetch(`/v1/nfts?contractAddress=${contractAddress}&includeSocialEmotes=false`)
+        responseBody = await response.json()
+        returnedTokenIds = responseBody.data.map(nftResponse => nftResponse.nft.tokenId)
+      })
+
+      afterEach(async () => {
+        await Promise.all([
+          deleteSquidDBEmoteNFT(components, socialEmoteTokenId, contractAddress),
+          deleteSquidDBEmoteNFT(components, regularEmoteTokenId, contractAddress)
+        ])
+      })
+
+      it('should respond with a 200', () => {
+        expect(response.status).toEqual(200)
+      })
+
+      it('should include the regular emote', () => {
+        expect(returnedTokenIds).toContain(regularEmoteTokenId)
+      })
+
+      it('should not include the social emote', () => {
+        expect(returnedTokenIds).not.toContain(socialEmoteTokenId)
       })
     })
   })

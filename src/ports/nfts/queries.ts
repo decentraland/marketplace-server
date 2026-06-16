@@ -399,6 +399,8 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     nftFilters.bannedNames && nftFilters.bannedNames.length
       ? SQL` (nft.category != ${NFTCategory.ENS} OR nft.name <> ALL (${nftFilters.bannedNames})) `
       : null
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false
+  const EXCLUDE_SOCIAL_EMOTES = nftFilters.includeSocialEmotes === false ? SQL` emote.outcome_type IS NULL ` : null
 
   return getWhereStatementFromFilters([
     FILTER_BY_HAS_SOUND,
@@ -414,32 +416,36 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
     FILTER_BY_MIN_PRICE,
     FILTER_BY_MAX_PRICE,
     FILTER_BY_ON_SALE,
-    FITLER_BANNED_NAMES
+    FITLER_BANNED_NAMES,
+    EXCLUDE_SOCIAL_EMOTES
   ])
 }
 
 function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
-  const FILTER_BY_OWNER = nftFilters.owner ? SQL` owner_address = ${nftFilters.owner} ` : null
-  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` category = ${nftFilters.category.toLowerCase()} ` : null
-  const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` token_id = ${nftFilters.tokenId} ` : null
-  const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(item_id) = LOWER(${nftFilters.itemId}) ` : null
-  const FILTER_BY_NETWORK = nftFilters.network ? SQL` network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
-  const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` search_is_wearable_head = true ` : null
-  const FILTER_BY_LAND = nftFilters.isLand ? SQL` search_is_land = true ` : null
-  const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` search_is_wearable_accessory = true ` : null
-  const FILTER_BY_SMART_WEARABLE = nftFilters.isWearableSmart ? SQL` item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
+  // These filters are reused across sub-queries that join the nft table with trade_assets/trade_assets_erc721
+  // and unified_trades, which share column names (contract_address, token_id, id). Qualify every column with the
+  // nft alias so the references are never ambiguous regardless of which sub-query they are appended to.
+  const FILTER_BY_OWNER = nftFilters.owner ? SQL` nft.owner_address = ${nftFilters.owner} ` : null
+  const FILTER_BY_CATEGORY = nftFilters.category ? SQL` nft.category = ${nftFilters.category.toLowerCase()} ` : null
+  const FILTER_BY_TOKEN_ID = nftFilters.tokenId ? SQL` nft.token_id = ${nftFilters.tokenId} ` : null
+  const FILTER_BY_ITEM_ID = nftFilters.itemId ? SQL` LOWER(nft.item_id) = LOWER(${nftFilters.itemId}) ` : null
+  const FILTER_BY_NETWORK = nftFilters.network ? SQL` nft.network = ANY (${getDBNetworks(nftFilters.network)}) ` : null
+  const FILTER_BY_WEARABLE_HEAD = nftFilters.isWearableHead ? SQL` nft.search_is_wearable_head = true ` : null
+  const FILTER_BY_LAND = nftFilters.isLand ? SQL` nft.search_is_land = true ` : null
+  const FILTER_BY_WEARABLE_ACCESSORY = nftFilters.isWearableAccessory ? SQL` nft.search_is_wearable_accessory = true ` : null
+  const FILTER_BY_SMART_WEARABLE = nftFilters.isWearableSmart ? SQL` nft.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
   const FILTER_BY_CONTRACT_ADDRESSES = nftFilters.contractAddresses?.length
-    ? SQL` contract_address = ANY (${nftFilters.contractAddresses}) `
+    ? SQL` nft.contract_address = ANY (${nftFilters.contractAddresses}) `
     : null
-  const FILTER_BY_SEARCH = nftFilters.search ? SQL` search_text % ${nftFilters.search} ` : null
+  const FILTER_BY_SEARCH = nftFilters.search ? SQL` nft.search_text % ${nftFilters.search} ` : null
   const FILTER_BY_MIN_PLAZA_DISTANCE = nftFilters.minDistanceToPlaza
-    ? SQL` search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
+    ? SQL` nft.search_distance_to_plaza >= ${nftFilters.minDistanceToPlaza} `
     : null
   const FILTER_BY_MAX_PLAZA_DISTANCE = nftFilters.maxDistanceToPlaza
-    ? SQL` search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
+    ? SQL` nft.search_distance_to_plaza <= ${nftFilters.maxDistanceToPlaza} `
     : null
-  const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` search_adjacent_to_road = true ` : null
-  const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` id = ANY (${nftFilters.ids}) ` : null
+  const FILTER_BY_ROAD_ADJACENT = nftFilters.adjacentToRoad ? SQL` nft.search_adjacent_to_road = true ` : null
+  const FILTER_BY_IDS = nftFilters.ids?.length ? SQL` nft.id = ANY (${nftFilters.ids}) ` : null
 
   const FILTER_BY_ON_SALE = nftFilters.isOnSale
     ? SQL` (nft.search_order_status = ${ListingStatus.OPEN} AND nft.search_order_expires_at < `.append(MAX_ORDER_TIMESTAMP).append(` 
@@ -451,12 +457,15 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   const FILTER_NFT_BY_MIN_PRICE = nftFilters.minPrice ? SQL` nft.search_order_price >= ${nftFilters.minPrice}` : null
   const FILTER_NFT_BY_MAX_PRICE = nftFilters.maxPrice ? SQL` nft.search_order_price <= ${nftFilters.maxPrice}` : null
 
-  const FILTER_TRADES_BY_MIN_PRICE = nftFilters.minPrice
-    ? SQL` trades.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice}`
-    : null
-  const FILTER_TRADES_BY_MAX_PRICE = nftFilters.maxPrice
-    ? SQL` trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice}`
-    : null
+  // Trade price filters compare against the received amount of the joined unified_trades row (aliased `t`),
+  // so they must live in the outer query of the recent_trade_nft_ids CTE where `t` is in scope.
+  const tradePriceWhere = SQL``
+  if (nftFilters.minPrice) {
+    tradePriceWhere.append(SQL` AND (t.assets -> 'received' ->> 'amount')::numeric(78) >= ${nftFilters.minPrice}`)
+  }
+  if (nftFilters.maxPrice) {
+    tradePriceWhere.append(SQL` AND (t.assets -> 'received' ->> 'amount')::numeric(78) <= ${nftFilters.maxPrice}`)
+  }
 
   const filters = [
     FILTER_BY_OWNER,
@@ -476,7 +485,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
     FILTER_BY_IDS
   ]
 
-  const whereClauseForTradeNFTsIds = getWhereStatementFromFilters([...filters, FILTER_TRADES_BY_MIN_PRICE, FILTER_TRADES_BY_MAX_PRICE])
+  const whereClauseForTradeNFTsIds = getWhereStatementFromFilters([...filters])
   const whereClauseForNFTsWithOrders = getWhereStatementFromFilters([
     ...filters,
     FILTER_BY_ON_SALE,
@@ -510,7 +519,10 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
           .append(
             SQL`
       ) assets_with_values ON t.id = assets_with_values.trade_id
-      WHERE t.type = 'public_nft_order'
+      WHERE t.type = 'public_nft_order'`
+              .append(tradePriceWhere)
+              .append(
+                SQL`
       ORDER BY assets_with_values.nft_id, t.created_at DESC
     ),
     nfts_with_trades AS (
@@ -520,6 +532,7 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
         unified_trades.assets,
         'trade' AS reason
       FROM `
+              )
               .append(MARKETPLACE_SQUID_SCHEMA)
               .append(
                 SQL`.nft nft
@@ -687,8 +700,20 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
                                                                                           .append(MARKETPLACE_SQUID_SCHEMA)
                                                                                           .append(
                                                                                             SQL`.item item ON item.id = combined.item_id
+    `
+                                                                                              .append(
+                                                                                                nftFilters.includeSocialEmotes === false
+                                                                                                  ? SQL`WHERE emote.outcome_type IS NULL`
+                                                                                                  : SQL``
+                                                                                              )
+                                                                                              .append(
+                                                                                                SQL`
     ORDER BY sort_field DESC
-    `.append(getNFTLimitAndOffsetStatement(nftFilters)).append(SQL`
+    `
+                                                                                              )
+                                                                                              .append(
+                                                                                                getNFTLimitAndOffsetStatement(nftFilters)
+                                                                                              ).append(SQL`
     `)
                                                                                           )
                                                                                       )

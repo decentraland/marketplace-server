@@ -18,7 +18,7 @@ export type INFTsComponent = {
   getNFTs(filters?: NFTFilters, caller?: string): Promise<GetNFTsResponse>
 }
 
-export type GetNFTsFilters = NFTFilters & { bannedNames?: string[] }
+export type GetNFTsFilters = NFTFilters & { bannedNames?: string[]; includeSocialEmotes?: boolean }
 
 export type NFTResult = {
   nft: NFT
