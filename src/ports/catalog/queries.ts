@@ -678,13 +678,11 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
               MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
               -- Item amount is the minimum value for public_item_order
-              MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
-              assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
+              assets -> 'sent' ->> 'item_id' AS item_id, -- item_id grouping key for public_item_order
               MAX(created_at) AS max_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
-              MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at,
-              json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
+              MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at
           FROM unified_trades
             WHERE status = 'open' and (available IS NULL OR available > 0)`
     .append(filters.onlyMinting ? SQL` AND type = 'public_item_order'` : SQL``)
@@ -1173,7 +1171,6 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
 export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
   const query = SQL`
             SELECT
-              COUNT(*) OVER() as total_rows,
               items.id,
               items.blockchain_id,
               items.search_is_collection_approved,
