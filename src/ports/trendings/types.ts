@@ -6,6 +6,7 @@ export type TrendingFilters = {
   skip?: number
   first?: number
   pickedBy?: string
+  includeSocialEmotes?: boolean
 }
 
 export interface ITrendingsComponent {

@@ -1,4 +1,3 @@
-import { ItemFilters } from '@dcl/schemas'
 import { fromDBPickStatsToPickStats } from '../../adapters/picks'
 import { isErrorWithMessage } from '../../logic/errors'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
@@ -17,7 +16,7 @@ export async function getItemsHandler(
     const params = new Params(context.url.searchParams)
     const caller: string | undefined = context.verification?.auth.toLowerCase()
 
-    const filters: ItemFilters = getItemsParams(params)
+    const filters = getItemsParams(params)
 
     const { data, total } = await items.getItems({
       ...filters

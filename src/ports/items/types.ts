@@ -1,9 +1,11 @@
 import { BodyShape, EmoteCategory, Item, ItemFilters, Network, Rarity, WearableCategory, EmoteOutcomeType } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
+export type ItemQueryFilters = ItemFilters & { includeSocialEmotes?: boolean }
+
 export interface IItemsComponent {
   validateItemExists(itemId: string): Promise<void>
-  getItems(filters?: ItemFilters): Promise<GetItemsResponse>
+  getItems(filters?: ItemQueryFilters): Promise<GetItemsResponse>
 }
 
 export type GetItemsResponse = {

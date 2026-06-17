@@ -965,3 +965,198 @@ export async function deleteSquidDBLegacyBid(dbComponent: Pick<BaseComponents, '
   const { dappsDatabase } = dbComponent
   await dappsDatabase.query(`DELETE FROM squid_marketplace."bid" WHERE id = '${bidId}'`)
 }
+
+export type CreateDBEmoteItemOptions = {
+  itemId: string
+  contractAddress: string
+  // A non-null outcome type marks the emote as a "social emote", which must be hidden from the marketplace
+  outcomeType?: string | null
+  isStoreMinterSet?: boolean
+  available?: number
+  collectionApproved?: boolean
+  price?: string
+}
+
+// Seeds an emote item together with its metadata and emote rows so the catalog/items joins resolve.
+// Pass an outcomeType to make it a social emote (the case that must be excluded).
+export async function createSquidDBEmoteItem(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: CreateDBEmoteItemOptions
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const {
+    itemId,
+    contractAddress,
+    outcomeType = null,
+    isStoreMinterSet = true,
+    available = 1,
+    collectionApproved = true,
+    price = '100000000000000000000'
+  } = options
+
+  const itemDbId = `${contractAddress}_${itemId}`
+  const emoteId = `${itemDbId}_emote`
+  const metadataId = `${itemDbId}_metadata`
+  const outcomeValue = outcomeType ? `'${outcomeType}'` : 'NULL'
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."emote" (
+      id, name, description, collection, category, loop, rarity, body_shapes, has_sound, has_geometry, outcome_type
+    ) VALUES (
+      '${emoteId}', 'Test Emote ${itemId}', 'A test emote', '${contractAddress}', 'dance', false, 'unique',
+      ARRAY['BaseMale', 'BaseFemale'], false, false, ${outcomeValue}
+    ) ON CONFLICT (id) DO UPDATE SET outcome_type = ${outcomeValue}
+  `)
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."metadata" (
+      id, item_type, wearable_id, emote_id, network
+    ) VALUES (
+      '${metadataId}', 'emote_v1', NULL, '${emoteId}', 'matic'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."item" (
+      id, blockchain_id, creator, item_type, total_supply, max_supply, rarity, creation_fee, available, price,
+      beneficiary, content_hash, image, uri, minters, managers, raw_metadata, urn, created_at, updated_at, reviewed_at,
+      first_listed_at, sales, volume, search_is_store_minter, search_is_marketplace_v3_minter, search_is_collection_approved,
+      search_emote_category, search_emote_loop, search_emote_rarity, search_emote_body_shapes, search_emote_has_sound,
+      search_emote_has_geometry, search_emote_outcome_type, unique_collectors, unique_collectors_total, collection_id,
+      metadata_id, network
+    ) VALUES (
+      '${itemDbId}', ${itemId}, '${contractAddress}', 'emote_v1', 1, 1, 'unique', 0, ${available}, ${price},
+      '${contractAddress}', 'aContentHash',
+      'https://peer.decentraland.org/lambdas/collections/contents/urn:decentraland:matic:collections-v2:${contractAddress}:${itemId}/thumbnail',
+      'https://example.com/token/${itemId}',
+      ARRAY['${contractAddress}'], ARRAY['${contractAddress}'], '{}', 'urn:decentraland:${contractAddress}:${itemId}',
+      1000000, 1000000, 1000000, 1000000, 0, 0,
+      ${isStoreMinterSet ? 'true' : 'false'}, false, ${collectionApproved ? 'true' : 'false'},
+      'dance', false, 'unique', ARRAY['BaseMale', 'BaseFemale'], false, false, ${outcomeValue},
+      ARRAY[]::text[], 0, '${contractAddress}', '${metadataId}', 'matic'
+    ) ON CONFLICT (id) DO UPDATE SET
+      item_type = 'emote_v1',
+      metadata_id = '${metadataId}',
+      search_emote_outcome_type = ${outcomeValue},
+      search_is_store_minter = ${isStoreMinterSet ? 'true' : 'false'},
+      available = ${available},
+      search_is_collection_approved = ${collectionApproved ? 'true' : 'false'}
+  `)
+}
+
+export async function deleteSquidDBEmoteItem(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  itemId: string,
+  contractAddress: string
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const itemDbId = `${contractAddress}_${itemId}`
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."order" WHERE item_id = '${itemDbId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."item" WHERE id = '${itemDbId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."metadata" WHERE id = '${itemDbId}_metadata'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."emote" WHERE id = '${itemDbId}_emote'`)
+}
+
+export type CreateDBEmoteNFTOptions = {
+  tokenId: string
+  contractAddress: string
+  // A non-null outcome type marks the emote as a "social emote", which must be hidden from the marketplace
+  outcomeType?: string | null
+  owner?: string
+  isOnSale?: boolean
+  price?: string
+  network?: string
+}
+
+// Seeds an emote NFT together with its metadata and emote rows so the nfts join resolves.
+// Pass an outcomeType to make it a social emote (the case that must be excluded).
+export async function createSquidDBEmoteNFT(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: CreateDBEmoteNFTOptions
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const { tokenId, contractAddress, outcomeType = null, owner, isOnSale = false, price, network = Network.MATIC } = options
+
+  // Reuse the base NFT seeding (creates the account and, when on sale, the order)
+  await createSquidDBNFT(dbComponent, { tokenId, contractAddress, owner, category: NFTCategory.EMOTE, isOnSale, price, network })
+
+  const nftId = `${contractAddress}-${tokenId}`
+  const emoteId = `${nftId}-emote`
+  const metadataId = `${nftId}-metadata`
+  const outcomeValue = outcomeType ? `'${outcomeType}'` : 'NULL'
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."emote" (
+      id, name, description, collection, category, loop, rarity, body_shapes, has_sound, has_geometry, outcome_type
+    ) VALUES (
+      '${emoteId}', 'Test Emote ${tokenId}', 'A test emote', '${contractAddress}', 'dance', false, 'unique',
+      ARRAY['BaseMale', 'BaseFemale'], false, false, ${outcomeValue}
+    ) ON CONFLICT (id) DO UPDATE SET outcome_type = ${outcomeValue}
+  `)
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."metadata" (
+      id, item_type, wearable_id, emote_id, network
+    ) VALUES (
+      '${metadataId}', 'emote_v1', NULL, '${emoteId}', 'matic'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
+
+  await dappsDatabase.query(`
+    UPDATE squid_marketplace."nft" SET metadata_id = '${metadataId}', item_type = 'emote_v1' WHERE id = '${nftId}'
+  `)
+}
+
+export async function deleteSquidDBEmoteNFT(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  tokenId: string,
+  contractAddress: string
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const nftId = `${contractAddress}-${tokenId}`
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."order" WHERE nft_id = '${nftId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."nft" WHERE id = '${nftId}'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."metadata" WHERE id = '${nftId}-metadata'`)
+  await dappsDatabase.query(`DELETE FROM squid_marketplace."emote" WHERE id = '${nftId}-emote'`)
+}
+
+export type CreateDBSaleOptions = {
+  itemId: string
+  contractAddress: string
+  saleId?: string
+  price?: string
+  timestamp?: number
+}
+
+// Seeds a recent sale for an item so it shows up in the trending endpoint (which reads from the sale table).
+export async function createSquidDBSale(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, options: CreateDBSaleOptions): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  const {
+    itemId,
+    contractAddress,
+    saleId = `sale_${contractAddress}_${itemId}`,
+    price = '100000000000000000000',
+    timestamp = Math.floor(Date.now() / 1000)
+  } = options
+
+  await dappsDatabase.query(`
+    INSERT INTO squid_marketplace."sale" (
+      id, type, buyer, seller, price, timestamp, tx_hash, search_token_id,
+      search_contract_address, search_category, search_item_id, network
+    ) VALUES (
+      '${saleId}', 'order', '0x1234567890123456789012345678901234567890', '0x1234567890123456789012345678901234567890',
+      ${price}, ${timestamp}, '0xtxhash_${saleId}', ${itemId}, '${contractAddress}', 'emote', ${itemId}, 'matic'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
+}
+
+export async function deleteSquidDBSale(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  itemId: string,
+  contractAddress: string
+): Promise<void> {
+  const { dappsDatabase } = dbComponent
+  await dappsDatabase.query(
+    `DELETE FROM squid_marketplace."sale" WHERE search_contract_address = '${contractAddress}' AND search_item_id = ${itemId}`
+  )
+}

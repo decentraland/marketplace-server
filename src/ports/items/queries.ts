@@ -4,7 +4,7 @@ import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
-import { ItemType } from './types'
+import { ItemQueryFilters, ItemType } from './types'
 import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
 
 export function getItemById(itemId: string) {
@@ -60,7 +60,7 @@ function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlay
 }
 
 // TODO: Add sort by logic
-function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
+function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
   if (!filters) {
     return SQL``
   }
@@ -99,6 +99,9 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   // For now, let's filter if the outcome type is not null
   const FILTER_BY_OUTCOME_TYPE = filters.emoteOutcomeType ? SQL` emote.outcome_type IS NOT NULL ` : null
   const FILTER_BY_URNS = filters.urns && filters.urns.length ? SQL` item.urn = ANY (${filters.urns}) ` : null
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
+  const EXCLUDE_SOCIAL_EMOTES = filters.includeSocialEmotes === false ? SQL` emote.outcome_type IS NULL ` : null
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,
     FILTER_BY_CREATOR,
@@ -123,11 +126,12 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
     FILTER_BY_OUTCOME_TYPE,
-    FILTER_BY_URNS
+    FILTER_BY_URNS,
+    EXCLUDE_SOCIAL_EMOTES
   ])
 }
 
-export function getItemsQuery(filters: ItemFilters = {}) {
+export function getItemsQuery(filters: ItemQueryFilters = {}) {
   return getTradesCTE({
     category: filters.category,
     first: filters.first,

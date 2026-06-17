@@ -62,11 +62,13 @@ export const getItemsParams = (params: Params) => {
     maxPrice: maxPrice && maxPrice.trim() ? parsePrice(maxPrice, 'maxPrice') : undefined,
     minPrice: minPrice && minPrice.trim() ? parsePrice(minPrice, 'minPrice') : undefined,
     urns: params.getList('urn'),
-    ids: params.getList('id')
+    ids: params.getList('id'),
+    // Social emotes are included by default; excluded only when includeSocialEmotes=false is explicitly set
+    includeSocialEmotes: params.getString('includeSocialEmotes') !== 'false'
   }
 }
 
-export const getNFTParams = (params: Params): NFTFilters => {
+export const getNFTParams = (params: Params): NFTFilters & { includeSocialEmotes?: boolean } => {
   const maxPrice = params.getString('maxPrice')
   const minPrice = params.getString('minPrice')
   return {
@@ -108,7 +110,9 @@ export const getNFTParams = (params: Params): NFTFilters => {
     rentalDays: params
       .getList('rentalDays')
       .map(days => Number.parseInt(days))
-      .filter(number => !Number.isNaN(number))
+      .filter(number => !Number.isNaN(number)),
+    // Social emotes are included by default; excluded only when includeSocialEmotes=false is explicitly set
+    includeSocialEmotes: params.getString('includeSocialEmotes') !== 'false'
   }
 }
 

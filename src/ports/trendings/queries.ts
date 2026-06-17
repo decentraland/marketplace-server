@@ -19,7 +19,7 @@ export function getTrendingSalesQuery(filters: TrendingFilters) {
 
   if (from) {
     const fromTimestamp = Math.round(from / 1000)
-    query.append(SQL`WHERE timestamp > ${fromTimestamp}`)
+    query.append(SQL`WHERE timestamp > ${fromTimestamp} `)
   }
 
   query.append(SQL`ORDER BY timestamp DESC `)

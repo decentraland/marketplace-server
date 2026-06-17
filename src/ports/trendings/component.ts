@@ -27,7 +27,7 @@ export function createTrendingsComponent(components: Pick<AppComponents, 'dappsD
    * @param filters TrendingFilters
    * @returns NFT
    */
-  async function fetch({ pickedBy, ...filters }: TrendingFilters) {
+  async function fetch({ pickedBy, includeSocialEmotes, ...filters }: TrendingFilters) {
     const sales = await fetchTrendingSales(0)
     const trendingSales = sales.reduce((acc, sale) => {
       if (sale.itemId) {
@@ -42,7 +42,8 @@ export function createTrendingsComponent(components: Pick<AppComponents, 'dappsD
         const [contractAddress, itemId] = key.split('-')
         return itemsComponent.getItems({
           contractAddresses: [contractAddress],
-          itemId: itemId || undefined
+          itemId: itemId || undefined,
+          includeSocialEmotes
         })
       })
     )

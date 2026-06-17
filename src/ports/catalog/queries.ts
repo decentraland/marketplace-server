@@ -400,7 +400,7 @@ export const getNetworkWhere = (filters: CatalogFilters) => {
 }
 
 /** Helper to build WHERE clause with item-level filters only (no joins needed) */
-const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
+const getItemLevelFiltersWhere = (filters: CatalogQueryFilters) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
@@ -421,7 +421,12 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const whereClause = SQL`WHERE items.search_is_collection_approved = true`
+  if (filters.includeSocialEmotes === false) {
+    whereClause.append(SQL` AND items.search_emote_outcome_type IS NULL`)
+  }
   if (conditions.length > 0) {
     whereClause.append(SQL` AND `)
     conditions.forEach((condition, index) => {
@@ -437,7 +442,7 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
   return whereClause
 }
 
-export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
+export const getCollectionsQueryWhere = (filters: CatalogQueryFilters, isV2 = false) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
@@ -463,7 +468,12 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const result = SQL`WHERE items.search_is_collection_approved = true `
+  if (filters.includeSocialEmotes === false) {
+    result.append(SQL` AND items.search_emote_outcome_type IS NULL `)
+  }
   if (!conditions.length) {
     return result
   } else {

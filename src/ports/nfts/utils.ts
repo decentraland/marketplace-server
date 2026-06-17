@@ -1,7 +1,7 @@
 import fetch from 'node-fetch'
-import { NFTCategory, NFTFilters, RentalListing, RentalStatus } from '@dcl/schemas'
+import { NFTCategory, RentalListing, RentalStatus } from '@dcl/schemas'
 import { IRentalsComponent } from '../rentals/types'
-import { GetNFTsFilters } from './types'
+import { GetNFTsFilters, NFTQueryFilters } from './types'
 
 export async function getBannedNames(listsServer: string): Promise<string[]> {
   try {
@@ -19,7 +19,7 @@ export async function getBannedNames(listsServer: string): Promise<string[]> {
 }
 
 export async function getNFTFilters(
-  filters: NFTFilters,
+  filters: NFTQueryFilters,
   listsServer: string,
   rentals: IRentalsComponent
 ): Promise<{ filters: GetNFTsFilters; listings?: RentalListing[] }> {
