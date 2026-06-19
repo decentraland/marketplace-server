@@ -1,4 +1,3 @@
-import fetch from 'node-fetch'
 import { NFTCategory, RentalListing, RentalStatus } from '@dcl/schemas'
 import { IRentalsComponent } from '../rentals/types'
 import { GetNFTsFilters, NFTQueryFilters } from './types'

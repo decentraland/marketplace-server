@@ -1,5 +1,4 @@
-import { IFetchComponent } from '@well-known-components/http-server'
-import { Response } from 'node-fetch'
+import { IFetchComponent } from '@dcl/core-commons'
 import pLimit from 'p-limit'
 import { Network } from '@dcl/schemas'
 import { DBNetwork } from './ports/bids'

@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@well-known-components/http-server'
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { IFetchComponent } from '@dcl/core-commons'
+import { ISubgraphComponent } from '@dcl/thegraph-component'
 import {
   NFTCategory,
   NFTFilters,

@@ -95,6 +95,7 @@ describe('when adding a new trade', () => {
         connect: jest.fn().mockResolvedValue(mockPgClient)
       }),
       withTransaction: jest.fn(),
+      withAsyncContextTransaction: jest.fn(),
       start: jest.fn(),
       query: jest.fn(),
       stop: jest.fn(),
@@ -325,6 +326,7 @@ describe('when getting a trade', () => {
       const mockPg = {
         getPool: jest.fn(),
         withTransaction: jest.fn(),
+        withAsyncContextTransaction: jest.fn(),
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),
@@ -431,6 +433,7 @@ describe('when getting a trade', () => {
       const mockPg = {
         getPool: jest.fn(),
         withTransaction: jest.fn(),
+        withAsyncContextTransaction: jest.fn(),
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),

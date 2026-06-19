@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@well-known-components/http-server'
 import { IConfigComponent } from '@well-known-components/interfaces'
+import { IFetchComponent } from '@dcl/core-commons'
 import { createSnapshotComponent, ISnapshotComponent } from '../../src/ports/favorites/snapshot'
 import { ScoreError } from '../../src/ports/favorites/snapshot/errors'
 

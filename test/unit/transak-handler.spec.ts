@@ -1,4 +1,3 @@
-import { Request } from 'node-fetch'
 import {
   createTransakHandler,
   createTransakWidgetHandler,

@@ -1,4 +1,4 @@
-import { createTestMetricsComponent } from '@well-known-components/metrics'
+import { createTestMetricsComponent } from '@dcl/metrics'
 import { pingHandler } from '../../src/controllers/handlers/ping-handler'
 import { metricDeclarations } from '../../src/metrics'
 

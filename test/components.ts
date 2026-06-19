@@ -1,12 +1,12 @@
 // This file is the "test-environment" analogous for src/components.ts
 // Here we define the test components to be used in the testing environment
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createServerComponent } from '@well-known-components/http-server'
+import { createServerComponent } from '@dcl/http-server'
+import { createMetricsComponent } from '@dcl/metrics'
 import { ILoggerComponent, ITracerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent } from '@well-known-components/metrics'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
-import { createSubgraphComponent } from '@well-known-components/thegraph-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
@@ -63,7 +63,7 @@ async function initComponents(): Promise<TestComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env.spec', '.env'] })
   const cors = {
     origin: await config.requireString('CORS_ORIGIN'),
-    methods: await config.requireString('CORS_METHODS')
+    methods: (await config.requireString('CORS_METHODS')).split(',')
   }
   const tracer = createTracerComponent()
   const fetch = await createFetchComponent({ tracer })
@@ -164,7 +164,8 @@ async function initComponents(): Promise<TestComponents> {
     config,
     logs,
     server,
-    localFetch: await createLocalFetchCompoment(config),
+    // createLocalFetchCompoment returns a node-fetch-typed component; cast to the native type.
+    localFetch: (await createLocalFetchCompoment(config)) as unknown as TestComponents['localFetch'],
     fetch,
     metrics,
     dappsDatabase: dappsReadDatabase,
@@ -282,13 +283,22 @@ export function createTestItemsComponent({ validateItemExists = jest.fn() }): II
 }
 
 export function createTestPgComponent(
-  { query = jest.fn(), start = jest.fn(), streamQuery = jest.fn(), getPool = jest.fn(), stop = jest.fn(), withTransaction = jest.fn() } = {
+  {
+    query = jest.fn(),
+    start = jest.fn(),
+    streamQuery = jest.fn(),
+    getPool = jest.fn(),
+    stop = jest.fn(),
+    withTransaction = jest.fn(),
+    withAsyncContextTransaction = jest.fn()
+  } = {
     query: jest.fn(),
     start: jest.fn(),
     streamQuery: jest.fn(),
     getPool: jest.fn(),
     stop: jest.fn(),
-    withTransaction: jest.fn()
+    withTransaction: jest.fn(),
+    withAsyncContextTransaction: jest.fn()
   }
 ): IPgComponent {
   return {
@@ -297,7 +307,8 @@ export function createTestPgComponent(
     query,
     getPool,
     stop,
-    withTransaction
+    withTransaction,
+    withAsyncContextTransaction
   }
 }
 

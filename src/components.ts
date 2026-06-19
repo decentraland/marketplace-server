@@ -1,10 +1,15 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
-import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
-import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
+import {
+  createServerComponent,
+  createStatusCheckComponent,
+  instrumentHttpServerWithPromClientRegistry
+} from '@dcl/http-server'
+import { createHttpTracerComponent } from '@dcl/http-tracer-component'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
-import { createSubgraphComponent } from '@well-known-components/thegraph-component'
+import { IHttpServerComponent as IWKCHttpServerComponent } from '@well-known-components/interfaces'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createRedisComponent } from '@dcl/redis-component'
@@ -83,7 +88,7 @@ export async function initComponents(): Promise<AppComponents> {
   const eventPublisher = await createEventPublisher({ config })
   const cors = {
     origin: CORS_ORIGIN.split(';').map(origin => new RegExp(origin)),
-    methods: CORS_METHODS
+    methods: CORS_METHODS.split(',')
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
@@ -173,8 +178,10 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
   createHttpTracerComponent({ server, tracer })
-  instrumentHttpServerWithRequestLogger({ server, logger: logs })
-  await instrumentHttpServerWithMetrics({ metrics, server, config })
+  // The request logger is still typed against node-fetch's IHttpServerComponent; the native server is
+  // runtime-compatible (the logger only reads request/response metadata), so cast it here.
+  instrumentHttpServerWithRequestLogger({ server: server as unknown as IWKCHttpServerComponent<GlobalContext>, logger: logs })
+  await instrumentHttpServerWithPromClientRegistry({ server, config, metrics, registry: metrics.registry! })
 
   return {
     bids,

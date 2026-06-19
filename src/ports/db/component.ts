@@ -1,11 +1,11 @@
 import path from 'path'
-import { IBaseComponent } from '@well-known-components/interfaces'
-import { createPgComponent as createBasePgComponent, Options } from '@well-known-components/pg-component'
+import { IBaseComponent, IConfigComponent, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import { createPgComponent as createBasePgComponent, Options } from '@dcl/pg-component'
 import { PoolClient } from 'pg'
 import { IPgComponent } from './types'
 
 export async function createPgComponent(
-  components: createBasePgComponent.NeededComponents,
+  components: { config: IConfigComponent; logs: ILoggerComponent; metrics?: IMetricsComponent<string> },
   options: { dbPrefix: string; migrations?: boolean } & Options
 ): Promise<IPgComponent & IBaseComponent> {
   const { config, logs, metrics } = components
@@ -26,7 +26,6 @@ export async function createPgComponent(
   const pg = await createBasePgComponent(
     { config, logs, metrics },
     {
-      ...options,
       pool: {
         connectionString: databaseUrl,
         query_timeout: 40000, // 40 seconds,
@@ -35,7 +34,6 @@ export async function createPgComponent(
       ...(migrations
         ? {
             migration: {
-              databaseUrl,
               ...(schema ? { schema } : {}),
               dir: path.resolve(__dirname, `../../migrations/${dbPrefix.toLowerCase()}`),
               migrationsTable: 'pgmigrations',

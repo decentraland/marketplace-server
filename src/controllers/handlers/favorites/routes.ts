@@ -1,5 +1,5 @@
-import { Router } from '@well-known-components/http-server'
-import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { Router } from '@dcl/http-server'
+import { wellKnownComponents } from '@dcl/crypto-middleware'
 import { AccessBodySchema } from '../../../ports/favorites/access'
 import { AddPickInListSchema, ListCreationSchema, ListUpdateSchema } from '../../../ports/favorites/lists'
 import { PickUnpickInBulkSchema } from '../../../ports/favorites/picks'
@@ -24,20 +24,20 @@ const FIVE_MINUTES = 5 * 60 * 1000
 export function setupFavoritesRouter(router: Router<GlobalContext>, { components: { schemaValidator } }: GlobalContext): Promise<void> {
   router.get(
     '/v1/lists/:id/picks',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     getPicksByListIdHandler
   )
 
   router.post(
     '/v1/lists/:id/picks',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AddPickInListSchema),
     createPickInListHandler
@@ -45,20 +45,20 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.delete(
     '/v1/lists/:id/picks/:itemId',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     deletePickInListHandler
   )
 
   router.get(
     '/v1/picks/:itemId/stats',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     getPickStatsOfItemHandler
   )
@@ -67,20 +67,20 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.get(
     '/v1/picks/:itemId',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     getPicksByItemIdHandler
   )
 
   router.post(
     '/v1/picks/:itemId',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(PickUnpickInBulkSchema),
     pickAndUnpickInBulkHandler
@@ -88,30 +88,30 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.get(
     '/v1/lists/:id',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     getListHandler
   )
 
   router.get(
     '/v1/lists',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     getListsHandler
   )
 
   router.post(
     '/v1/lists',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(ListCreationSchema),
     createListHandler
@@ -119,10 +119,10 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.put(
     '/v1/lists/:id',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(ListUpdateSchema),
     updateListHandler
@@ -130,10 +130,10 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.post(
     '/v1/lists/:id/access',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     createAccessHandler
@@ -141,10 +141,10 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.delete(
     '/v1/lists/:id/access',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     schemaValidator.withSchemaValidatorMiddleware(AccessBodySchema),
     deleteAccessHandler
@@ -152,10 +152,10 @@ export function setupFavoritesRouter(router: Router<GlobalContext>, { components
 
   router.delete(
     '/v1/lists/:id',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     deleteListHandler
   )

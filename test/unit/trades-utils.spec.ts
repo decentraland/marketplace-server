@@ -1,5 +1,5 @@
-import { IPgComponent } from '@well-known-components/pg-component'
 import { formatEther } from 'ethers'
+import { IPgComponent } from '@dcl/pg-component'
 import {
   Network,
   ChainId,

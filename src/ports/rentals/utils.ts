@@ -1,4 +1,4 @@
-import { IFetchComponent } from '@well-known-components/interfaces'
+import { IFetchComponent } from '@dcl/core-commons'
 import pLimit from 'p-limit'
 import { PaginatedResponse } from '@dcl/schemas'
 import { HTTPSuccessResponseBody } from '../../types'

@@ -1,4 +1,3 @@
-import { Response } from 'node-fetch'
 import { Item } from '@dcl/schemas'
 import { test } from '../components'
 import {

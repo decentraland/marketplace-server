@@ -1,4 +1,4 @@
-import { IPgComponent as IBasePgComponent } from '@well-known-components/pg-component'
+import { IPgComponent as IBasePgComponent } from '@dcl/pg-component'
 import { PoolClient } from 'pg'
 
 export interface IPgComponent extends IBasePgComponent {

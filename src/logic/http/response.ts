@@ -1,5 +1,4 @@
-import { IHttpServerComponent } from '@well-known-components/interfaces'
-import { HeadersInit } from 'node-fetch'
+import { IHttpServerComponent } from '@dcl/core-commons'
 
 export class HttpError extends Error {
   constructor(message: string, public code: number) {

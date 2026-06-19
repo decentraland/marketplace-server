@@ -1,4 +1,4 @@
-import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import * as authorizationMiddleware from '@dcl/crypto-middleware'
 import { fromDBPickStatsToPickStats, TPick } from '../../src/adapters/picks'
 import {
   getPicksByItemIdHandler,

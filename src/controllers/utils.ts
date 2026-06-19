@@ -1,4 +1,4 @@
-import RequestError from 'decentraland-crypto-middleware/lib/errors'
+import { RequestError } from '@dcl/crypto-middleware'
 
 export function validateNotKernelSceneSigner(metadata: Record<string, any> | undefined) {
   if (metadata && metadata.signer === 'decentraland-kernel-scene') {
