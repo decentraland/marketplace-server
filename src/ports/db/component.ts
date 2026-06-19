@@ -1,7 +1,7 @@
 import path from 'path'
 import { IBaseComponent, IConfigComponent, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
-import { createPgComponent as createBasePgComponent, Options } from '@dcl/pg-component'
 import { PoolClient } from 'pg'
+import { createPgComponent as createBasePgComponent, Options } from '@dcl/pg-component'
 import { IPgComponent } from './types'
 
 export async function createPgComponent(

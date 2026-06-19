@@ -1,7 +1,7 @@
 import type { IConfigComponent, ILoggerComponent, IBaseComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import type { ICacheStorageComponent, IFetchComponent, IHttpServerComponent } from '@dcl/core-commons'
-import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import type * as authorizationMiddleware from '@dcl/crypto-middleware'
+import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { metricDeclarations } from './metrics'
 import { IAccountsComponent } from './ports/accounts/types'
 import { IActivityComponent } from './ports/activity/types'

@@ -1,15 +1,15 @@
 // This file is the "test-environment" analogous for src/components.ts
 // Here we define the test components to be used in the testing environment
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createServerComponent } from '@dcl/http-server'
-import { createMetricsComponent } from '@dcl/metrics'
 import { ILoggerComponent, ITracerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
 import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
-import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createServerComponent } from '@dcl/http-server'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
 import { createAccountsComponent } from '../src/ports/accounts/component'

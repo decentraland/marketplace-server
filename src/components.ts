@@ -1,19 +1,15 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
-import {
-  createServerComponent,
-  createStatusCheckComponent,
-  instrumentHttpServerWithPromClientRegistry
-} from '@dcl/http-server'
-import { createHttpTracerComponent } from '@dcl/http-tracer-component'
-import { createMetricsComponent } from '@dcl/metrics'
-import { createLogComponent } from '@well-known-components/logger'
 import { IHttpServerComponent as IWKCHttpServerComponent } from '@well-known-components/interfaces'
-import { createSubgraphComponent } from '@dcl/thegraph-component'
+import { createLogComponent } from '@well-known-components/logger'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
+import { createHttpTracerComponent } from '@dcl/http-tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createRedisComponent } from '@dcl/redis-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
@@ -181,7 +177,12 @@ export async function initComponents(): Promise<AppComponents> {
   // The request logger is still typed against node-fetch's IHttpServerComponent; the native server is
   // runtime-compatible (the logger only reads request/response metadata), so cast it here.
   instrumentHttpServerWithRequestLogger({ server: server as unknown as IWKCHttpServerComponent<GlobalContext>, logger: logs })
-  await instrumentHttpServerWithPromClientRegistry({ server, config, metrics, registry: metrics.registry! })
+  await instrumentHttpServerWithPromClientRegistry({
+    server,
+    config,
+    metrics,
+    registry: metrics.registry as NonNullable<typeof metrics.registry>
+  })
 
   return {
     bids,

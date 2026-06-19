@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@dcl/core-commons'
 import pLimit from 'p-limit'
+import { IFetchComponent } from '@dcl/core-commons'
 import { Network } from '@dcl/schemas'
 import { DBNetwork } from './ports/bids'
 import { HTTPErrorResponseBody, HTTPSuccessResponseBody, PaginatedResponse, SquidNetwork, StatusCode } from './types'

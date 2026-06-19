@@ -1,5 +1,5 @@
-import { Router } from '@dcl/http-server'
 import { wellKnownComponents } from '@dcl/crypto-middleware'
+import { Router } from '@dcl/http-server'
 import { AccessBodySchema } from '../../../ports/favorites/access'
 import { AddPickInListSchema, ListCreationSchema, ListUpdateSchema } from '../../../ports/favorites/lists'
 import { PickUnpickInBulkSchema } from '../../../ports/favorites/picks'

@@ -1,7 +1,7 @@
 import { wellKnownComponents } from '@dcl/crypto-middleware'
+import { bearerTokenMiddleware } from '@dcl/http-commons'
 import { Router } from '@dcl/http-server'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
-import { bearerTokenMiddleware } from '../logic/http/middleware'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
