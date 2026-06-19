@@ -29,6 +29,7 @@ import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/pi
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
 import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
+import { createManaTransfersComponent } from '../src/ports/mana-transfers/component'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
 import { createOwnersComponent } from '../src/ports/owners/component'
@@ -157,6 +158,7 @@ async function initComponents(): Promise<TestComponents> {
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const manaTransfers = createManaTransfersComponent({ logs, inMemoryCache })
 
   return {
     cache,
@@ -200,7 +202,8 @@ async function initComponents(): Promise<TestComponents> {
     analyticsData,
     volumes,
     userAssets,
-    activity
+    activity,
+    manaTransfers
   }
 }
 

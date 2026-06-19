@@ -14,6 +14,7 @@ import { getContractsHandler } from './handlers/contracts-handler'
 import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
+import { getManaTransfersHandler } from './handlers/mana-transfers-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
 import { getOwnersHandler } from './handlers/owners-handler'
@@ -126,6 +127,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/accounts', getAccountsHandler)
   router.get('/v1/owners', getOwnersHandler)
+  router.get('/v1/wallets/:address/mana-transfers', getManaTransfersHandler)
 
   router.get(
     '/v1/items',

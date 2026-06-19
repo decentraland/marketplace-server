@@ -27,6 +27,7 @@ import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
+import { createManaTransfersComponent } from './ports/mana-transfers/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
 import { createOwnersComponent } from './ports/owners/component'
@@ -161,6 +162,7 @@ export async function initComponents(): Promise<AppComponents> {
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const manaTransfers = createManaTransfersComponent({ logs, inMemoryCache })
 
   const transak = await createTransakComponent(
     { fetch, logs, cache },
@@ -218,6 +220,7 @@ export async function initComponents(): Promise<AppComponents> {
     analyticsData,
     volumes,
     userAssets,
-    activity
+    activity,
+    manaTransfers
   }
 }

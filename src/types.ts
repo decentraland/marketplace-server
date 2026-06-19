@@ -26,6 +26,7 @@ import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
+import { IManaTransfersComponent } from './ports/mana-transfers/types'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
 import { IOwnersComponent } from './ports/owners/types'
@@ -89,6 +90,7 @@ export type BaseComponents = {
   collections: ICollectionsComponent
   accounts: IAccountsComponent
   activity: IActivityComponent
+  manaTransfers: IManaTransfersComponent
 }
 
 // components used in runtime

@@ -2854,6 +2854,74 @@ paths:
                   message:
                     type: string
                     example: Could not fetch accounts
+  /v1/wallets/{address}/mana-transfers:
+    get:
+      tags:
+        - Accounts
+      summary: Get a wallet's MANA transfer history
+      description: |
+        Returns the wallet's MANA ERC20 transfer history across Ethereum and Polygon, read on-chain
+        via eth_getLogs (no indexer). Includes plain sends and receiveds plus Polygon PoS bridge
+        swaps (deposits) and withdrawals.
+
+        A swap is anchored on its L1 deposit; the correlated L2 mint is exposed as `counterpartHash`
+        and never shown as a separate received. A deposit whose L2 credit has not landed yet
+        (~20-30 min PoS checkpoint window) has status `bridging`. Withdrawals are anchored on the L2
+        burn symmetrically. Public read — no authentication.
+      operationId: getManaTransfers
+      security: []
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: The wallet address
+          schema:
+            type: string
+            example: '0xd9b96b5dc720fc52bede1ec3b40a930e15f70ddd'
+      responses:
+        '200':
+          description: The wallet's MANA transfer feed, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ManaTransfer'
+                  total:
+                    type: number
+                    description: Total number of transfers
+                required:
+                  - data
+                  - total
+        '400':
+          description: Invalid address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Invalid address
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Could not fetch MANA transfers
   /v1/collections:
     get:
       tags:
@@ -3759,6 +3827,68 @@ components:
         - earned
         - royalties
         - collections
+    ManaTransfer:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: Transaction hash of the transfer (the L1 deposit for a swap, the L2 burn for a withdraw)
+          example: '0x6b6db6ddcae2c7180de9c6db1172dd92fb14fd113f2e9a88845ee42572a3f37c'
+        type:
+          type: string
+          description: 'send / received: plain transfer. swap: Ethereum→Polygon bridge deposit. withdraw: Polygon→Ethereum bridge withdrawal.'
+          enum:
+            - send
+            - received
+            - swap
+            - withdraw
+          example: swap
+        network:
+          type: string
+          description: Chain the anchor leg lives on
+          enum:
+            - ETHEREUM
+            - MATIC
+          example: ETHEREUM
+        from:
+          type: string
+          description: Sender address (lowercased)
+        to:
+          type: string
+          description: Recipient address (lowercased)
+        amount:
+          type: string
+          description: Human-readable MANA amount
+          example: '306.0'
+        value:
+          type: string
+          description: Raw amount in Wei
+          example: '306000000000000000000'
+        timestamp:
+          type: number
+          description: Milliseconds since epoch (from the log's blockTimestamp)
+          example: 1687803171000
+        status:
+          type: string
+          description: 'confirmed: settled on the destination chain. bridging: a swap/withdraw whose destination leg has not landed yet (~20-30 min).'
+          enum:
+            - confirmed
+            - bridging
+          example: confirmed
+        counterpartHash:
+          type: string
+          description: For a swap, the L2 mint tx hash; for a withdraw, the L1 exit tx hash. Absent while bridging.
+          example: '0xf3eec8d6f570cb1cc2e2e2b...'
+      required:
+        - hash
+        - type
+        - network
+        - from
+        - to
+        - amount
+        - value
+        - timestamp
+        - status
     Collection:
       type: object
       properties:
