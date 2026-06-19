@@ -1,4 +1,5 @@
 import { WertSession } from '../../ports/wert/api/types'
+import { InvalidWertMessageError } from '../../ports/wert/signer/errors'
 import { WertMessage } from '../../ports/wert/signer/types'
 import { Target } from '../../ports/wert/types'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
@@ -23,7 +24,7 @@ export async function createWertSignerAndSessionCreatorHandler(
 
   if (
     !userAddress ||
-    (!!userAddress && userAddress !== wertMessage.address.toLowerCase()) ||
+    (!!userAddress && userAddress !== wertMessage?.address?.toLowerCase()) ||
     (!!userAddress && userAddress !== wertSession.wallet_address?.toLowerCase())
   ) {
     return {
@@ -45,16 +46,30 @@ export async function createWertSignerAndSessionCreatorHandler(
     }
   }
 
-  const [signature, { sessionId }] = await Promise.all([wertSigner.signMessage(wertMessage, target), wertApi.createSession(wertSession)])
+  try {
+    const [signature, { sessionId }] = await Promise.all([wertSigner.signMessage(wertMessage, target), wertApi.createSession(wertSession)])
 
-  return {
-    status: StatusCode.OK,
-    body: {
-      ok: true,
-      data: {
-        signature,
-        sessionId
+    return {
+      status: StatusCode.OK,
+      body: {
+        ok: true,
+        data: {
+          signature,
+          sessionId
+        }
       }
     }
+  } catch (error) {
+    if (error instanceof InvalidWertMessageError) {
+      return {
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: error.message
+        }
+      }
+    }
+
+    throw error
   }
 }

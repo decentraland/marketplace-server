@@ -57,5 +57,8 @@
     "nock": "^13.5.4",
     "p-limit": "^3.1.0",
     "seedrandom": "^3.0.5"
+  },
+  "overrides": {
+    "elliptic": "6.6.1"
   }
 }

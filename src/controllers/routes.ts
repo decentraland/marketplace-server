@@ -4,6 +4,7 @@ import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
+import { WertSignBodySchema } from '../ports/wert/schemas'
 import { GlobalContext } from '../types'
 import { getAccountsHandler } from './handlers/accounts-handler'
 import { getActivityHandler } from './handlers/activity-handler'
@@ -77,6 +78,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       expiration: FIVE_MINUTES,
       verifyMetadataContent: validateNotKernelSceneSigner
     }),
+    components.schemaValidator.withSchemaValidatorMiddleware(WertSignBodySchema),
     createWertSignerAndSessionCreatorHandler
   )
   router.get(

@@ -1,6 +1,7 @@
 import * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { createWertSignerAndSessionCreatorHandler } from '../../src/controllers/handlers/wert-signer-and-session-creator-handler'
 import { WertSession } from '../../src/ports/wert/api/types'
+import { InvalidWertMessageError } from '../../src/ports/wert/signer/errors'
 import { WertMessage } from '../../src/ports/wert/signer/types'
 import { Target } from '../../src/ports/wert/types'
 import { AppComponents, HandlerContextWithPath, StatusCode } from '../../src/types'
@@ -172,6 +173,32 @@ describe('when getting the wert signer and session creator handler', () => {
             params
           })
         ).rejects.toThrow('Session creation failed')
+      })
+    })
+
+    describe('and the signer rejects the message as not allowed', () => {
+      beforeEach(() => {
+        wertSignerMock.signMessage.mockImplementationOnce(() => {
+          throw new InvalidWertMessageError('The requested contract call is not allowed for the "default" target')
+        })
+      })
+
+      it('should respond with a 400 and the validation error message', async () => {
+        const response = await createWertSignerAndSessionCreatorHandler({
+          url,
+          components,
+          verification,
+          request,
+          params
+        })
+
+        expect(response).toEqual({
+          status: StatusCode.BAD_REQUEST,
+          body: {
+            ok: false,
+            message: 'The requested contract call is not allowed for the "default" target'
+          }
+        })
       })
     })
 
