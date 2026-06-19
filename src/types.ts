@@ -1,14 +1,7 @@
-import type { IFetchComponent } from '@well-known-components/http-server'
-import type {
-  IConfigComponent,
-  ILoggerComponent,
-  IHttpServerComponent,
-  IBaseComponent,
-  IMetricsComponent
-} from '@well-known-components/interfaces'
-import type { ICacheStorageComponent } from '@dcl/core-commons'
+import type { IConfigComponent, ILoggerComponent, IBaseComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import type { ICacheStorageComponent, IFetchComponent, IHttpServerComponent } from '@dcl/core-commons'
+import type * as authorizationMiddleware from '@dcl/crypto-middleware'
 import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
-import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAccountsComponent } from './ports/accounts/types'
 import { IActivityComponent } from './ports/activity/types'

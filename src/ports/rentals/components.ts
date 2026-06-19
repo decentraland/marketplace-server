@@ -1,5 +1,4 @@
-import { IFetchComponent } from '@well-known-components/http-server'
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { IFetchComponent } from '@dcl/core-commons'
 import {
   NFTCategory,
   NFTFilters,
@@ -11,6 +10,7 @@ import {
   RentalsListingsSortBy,
   RentalStatus
 } from '@dcl/schemas'
+import { ISubgraphComponent } from '@dcl/thegraph-component'
 import { FetchRentalListingsError, ParseRentalListingResponseError } from './errors'
 import { GetRentalAssetFilters, IRentalsComponent, RentalAsset, SignaturesServerPaginatedResponse } from './types'
 import { queryMultipleTimesWhenExceedingUrlLimit } from './utils'

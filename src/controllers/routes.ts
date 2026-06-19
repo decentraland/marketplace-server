@@ -1,6 +1,6 @@
-import { Router } from '@well-known-components/http-server'
-import { bearerTokenMiddleware } from '@dcl/platform-server-commons'
-import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import { wellKnownComponents } from '@dcl/crypto-middleware'
+import { bearerTokenMiddleware } from '@dcl/http-commons'
+import { Router } from '@dcl/http-server'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
@@ -54,37 +54,37 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/ping', pingHandler)
   router.get(
     '/v1/catalog',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     createCatalogHandler(components)
   )
   router.get(
     '/v2/catalog',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     createCatalogHandler(components)
   )
   router.post(
     '/v1/wert/sign',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     createWertSignerAndSessionCreatorHandler
   )
   router.get(
     '/v1/transak/orders/:id',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateNotKernelSceneSigner
+      metadataValidator: validateNotKernelSceneSigner
     }),
     createTransakHandler
   )
@@ -99,8 +99,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/trades', getTradesHandler)
   router.post(
     '/v1/trades',
-    authorizationMiddleware.wellKnownComponents({
-      verifyMetadataContent: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], 'dcl:create-trade')
+    wellKnownComponents({
+      metadataValidator: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], 'dcl:create-trade')
     }),
     components.schemaValidator.withSchemaValidatorMiddleware(TradeCreationSchema),
     addTradeHandler
@@ -113,9 +113,9 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get(
     '/v1/nfts',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
-      verifyMetadataContent: validateNotKernelSceneSigner,
+      metadataValidator: validateNotKernelSceneSigner,
       expiration: FIVE_MINUTES
     }),
     getNFTsHandler
@@ -129,9 +129,9 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get(
     '/v1/items',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: true,
-      verifyMetadataContent: validateNotKernelSceneSigner,
+      metadataValidator: validateNotKernelSceneSigner,
       expiration: FIVE_MINUTES
     }),
     getItemsHandler
@@ -140,10 +140,10 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/sales', getSalesHandler)
   router.get(
     '/v1/activity',
-    authorizationMiddleware.wellKnownComponents({
+    wellKnownComponents({
       optional: false,
       expiration: FIVE_MINUTES,
-      verifyMetadataContent: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], undefined)
+      metadataValidator: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], undefined)
     }),
     getActivityHandler
   )

@@ -1,5 +1,4 @@
 import nock from 'nock'
-import { Response } from 'node-fetch'
 import { Network, NFT, NFTCategory, Order, Rarity, RentalListing } from '@dcl/schemas'
 import { test } from '../components'
 import {

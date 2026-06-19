@@ -1,5 +1,4 @@
-import { IFetchComponent } from '@well-known-components/http-server'
-import { createLoggerMockedComponent, ICacheStorageComponent } from '@dcl/core-commons'
+import { IFetchComponent, createLoggerMockedComponent, ICacheStorageComponent } from '@dcl/core-commons'
 import { fromMillisecondsToSeconds } from '../../src/logic/date'
 import { createTransakComponent } from '../../src/ports/transak/component'
 import { ITransakComponent, OrderResponse, TransakOrderStatus } from '../../src/ports/transak/types'

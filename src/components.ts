@@ -1,14 +1,15 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
-import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
-import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
+import { IHttpServerComponent as IWKCHttpServerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
-import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
+import { createHttpTracerComponent } from '@dcl/http-tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createRedisComponent } from '@dcl/redis-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
@@ -83,7 +84,7 @@ export async function initComponents(): Promise<AppComponents> {
   const eventPublisher = await createEventPublisher({ config })
   const cors = {
     origin: CORS_ORIGIN.split(';').map(origin => new RegExp(origin)),
-    methods: CORS_METHODS
+    methods: CORS_METHODS.split(',')
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
@@ -173,8 +174,19 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
   createHttpTracerComponent({ server, tracer })
-  instrumentHttpServerWithRequestLogger({ server, logger: logs })
-  await instrumentHttpServerWithMetrics({ metrics, server, config })
+  // The request logger is still typed against node-fetch's IHttpServerComponent; the native server is
+  // runtime-compatible (the logger only reads request/response metadata), so cast it here.
+  // TODO: remove this cast once @well-known-components/http-requests-logger-component ships a
+  // native-fetch-aware (@dcl/core-commons IHttpServerComponent) release.
+  instrumentHttpServerWithRequestLogger({ server: server as unknown as IWKCHttpServerComponent<GlobalContext>, logger: logs })
+  // createMetricsComponent always initializes a prom-client registry; the IMetricsComponent type marks
+  // `registry` optional, so assert it is present rather than guarding a case that cannot happen.
+  await instrumentHttpServerWithPromClientRegistry({
+    server,
+    config,
+    metrics,
+    registry: metrics.registry as NonNullable<typeof metrics.registry>
+  })
 
   return {
     bids,

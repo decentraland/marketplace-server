@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@well-known-components/interfaces'
 import pLimit from 'p-limit'
+import { IFetchComponent } from '@dcl/core-commons'
 import { PaginatedResponse } from '@dcl/schemas'
 import { HTTPSuccessResponseBody } from '../../types'
 import { FetchRentalListingsError } from './errors'

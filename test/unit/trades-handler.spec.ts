@@ -1,4 +1,3 @@
-import { Request } from 'node-fetch'
 import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
 import {
   addTradeHandler,
