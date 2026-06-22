@@ -89,7 +89,16 @@ export function createManaTransfersComponent(components: Pick<AppComponents, 'lo
       fetchTransferLogs(network, mana, [userTopic, null]),
       fetchTransferLogs(network, mana, [null, userTopic])
     ])
-    return [...sent, ...received].filter(isStandardTransferLog).map(log => decodeTransferLog(log, network))
+    // Decode defensively: a non-hex `data` that slips past isStandardTransferLog would make
+    // BigInt() throw and abort the whole feed — skip the offending log instead.
+    return [...sent, ...received].filter(isStandardTransferLog).reduce<DecodedTransfer[]>((decoded, log) => {
+      try {
+        decoded.push(decodeTransferLog(log, network))
+      } catch {
+        logger.warn('Skipping malformed MANA transfer log', { network, transactionHash: log.transactionHash })
+      }
+      return decoded
+    }, [])
   }
 
   /**

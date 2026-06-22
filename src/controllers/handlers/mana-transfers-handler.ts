@@ -9,10 +9,10 @@ import { HandlerContextWithPath, StatusCode } from '../../types'
  * across Ethereum and Polygon, read on-chain via eth_getLogs. Public read — no authentication.
  */
 export async function getManaTransfersHandler(
-  context: Pick<HandlerContextWithPath<'manaTransfers', '/v1/wallets/:address/mana-transfers'>, 'components' | 'params'>
+  context: Pick<HandlerContextWithPath<'manaTransfers' | 'logs', '/v1/wallets/:address/mana-transfers'>, 'components' | 'params'>
 ) {
   const {
-    components: { manaTransfers },
+    components: { manaTransfers, logs },
     params: { address }
   } = context
 
@@ -37,11 +37,17 @@ export async function getManaTransfersHandler(
       }
     }
   } catch (e) {
+    // Public, unauthenticated endpoint: log the real error server-side but never surface RPC /
+    // provider / internal details to the caller — always return the generic message.
+    logs.getLogger('mana-transfers-handler').error('Failed to fetch MANA transfers', {
+      address,
+      error: isErrorWithMessage(e) ? e.message : String(e)
+    })
     return {
       status: StatusCode.INTERNAL_SERVER_ERROR,
       body: {
         ok: false,
-        message: isErrorWithMessage(e) ? e.message : 'Could not fetch MANA transfers'
+        message: 'Could not fetch MANA transfers'
       }
     }
   }

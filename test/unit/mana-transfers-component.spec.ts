@@ -154,6 +154,28 @@ describe('when the result is not cached', () => {
     expect(total).toBe(0)
   })
 
+  it('should skip a log whose data is non-hex (decode throws) without aborting the feed', async () => {
+    mockSend.mockImplementation(async (_method: string, params: [{ address: string; topics: (string | null)[] }]) => {
+      const [filter] = params
+      if (filter.address === ETHEREUM.mana && filter.topics[1] === USER_TOPIC) {
+        return [
+          {
+            address: ETHEREUM.mana,
+            topics: [TRANSFER_EVENT_TOPIC, addressToTopic(USER), addressToTopic(OTHER_ADDRESS)],
+            data: '0xnothex',
+            blockNumber: '0x1',
+            blockTimestamp: '0x3e8',
+            transactionHash: '0xbaddata',
+            logIndex: '0x0'
+          }
+        ]
+      }
+      return []
+    })
+    const { total } = await component.getManaTransfers(USER)
+    expect(total).toBe(0)
+  })
+
   it('should throw rather than cache a truncated feed when a filter hits the RPC result cap', async () => {
     const truncated = Array.from({ length: 10000 }, (_unused, index) => rawLog(USER, OTHER_ADDRESS, 1n, `0x${index.toString(16)}`))
     mockSend.mockResolvedValue(truncated)

@@ -1,7 +1,10 @@
 import { formatEther } from 'ethers'
 import { ChainId, Network } from '@dcl/schemas'
 import { isAddressZero } from '../../logic/address'
+import { getRpcUrlByChainId } from '../../logic/rpc'
 import { DecodedTransfer, ManaTransfer, ManaTransferStatus, ManaTransferType, RawTransferLog } from './types'
+
+export { getRpcUrlByChainId }
 
 // keccak256("Transfer(address,address,uint256)")
 export const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
@@ -36,21 +39,6 @@ export const BRIDGE_ADDRESSES: Partial<Record<ChainId, BridgeAddresses>> = {
   }
 }
 
-export function getRpcUrlByChainId(chainId: ChainId): string {
-  switch (chainId) {
-    case ChainId.ETHEREUM_MAINNET:
-      return 'https://rpc.decentraland.org/mainnet'
-    case ChainId.ETHEREUM_SEPOLIA:
-      return 'https://rpc.decentraland.org/sepolia'
-    case ChainId.MATIC_MAINNET:
-      return 'https://rpc.decentraland.org/polygon'
-    case ChainId.MATIC_AMOY:
-      return 'https://rpc.decentraland.org/amoy'
-    default:
-      throw new Error(`Unsupported chainId ${chainId}`)
-  }
-}
-
 export function getBridgeAddresses(chainId: ChainId): BridgeAddresses {
   const addresses = BRIDGE_ADDRESSES[chainId]
   if (!addresses) {
@@ -70,6 +58,11 @@ export function topicToAddress(topic: string): string {
 }
 
 export function decodeTransferLog(log: RawTransferLog, network: Network): DecodedTransfer {
+  // Defensive: the component pre-filters with isStandardTransferLog, but this is exported and may be
+  // called without that guard. A standard ERC20 Transfer has topic0 + indexed `from` + indexed `to`.
+  if (!Array.isArray(log.topics) || log.topics.length < 3) {
+    throw new Error('Malformed Transfer log: expected at least 3 topics')
+  }
   return {
     network,
     from: topicToAddress(log.topics[1]),
@@ -126,20 +119,33 @@ function byChronology(a: DecodedTransfer, b: DecodedTransfer): number {
  * (credits/exits). There is NO common id between the two chains' Transfer logs (the L1 StateSynced
  * id never appears on the L2 mint), so origins are matched to the earliest unused closing with the
  * exact same wei value that did not happen before the origin. Each closing is consumed once.
+ *
+ * Closings are bucketed into a per-value FIFO queue so the match is near-linear instead of
+ * O(origins × closings) — only same-value closings are ever scanned.
  */
 export function correlateFifo(origins: DecodedTransfer[], closings: DecodedTransfer[]): Map<string, DecodedTransfer> {
   const sortedOrigins = [...origins].sort(byChronology)
-  const sortedClosings = [...closings].sort(byChronology)
-  const consumed = new Set<string>()
-  const matches = new Map<string, DecodedTransfer>()
+  const queuesByValue = new Map<string, DecodedTransfer[]>()
+  for (const closing of [...closings].sort(byChronology)) {
+    const key = closing.value.toString()
+    const queue = queuesByValue.get(key)
+    if (queue) {
+      queue.push(closing)
+    } else {
+      queuesByValue.set(key, [closing])
+    }
+  }
 
+  const matches = new Map<string, DecodedTransfer>()
   for (const origin of sortedOrigins) {
-    const match = sortedClosings.find(
-      closing => !consumed.has(legKey(closing)) && closing.value === origin.value && closing.timestamp >= origin.timestamp
-    )
-    if (match) {
-      consumed.add(legKey(match))
-      matches.set(legKey(origin), match)
+    const queue = queuesByValue.get(origin.value.toString())
+    if (!queue) {
+      continue
+    }
+    // Earliest still-queued closing at or after the origin (queue is chronologically sorted).
+    const index = queue.findIndex(closing => closing.timestamp >= origin.timestamp)
+    if (index !== -1) {
+      matches.set(legKey(origin), queue.splice(index, 1)[0])
     }
   }
 

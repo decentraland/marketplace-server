@@ -2,6 +2,7 @@ import { Network } from '@dcl/schemas'
 import { getManaTransfersHandler } from '../../src/controllers/handlers/mana-transfers-handler'
 import { IManaTransfersComponent, ManaTransfer, ManaTransferStatus, ManaTransferType } from '../../src/ports/mana-transfers/types'
 import { StatusCode } from '../../src/types'
+import { createLoggerMockedComponent } from '../mocks/logger-mock'
 
 const USER = '0xd9b96b5dc720fc52bede1ec3b40a930e15f70ddd'
 
@@ -10,7 +11,7 @@ let manaTransfers: IManaTransfersComponent
 
 const buildContext = (address: string) =>
   ({
-    components: { manaTransfers },
+    components: { manaTransfers, logs: createLoggerMockedComponent() },
     params: { address }
   } as Parameters<typeof getManaTransfersHandler>[0])
 
@@ -66,11 +67,11 @@ describe('when the address is valid', () => {
 })
 
 describe('when the component throws', () => {
-  it('should surface a generic message and 500 with an Error', async () => {
-    getManaTransfers.mockRejectedValue(new Error('rpc exploded'))
+  it('should not leak the raw error message — always return the generic message and 500', async () => {
+    getManaTransfers.mockRejectedValue(new Error('rpc exploded: https://rpc.decentraland.org/mainnet'))
     const response = await getManaTransfersHandler(buildContext(USER))
     expect(response.status).toBe(StatusCode.INTERNAL_SERVER_ERROR)
-    expect(response.body).toEqual({ ok: false, message: 'rpc exploded' })
+    expect(response.body).toEqual({ ok: false, message: 'Could not fetch MANA transfers' })
   })
 
   it('should fall back to a default message on a non-error throw', async () => {

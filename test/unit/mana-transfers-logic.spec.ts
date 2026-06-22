@@ -88,6 +88,10 @@ describe('when decoding a raw transfer log', () => {
     const result = decodeTransferLog({ ...log, blockTimestamp: undefined }, Network.ETHEREUM)
     expect(result.timestamp).toBe(0)
   })
+
+  it('should throw on a log with fewer than 3 topics (defensive guard for external callers)', () => {
+    expect(() => decodeTransferLog({ ...log, topics: [TRANSFER_EVENT_TOPIC] }, Network.ETHEREUM)).toThrow('Malformed Transfer log')
+  })
 })
 
 describe('when classifying a transfer leg', () => {

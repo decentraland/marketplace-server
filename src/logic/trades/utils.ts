@@ -4,28 +4,8 @@ import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeCreation } 
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
+import { getRpcUrlByChainId } from '../rpc'
 import { hasECDSASignatureAValidV } from '../signatures'
-
-function getRPCUrlByChainId(chainId: ChainId): string {
-  let rpcPath: string
-  switch (chainId) {
-    case ChainId.ETHEREUM_MAINNET:
-      rpcPath = 'mainnet'
-      break
-    case ChainId.ETHEREUM_SEPOLIA:
-      rpcPath = 'sepolia'
-      break
-    case ChainId.MATIC_MAINNET:
-      rpcPath = 'polygon'
-      break
-    case ChainId.MATIC_AMOY:
-      rpcPath = 'amoy'
-      break
-    default:
-      throw new Error('Unsupported chainId')
-  }
-  return `https://rpc.decentraland.org/${rpcPath}`
-}
 
 export function getValueFromTradeAsset(asset: TradeAsset) {
   switch (asset.assetType) {
@@ -140,7 +120,7 @@ export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset
 
 async function getContractOwner(contractAddress: string, tokenId: string, chainId: ChainId): Promise<string> {
   const abi = ['function ownerOf(uint256 tokenId) view returns (address)']
-  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
+  const provider = new JsonRpcProvider(getRpcUrlByChainId(chainId))
   const contract = new Contract(contractAddress, abi, provider)
   return await contract.ownerOf(tokenId)
 }
@@ -152,7 +132,7 @@ export async function isEstateFingerprintValid(
   fingerprint: string
 ): Promise<boolean> {
   const abi = ['function getFingerprintV2(uint256 tokenId) view returns (bytes32)']
-  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
+  const provider = new JsonRpcProvider(getRpcUrlByChainId(chainId))
   const contract = new Contract(contractAddress, abi, provider)
   const estateFingerprint = await contract.getFingerprintV2(tokenId)
   return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
