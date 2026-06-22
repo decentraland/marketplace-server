@@ -55,13 +55,13 @@ test('when getting MANA transfers for a wallet', function ({ components, spyComp
       spyComponents.manaTransfers.getManaTransfers.mockRejectedValueOnce(new Error('RPC unavailable'))
     })
 
-    it('should respond with a 500', async () => {
+    it('should respond with a 500 and the generic message without leaking the internal error', async () => {
       const { localFetch } = components
 
       const response = await localFetch.fetch(`/v1/wallets/${address}/mana-transfers`)
 
       expect(response.status).toEqual(500)
-      expect(await response.json()).toEqual({ ok: false, message: 'RPC unavailable' })
+      expect(await response.json()).toEqual({ ok: false, message: 'Could not fetch MANA transfers' })
     })
   })
 })
