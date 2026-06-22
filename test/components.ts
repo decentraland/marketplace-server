@@ -3,12 +3,12 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { ILoggerComponent, ITracerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
-import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createServerComponent } from '@dcl/http-server'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createMetricsComponent } from '@dcl/metrics'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
+import { createRunner, createLocalFetchComponent } from '@dcl/test-helpers'
 import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createFetchComponent } from '../src/adapters/fetch'
 import { metricDeclarations } from '../src/metrics'
@@ -164,8 +164,7 @@ async function initComponents(): Promise<TestComponents> {
     config,
     logs,
     server,
-    // createLocalFetchCompoment returns a node-fetch-typed component; cast to the native type.
-    localFetch: (await createLocalFetchCompoment(config)) as unknown as TestComponents['localFetch'],
+    localFetch: await createLocalFetchComponent(config),
     fetch,
     metrics,
     dappsDatabase: dappsReadDatabase,
