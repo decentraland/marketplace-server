@@ -1,8 +1,7 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
-import { IHttpServerComponent as IWKCHttpServerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTracerComponent } from '@well-known-components/tracer-component'
+import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
@@ -174,11 +173,7 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
   createHttpTracerComponent({ server, tracer })
-  // The request logger is still typed against node-fetch's IHttpServerComponent; the native server is
-  // runtime-compatible (the logger only reads request/response metadata), so cast it here.
-  // TODO: remove this cast once @well-known-components/http-requests-logger-component ships a
-  // native-fetch-aware (@dcl/core-commons IHttpServerComponent) release.
-  instrumentHttpServerWithRequestLogger({ server: server as unknown as IWKCHttpServerComponent<GlobalContext>, logger: logs })
+  instrumentHttpServerWithRequestLogger({ server, logger: logs })
   // createMetricsComponent always initializes a prom-client registry; the IMetricsComponent type marks
   // `registry` optional, so assert it is present rather than guarding a case that cannot happen.
   await instrumentHttpServerWithPromClientRegistry({
