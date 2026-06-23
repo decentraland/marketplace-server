@@ -51,6 +51,7 @@ export async function queryMultipleTimesWhenExceedingUrlLimit<T>(
         try {
           const response = await fetchComponent.fetch(url)
           if (!response.ok) {
+            await response.body?.cancel().catch(() => undefined)
             throw new FetchRentalListingsError(response)
           }
 
