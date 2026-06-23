@@ -84,6 +84,7 @@ export function createTransakComponent(
       })
 
       if (!res.ok) {
+        await res.body?.cancel().catch(() => undefined)
         throw new Error(`Error getting order, status: ${res.status}`)
       }
 
@@ -140,6 +141,7 @@ export function createTransakComponent(
     })
 
     if (!res.ok) {
+      await res.body?.cancel().catch(() => undefined)
       throw new Error(`Error refreshing access token, status: ${res.status}`)
     }
 

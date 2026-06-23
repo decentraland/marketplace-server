@@ -128,6 +128,7 @@ export function createRentalsComponent(
     const response = await fetchComponent.fetch(`${rentalsUrl}/v1/rentals-listings${parameters}`)
 
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
       throw new FetchRentalListingsError(response)
     }
 
