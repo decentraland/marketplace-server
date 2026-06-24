@@ -1,5 +1,6 @@
 import { fromDBAccountToAccount } from '../../adapters/accounts'
 import { AppComponents } from '../../types'
+import { extractCount } from '../pagination'
 import { getAccountsCountQuery, getAccountsQuery } from './queries'
 import { AccountFilters, DBAccount, IAccountsComponent } from './types'
 
@@ -31,7 +32,7 @@ export function createAccountsComponent(components: Pick<AppComponents, 'dappsDa
       pg.query<DBAccount>(getAccountsQuery(filters)),
       pg.query<{ count: string }>(getAccountsCountQuery(filters))
     ])
-    return { data: accounts.rows.map(fromDBAccountToAccount), total: Number(count.rows?.[0]?.count ?? 0) }
+    return { data: accounts.rows.map(fromDBAccountToAccount), total: extractCount(count) }
   }
 
   return {

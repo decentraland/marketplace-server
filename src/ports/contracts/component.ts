@@ -3,6 +3,7 @@ import { fromDBCollectionToContract } from '../../adapters/contracts'
 import { getEthereumChainId } from '../../logic/chainIds'
 import { getMarketplaceContracts as getHardcodedMarketplaceContracts } from '../../logic/contracts'
 import { AppComponents } from '../../types'
+import { extractCount } from '../pagination'
 import { getCollectionsCountQuery, getCollectionsQuery } from './queries'
 import { ContractFilters, DBCollection, IContractsComponent } from './types'
 
@@ -55,7 +56,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
 
     return {
       data: collectionContracts,
-      total: Number(count.rows?.[0]?.count ?? 0)
+      total: extractCount(count)
     }
   }
 
@@ -85,7 +86,7 @@ export function createContractsComponent(components: Pick<AppComponents, 'dappsD
     const allCollectionContracts: Contract[] = []
 
     const countResult = await pg.query<{ count: string }>(getCollectionsCountQuery({}))
-    const total = Number(countResult.rows?.[0]?.count ?? 0)
+    const total = extractCount(countResult)
 
     if (total === 0) {
       return allCollectionContracts
