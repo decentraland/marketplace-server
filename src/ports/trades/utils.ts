@@ -16,7 +16,7 @@ import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/tra
 import { getMarketplaceContracts } from '../../logic/contracts'
 import { isEstateFingerprintValid } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
-import { getItemByItemIdQuery, getItemsQuery } from '../items/queries'
+import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
 import { getNftByTokenIdQuery, getNFTsQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
@@ -27,6 +27,7 @@ import {
   EstateContractNotFoundForChainId,
   InvalidTradeStructureError
 } from './errors'
+import { getOpenItemOrderExistsQuery } from './queries'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
@@ -129,12 +130,14 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
+      // Reads the live trades tables (not the mv_trades materialized view, which lags behind until
+      // refreshed) so a just-created listing is detected immediately. The transactional advisory-lock
+      // re-check in the trades component closes the remaining check-then-insert race for concurrent requests.
       const duplicateOrder = await client.query(
-        getItemsQuery({
-          contractAddresses: [trade.sent[0].contractAddress],
+        getOpenItemOrderExistsQuery({
+          contractAddress: trade.sent[0].contractAddress,
           itemId: (trade.sent[0] as CollectionItemTradeAsset).itemId,
-          network: trade.network,
-          isOnSale: true
+          network: trade.network
         })
       )
 

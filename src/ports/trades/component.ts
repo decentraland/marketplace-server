@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { CollectionItemTradeAsset, Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -16,12 +16,15 @@ import {
   EventNotGeneratedError,
   TradeNotFoundBySignatureError,
   InvalidOwnerError,
-  InvalidEstateTrade
+  InvalidEstateTrade,
+  DuplicateItemOrderError
 } from './errors'
 import {
+  getAcquireItemOrderLockQuery,
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
+  getOpenItemOrderExistsQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
   getTradesByAddressQuery
@@ -184,6 +187,25 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
 
     const insertedTrade = await pg.withTransaction(
       async client => {
+        // For item orders, serialize concurrent creations for the same item with a transaction-scoped
+        // advisory lock and re-check for an existing open order inside the transaction. The earlier
+        // validateTradeByType check is not enough on its own: two concurrent requests can both pass it
+        // (neither sees the other's uncommitted trade) and create duplicate open orders for the same
+        // item. Holding the lock makes this check-and-insert atomic per item.
+        if (trade.type === TradeType.PUBLIC_ITEM_ORDER) {
+          const sentItem = trade.sent[0] as CollectionItemTradeAsset
+          const itemOrderFilters = {
+            contractAddress: sentItem.contractAddress,
+            itemId: sentItem.itemId,
+            network: trade.network
+          }
+          await client.query(getAcquireItemOrderLockQuery(itemOrderFilters))
+          const existingOrder = await client.query(getOpenItemOrderExistsQuery(itemOrderFilters))
+          if ((existingOrder.rowCount ?? 0) > 0) {
+            throw new DuplicateItemOrderError()
+          }
+        }
+
         const query = getInsertTradeQuery({ ...trade, contract: tradeContract.address }, signer)
         const insertedTrade = await client.query<DBTrade>(query)
         const assets = await Promise.all(
@@ -203,6 +225,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         return fromDbTradeAndDBTradeAssetWithValueListToTrade(insertedTrade.rows[0], assets)
       },
       e => {
+        // Preserve typed domain errors thrown inside the transaction so the controller can map them
+        // to the right status code (e.g. DuplicateItemOrderError -> 409). Wrapping them in a generic
+        // Error here would erase the type and surface as a 500.
+        if (e instanceof DuplicateItemOrderError) {
+          throw e
+        }
         throw new Error(isErrorWithMessage(e) ? e.message : 'Could not create trade')
       }
     )
