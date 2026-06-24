@@ -27,6 +27,37 @@ function getRPCUrlByChainId(chainId: ChainId): string {
   return `https://rpc.decentraland.org/${rpcPath}`
 }
 
+// Reuse one provider per chain instead of constructing a new JsonRpcProvider (and re-running
+// network detection) on every ownership / fingerprint check on the trade-creation hot path.
+const providersByChainId: Partial<Record<ChainId, JsonRpcProvider>> = {}
+
+function getProvider(chainId: ChainId): JsonRpcProvider {
+  let provider = providersByChainId[chainId]
+  if (!provider) {
+    provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
+    providersByChainId[chainId] = provider
+  }
+  return provider
+}
+
+// Bound on-chain reads so a slow/unresponsive public RPC can't stall trade creation up to the
+// DB statement timeout (40s). Callers treat a timeout as a validation failure.
+export const ON_CHAIN_READ_TIMEOUT_MS = 5000
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
+}
+
 export function getValueFromTradeAsset(asset: TradeAsset) {
   switch (asset.assetType) {
     case TradeAssetType.COLLECTION_ITEM:
@@ -140,9 +171,12 @@ export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset
 
 async function getContractOwner(contractAddress: string, tokenId: string, chainId: ChainId): Promise<string> {
   const abi = ['function ownerOf(uint256 tokenId) view returns (address)']
-  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
-  const contract = new Contract(contractAddress, abi, provider)
-  return await contract.ownerOf(tokenId)
+  const contract = new Contract(contractAddress, abi, getProvider(chainId))
+  return await withTimeout(
+    contract.ownerOf(tokenId),
+    ON_CHAIN_READ_TIMEOUT_MS,
+    `Timed out reading ownerOf for ${contractAddress}:${tokenId}`
+  )
 }
 
 export async function isEstateFingerprintValid(
@@ -152,9 +186,12 @@ export async function isEstateFingerprintValid(
   fingerprint: string
 ): Promise<boolean> {
   const abi = ['function getFingerprintV2(uint256 tokenId) view returns (bytes32)']
-  const provider = new JsonRpcProvider(getRPCUrlByChainId(chainId))
-  const contract = new Contract(contractAddress, abi, provider)
-  const estateFingerprint = await contract.getFingerprintV2(tokenId)
+  const contract = new Contract(contractAddress, abi, getProvider(chainId))
+  const estateFingerprint = await withTimeout(
+    contract.getFingerprintV2(tokenId),
+    ON_CHAIN_READ_TIMEOUT_MS,
+    `Timed out reading getFingerprintV2 for ${contractAddress}:${tokenId}`
+  )
   return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
 }
 
