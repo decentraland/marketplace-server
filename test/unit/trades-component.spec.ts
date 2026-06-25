@@ -28,6 +28,7 @@ import {
   createTradesComponent
 } from '../../src/ports/trades'
 import {
+  DuplicateItemOrderError,
   InvalidEstateTrade,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
@@ -35,7 +36,13 @@ import {
   TradeEffectiveAfterExpirationError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
-import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
+import {
+  getAcquireItemOrderLockQuery,
+  getInsertTradeAssetQuery,
+  getInsertTradeAssetValueByTypeQuery,
+  getInsertTradeQuery,
+  getOpenItemOrderExistsQuery
+} from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
 
@@ -314,6 +321,155 @@ describe('when adding a new trade', () => {
 
     it('should send event notification', () => {
       expect(publishMessageMock).toHaveBeenCalledWith(event)
+    })
+  })
+
+  describe('when the trade is a public item order', () => {
+    let mockPgQuery: jest.Mock
+    let itemOrderFilters: { contractAddress: string; itemId: string; network: Network }
+
+    beforeEach(() => {
+      mockTrade.type = TradeType.PUBLIC_ITEM_ORDER
+      mockTrade.network = Network.MATIC
+      mockTrade.chainId = ChainId.MATIC_MAINNET
+      mockTrade.sent = [
+        {
+          assetType: TradeAssetType.COLLECTION_ITEM,
+          contractAddress: '0x29470eea1ec37f25669879d0aaf9bebcaf0f92c1',
+          itemId: '0',
+          extra: '0x'
+        }
+      ]
+      mockTrade.received = [
+        {
+          assetType: TradeAssetType.ERC20,
+          contractAddress: '0xabcdef',
+          amount: '2',
+          extra: '0x',
+          beneficiary: '0x9876543210'
+        }
+      ]
+
+      itemOrderFilters = {
+        contractAddress: '0x29470eea1ec37f25669879d0aaf9bebcaf0f92c1',
+        itemId: '0',
+        network: Network.MATIC
+      }
+
+      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValue(true)
+      jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(null)
+
+      mockPgQuery = jest.fn()
+      // Mirror the real withTransaction contract: run the callback, and on error run onError before
+      // rethrowing, so the DuplicateItemOrderError passthrough in addTrade's onError is exercised.
+      ;(mockPg.withTransaction as jest.Mock).mockImplementation(async (fn, onError) => {
+        try {
+          return await fn({ query: mockPgQuery })
+        } catch (e) {
+          if (onError) await onError(e)
+          throw e
+        }
+      })
+    })
+
+    describe('and an open order already exists for the item', () => {
+      beforeEach(() => {
+        mockPgQuery
+          .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // advisory lock acquisition
+          .mockResolvedValueOnce({ rows: [{}], rowCount: 1 }) // open order exists
+      })
+
+      it('should acquire the advisory lock for the item', async () => {
+        await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new DuplicateItemOrderError())
+        expect(mockPgQuery).toHaveBeenCalledWith(getAcquireItemOrderLockQuery(itemOrderFilters))
+      })
+
+      it('should reject with a DuplicateItemOrderError', async () => {
+        await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new DuplicateItemOrderError())
+      })
+
+      it('should not insert the trade', async () => {
+        await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new DuplicateItemOrderError())
+        expect(mockPgQuery).not.toHaveBeenCalledWith(
+          getInsertTradeQuery(
+            { ...mockTrade, contract: getContract(ContractName.OffChainMarketplaceV2, mockTrade.chainId).address },
+            mockSigner
+          )
+        )
+      })
+    })
+
+    describe('and there is no open order for the item', () => {
+      let insertedTrade: DBTrade
+      let insertedSentAsset: DBTradeAsset
+      let insertedReceivedAsset: DBTradeAsset
+
+      beforeEach(async () => {
+        insertedTrade = {
+          id: '1',
+          chain_id: mockTrade.chainId,
+          network: mockTrade.network,
+          checks: mockTrade.checks,
+          created_at: new Date(),
+          effective_since: new Date(),
+          expires_at: new Date(),
+          signature: mockTrade.signature,
+          signer: mockSigner,
+          type: mockTrade.type,
+          contract: 'OffChainMarketplace'
+        }
+
+        insertedSentAsset = {
+          id: '1',
+          trade_id: insertedTrade.id,
+          asset_type: mockTrade.sent[0].assetType,
+          contract_address: mockTrade.sent[0].contractAddress,
+          direction: TradeAssetDirection.SENT,
+          extra: mockTrade.sent[0].extra,
+          created_at: new Date()
+        }
+
+        insertedReceivedAsset = {
+          id: '2',
+          trade_id: insertedTrade.id,
+          asset_type: mockTrade.received[0].assetType,
+          contract_address: mockTrade.received[0].contractAddress,
+          direction: TradeAssetDirection.RECEIVED,
+          extra: mockTrade.received[0].extra,
+          beneficiary: mockTrade.received[0].beneficiary,
+          created_at: new Date()
+        }
+
+        mockPgQuery
+          .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // advisory lock acquisition
+          .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // no open order exists
+          .mockResolvedValueOnce({ rows: [insertedTrade] }) // trade insert
+          .mockResolvedValueOnce({ rows: [insertedSentAsset] }) // sent asset insert
+          .mockResolvedValueOnce({ rows: [insertedReceivedAsset] }) // received asset insert
+          .mockResolvedValueOnce({ rows: [{ item_id: '0' }] }) // sent asset value insert
+          .mockResolvedValueOnce({ rows: [{ amount: '2' }] }) // received asset value insert
+
+        await tradesComponent.addTrade(mockTrade, mockSigner)
+      })
+
+      it('should acquire the advisory lock for the item before inserting', () => {
+        expect(mockPgQuery).toHaveBeenCalledWith(getAcquireItemOrderLockQuery(itemOrderFilters))
+      })
+
+      it('should check for an existing open order against the live tables', () => {
+        expect(mockPgQuery).toHaveBeenCalledWith(getOpenItemOrderExistsQuery(itemOrderFilters))
+      })
+
+      it('should insert the trade', () => {
+        expect(mockPgQuery).toHaveBeenCalledWith(
+          getInsertTradeQuery(
+            { ...mockTrade, contract: getContract(ContractName.OffChainMarketplaceV2, mockTrade.chainId).address },
+            mockSigner
+          )
+        )
+      })
     })
   })
 })
