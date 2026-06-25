@@ -116,6 +116,7 @@ describe('when getting or refreshing an access token', () => {
           method: 'POST',
           headers: {
             'api-secret': mockConfig.apiSecret,
+            'x-api-key': mockConfig.apiKey,
             accept: 'application/json',
             'content-type': 'application/json'
           },
@@ -152,6 +153,7 @@ describe('when getting or refreshing an access token', () => {
           method: 'POST',
           headers: {
             'api-secret': mockConfig.apiSecret,
+            'x-api-key': mockConfig.apiKey,
             accept: 'application/json',
             'content-type': 'application/json'
           },
@@ -177,6 +179,7 @@ describe('when getting or refreshing an access token', () => {
           method: 'POST',
           headers: {
             'api-secret': mockConfig.apiSecret,
+            'x-api-key': mockConfig.apiKey,
             accept: 'application/json',
             'content-type': 'application/json'
           },
@@ -287,10 +290,19 @@ describe('when getting an order', () => {
       expect(mockGet).toHaveBeenCalledWith('transak-access-token')
       expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/order/${orderId}`, {
         method: 'GET',
-        headers: { 'access-token': cachedAccessToken }
+        headers: { 'access-token': cachedAccessToken, 'x-api-key': mockConfig.apiKey }
       })
       expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
       expect(result).toEqual(mockOrderResponse)
+    })
+
+    it('should forward the end-user IP as the x-user-ip header when provided', async () => {
+      await transakComponent.getOrder(orderId, '203.0.113.7')
+
+      expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/order/${orderId}`, {
+        method: 'GET',
+        headers: { 'access-token': cachedAccessToken, 'x-api-key': mockConfig.apiKey, 'x-user-ip': '203.0.113.7' }
+      })
     })
   })
 
@@ -338,6 +350,7 @@ describe('when getting an order', () => {
         method: 'POST',
         headers: {
           'api-secret': mockConfig.apiSecret,
+          'x-api-key': mockConfig.apiKey,
           accept: 'application/json',
           'content-type': 'application/json'
         },
@@ -346,7 +359,7 @@ describe('when getting an order', () => {
       expect(mockSet).toHaveBeenCalledWith('transak-access-token', newAccessToken, fromMillisecondsToSeconds(3600000))
       expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiURL}/v2/order/${orderId}`, {
         method: 'GET',
-        headers: { 'access-token': newAccessToken }
+        headers: { 'access-token': newAccessToken, 'x-api-key': mockConfig.apiKey }
       })
       expect(mockTryReleaseLock).toHaveBeenCalledWith('transak-access-token-lock')
       expect(result).toEqual(mockOrderResponse)
@@ -464,7 +477,12 @@ describe('when getting a widget session URL', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(`${mockConfig.apiGatewayURL}/v2/auth/session`, {
         method: 'POST',
-        headers: { 'access-token': cachedAccessToken, 'content-type': 'application/json', accept: 'application/json' },
+        headers: {
+          'access-token': cachedAccessToken,
+          'x-api-key': mockConfig.apiKey,
+          'content-type': 'application/json',
+          accept: 'application/json'
+        },
         body: JSON.stringify({
           widgetParams: {
             apiKey: mockConfig.apiKey,
@@ -479,6 +497,17 @@ describe('when getting a widget session URL', () => {
         })
       })
       expect(result).toEqual(widgetUrl)
+    })
+
+    it('should forward the end-user IP as the x-user-ip header when provided', async () => {
+      await transakComponent.getWidget({ fiatAmount: 100 }, '203.0.113.7')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${mockConfig.apiGatewayURL}/v2/auth/session`,
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-api-key': mockConfig.apiKey, 'x-user-ip': '203.0.113.7' })
+        })
+      )
     })
   })
 
@@ -510,7 +539,12 @@ describe('when getting a widget session URL', () => {
 
       expect(mockFetch).toHaveBeenNthCalledWith(1, `${mockConfig.apiURL}/v2/refresh-token`, {
         method: 'POST',
-        headers: { 'api-secret': mockConfig.apiSecret, accept: 'application/json', 'content-type': 'application/json' },
+        headers: {
+          'api-secret': mockConfig.apiSecret,
+          'x-api-key': mockConfig.apiKey,
+          accept: 'application/json',
+          'content-type': 'application/json'
+        },
         body: JSON.stringify({ apiKey: mockConfig.apiKey })
       })
 
@@ -518,7 +552,12 @@ describe('when getting a widget session URL', () => {
 
       expect(mockFetch).toHaveBeenNthCalledWith(2, `${mockConfig.apiGatewayURL}/v2/auth/session`, {
         method: 'POST',
-        headers: { 'access-token': newAccessToken, 'content-type': 'application/json', accept: 'application/json' },
+        headers: {
+          'access-token': newAccessToken,
+          'x-api-key': mockConfig.apiKey,
+          'content-type': 'application/json',
+          accept: 'application/json'
+        },
         body: JSON.stringify({
           widgetParams: {
             apiKey: mockConfig.apiKey,
