@@ -1,3 +1,4 @@
+import { SQLStatement } from 'sql-template-strings'
 import { IPgComponent } from '@dcl/pg-component'
 import {
   ERC20TradeAsset,
@@ -10,7 +11,8 @@ import {
   CollectionItemTradeAsset,
   ListingStatus,
   Event,
-  ChainId
+  ChainId,
+  Network
 } from '@dcl/schemas'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
 import { getMarketplaceContracts } from '../../logic/contracts'
@@ -29,6 +31,31 @@ import {
 } from './errors'
 import { getOpenItemOrderExistsQuery } from './queries'
 import { TradeEvent } from './types'
+
+// Minimal client surface shared by the pg pool component (IPgComponent) and a transaction's PoolClient,
+// so the duplicate-order check can run both as a best-effort pre-check and inside the transaction.
+type ItemOrderQueryClient = {
+  query: (sql: SQLStatement) => Promise<{ rowCount: number | null }>
+}
+
+/**
+ * Throws DuplicateItemOrderError when an open `public_item_order` already exists for the given item.
+ *
+ * Reads the live trades tables (see getOpenItemOrderExistsQuery), so a just-created listing is detected
+ * immediately. Pass the pool for the best-effort pre-check, or a transaction client (holding the item
+ * advisory lock) for the authoritative check that closes the check-then-insert race.
+ *
+ * @throws DuplicateItemOrderError when an open order already exists for the item.
+ */
+export async function assertNoOpenItemOrder(
+  client: ItemOrderQueryClient,
+  filters: { contractAddress: string; itemId: string; network: Network }
+): Promise<void> {
+  const existingOrder = await client.query(getOpenItemOrderExistsQuery(filters))
+  if ((existingOrder.rowCount ?? 0) > 0) {
+    throw new DuplicateItemOrderError()
+  }
+}
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
   return asset.assetType === TradeAssetType.ERC20
@@ -130,20 +157,14 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
-      // Reads the live trades tables (not the mv_trades materialized view, which lags behind until
-      // refreshed) so a just-created listing is detected immediately. The transactional advisory-lock
-      // re-check in the trades component closes the remaining check-then-insert race for concurrent requests.
-      const duplicateOrder = await client.query(
-        getOpenItemOrderExistsQuery({
-          contractAddress: trade.sent[0].contractAddress,
-          itemId: (trade.sent[0] as CollectionItemTradeAsset).itemId,
-          network: trade.network
-        })
-      )
-
-      if (duplicateOrder.rowCount > 0) {
-        throw new DuplicateItemOrderError()
-      }
+      // Best-effort pre-check against the live trades tables (not the mv_trades materialized view, which
+      // lags behind until refreshed) so a just-created listing is detected immediately. The transactional
+      // advisory-lock re-check in the trades component closes the remaining check-then-insert race.
+      await assertNoOpenItemOrder(client, {
+        contractAddress: trade.sent[0].contractAddress,
+        itemId: (trade.sent[0] as CollectionItemTradeAsset).itemId,
+        network: trade.network
+      })
     }
 
     return true

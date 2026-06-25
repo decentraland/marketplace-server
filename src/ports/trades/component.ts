@@ -24,13 +24,19 @@ import {
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
-  getOpenItemOrderExistsQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
   getTradesByAddressQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
-import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
+import {
+  assertNoOpenItemOrder,
+  getNotificationEventForTrade,
+  isERC721TradeAsset,
+  isEstateChain,
+  isValidEstateTrade,
+  validateTradeByType
+} from './utils'
 
 type TradeWithAssetRow = {
   trade_id: string
@@ -192,6 +198,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         // validateTradeByType check is not enough on its own: two concurrent requests can both pass it
         // (neither sees the other's uncommitted trade) and create duplicate open orders for the same
         // item. Holding the lock makes this check-and-insert atomic per item.
+        //
+        // This relies on READ COMMITTED isolation (Postgres' default, used here via a bare BEGIN): the
+        // re-check runs as a new statement after the lock is acquired (i.e. after any competing
+        // transaction has committed and released the lock), so it observes the just-committed order.
+        // Under REPEATABLE READ/SERIALIZABLE the snapshot would be fixed at the lock acquisition and the
+        // re-check could miss it.
         if (trade.type === TradeType.PUBLIC_ITEM_ORDER) {
           const sentItem = trade.sent[0] as CollectionItemTradeAsset
           const itemOrderFilters = {
@@ -200,10 +212,7 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
             network: trade.network
           }
           await client.query(getAcquireItemOrderLockQuery(itemOrderFilters))
-          const existingOrder = await client.query(getOpenItemOrderExistsQuery(itemOrderFilters))
-          if ((existingOrder.rowCount ?? 0) > 0) {
-            throw new DuplicateItemOrderError()
-          }
+          await assertNoOpenItemOrder(client, itemOrderFilters)
         }
 
         const query = getInsertTradeQuery({ ...trade, contract: tradeContract.address }, signer)
