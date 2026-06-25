@@ -75,12 +75,12 @@ export function createTransakComponent(
    * @returns A promise that resolves to the order response data from Transak API.
    * @throws Error when the API request fails or returns a non-ok status.
    */
-  async function getOrder(orderId: string): Promise<OrderResponse> {
+  async function getOrder(orderId: string, userIp?: string): Promise<OrderResponse> {
     try {
       const accessToken = await getOrRefreshAccessToken()
       const res = await fetch.fetch(`${apiURL}/v2/order/${orderId}`, {
         method: 'GET',
-        headers: { 'access-token': accessToken }
+        headers: { 'access-token': accessToken, 'x-api-key': apiKey, ...(userIp ? { 'x-user-ip': userIp } : {}) }
       })
 
       if (!res.ok) {
@@ -95,12 +95,18 @@ export function createTransakComponent(
     }
   }
 
-  async function getWidget(options?: WidgetOptions): Promise<string> {
+  async function getWidget(options?: WidgetOptions, userIp?: string): Promise<string> {
     try {
       const accessToken = await getOrRefreshAccessToken()
       const res = await fetch.fetch(`${apiGatewayURL}/v2/auth/session`, {
         method: 'POST',
-        headers: { 'access-token': accessToken, 'content-type': 'application/json', accept: 'application/json' },
+        headers: {
+          'access-token': accessToken,
+          'x-api-key': apiKey,
+          'content-type': 'application/json',
+          accept: 'application/json',
+          ...(userIp ? { 'x-user-ip': userIp } : {})
+        },
         body: JSON.stringify({
           widgetParams: {
             apiKey,
@@ -136,7 +142,7 @@ export function createTransakComponent(
     logger.info(`Getting access token from ${apiURL}/v2/refresh-token`)
     const res = await fetch.fetch(`${apiURL}/v2/refresh-token`, {
       method: 'POST',
-      headers: { 'api-secret': apiSecret, accept: 'application/json', 'content-type': 'application/json' },
+      headers: { 'api-secret': apiSecret, 'x-api-key': apiKey, accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({ apiKey })
     })
 
