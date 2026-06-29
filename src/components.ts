@@ -1,6 +1,6 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
-import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createTracerComponent } from '@dcl/tracer-component'
 import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'

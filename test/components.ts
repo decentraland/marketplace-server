@@ -3,7 +3,7 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { ILoggerComponent, ITracerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
-import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createTracerComponent } from '@dcl/tracer-component'
 import { createServerComponent } from '@dcl/http-server'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
 import { createMetricsComponent } from '@dcl/metrics'
