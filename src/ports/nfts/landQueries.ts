@@ -1,7 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { NFTSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getTradesCTE } from '../catalog/queries'
+import { getExcludeBrokenEstateTradesWhere, getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTLimitAndOffsetStatement } from './queries'
 import { GetNFTsFilters } from './types'
@@ -138,6 +138,8 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
           OR ((assets->'received'->>'nft_id') IS NOT NULL))
         AND (((assets->'received'->>'amount') IS NOT NULL)
           OR ((assets->'sent'->>'amount') IS NOT NULL))`,
+    // Drop Estate sell orders left non-executable by the EstateRegistry upgrade.
+    getExcludeBrokenEstateTradesWhere(),
     FILTER_BY_MIN_TRADE_PRICE,
     FILTER_BY_MAX_TRADE_PRICE
   ])
