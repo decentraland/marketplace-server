@@ -25,6 +25,7 @@ import {
   DBTradeAssetValue,
   DBTradeAssetWithValue,
   ITradesComponent,
+  TradeEvent,
   createTradesComponent
 } from '../../src/ports/trades'
 import {
@@ -144,6 +145,9 @@ describe('when adding a new trade', () => {
 
   describe('when the trade structure is not valid for a given type', () => {
     beforeEach(() => {
+      // the signature is now validated before the I/O-bound checks, so it must pass for the
+      // structure validation to be reached
+      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(false)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
     })
@@ -280,6 +284,9 @@ describe('when adding a new trade', () => {
       jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(event)
 
       response = await tradesComponent.addTrade(mockTrade, mockSigner)
+      // the creation notification is now fire-and-forget; let the pending microtasks settle so the
+      // publish assertion below can observe it
+      await new Promise(resolve => setImmediate(resolve))
     })
 
     it('should add the trade to the database', async () => {
@@ -314,6 +321,90 @@ describe('when adding a new trade', () => {
 
     it('should send event notification', () => {
       expect(publishMessageMock).toHaveBeenCalledWith(event)
+    })
+  })
+
+  describe('and a read replica is configured', () => {
+    let mockWritePg: IPgComponent
+    let mockReadPg: IPgComponent
+    let writeWithTransaction: jest.Mock
+    let readWithTransaction: jest.Mock
+    let insertedTrade: Trade
+
+    beforeEach(async () => {
+      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(null)
+
+      insertedTrade = { ...mockTrade, id: '1', createdAt: Date.now(), contract: 'OffChainMarketplace' } as unknown as Trade
+
+      writeWithTransaction = jest.fn().mockResolvedValue(insertedTrade)
+      readWithTransaction = jest.fn()
+
+      const makeMockPg = (withTransaction: jest.Mock): IPgComponent =>
+        ({
+          getPool: jest.fn().mockReturnValue({ connect: jest.fn() }),
+          withTransaction,
+          start: jest.fn(),
+          query: jest.fn(),
+          stop: jest.fn(),
+          streamQuery: jest.fn()
+        } as unknown as IPgComponent)
+
+      mockWritePg = makeMockPg(writeWithTransaction)
+      mockReadPg = makeMockPg(readWithTransaction)
+
+      tradesComponent = createTradesComponent({
+        dappsDatabase: mockWritePg,
+        dappsReadDatabase: mockReadPg,
+        eventPublisher: mockEventPublisher,
+        logs
+      })
+
+      await tradesComponent.addTrade(mockTrade, mockSigner)
+      // let the fire-and-forget notification settle
+      await new Promise(resolve => setImmediate(resolve))
+    })
+
+    it('should run the duplicate-check validation against the read replica', () => {
+      expect(utils.validateTradeByType).toHaveBeenCalledWith(mockTrade, mockReadPg)
+    })
+
+    it('should build the creation notification from the read replica', () => {
+      expect(utils.getNotificationEventForTrade).toHaveBeenCalledWith(expect.anything(), mockReadPg, TradeEvent.CREATED, mockSigner)
+    })
+
+    it('should persist the trade on the write primary and never write on the replica', () => {
+      expect(writeWithTransaction).toHaveBeenCalled()
+      expect(readWithTransaction).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('and the independent validations run concurrently', () => {
+    it('should start the estate validation before the structure check resolves', async () => {
+      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(utils, 'getNotificationEventForTrade').mockResolvedValue(null)
+      ;(mockPg.withTransaction as jest.Mock).mockResolvedValue({} as Trade)
+
+      // keep the structure/duplicate check pending until we explicitly release it
+      let releaseStructure!: () => void
+      const pendingStructure = new Promise<boolean>(resolve => {
+        releaseStructure = () => resolve(true)
+      })
+      jest.spyOn(utils, 'validateTradeByType').mockReturnValue(pendingStructure)
+      const isValidEstateTradeSpy = jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValue(true)
+
+      const addTradePromise = tradesComponent.addTrade(mockTrade, mockSigner)
+      // let the kicked-off validation branches run their synchronous prelude
+      await new Promise(resolve => setImmediate(resolve))
+
+      // the estate validation was invoked even though the structure check is still pending — proving
+      // the checks are not serialized behind one another (guards against a regression to serial awaits)
+      expect(isValidEstateTradeSpy).toHaveBeenCalled()
+
+      releaseStructure()
+      await addTradePromise
     })
   })
 })
