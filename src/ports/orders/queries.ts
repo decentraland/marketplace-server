@@ -2,7 +2,7 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { OrderFilters, OrderSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
-import { getExcludeBrokenEstateTradesWhere, getTradesCTE } from '../catalog/queries'
+import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
@@ -70,10 +70,10 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       network
     FROM (`
       .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
-      // Drop Estate sell orders left non-executable by the EstateRegistry upgrade so
-      // they are not surfaced as a buyable order (e.g. on the asset detail page).
-      .append(SQL` AND `)
-      .append(getExcludeBrokenEstateTradesWhere())
+      // NOTE: broken-by-upgrade Estate orders are intentionally NOT filtered here.
+      // This feeds the asset detail page / My Assets, where the owner must still
+      // see their now-invalid listing (and visitors get the on-page upgrade
+      // warning). They are only hidden from the public browse feed (see landQueries).
       .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
       .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
       .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
