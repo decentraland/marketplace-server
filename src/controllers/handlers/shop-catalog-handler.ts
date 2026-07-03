@@ -4,7 +4,14 @@ import { asJSON } from '../../logic/http/response'
 import { ShopSortBy, SHOP_DEFAULT_PAGE_SIZE, SHOP_MAX_PAGE_SIZE } from '../../ports/shop-catalog/types'
 import { AppComponents, Context } from '../../types'
 
-const SORTS: ShopSortBy[] = ['newest', 'cheapest', 'most_expensive', 'name']
+// Valid sort values, as a map so Params.getValue can validate the query param against them (mirrors
+// how the catalog handler validates CatalogSortBy) and return undefined for anything unexpected.
+const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
+  newest: 'newest',
+  cheapest: 'cheapest',
+  most_expensive: 'most_expensive',
+  name: 'name'
+}
 
 function csv(value?: string): string[] | undefined {
   const parts = value
@@ -32,8 +39,7 @@ export function createShopCatalogHandler(
     const minPriceCredits = params.getNumber('minPriceCredits')
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
-    const sortByRaw = params.getString('sortBy') as ShopSortBy | undefined
-    const sortBy = sortByRaw && SORTS.includes(sortByRaw) ? sortByRaw : undefined
+    const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
 
     return asJSON(async () => {
       const { data, total } = await shopCatalog.getShopListings({

@@ -159,6 +159,22 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain((3n * WEI_PER_CREDIT).toString())
       expect(sql.values).toContain((10n * WEI_PER_CREDIT).toString())
     })
+
+    it('should ignore a non-finite price bound instead of throwing on BigInt(Infinity)', async () => {
+      await expect(shopCatalog.getShopListings({ minPriceCredits: Infinity, maxPriceCredits: Infinity })).resolves.toBeDefined()
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('mv.amount_received >=')
+      expect(sql.text).not.toContain('mv.amount_received <=')
+    })
+
+    it('should escape ILIKE wildcards in the search term', async () => {
+      await shopCatalog.getShopListings({ search: '50%_off' })
+
+      const sql = query.mock.calls[0][0]
+      // % and _ are escaped so they match literally instead of acting as wildcards.
+      expect(sql.values).toContain('%50\\%\\_off%')
+    })
   })
 
   describe('when fetching a seller importable listings', () => {
@@ -187,6 +203,7 @@ describe('Shop Catalog Component', () => {
 
       const sql = query.mock.calls[0][0]
       expect(sql.text).toContain('lower(mv.signer) =')
+      expect(sql.text).toContain('LIMIT')
       expect(sql.values).toContain('0xabcdef')
       expect(sql.values).toContain(1)
       expect(data[0]).toMatchObject({ oldTradeId: 'old-1', manaWei: '1000000000000000000', listingType: 'primary' })

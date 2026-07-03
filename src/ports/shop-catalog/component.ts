@@ -79,13 +79,34 @@ function topLevelCategory(itemType: string | null): string {
   return itemType?.toLowerCase().startsWith('emote') ? 'emote' : 'wearable'
 }
 
+// A whole-credit price bound -> USD wei. Returns null for non-finite input (e.g. `?minPriceCredits=Infinity`,
+// which parseFloat accepts) so the caller can skip the filter instead of throwing on BigInt(Infinity).
+function creditsToWei(credits: number): bigint | null {
+  if (!Number.isFinite(credits)) return null
+  return BigInt(Math.max(0, Math.floor(credits))) * USD_WEI_PER_CREDIT
+}
+
+// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
+// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
+// search into an unbounded wildcard scan.
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
+// Clamp a caller-supplied count to [min, max], flooring and falling back to `fallback` for
+// missing/non-finite input.
+function clampCount(value: number | undefined, fallback: number, min: number, max: number): number {
+  const n = Number.isFinite(value) ? Math.floor(value as number) : fallback
+  return Math.min(Math.max(n, min), max)
+}
+
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
   const { dappsDatabase: pg } = components
   const logger = components.logs.getLogger('shop-catalog-component')
 
   async function getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }> {
-    const first = Math.min(Math.max(Math.floor(filters.first ?? SHOP_DEFAULT_PAGE_SIZE), SHOP_MIN_PAGE_SIZE), SHOP_MAX_PAGE_SIZE)
-    const skip = Math.max(Math.floor(filters.skip ?? 0), 0)
+    const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
+    const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
 
     const query = SQL`
       SELECT
@@ -142,13 +163,15 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       )
     }
     if (filters.minPriceCredits != null) {
-      query.append(SQL` AND mv.amount_received >= ${(BigInt(Math.floor(filters.minPriceCredits)) * USD_WEI_PER_CREDIT).toString()}`)
+      const minWei = creditsToWei(filters.minPriceCredits)
+      if (minWei != null) query.append(SQL` AND mv.amount_received >= ${minWei.toString()}`)
     }
     if (filters.maxPriceCredits != null) {
-      query.append(SQL` AND mv.amount_received <= ${(BigInt(Math.floor(filters.maxPriceCredits)) * USD_WEI_PER_CREDIT).toString()}`)
+      const maxWei = creditsToWei(filters.maxPriceCredits)
+      if (maxWei != null) query.append(SQL` AND mv.amount_received <= ${maxWei.toString()}`)
     }
     if (filters.search) {
-      query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + filters.search + '%'}`)
+      query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
@@ -232,7 +255,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
           SELECT 1 FROM marketplace.trade_assets ta
           WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${ERC20_ASSET_TYPE}
         )
-      ORDER BY mv.created_at DESC`
+      ORDER BY mv.created_at DESC
+      LIMIT ${SHOP_MAX_PAGE_SIZE}`
       )
 
     const result = await pg.query<ImportableListingRow>(query)
