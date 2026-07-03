@@ -26,6 +26,26 @@ function shopRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function legacyRow(overrides: Record<string, unknown> = {}) {
+  return {
+    trade_id: 'legacy-1',
+    contract_address: '0xcollection',
+    item_id: '3',
+    name: 'Legacy Hat',
+    image: 'ipfs://hat.png',
+    rarity: 'RARE',
+    item_type: 'wearable_v2',
+    wearable_category: 'hat',
+    creator: '0xcreator',
+    mana_wei: '1000000000000000000',
+    available: '10',
+    network: 'MATIC',
+    created_at: '1700000000000',
+    total: '1',
+    ...overrides
+  }
+}
+
 describe('Shop Catalog Component', () => {
   let shopCatalog: IShopCatalogComponent
   let query: jest.Mock
@@ -207,6 +227,113 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain('0xabcdef')
       expect(sql.values).toContain(1)
       expect(data[0]).toMatchObject({ oldTradeId: 'old-1', manaWei: '1000000000000000000', listingType: 'primary' })
+    })
+  })
+
+  describe('when building the legacy listings query', () => {
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should only include classic ERC20 (asset_type = 1) primary listings', async () => {
+      await shopCatalog.getLegacyListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain("ta.direction = 'received' AND ta.asset_type =")
+      expect(sql.values).toContain(1)
+    })
+
+    it('should restrict to primaries via the WHERE guard so secondaries are excluded', async () => {
+      await shopCatalog.getLegacyListings({})
+
+      const sql = query.mock.calls[0][0]
+      // The primary-only guard lives in the WHERE clause (the shared metadataJoins keeps the
+      // public_nft_order LEFT JOINs, but no secondary row can satisfy mv.type = 'public_item_order').
+      expect(sql.text).toContain("WHERE mv.status = 'open'\n        AND mv.type = 'public_item_order'")
+    })
+
+    it('should apply the same open and available guards as the shop feed', async () => {
+      await shopCatalog.getLegacyListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain("mv.status = 'open'")
+      expect(sql.text).toContain('mv.available IS NULL OR mv.available > 0')
+    })
+
+    it('should not apply any price-range filter', async () => {
+      await shopCatalog.getLegacyListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('mv.amount_received >=')
+      expect(sql.text).not.toContain('mv.amount_received <=')
+    })
+
+    it('should clamp pagination and bind LIMIT/OFFSET as params', async () => {
+      await shopCatalog.getLegacyListings({ first: 99999, skip: 10.7 })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('LIMIT')
+      expect(sql.text).toContain('OFFSET')
+      expect(sql.values).toEqual(expect.arrayContaining([1000, 10]))
+    })
+
+    it('should never place a user-supplied sort value into the SQL text', async () => {
+      await shopCatalog.getLegacyListings({ sortBy: 'cheapest' })
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.amount_received ASC')
+
+      query.mockClear()
+      await shopCatalog.getLegacyListings({})
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.created_at DESC')
+    })
+
+    it('should bind a name search as a parameterized ILIKE with escaped wildcards', async () => {
+      await shopCatalog.getLegacyListings({ search: '50%_off' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('ILIKE')
+      expect(sql.values).toContain('%50\\%\\_off%')
+    })
+
+    it('should lowercase rarities and bind them as an array param', async () => {
+      await shopCatalog.getLegacyListings({ rarities: ['Rare', 'EPIC'] })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('lower(item_p.rarity) = ANY(')
+      expect(sql.values).toContainEqual(['rare', 'epic'])
+    })
+
+    it('should lowercase wearable categories and bind them as an array param', async () => {
+      await shopCatalog.getLegacyListings({ wearableCategories: ['Upper_Body', 'HAT'] })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('lower(COALESCE(item_p.search_wearable_category')
+      expect(sql.values).toContainEqual(['upper_body', 'hat'])
+    })
+  })
+
+  describe('when mapping a legacy listing row', () => {
+    it('should pass the raw MANA price through and tag the listing as primary', async () => {
+      query.mockResolvedValueOnce({ rows: [legacyRow({ rarity: 'MYTHIC', mana_wei: '2500000000000000000', total: '1' })] })
+
+      const { data, total } = await shopCatalog.getLegacyListings({})
+
+      expect(total).toBe(1)
+      expect(data[0]).toMatchObject({
+        tradeId: 'legacy-1',
+        listingType: 'primary',
+        contractAddress: '0xcollection',
+        itemId: '3',
+        name: 'Legacy Hat',
+        thumbnail: 'ipfs://hat.png',
+        rarity: 'mythic',
+        category: 'wearable',
+        wearableCategory: 'hat',
+        creator: '0xcreator',
+        manaWei: '2500000000000000000',
+        available: 10,
+        network: 'MATIC',
+        createdAt: 1700000000000
+      })
     })
   })
 })
