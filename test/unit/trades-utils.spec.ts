@@ -652,6 +652,33 @@ describe('when validating trade by type', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
       })
     })
+
+    describe('and the received asset is a USD-pegged MANA asset', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.USD_PEGGED_MANA,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            tokenId: '100',
+            extra: '0x'
+          }
+        ]
+      })
+
+      it('should return true', () => {
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
   })
 
   describe('when trade is a public item order', () => {
@@ -747,6 +774,33 @@ describe('when validating trade by type', () => {
         trade.received = [
           {
             assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+      })
+
+      it('should return true', () => {
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the received asset is a USD-pegged MANA asset', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.USD_PEGGED_MANA,
             contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
             amount: '100',
             extra: '0x',

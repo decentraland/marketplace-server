@@ -208,3 +208,18 @@ describe('when validating the estate signature', () => {
     })
   })
 })
+
+describe('when getting the value from a trade asset', () => {
+  describe('and the asset is a USD-pegged MANA asset', () => {
+    it('should return the amount', () => {
+      expect(
+        getValueFromTradeAsset({
+          assetType: TradeAssetType.USD_PEGGED_MANA,
+          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+          amount: '1000000000000000000',
+          extra: '0x'
+        })
+      ).toBe('1000000000000000000')
+    })
+  })
+})
