@@ -63,9 +63,44 @@ export type ImportableListing = {
   chainId: number
 }
 
+// A classic (ERC20-MANA) PRIMARY listing surfaced as a paginated browse feed so the Shop can offer
+// the "old liquidity" for purchase with credits. Like ImportableListing it carries the raw MANA price
+// (the client converts to credits via the oracle), but this is a public catalog feed, not per-seller.
+// Primaries only: secondary-with-credits is disabled, so public_nft_order rows are excluded entirely.
+export type LegacyListing = {
+  tradeId: string
+  listingType: 'primary'
+  contractAddress: string
+  itemId: string | null
+  name: string
+  thumbnail: string
+  rarity: string
+  category: string // top-level: 'wearable' | 'emote'
+  wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  creator: string
+  manaWei: string // raw MANA price; the client converts to credits via the oracle
+  available: number
+  network: string
+  chainId: number
+  createdAt: number
+}
+
+// Filters accepted by getLegacyListings. Same shape as ShopCatalogFilters minus the price-range
+// bounds, which would need a live MANA/credit rate on the server and are out of scope for v1.
+export type LegacyCatalogFilters = {
+  first?: number
+  skip?: number
+  category?: string // 'wearable' | 'emote'
+  rarities?: string[]
+  wearableCategories?: string[] // on-chain categories (upper_body, hat, ...)
+  search?: string
+  sortBy?: ShopSortBy
+}
+
 export interface IShopCatalogComponent {
   getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }>
   getImportableListings(seller: string): Promise<ImportableListing[]>
+  getLegacyListings(filters: LegacyCatalogFilters): Promise<{ data: LegacyListing[]; total: number }>
 }
 
 export type ImportableListingRow = {
@@ -98,6 +133,24 @@ export type ShopListingRow = {
   wearable_category: string | null
   creator: string | null
   price: string
+  available: string | null
+  network: string | null
+  created_at: string
+  total: string
+}
+
+// Raw DB row for the legacy (classic MANA) primary feed, before mapping to LegacyListing.
+export type LegacyListingRow = {
+  trade_id: string
+  contract_address: string
+  item_id: string | null
+  name: string | null
+  image: string | null
+  rarity: string | null
+  item_type: string | null
+  wearable_category: string | null
+  creator: string | null
+  mana_wei: string
   available: string | null
   network: string | null
   created_at: string

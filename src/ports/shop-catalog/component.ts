@@ -7,6 +7,9 @@ import {
   IShopCatalogComponent,
   ImportableListing,
   ImportableListingRow,
+  LegacyCatalogFilters,
+  LegacyListing,
+  LegacyListingRow,
   ShopCatalogFilters,
   ShopListing,
   ShopListingRow,
@@ -284,5 +287,98 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     })
   }
 
-  return { getShopListings, getImportableListings }
+  // The classic (ERC20-MANA) PRIMARY listings -- the "old liquidity" the Shop can offer for purchase
+  // with credits. Mirrors getShopListings but filters classic ERC20 received assets (asset_type = 1)
+  // instead of USD-pegged (asset_type = 2), restricts to primaries (public_item_order) since
+  // secondary-with-credits is disabled, and returns the RAW MANA price (the client converts to credits
+  // via the oracle). Paginated public browse feed; no price-range filter in v1 (that needs a live rate).
+  async function getLegacyListings(filters: LegacyCatalogFilters): Promise<{ data: LegacyListing[]; total: number }> {
+    const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
+    const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
+
+    const query = SQL`
+      SELECT
+        mv.id AS trade_id,
+        mv.sent_contract_address AS contract_address,
+        mv.sent_item_id AS item_id,
+        COALESCE(w_p.name, e_p.name) AS name,
+        item_p.image AS image,
+        item_p.rarity AS rarity,
+        item_p.item_type AS item_type,
+        COALESCE(item_p.search_wearable_category, item_p.search_emote_category) AS wearable_category,
+        COALESCE(item_p.creator, '') AS creator,
+        mv.amount_received::text AS mana_wei,
+        mv.available::text AS available,
+        mv.network AS network,
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
+        COUNT(*) OVER() AS total
+      `.append(metadataJoins()).append(SQL`
+      WHERE mv.status = 'open'
+        AND mv.type = 'public_item_order'
+        AND (mv.available IS NULL OR mv.available > 0)
+        AND EXISTS (
+          SELECT 1 FROM marketplace.trade_assets ta
+          WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${ERC20_ASSET_TYPE}
+        )`)
+
+    if (filters.category === 'emote') {
+      query.append(SQL` AND item_p.item_type ILIKE 'emote%'`)
+    } else if (filters.category === 'wearable') {
+      query.append(SQL` AND item_p.item_type NOT ILIKE 'emote%'`)
+    }
+    if (filters.rarities?.length) {
+      query.append(SQL` AND lower(item_p.rarity) = ANY(${filters.rarities.map(r => r.toLowerCase())})`)
+    }
+    if (filters.wearableCategories?.length) {
+      query.append(
+        SQL` AND lower(COALESCE(item_p.search_wearable_category, item_p.search_emote_category)) = ANY(${filters.wearableCategories.map(c =>
+          c.toLowerCase()
+        )})`
+      )
+    }
+    if (filters.search) {
+      query.append(SQL` AND COALESCE(w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+    }
+
+    // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
+    const order =
+      filters.sortBy === 'cheapest'
+        ? SQL` ORDER BY mv.amount_received ASC`
+        : filters.sortBy === 'most_expensive'
+        ? SQL` ORDER BY mv.amount_received DESC`
+        : filters.sortBy === 'name'
+        ? SQL` ORDER BY COALESCE(w_p.name, e_p.name) ASC`
+        : SQL` ORDER BY mv.created_at DESC`
+    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+
+    const result = await pg.query<LegacyListingRow>(query)
+    const polygonChainId = getPolygonChainId()
+    const ethereumChainId = getEthereumChainId()
+    const total = result.rows[0] ? Number(result.rows[0].total) : 0
+
+    const data: LegacyListing[] = result.rows.map(r => {
+      const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
+      return {
+        tradeId: r.trade_id,
+        listingType: 'primary',
+        contractAddress: r.contract_address,
+        itemId: r.item_id,
+        name: r.name ?? '',
+        thumbnail: r.image ?? '',
+        rarity: (r.rarity ?? 'common').toLowerCase(),
+        category: topLevelCategory(r.item_type),
+        wearableCategory: r.wearable_category,
+        creator: r.creator ?? '',
+        manaWei: r.mana_wei,
+        available: r.available ? Number(r.available) : 1,
+        network: isPolygon ? Network.MATIC : Network.ETHEREUM,
+        chainId: isPolygon ? polygonChainId : ethereumChainId,
+        createdAt: Number(r.created_at)
+      }
+    })
+
+    return { data, total }
+  }
+
+  return { getShopListings, getImportableListings, getLegacyListings }
 }
