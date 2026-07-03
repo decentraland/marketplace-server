@@ -36,6 +36,7 @@ import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
+import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
 import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
@@ -113,6 +114,7 @@ async function initComponents(): Promise<TestComponents> {
   const access = createAccessComponent({ favoritesDatabase, logs, lists })
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
+  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
   const schemaValidator = await createSchemaValidatorComponent()
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
@@ -171,6 +173,7 @@ async function initComponents(): Promise<TestComponents> {
     dappsWriteDatabase,
     favoritesDatabase,
     catalog,
+    shopCatalog,
     wertSigner,
     wertApi,
     ens,

@@ -21,6 +21,7 @@ import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
 import { getSalesHandler } from './handlers/sales-handler'
+import { createShopCatalogHandler, createShopImportableHandler } from './handlers/shop-catalog-handler'
 import { getStatsHandler } from './handlers/stats-handler'
 import {
   addTradeHandler,
@@ -95,6 +96,9 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
   router.put('/v1/transak/access-token', bearerTokenMiddleware(transakAccessTokenAuth), refreshTransakAccessTokenHandler)
   router.get('/v1/ens/generate', createENSImageGeratorHandler)
+
+  router.get('/v3/catalog/shop', createShopCatalogHandler(components))
+  router.get('/v3/catalog/importable', createShopImportableHandler(components))
 
   router.get('/v1/trades', getTradesHandler)
   router.post(
