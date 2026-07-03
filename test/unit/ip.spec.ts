@@ -39,6 +39,12 @@ describe('when resolving the client IP from a request', () => {
     })
   })
 
+  describe('and the request has no readable headers', () => {
+    it('should return undefined', () => {
+      expect(getClientIp({} as { headers?: { get(name: string): string | null } })).toBeUndefined()
+    })
+  })
+
   describe('and x-forwarded-for is present but empty', () => {
     it('should return undefined', () => {
       expect(getClientIp(requestWithHeaders({ 'x-forwarded-for': '   ' }))).toBeUndefined()
