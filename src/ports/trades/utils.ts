@@ -8,6 +8,7 @@ import {
   TradeAsset,
   ERC721TradeAsset,
   CollectionItemTradeAsset,
+  USDPeggedManaTradeAsset,
   ListingStatus,
   Event,
   ChainId
@@ -39,6 +40,15 @@ export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset
 
 export function isCollectionItemTradeAsset(asset: TradeAsset): asset is CollectionItemTradeAsset {
   return asset.assetType === TradeAssetType.COLLECTION_ITEM
+}
+
+export function isUSDPeggedManaTradeAsset(asset: TradeAsset): asset is USDPeggedManaTradeAsset {
+  return asset.assetType === TradeAssetType.USD_PEGGED_MANA
+}
+
+// The price side of a listing/bid can be paid in MANA (ERC20) or as a USD-pegged amount settled in MANA at execution.
+export function isPriceTradeAsset(asset: TradeAsset): asset is ERC20TradeAsset | USDPeggedManaTradeAsset {
+  return isERC20TradeAsset(asset) || isUSDPeggedManaTradeAsset(asset)
 }
 
 function isBytesEmpty(bytes: string): boolean {
@@ -79,9 +89,9 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       // validate bid structure
       const receivesERC721OrItemAsset =
         received.length === 1 && (isERC721TradeAsset(received[0]) || isCollectionItemTradeAsset(received[0]))
-      const sendsERC20Asset = sent.length === 1 && isERC20TradeAsset(sent[0])
+      const sendsPriceAsset = sent.length === 1 && isPriceTradeAsset(sent[0])
 
-      if (!receivesERC721OrItemAsset || !sendsERC20Asset) {
+      if (!receivesERC721OrItemAsset || !sendsPriceAsset) {
         throw new InvalidTradeStructureError(type)
       }
 
@@ -102,9 +112,9 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
 
     if (trade.type === TradeType.PUBLIC_NFT_ORDER) {
       const sendsERC721Asset = sent.length === 1 && isERC721TradeAsset(sent[0])
-      const receivesERC20Asset = received.length === 1 && isERC20TradeAsset(received[0])
+      const receivesPriceAsset = received.length === 1 && isPriceTradeAsset(received[0])
 
-      if (!sendsERC721Asset || !receivesERC20Asset) {
+      if (!sendsERC721Asset || !receivesPriceAsset) {
         throw new InvalidTradeStructureError(trade.type)
       }
 
@@ -123,9 +133,9 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
 
     if (trade.type === TradeType.PUBLIC_ITEM_ORDER) {
       const sendsCollectionItemAsset = sent.length === 1 && isCollectionItemTradeAsset(sent[0])
-      const receivesERC20Asset = received.length === 1 && isERC20TradeAsset(received[0])
+      const receivesPriceAsset = received.length === 1 && isPriceTradeAsset(received[0])
 
-      if (!sendsCollectionItemAsset || !receivesERC20Asset) {
+      if (!sendsCollectionItemAsset || !receivesPriceAsset) {
         throw new InvalidTradeStructureError(trade.type)
       }
 

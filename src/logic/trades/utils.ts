@@ -32,6 +32,7 @@ export function getValueFromTradeAsset(asset: TradeAsset) {
     case TradeAssetType.COLLECTION_ITEM:
       return asset.itemId
     case TradeAssetType.ERC20:
+    case TradeAssetType.USD_PEGGED_MANA:
       return asset.amount
     case TradeAssetType.ERC721:
       return asset.tokenId

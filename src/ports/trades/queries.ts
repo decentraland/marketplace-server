@@ -70,6 +70,7 @@ export function getInsertTradeAssetValueByTypeQuery(asset: TradeAsset | TradeAss
           ${asset.tokenId}
         ) RETURNING *;`
     case TradeAssetType.ERC20:
+    case TradeAssetType.USD_PEGGED_MANA:
       return SQL`INSERT INTO marketplace.trade_assets_erc20 (
         asset_id,
         amount
