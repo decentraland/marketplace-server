@@ -184,9 +184,12 @@ function unifiedBranch(opts: {
       SQL` AS usd_wei,
         mv.available::text AS available,
         mv.network AS network,
-        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at
-      `
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
+        `
     )
+    // Raw MANA price, exposed only for legacy (MANA-priced) items so the client can size the purchase
+    // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price.
+    .append(applyRate ? SQL`mv.amount_received::text AS mana_wei` : SQL`NULL::text AS mana_wei`)
     .append(metadataJoins()).append(SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)`)
@@ -583,6 +586,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         wearableCategory: r.wearable_category,
         creator: r.creator ?? '',
         priceCredits: Number(r.price_credits),
+        manaWei: r.mana_wei ?? null,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,

@@ -106,6 +106,9 @@ export type UnifiedListingSource = 'native' | 'legacy'
 // their raw MANA price with the live rate and rounded UP to whole credits (same "Model B" as native).
 export type UnifiedListing = ShopListing & {
   source: UnifiedListingSource
+  // Raw MANA price (wei), present only for legacy items so the client can size the purchase at the live
+  // rate at checkout. `null` for native (USD-pegged) items.
+  manaWei: string | null
 }
 
 // Filters for the unified feed: the full ShopCatalogFilters (price-range works across BOTH sources now
@@ -176,6 +179,7 @@ export type UnifiedListingRow = {
   wearable_category: string | null
   creator: string | null
   price_credits: string
+  mana_wei: string | null
   available: string | null
   network: string | null
   created_at: string

@@ -63,6 +63,7 @@ function unifiedRow(overrides: Record<string, unknown> = {}) {
     wearable_category: 'hat',
     creator: '0xcreator',
     price_credits: '5',
+    mana_wei: null,
     available: '10',
     network: 'MATIC',
     created_at: '1700000000000',
@@ -488,13 +489,14 @@ describe('Shop Catalog Component', () => {
     it('should carry a server-computed priceCredits and a source discriminator for each item', async () => {
       query.mockResolvedValueOnce({
         rows: [
-          unifiedRow({ source: 'native', trade_id: 'native-1', price_credits: '5', total: '2' }),
+          unifiedRow({ source: 'native', trade_id: 'native-1', price_credits: '5', mana_wei: null, total: '2' }),
           unifiedRow({
             source: 'legacy',
             trade_id: 'legacy-1',
             trade_type: 'public_item_order',
             token_id: null,
             price_credits: '3',
+            mana_wei: '2500000000000000000',
             total: '2'
           })
         ]
@@ -503,8 +505,9 @@ describe('Shop Catalog Component', () => {
       const { data, total } = await shopCatalog.getUnifiedListings({}, 0.5)
 
       expect(total).toBe(2)
-      expect(data[0]).toMatchObject({ source: 'native', tradeId: 'native-1', priceCredits: 5, listingType: 'primary' })
-      expect(data[1]).toMatchObject({ source: 'legacy', tradeId: 'legacy-1', priceCredits: 3, listingType: 'primary' })
+      // Native carries no MANA price; legacy carries the raw MANA wei for live-rate sizing at checkout.
+      expect(data[0]).toMatchObject({ source: 'native', tradeId: 'native-1', priceCredits: 5, manaWei: null })
+      expect(data[1]).toMatchObject({ source: 'legacy', tradeId: 'legacy-1', priceCredits: 3, manaWei: '2500000000000000000' })
     })
 
     it('should tag a secondary (public_nft_order) native row and keep its tokenId', async () => {
