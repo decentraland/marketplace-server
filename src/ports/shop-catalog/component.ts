@@ -534,24 +534,32 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       FROM (`.append(inner).append(SQL`) sub
       WHERE sub.usd_wei > 0`)
 
+    // minPriceCredits is a floor on the DISPLAYED price, which is CEIL(usd_wei / USD_WEI_PER_CREDIT).
+    // CEIL(x / C) >= m  <=>  x > (m - 1) * C, so the correct bound on usd_wei is (minWei - USD_WEI_PER_CREDIT).
+    // A plain `usd_wei >= minWei` (minWei = m * C) wrongly drops fractional-priced legacy items whose CEIL
+    // equals m but whose usd_wei sits just below m * C. Skip the filter when the bound would go negative
+    // (m <= 0), where every priced item (usd_wei > 0) already qualifies.
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
-      if (minWei != null) query.append(SQL` AND sub.usd_wei >= ${minWei.toString()}`)
+      if (minWei != null && minWei > 0n) {
+        query.append(SQL` AND sub.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
+      }
     }
     if (filters.maxPriceCredits != null) {
       const maxWei = creditsToWei(filters.maxPriceCredits)
       if (maxWei != null) query.append(SQL` AND sub.usd_wei <= ${maxWei.toString()}`)
     }
 
-    // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
+    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `sub.trade_id`
+    // tiebreaker makes the order total so pagination is stable when many rows share a usd_wei/name.
     const order =
       filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY sub.usd_wei ASC`
+        ? SQL` ORDER BY sub.usd_wei ASC, sub.trade_id`
         : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY sub.usd_wei DESC`
+        ? SQL` ORDER BY sub.usd_wei DESC, sub.trade_id`
         : filters.sortBy === 'name'
-        ? SQL` ORDER BY sub.name ASC`
-        : SQL` ORDER BY sub.created_at DESC`
+        ? SQL` ORDER BY sub.name ASC, sub.trade_id`
+        : SQL` ORDER BY sub.created_at DESC, sub.trade_id`
     query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<UnifiedListingRow>(query)

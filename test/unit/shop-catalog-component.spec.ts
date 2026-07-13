@@ -398,14 +398,52 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain(RATE_STR)
     })
 
-    it('should filter the merged set by a credit price range translated into USD wei', async () => {
+    it('should filter the merged set by a credit price range translated into USD wei (ceil-consistent lower bound)', async () => {
       await shopCatalog.getUnifiedListings({ minPriceCredits: 3, maxPriceCredits: 10 }, RATE)
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('sub.usd_wei >=')
+      // Lower bound is CEIL-consistent: keep usd_wei > (m - 1) * WEI so items whose displayed CEIL price
+      // equals m are included. Upper bound stays an inclusive <=.
+      expect(sql.text).toContain('sub.usd_wei > ')
       expect(sql.text).toContain('sub.usd_wei <=')
-      expect(sql.values).toContain((3n * WEI_PER_CREDIT).toString())
+      expect(sql.values).toContain((2n * WEI_PER_CREDIT).toString())
       expect(sql.values).toContain((10n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should include a fractional-priced legacy item whose displayed (CEIL) credit price equals minPriceCredits', async () => {
+      // A legacy item at usd_wei = 4.2e17 displays as CEIL(4.2) = 5 credits. With minPriceCredits=5 the
+      // ceil-consistent bound is usd_wei > (5-1)*1e17 = 4e17, so 4.2e17 IS included. A naive `>= 5e17`
+      // bound would wrongly exclude it (the fixed bug).
+      await shopCatalog.getUnifiedListings({ minPriceCredits: 5 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.values).toContain((4n * WEI_PER_CREDIT).toString())
+      expect(sql.values).not.toContain((5n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should not append a negative lower bound when minPriceCredits is 0', async () => {
+      await shopCatalog.getUnifiedListings({ minPriceCredits: 0 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      // Only the free-item guard (usd_wei > 0) remains; no negative (m-1)*WEI bound is bound as a value.
+      expect(sql.values).not.toContain((-1n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should append a stable trade_id tiebreaker to every sort so pagination is deterministic', async () => {
+      await shopCatalog.getUnifiedListings({ sortBy: 'cheapest' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei ASC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({ sortBy: 'most_expensive' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei DESC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({ sortBy: 'name' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.name ASC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({}, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.created_at DESC, sub.trade_id')
     })
 
     it('should restrict to the legacy source only when source=legacy (no native branch)', async () => {

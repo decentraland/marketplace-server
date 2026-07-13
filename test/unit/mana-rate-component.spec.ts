@@ -5,11 +5,14 @@ import { IManaUsdRateComponent } from '../../src/ports/mana-rate/types'
 // oracle response. Classes are used for the ethers constructors so `resetMocks` can't wipe them.
 const mockDecimals = jest.fn()
 const mockLatestRoundData = jest.fn()
+const mockDestroy = jest.fn()
 
 jest.mock('ethers', () => ({
   ethers: {
     // eslint-disable-next-line @typescript-eslint/naming-convention -- must match the ethers API names.
-    JsonRpcProvider: class {},
+    JsonRpcProvider: class {
+      destroy = (...args: unknown[]) => mockDestroy(...args)
+    },
     // eslint-disable-next-line @typescript-eslint/naming-convention -- must match the ethers API names.
     Contract: class {
       decimals = (...args: unknown[]) => mockDecimals(...args)
@@ -151,6 +154,35 @@ describe('MANA/USD rate component', () => {
       await component.start?.({} as any)
 
       expect(component.getRate()).toBeCloseTo(0.015, 8)
+    })
+
+    it('should not block startup forever when the oracle hangs, booting on the fallback instead', async () => {
+      mockDecimals.mockResolvedValue(8)
+      // Oracle never answers: the initial refresh hangs, so start() must fall through on the timeout.
+      mockLatestRoundData.mockReturnValue(new Promise(() => undefined))
+      component = await createManaUsdRateComponent({
+        config: createConfig({ ...ORACLE_CONFIG, MANA_USD_FALLBACK_RATE: '0.09', MANA_RATE_STARTUP_TIMEOUT_MS: '20' }),
+        logs
+      })
+
+      await component.start?.({} as any)
+
+      // Booted without a live rate; still returns the fallback rather than wedging.
+      expect(component.getRate()).toBe(0.09)
+    })
+  })
+
+  describe('when stopping the component', () => {
+    it('should destroy the RPC provider so its sockets/timers are released', async () => {
+      mockDecimals.mockResolvedValue(8)
+      mockLatestRoundData.mockResolvedValue(roundData({ answer: 2_000_000n }))
+      component = await createManaUsdRateComponent({ config: createConfig(ORACLE_CONFIG), logs })
+      // A refresh builds the provider so stop() has something to tear down.
+      await component.refresh()
+
+      await component.stop?.()
+
+      expect(mockDestroy).toHaveBeenCalledTimes(1)
     })
   })
 })

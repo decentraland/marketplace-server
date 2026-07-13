@@ -15,6 +15,9 @@ const AGGREGATOR_ABI = [
 const DEFAULT_REFRESH_INTERVAL_MS = 90_000
 const DEFAULT_FALLBACK_RATE = 0.02 // USD per MANA
 const DEFAULT_MAX_STALENESS_SECONDS = 86_400
+// Upper bound on how long the initial refresh in start() may block. A slow/unreachable RPC must not
+// wedge component startup: after this the server boots on the fallback and the interval keeps trying.
+const DEFAULT_STARTUP_REFRESH_TIMEOUT_MS = 5_000
 
 export async function createManaUsdRateComponent(components: Pick<AppComponents, 'config' | 'logs'>): Promise<IManaUsdRateComponent> {
   const { config, logs } = components
@@ -23,12 +26,14 @@ export async function createManaUsdRateComponent(components: Pick<AppComponents,
   const refreshIntervalMs = (await config.getNumber('MANA_RATE_REFRESH_INTERVAL_MS')) ?? DEFAULT_REFRESH_INTERVAL_MS
   const fallbackRate = (await config.getNumber('MANA_USD_FALLBACK_RATE')) ?? DEFAULT_FALLBACK_RATE
   const maxStalenessSeconds = (await config.getNumber('MANA_ORACLE_MAX_STALENESS_SECONDS')) ?? DEFAULT_MAX_STALENESS_SECONDS
+  const startupRefreshTimeoutMs = (await config.getNumber('MANA_RATE_STARTUP_TIMEOUT_MS')) ?? DEFAULT_STARTUP_REFRESH_TIMEOUT_MS
 
   // Last successfully-fetched rate; `undefined` until the first success, in which case getRate() falls
   // back to the configured value.
   let cachedRate: number | undefined
   let interval: ReturnType<typeof setInterval> | undefined
 
+  let provider: ethers.JsonRpcProvider | undefined
   let aggregator: ethers.Contract | undefined
   let decimalsCache: number | undefined
 
@@ -40,7 +45,8 @@ export async function createManaUsdRateComponent(components: Pick<AppComponents,
       if (!rpcUrl || !oracleAddress) {
         return undefined
       }
-      aggregator = new ethers.Contract(oracleAddress, AGGREGATOR_ABI, new ethers.JsonRpcProvider(rpcUrl))
+      provider = new ethers.JsonRpcProvider(rpcUrl)
+      aggregator = new ethers.Contract(oracleAddress, AGGREGATOR_ABI, provider)
     }
     return aggregator
   }
@@ -92,7 +98,15 @@ export async function createManaUsdRateComponent(components: Pick<AppComponents,
   }
 
   async function start(): Promise<void> {
-    await refresh()
+    // Bound the initial refresh: a slow/unreachable RPC must not wedge startup. If it wins we boot with
+    // a live rate; if the timeout wins we boot on the fallback and the still-running refresh (plus the
+    // interval below) updates the cache as soon as the oracle answers. refresh() never rejects.
+    let startupTimer: ReturnType<typeof setTimeout> | undefined
+    const bound = new Promise<void>(resolve => {
+      startupTimer = setTimeout(resolve, startupRefreshTimeoutMs)
+      startupTimer.unref?.()
+    })
+    await Promise.race([refresh().finally(() => startupTimer && clearTimeout(startupTimer)), bound])
     interval = setInterval(() => {
       refresh().catch(() => undefined)
     }, refreshIntervalMs)
@@ -105,6 +119,10 @@ export async function createManaUsdRateComponent(components: Pick<AppComponents,
       clearInterval(interval)
       interval = undefined
     }
+    // Release the RPC provider's sockets/timers so the process can exit cleanly.
+    provider?.destroy()
+    provider = undefined
+    aggregator = undefined
   }
 
   return { getRate, refresh, start, stop }
