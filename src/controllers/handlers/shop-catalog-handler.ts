@@ -3,6 +3,7 @@ import { Params } from '../../logic/http/params'
 import { asJSON } from '../../logic/http/response'
 import { ShopSortBy, UnifiedListingSource, SHOP_DEFAULT_PAGE_SIZE, SHOP_MAX_PAGE_SIZE } from '../../ports/shop-catalog/types'
 import { AppComponents, Context } from '../../types'
+import { getItemsParams } from './utils'
 
 // Valid sort values, as a map so Params.getValue can validate the query param against them (mirrors
 // how the catalog handler validates CatalogSortBy) and return undefined for anything unexpected.
@@ -143,6 +144,28 @@ export function createShopUnifiedHandler(
         },
         rate
       )
+      return { data, total }
+    })
+  }
+}
+
+// GET /v3/catalog/items -- the credit-aware CATALOG-ITEMS feed. Same data source and full-catalog
+// semantics as GET /v1/items (ALL items incl. not-on-sale, keyed by item, filterable by creator,
+// contractAddress, category, rarity, search, ...) but every item carries a server-computed,
+// asset-type-aware priceCredits (USD-pegged items pass through; MANA-priced ones are converted with the
+// live MANA/USD rate). Returns { data, total } where each item is the /v1/items shape plus priceCredits.
+export function createCatalogItemsHandler(
+  components: Pick<AppComponents, 'items' | 'manaUsdRate'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/items'>> {
+  const { items, manaUsdRate } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const filters = getItemsParams(params)
+
+    return asJSON(async () => {
+      const rate = manaUsdRate.getRate()
+      const { data, total } = await items.getCatalogItems(filters, rate)
       return { data, total }
     })
   }

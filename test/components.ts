@@ -283,7 +283,8 @@ export function createTestAccessComponent(
 export function createTestItemsComponent({ validateItemExists = jest.fn() }): IItemsComponent {
   return {
     validateItemExists,
-    getItems: jest.fn()
+    getItems: jest.fn(),
+    getCatalogItems: jest.fn()
   }
 }
 
