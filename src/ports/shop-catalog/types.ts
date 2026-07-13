@@ -36,6 +36,7 @@ export type ShopCatalogFilters = {
   category?: string // 'wearable' | 'emote'
   contractAddress?: string
   itemId?: string
+  creator?: string // item creator address — a creator's storefront (their credit-buyable listings)
   rarities?: string[]
   wearableCategories?: string[] // on-chain categories (upper_body, hat, ...)
   minPriceCredits?: number
