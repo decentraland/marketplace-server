@@ -4,6 +4,11 @@ import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../chainIds'
 
 export const TRADES_MV_NAME = 'mv_trades'
+// Minimum time between materialized view refreshes. Writes on the source tables
+// only pay a refresh when this interval has elapsed; refreshing on every statement
+// starved the squid indexers (each nft/item statement paid a full CONCURRENTLY
+// refresh, ~2s of temp-file I/O).
+export const TRADES_MV_REFRESH_INTERVAL_SECONDS = 30
 
 export async function recreateTradesMaterializedView(db: IPgComponent) {
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
@@ -215,14 +220,45 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
     )
 
-    // Create refresh function
+    // Single-row gate recording the last refresh time, shared by every trigger
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS marketplace.mv_trades_refresh_state (
+        id boolean PRIMARY KEY DEFAULT true CHECK (id),
+        last_refresh timestamptz NOT NULL DEFAULT '-infinity'
+      );
+    `)
+    await client.query('INSERT INTO marketplace.mv_trades_refresh_state (id) VALUES (true) ON CONFLICT (id) DO NOTHING')
+    // Trigger functions run as whoever performs the write. Every user able to run
+    // the trigger successfully is already a member of mv_trades_owner (the REFRESH
+    // itself requires it), so that role is exactly the right audience for the gate
+    await client.query('GRANT SELECT, UPDATE ON marketplace.mv_trades_refresh_state TO mv_trades_owner')
+
+    // Create refresh function. The UPDATE is an atomic gate: only one writing
+    // statement per interval wins and pays the refresh; concurrent writers skip
+    // immediately (SKIP LOCKED) instead of queueing behind the winner. last_refresh
+    // must be clock_timestamp() (wall clock), not now() (transaction start): a
+    // long-running writing transaction would otherwise record a stale timestamp and
+    // re-open the gate immediately. Worst-case staleness is the interval plus the
+    // winner's remaining transaction time, since the row lock is held to commit.
     await client.query(`
       CREATE OR REPLACE FUNCTION refresh_trades_mv()
           RETURNS TRIGGER
           LANGUAGE plpgsql
           AS $$
           BEGIN
-          REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME};
+          UPDATE marketplace.mv_trades_refresh_state s
+             SET last_refresh = clock_timestamp()
+            FROM (
+              SELECT id FROM marketplace.mv_trades_refresh_state
+               WHERE last_refresh < now() - interval '${TRADES_MV_REFRESH_INTERVAL_SECONDS} seconds'
+               FOR UPDATE SKIP LOCKED
+            ) gate
+           WHERE s.id = gate.id;
+
+          IF FOUND THEN
+            REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME};
+          END IF;
+
           RETURN NULL;
       END;
       $$;
