@@ -189,7 +189,7 @@ function unifiedBranch(opts: {
     )
     // Raw MANA price, exposed only for legacy (MANA-priced) items so the client can size the purchase
     // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price.
-    .append(applyRate ? SQL`mv.amount_received::text AS mana_wei` : SQL`NULL::text AS mana_wei`)
+    .append(applyRate ? SQL`mv.amount_received::text AS mana_wei ` : SQL`NULL::text AS mana_wei `)
     .append(metadataJoins()).append(SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)`)

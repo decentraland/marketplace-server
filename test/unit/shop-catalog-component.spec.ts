@@ -372,6 +372,18 @@ describe('Shop Catalog Component', () => {
       query.mockResolvedValue({ rows: [] })
     })
 
+    it('should keep the mana_wei column separated from the FROM clause (no token concatenation)', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM`, a SQL syntax error.
+      expect(text).not.toMatch(/mana_weiFROM/)
+      expect(text).toContain('AS mana_wei FROM marketplace.mv_trades')
+      // Both branches: native has no MANA price, legacy carries the raw amount.
+      expect(text).toContain('NULL::text AS mana_wei FROM')
+      expect(text).toContain('mv.amount_received::text AS mana_wei FROM')
+    })
+
     it('should merge native and legacy sources with UNION ALL by default', async () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 
