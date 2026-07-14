@@ -64,6 +64,20 @@ function metadataJoins() {
     .append(SQL`.item item_s ON mv.type = 'public_nft_order' AND item_s.id = nft.item_id`)
 }
 
+// Display gender as a SELECT expression, derived from the item's supported body shapes
+// (search_wearable_body_shapes contains 'BaseMale'/'BaseFemale'). Both -> unisex, one -> that gender,
+// neither/emote -> null. COALESCE(item_p, item_s) picks whichever side of the primary/secondary join
+// is populated; ::text[] on both sides keeps the @> element types matching. No params -> safe to weave
+// straight into the SELECT list.
+function genderExpr() {
+  return SQL`CASE
+      WHEN COALESCE(item_p.search_wearable_body_shapes, item_s.search_wearable_body_shapes)::text[] @> ARRAY['BaseMale','BaseFemale']::text[] THEN 'unisex'
+      WHEN COALESCE(item_p.search_wearable_body_shapes, item_s.search_wearable_body_shapes)::text[] @> ARRAY['BaseMale']::text[] THEN 'male'
+      WHEN COALESCE(item_p.search_wearable_body_shapes, item_s.search_wearable_body_shapes)::text[] @> ARRAY['BaseFemale']::text[] THEN 'female'
+      ELSE NULL
+    END AS gender`
+}
+
 // 1 credit = $0.10; $1 = 1e18 USD wei = 10 credits, so 1 credit = 1e17 USD wei.
 const USD_WEI_PER_CREDIT = 100000000000000000n
 
@@ -190,6 +204,9 @@ function unifiedBranch(opts: {
     // Raw MANA price, exposed only for legacy (MANA-priced) items so the client can size the purchase
     // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price.
     .append(applyRate ? SQL`mv.amount_received::text AS mana_wei ` : SQL`NULL::text AS mana_wei `)
+    .append(SQL`, `)
+    .append(genderExpr())
+    .append(SQL` `)
     .append(metadataJoins()).append(SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)`)
@@ -236,7 +253,11 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         mv.network AS network,
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
         COUNT(*) OVER() AS total
-      `.append(metadataJoins()).append(SQL`
+      `
+      .append(SQL`, `)
+      .append(genderExpr())
+      .append(SQL` `)
+      .append(metadataJoins()).append(SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)
         AND EXISTS (
@@ -316,6 +337,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         rarity: (r.rarity ?? 'common').toLowerCase(),
         category: topLevelCategory(r.item_type),
         wearableCategory: r.wearable_category,
+        gender: r.gender ?? null,
         creator: r.creator ?? '',
         priceCredits,
         available: r.available ? Number(r.available) : 1,
@@ -416,7 +438,11 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         mv.network AS network,
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
         COUNT(*) OVER() AS total
-      `.append(metadataJoins()).append(SQL`
+      `
+      .append(SQL`, `)
+      .append(genderExpr())
+      .append(SQL` `)
+      .append(metadataJoins()).append(SQL`
       WHERE mv.status = 'open'
         AND mv.type = 'public_item_order'
         AND (mv.available IS NULL OR mv.available > 0)
@@ -472,6 +498,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         rarity: (r.rarity ?? 'common').toLowerCase(),
         category: topLevelCategory(r.item_type),
         wearableCategory: r.wearable_category,
+        gender: r.gender ?? null,
         creator: r.creator ?? '',
         manaWei: r.mana_wei,
         available: r.available ? Number(r.available) : 1,
@@ -584,6 +611,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         rarity: (r.rarity ?? 'common').toLowerCase(),
         category: topLevelCategory(r.item_type),
         wearableCategory: r.wearable_category,
+        gender: r.gender ?? null,
         creator: r.creator ?? '',
         priceCredits: Number(r.price_credits),
         manaWei: r.mana_wei ?? null,

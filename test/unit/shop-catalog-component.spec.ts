@@ -61,6 +61,7 @@ function unifiedRow(overrides: Record<string, unknown> = {}) {
     rarity: 'RARE',
     item_type: 'wearable_v2',
     wearable_category: 'hat',
+    gender: 'unisex',
     creator: '0xcreator',
     price_credits: '5',
     mana_wei: null,
@@ -372,16 +373,18 @@ describe('Shop Catalog Component', () => {
       query.mockResolvedValue({ rows: [] })
     })
 
-    it('should keep the mana_wei column separated from the FROM clause (no token concatenation)', async () => {
+    it('should keep the trailing SELECT columns separated from the FROM clause (no token concatenation)', async () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 
       const text = query.mock.calls[0][0].text as string
-      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM`, a SQL syntax error.
+      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM` / `genderFROM`, both
+      // SQL syntax errors. gender is the last SELECT column before FROM; mana_wei precedes it.
       expect(text).not.toMatch(/mana_weiFROM/)
-      expect(text).toContain('AS mana_wei FROM marketplace.mv_trades')
-      // Both branches: native has no MANA price, legacy carries the raw amount.
-      expect(text).toContain('NULL::text AS mana_wei FROM')
-      expect(text).toContain('mv.amount_received::text AS mana_wei FROM')
+      expect(text).not.toMatch(/genderFROM/)
+      expect(text).toContain('END AS gender FROM marketplace.mv_trades')
+      // Both branches carry a mana_wei column, comma-separated from the gender expression that follows.
+      expect(text).toContain('NULL::text AS mana_wei ,')
+      expect(text).toContain('mv.amount_received::text AS mana_wei ,')
     })
 
     it('should merge native and legacy sources with UNION ALL by default', async () => {
@@ -530,6 +533,20 @@ describe('Shop Catalog Component', () => {
       const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
 
       expect(data[0]).toMatchObject({ source: 'native', listingType: 'secondary', tokenId: '99', priceCredits: 7 })
+    })
+
+    it('should surface the body-shape-derived gender and coalesce a missing one to null', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({ trade_id: 'm', gender: 'male' }),
+          unifiedRow({ trade_id: 'f', gender: 'female' }),
+          unifiedRow({ trade_id: 'e', gender: null }) // emote / no body shapes
+        ]
+      })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(data.map(d => d.gender)).toEqual(['male', 'female', null])
     })
   })
 })

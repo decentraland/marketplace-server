@@ -9,6 +9,10 @@ export const SHOP_MAX_PAGE_SIZE = 1000
 
 export type ShopListingType = 'primary' | 'secondary'
 
+// Display gender, derived from a wearable's supported body shapes (BaseMale/BaseFemale). `null` for
+// emotes or items with no body-shape metadata.
+export type ShopGender = 'male' | 'female' | 'unisex' | null
+
 export type ShopListing = {
   tradeId: string
   listingType: ShopListingType
@@ -20,6 +24,7 @@ export type ShopListing = {
   rarity: string
   category: string // top-level: 'wearable' | 'emote'
   wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  gender: ShopGender // male | female | unisex (from body shapes); null for emotes/unknown
   creator: string
   priceCredits: number // USD -> fixed credits (1 credit = $0.10)
   available: number
@@ -77,6 +82,7 @@ export type LegacyListing = {
   rarity: string
   category: string // top-level: 'wearable' | 'emote'
   wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  gender: ShopGender // male | female | unisex (from body shapes); null for emotes/unknown
   creator: string
   manaWei: string // raw MANA price; the client converts to credits via the oracle
   available: number
@@ -155,6 +161,7 @@ export type ShopListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  gender: ShopGender
   creator: string | null
   price: string
   available: string | null
@@ -177,6 +184,7 @@ export type UnifiedListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  gender: ShopGender
   creator: string | null
   price_credits: string
   mana_wei: string | null
@@ -196,6 +204,7 @@ export type LegacyListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  gender: ShopGender
   creator: string | null
   mana_wei: string
   available: string | null
