@@ -46,6 +46,33 @@ function legacyRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+// A row from the unified feed. priceCredits is computed in SQL (CEIL of the USD-wei-equivalent), so a
+// test that mocks the query supplies it directly; SQL-shape assertions cover the conversion itself.
+function unifiedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    source: 'native',
+    trade_id: 'trade-1',
+    trade_type: 'public_item_order',
+    contract_address: '0xcollection',
+    item_id: '3',
+    token_id: null,
+    name: 'Cool Hat',
+    image: 'ipfs://hat.png',
+    rarity: 'RARE',
+    item_type: 'wearable_v2',
+    wearable_category: 'hat',
+    gender: 'unisex',
+    creator: '0xcreator',
+    price_credits: '5',
+    mana_wei: null,
+    available: '10',
+    network: 'MATIC',
+    created_at: '1700000000000',
+    total: '1',
+    ...overrides
+  }
+}
+
 describe('Shop Catalog Component', () => {
   let shopCatalog: IShopCatalogComponent
   let query: jest.Mock
@@ -348,6 +375,192 @@ describe('Shop Catalog Component', () => {
         network: 'MATIC',
         createdAt: 1700000000000
       })
+    })
+  })
+
+  describe('when building the unified listings query', () => {
+    // 0.5 USD/MANA, formatted the way the component binds it into the numeric multiply.
+    const RATE = 0.5
+    const RATE_STR = RATE.toFixed(18)
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should keep the trailing SELECT columns separated from the FROM clause (no token concatenation)', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM` / `genderFROM`, both
+      // SQL syntax errors. gender is the last SELECT column before FROM; mana_wei precedes it.
+      expect(text).not.toMatch(/mana_weiFROM/)
+      expect(text).not.toMatch(/genderFROM/)
+      expect(text).toContain('END AS gender FROM marketplace.mv_trades')
+      // Both branches carry a mana_wei column, comma-separated from the gender expression that follows.
+      expect(text).toContain('NULL::text AS mana_wei ,')
+      expect(text).toContain('mv.amount_received::text AS mana_wei ,')
+    })
+
+    it('should merge native and legacy sources with UNION ALL by default', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('UNION ALL')
+      // Both asset types are present: native (USD-pegged = 2) and legacy classic ERC20 (= 1).
+      expect(sql.values).toContain(2)
+      expect(sql.values).toContain(1)
+    })
+
+    it('should compute priceCredits in SQL as CEIL of the USD-wei-equivalent', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('CEIL(sub.usd_wei /')
+      expect(sql.text).toContain('AS price_credits')
+    })
+
+    it('should apply the MANA/USD rate to legacy amounts but leave native amounts untouched', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      // Legacy branch multiplies the raw MANA amount by the bound rate; native branch does not.
+      expect(sql.text).toContain('mv.amount_received::numeric * ')
+      expect(sql.values).toContain(RATE_STR)
+    })
+
+    it('should filter the merged set by a credit price range translated into USD wei (ceil-consistent lower bound)', async () => {
+      await shopCatalog.getUnifiedListings({ minPriceCredits: 3, maxPriceCredits: 10 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      // Lower bound is CEIL-consistent: keep usd_wei > (m - 1) * WEI so items whose displayed CEIL price
+      // equals m are included. Upper bound stays an inclusive <=.
+      expect(sql.text).toContain('sub.usd_wei > ')
+      expect(sql.text).toContain('sub.usd_wei <=')
+      expect(sql.values).toContain((2n * WEI_PER_CREDIT).toString())
+      expect(sql.values).toContain((10n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should include a fractional-priced legacy item whose displayed (CEIL) credit price equals minPriceCredits', async () => {
+      // A legacy item at usd_wei = 4.2e17 displays as CEIL(4.2) = 5 credits. With minPriceCredits=5 the
+      // ceil-consistent bound is usd_wei > (5-1)*1e17 = 4e17, so 4.2e17 IS included. A naive `>= 5e17`
+      // bound would wrongly exclude it (the fixed bug).
+      await shopCatalog.getUnifiedListings({ minPriceCredits: 5 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.values).toContain((4n * WEI_PER_CREDIT).toString())
+      expect(sql.values).not.toContain((5n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should not append a negative lower bound when minPriceCredits is 0', async () => {
+      await shopCatalog.getUnifiedListings({ minPriceCredits: 0 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      // Only the free-item guard (usd_wei > 0) remains; no negative (m-1)*WEI bound is bound as a value.
+      expect(sql.values).not.toContain((-1n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should append a stable trade_id tiebreaker to every sort so pagination is deterministic', async () => {
+      await shopCatalog.getUnifiedListings({ sortBy: 'cheapest' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei ASC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({ sortBy: 'most_expensive' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei DESC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({ sortBy: 'name' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.name ASC, sub.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({}, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.created_at DESC, sub.trade_id')
+    })
+
+    it('should restrict to the legacy source only when source=legacy (no native branch)', async () => {
+      await shopCatalog.getUnifiedListings({ source: 'legacy' }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('UNION ALL')
+      expect(sql.values).toContain(1)
+      expect(sql.values).not.toContain(2)
+    })
+
+    it('should restrict to the native source only when source=native (no legacy branch)', async () => {
+      await shopCatalog.getUnifiedListings({ source: 'native' }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('UNION ALL')
+      expect(sql.values).toContain(2)
+      expect(sql.values).not.toContain(1)
+    })
+
+    it('should sort the merged set on the USD-wei-equivalent, never on user input', async () => {
+      await shopCatalog.getUnifiedListings({ sortBy: 'cheapest' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei ASC')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({ sortBy: 'most_expensive' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.usd_wei DESC')
+
+      query.mockClear()
+      await shopCatalog.getUnifiedListings({}, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.created_at DESC')
+    })
+
+    it('should drop free items via a usd_wei guard on the merged set', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      expect(query.mock.calls[0][0].text).toContain('sub.usd_wei > 0')
+    })
+  })
+
+  describe('when mapping unified listing rows', () => {
+    it('should carry a server-computed priceCredits and a source discriminator for each item', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({ source: 'native', trade_id: 'native-1', price_credits: '5', mana_wei: null, total: '2' }),
+          unifiedRow({
+            source: 'legacy',
+            trade_id: 'legacy-1',
+            trade_type: 'public_item_order',
+            token_id: null,
+            price_credits: '3',
+            mana_wei: '2500000000000000000',
+            total: '2'
+          })
+        ]
+      })
+
+      const { data, total } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(total).toBe(2)
+      // Native carries no MANA price; legacy carries the raw MANA wei for live-rate sizing at checkout.
+      expect(data[0]).toMatchObject({ source: 'native', tradeId: 'native-1', priceCredits: 5, manaWei: null })
+      expect(data[1]).toMatchObject({ source: 'legacy', tradeId: 'legacy-1', priceCredits: 3, manaWei: '2500000000000000000' })
+    })
+
+    it('should tag a secondary (public_nft_order) native row and keep its tokenId', async () => {
+      query.mockResolvedValueOnce({
+        rows: [unifiedRow({ source: 'native', trade_type: 'public_nft_order', token_id: '99', item_id: null, price_credits: '7' })]
+      })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(data[0]).toMatchObject({ source: 'native', listingType: 'secondary', tokenId: '99', priceCredits: 7 })
+    })
+
+    it('should surface the body-shape-derived gender and coalesce a missing one to null', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({ trade_id: 'm', gender: 'male' }),
+          unifiedRow({ trade_id: 'f', gender: 'female' }),
+          unifiedRow({ trade_id: 'e', gender: null }) // emote / no body shapes
+        ]
+      })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(data.map(d => d.gender)).toEqual(['male', 'female', null])
     })
   })
 })

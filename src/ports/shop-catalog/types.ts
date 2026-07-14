@@ -9,6 +9,10 @@ export const SHOP_MAX_PAGE_SIZE = 1000
 
 export type ShopListingType = 'primary' | 'secondary'
 
+// Display gender, derived from a wearable's supported body shapes (BaseMale/BaseFemale). `null` for
+// emotes or items with no body-shape metadata.
+export type ShopGender = 'male' | 'female' | 'unisex' | null
+
 export type ShopListing = {
   tradeId: string
   listingType: ShopListingType
@@ -20,6 +24,7 @@ export type ShopListing = {
   rarity: string
   category: string // top-level: 'wearable' | 'emote'
   wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  gender: ShopGender // male | female | unisex (from body shapes); null for emotes/unknown
   creator: string
   priceCredits: number // USD -> fixed credits (1 credit = $0.10)
   available: number
@@ -78,6 +83,7 @@ export type LegacyListing = {
   rarity: string
   category: string // top-level: 'wearable' | 'emote'
   wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  gender: ShopGender // male | female | unisex (from body shapes); null for emotes/unknown
   creator: string
   manaWei: string // raw MANA price; the client converts to credits via the oracle
   available: number
@@ -98,10 +104,34 @@ export type LegacyCatalogFilters = {
   sortBy?: ShopSortBy
 }
 
+// Which liquidity pool a unified item comes from: 'native' = credit-buyable (USD-pegged) Shop listing,
+// 'legacy' = classic MANA-priced primary converted to credits server-side via the live MANA/USD rate.
+export type UnifiedListingSource = 'native' | 'legacy'
+
+// A unified feed item: the same shape as a ShopListing (so the frontend consumes both uniformly) plus
+// the source discriminator. Legacy items always carry a server-computed priceCredits, converted from
+// their raw MANA price with the live rate and rounded UP to whole credits (same "Model B" as native).
+export type UnifiedListing = ShopListing & {
+  source: UnifiedListingSource
+  // Raw MANA price (wei), present only for legacy items so the client can size the purchase at the live
+  // rate at checkout. `null` for native (USD-pegged) items.
+  manaWei: string | null
+}
+
+// Filters for the unified feed: the full ShopCatalogFilters (price-range works across BOTH sources now
+// that the server has a MANA/USD rate) plus an optional source filter to restrict to one pool.
+export type UnifiedCatalogFilters = ShopCatalogFilters & {
+  source?: UnifiedListingSource
+}
+
 export interface IShopCatalogComponent {
   getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }>
   getImportableListings(seller: string): Promise<ImportableListing[]>
   getLegacyListings(filters: LegacyCatalogFilters): Promise<{ data: LegacyListing[]; total: number }>
+  // Merges native (USD-pegged) and legacy (classic MANA) listings into ONE credit-priced feed. The
+  // caller supplies the current MANA/USD rate (USD per MANA) used to convert legacy prices to credits
+  // and to make the price-range filter + sort comparable across both sources.
+  getUnifiedListings(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedListing[]; total: number }>
 }
 
 export type ImportableListingRow = {
@@ -132,8 +162,33 @@ export type ShopListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  gender: ShopGender
   creator: string | null
   price: string
+  available: string | null
+  network: string | null
+  created_at: string
+  total: string
+}
+
+// Raw DB row for the unified feed (native + legacy), before mapping to UnifiedListing. priceCredits is
+// computed in SQL (CEIL of the USD-wei-equivalent) so the merged feed is sorted/paginated as one set.
+export type UnifiedListingRow = {
+  source: UnifiedListingSource
+  trade_id: string
+  trade_type: string
+  contract_address: string
+  item_id: string | null
+  token_id: string | null
+  name: string | null
+  image: string | null
+  rarity: string | null
+  item_type: string | null
+  wearable_category: string | null
+  gender: ShopGender
+  creator: string | null
+  price_credits: string
+  mana_wei: string | null
   available: string | null
   network: string | null
   created_at: string
@@ -150,6 +205,7 @@ export type LegacyListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  gender: ShopGender
   creator: string | null
   mana_wei: string
   available: string | null

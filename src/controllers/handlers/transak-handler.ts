@@ -1,4 +1,5 @@
 import { isErrorWithMessage } from '../../logic/errors'
+import { getClientIp } from '../../logic/http/ip'
 import { WidgetOptions, OrderResponse } from '../../ports/transak/types'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
@@ -7,12 +8,13 @@ export async function createTransakHandler(
 ): Promise<HTTPResponse<OrderResponse>> {
   const {
     verification,
+    request,
     components: { transak }
   } = context
 
   const id = context.params.id
   const userAddress: string | undefined = verification?.auth.toLowerCase()
-  const order = await transak.getOrder(id)
+  const order = await transak.getOrder(id, getClientIp(request))
 
   if (!userAddress || (!!userAddress && userAddress !== order.data.walletAddress.toLocaleLowerCase())) {
     return {
@@ -44,7 +46,7 @@ export async function createTransakWidgetHandler(
   const widgetOptions: Partial<WidgetOptions> = await request.json()
 
   try {
-    const widgetUrl = await transak.getWidget(widgetOptions)
+    const widgetUrl = await transak.getWidget(widgetOptions, getClientIp(request))
 
     return {
       status: StatusCode.OK,
