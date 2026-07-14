@@ -11,11 +11,22 @@ describe('when handling Transak endpoints', () => {
       HandlerContextWithPath<'transak', '/v1/transak/orders/:id'>,
       'url' | 'components' | 'request' | 'verification' | 'params'
     >
+    let mockGetOrder: jest.Mock
 
     beforeEach(() => {
+      mockGetOrder = jest.fn().mockResolvedValue({
+        meta: { orderId: 'an-order-id' },
+        data: {
+          id: 'an-order-id',
+          status: 'COMPLETED',
+          transactionHash: '0x0',
+          walletAddress: '0xabcdef1234567890',
+          errorMessage: null
+        }
+      })
       context = {
         url: new URL('http://localhost/v1/transak/orders/an-order-id'),
-        request: {} as Request,
+        request: { headers: { get: jest.fn().mockReturnValue(null) } } as unknown as Request,
         verification: {
           auth: '0xABCDEF1234567890',
           authMetadata: {}
@@ -23,16 +34,7 @@ describe('when handling Transak endpoints', () => {
         params: { id: 'an-order-id' },
         components: {
           transak: {
-            getOrder: jest.fn().mockResolvedValue({
-              meta: { orderId: 'an-order-id' },
-              data: {
-                id: 'an-order-id',
-                status: 'COMPLETED',
-                transactionHash: '0x0',
-                walletAddress: '0xabcdef1234567890',
-                errorMessage: null
-              }
-            }),
+            getOrder: mockGetOrder,
             getWidget: jest.fn(),
             getOrRefreshAccessToken: jest.fn()
           }
@@ -81,6 +83,16 @@ describe('when handling Transak endpoints', () => {
           data: expect.objectContaining({ meta: { orderId: 'an-order-id' } })
         })
       })
+
+      it('should forward the client IP from cf-connecting-ip to getOrder', async () => {
+        ;(context.request.headers.get as jest.Mock).mockImplementation((header: string) =>
+          header === 'cf-connecting-ip' ? '203.0.113.7' : null
+        )
+
+        await createTransakHandler(context)
+
+        expect(mockGetOrder).toHaveBeenCalledWith('an-order-id', '203.0.113.7')
+      })
     })
   })
 
@@ -103,7 +115,8 @@ describe('when handling Transak endpoints', () => {
           }
         },
         request: {
-          json: mockJson
+          json: mockJson,
+          headers: { get: jest.fn().mockReturnValue(null) }
         } as unknown as Request
       }
     })
@@ -123,10 +136,13 @@ describe('when handling Transak endpoints', () => {
       it('should call getWidget with provided options and return 200 with the widget URL', async () => {
         const result = await createTransakWidgetHandler(context)
 
-        expect(mockGetWidget).toHaveBeenCalledWith({
-          fiatAmount: 150,
-          fiatCurrency: 'EUR'
-        })
+        expect(mockGetWidget).toHaveBeenCalledWith(
+          {
+            fiatAmount: 150,
+            fiatCurrency: 'EUR'
+          },
+          undefined
+        )
 
         expect(result).toEqual({
           status: StatusCode.OK,
@@ -143,12 +159,24 @@ describe('when handling Transak endpoints', () => {
       it('should call getWidget with empty options and return 200 with the widget URL', async () => {
         const result = await createTransakWidgetHandler(context)
 
-        expect(mockGetWidget).toHaveBeenCalledWith({})
+        expect(mockGetWidget).toHaveBeenCalledWith({}, undefined)
 
         expect(result).toEqual({
           status: StatusCode.OK,
           body: { ok: true, data: 'https://widget-url' }
         })
+      })
+    })
+
+    describe('and the request carries a client IP', () => {
+      it('should forward the originating IP from x-forwarded-for to getWidget', async () => {
+        ;(context.request.headers.get as jest.Mock).mockImplementation((header: string) =>
+          header === 'x-forwarded-for' ? '198.51.100.4, 10.0.0.1' : null
+        )
+
+        await createTransakWidgetHandler(context)
+
+        expect(mockGetWidget).toHaveBeenCalledWith({}, '198.51.100.4')
       })
     })
 
