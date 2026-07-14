@@ -29,6 +29,7 @@ import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/pi
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
 import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
+import { createManaUsdRateComponent } from '../src/ports/mana-rate/component'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
 import { createOwnersComponent } from '../src/ports/owners/component'
@@ -115,6 +116,7 @@ async function initComponents(): Promise<TestComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const schemaValidator = await createSchemaValidatorComponent()
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
@@ -174,6 +176,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    manaUsdRate,
     wertSigner,
     wertApi,
     ens,
@@ -280,7 +283,8 @@ export function createTestAccessComponent(
 export function createTestItemsComponent({ validateItemExists = jest.fn() }): IItemsComponent {
   return {
     validateItemExists,
-    getItems: jest.fn()
+    getItems: jest.fn(),
+    getCatalogItems: jest.fn()
   }
 }
 

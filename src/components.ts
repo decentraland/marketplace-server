@@ -27,6 +27,7 @@ import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
+import { createManaUsdRateComponent } from './ports/mana-rate/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
 import { createOwnersComponent } from './ports/owners/component'
@@ -146,6 +147,7 @@ export async function initComponents(): Promise<AppComponents> {
   // catalog
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
@@ -200,6 +202,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsWriteDatabase,
     catalog,
     shopCatalog,
+    manaUsdRate,
     wertSigner,
     wertApi,
     ens,
