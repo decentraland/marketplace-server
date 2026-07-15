@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { CollectionItemTradeAsset, Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -16,9 +16,11 @@ import {
   EventNotGeneratedError,
   TradeNotFoundBySignatureError,
   InvalidOwnerError,
-  InvalidEstateTrade
+  InvalidEstateTrade,
+  DuplicateItemOrderError
 } from './errors'
 import {
+  getAcquireItemOrderLockQuery,
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
@@ -27,7 +29,14 @@ import {
   getTradesByAddressQuery
 } from './queries'
 import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
-import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
+import {
+  assertNoOpenItemOrder,
+  getNotificationEventForTrade,
+  isERC721TradeAsset,
+  isEstateChain,
+  isValidEstateTrade,
+  validateTradeByType
+} from './utils'
 
 type TradeWithAssetRow = {
   trade_id: string
@@ -184,6 +193,28 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
 
     const insertedTrade = await pg.withTransaction(
       async client => {
+        // For item orders, serialize concurrent creations for the same item with a transaction-scoped
+        // advisory lock and re-check for an existing open order inside the transaction. The earlier
+        // validateTradeByType check is not enough on its own: two concurrent requests can both pass it
+        // (neither sees the other's uncommitted trade) and create duplicate open orders for the same
+        // item. Holding the lock makes this check-and-insert atomic per item.
+        //
+        // This relies on READ COMMITTED isolation (Postgres' default, used here via a bare BEGIN): the
+        // re-check runs as a new statement after the lock is acquired (i.e. after any competing
+        // transaction has committed and released the lock), so it observes the just-committed order.
+        // Under REPEATABLE READ/SERIALIZABLE the snapshot would be fixed at the lock acquisition and the
+        // re-check could miss it.
+        if (trade.type === TradeType.PUBLIC_ITEM_ORDER) {
+          const sentItem = trade.sent[0] as CollectionItemTradeAsset
+          const itemOrderFilters = {
+            contractAddress: sentItem.contractAddress,
+            itemId: sentItem.itemId,
+            network: trade.network
+          }
+          await client.query(getAcquireItemOrderLockQuery(itemOrderFilters))
+          await assertNoOpenItemOrder(client, itemOrderFilters)
+        }
+
         const query = getInsertTradeQuery({ ...trade, contract: tradeContract.address }, signer)
         const insertedTrade = await client.query<DBTrade>(query)
         const assets = await Promise.all(
@@ -203,6 +234,12 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
         return fromDbTradeAndDBTradeAssetWithValueListToTrade(insertedTrade.rows[0], assets)
       },
       e => {
+        // Preserve typed domain errors thrown inside the transaction so the controller can map them
+        // to the right status code (e.g. DuplicateItemOrderError -> 409). Wrapping them in a generic
+        // Error here would erase the type and surface as a 500.
+        if (e instanceof DuplicateItemOrderError) {
+          throw e
+        }
         throw new Error(isErrorWithMessage(e) ? e.message : 'Could not create trade')
       }
     )

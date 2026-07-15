@@ -1,6 +1,15 @@
 import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
+import {
+  TradeAsset,
+  ListingStatus,
+  TradeAssetType,
+  TradeAssetWithBeneficiary,
+  TradeCreation,
+  TradeType,
+  NFTFilters,
+  Network
+} from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
@@ -172,6 +181,74 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '${type}'
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index, trade_status.caller
+  `
+}
+
+/**
+ * Acquires a transaction-scoped advisory lock keyed on a listed item so that concurrent attempts to
+ * create a `public_item_order` for the same item are serialized. The lock is released automatically
+ * when the surrounding transaction commits or rolls back. This makes the "is there already an open
+ * order?" check and the subsequent insert atomic, closing the check-then-insert race that would
+ * otherwise let two requests create duplicate open orders for the same item.
+ */
+export function getAcquireItemOrderLockQuery(filters: { contractAddress: string; itemId: string; network: Network }) {
+  const lockKey = `public_item_order:${filters.network}:${filters.contractAddress.toLowerCase()}:${filters.itemId}`
+  return SQL`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`
+}
+
+/**
+ * Returns a query that resolves to a single row when an open `public_item_order` already exists for
+ * the given item, and to no rows otherwise. It reads the live `trades`/`trade_assets` tables (not the
+ * `mv_trades` materialized view, which lags behind until it is refreshed) so a just-created listing is
+ * visible immediately. "Open" mirrors the status logic used by `getTradesForTypeQuery`: not expired,
+ * not cancelled on-chain, executed uses below the trade's `uses`, and signer/contract signature
+ * indices still matching the trade's checks.
+ */
+export function getOpenItemOrderExistsQuery(filters: { contractAddress: string; itemId: string; network: Network }) {
+  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
+  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
+  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
+  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
+  const contractSignatureIndexAddresses = [
+    marketplaceEthereum.address.toLowerCase(),
+    marketplacePolygon.address.toLowerCase(),
+    marketplaceEthereumV2.address.toLowerCase(),
+    marketplacePolygonV2.address.toLowerCase()
+  ]
+
+  return SQL`
+    SELECT 1
+    FROM marketplace.trades AS t
+    JOIN marketplace.trade_assets AS ta ON ta.trade_id = t.id AND ta.direction = 'sent'
+    JOIN marketplace.trade_assets_item AS item_asset ON item_asset.asset_id = ta.id
+    LEFT JOIN squid_trades.signature_index AS signer_signature_index
+      ON LOWER(signer_signature_index.address) = LOWER(t.signer) AND signer_signature_index.network = t.network
+    LEFT JOIN (
+      SELECT * FROM squid_trades.signature_index signature_index
+      WHERE LOWER(signature_index.address) = ANY(${contractSignatureIndexAddresses})
+    ) AS contract_signature_index ON t.network = contract_signature_index.network
+    WHERE t.type = ${TradeType.PUBLIC_ITEM_ORDER}
+      AND t.network = ${filters.network}
+      AND ta.contract_address = ${filters.contractAddress.toLowerCase()}
+      AND item_asset.item_id = ${filters.itemId}
+      AND t.expires_at > now()::timestamptz(3)
+      AND NOT EXISTS (
+        SELECT 1 FROM squid_trades.trade st
+        WHERE st.signature = t.hashed_signature AND st.action = 'cancelled'
+      )
+      AND (
+        SELECT COUNT(*) FROM squid_trades.trade st
+        WHERE st.signature = t.hashed_signature AND st.action = 'executed'
+      ) < (t.checks ->> 'uses')::int
+      AND (
+        (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int = 0)
+        OR signer_signature_index.index = (t.checks ->> 'signerSignatureIndex')::int
+      )
+      AND (
+        (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int = 0)
+        OR contract_signature_index.index = (t.checks ->> 'contractSignatureIndex')::int
+      )
+    LIMIT 1
   `
 }
 

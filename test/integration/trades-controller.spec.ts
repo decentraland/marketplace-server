@@ -328,6 +328,203 @@ test('trades controller', function ({ components }) {
     })
   })
 
+  describe('when inserting a public item order', () => {
+    let itemOrder: TradeCreation
+    let response: Response
+    let signer: string
+    let contractAddress: string
+
+    // The duplicate-order check is keyed on the item regardless of signer, and the test database
+    // persists across tests, so each test lists against a freshly generated collection address to
+    // avoid an order created by one test leaking into another.
+    const nextContractAddress = () => {
+      let address = '0x'
+      for (let i = 0; i < 40; i++) {
+        address += Math.floor(Math.random() * 16).toString(16)
+      }
+      return address
+    }
+
+    beforeEach(() => {
+      contractAddress = nextContractAddress()
+      itemOrder = {
+        signature: Math.random().toString(),
+        signer: '0xtest', // overwritten below with the address that signs the request
+        chainId: ChainId.MATIC_AMOY,
+        type: TradeType.PUBLIC_ITEM_ORDER,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.MATIC,
+        sent: [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress,
+            itemId: '0',
+            extra: '0x'
+          }
+        ],
+        received: [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+    })
+
+    describe('and the item order is valid and there is no open order yet', () => {
+      beforeEach(async () => {
+        const { localFetch } = components
+        const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+          intent: 'dcl:create-trade',
+          signer: 'dcl:marketplace'
+        })
+        signer = signedRequest.identity.realAccount.address.toLowerCase()
+        itemOrder = {
+          ...itemOrder,
+          signer,
+          signature: Authenticator.createSignature(signedRequest.identity.realAccount, itemOrder.signature)
+        }
+        response = await localFetch.fetch('/v1/trades', {
+          method: signedRequest.method,
+          body: JSON.stringify(itemOrder),
+          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+        })
+      })
+
+      it('should insert a new trade in db', async () => {
+        const { dappsDatabase } = components
+        const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${itemOrder.signature}`)
+        expect(queryResult.rowCount).toBe(1)
+      })
+
+      it('should insert the sent collection item asset in db', async () => {
+        const { dappsDatabase } = components
+        const queryResult = await dappsDatabase.query(
+          SQL`SELECT * FROM marketplace.trade_assets as ta, marketplace.trade_assets_item as item WHERE trade_id = (SELECT id FROM marketplace.trades WHERE signature = ${itemOrder.signature}) AND item.asset_id = ta.id AND ta.direction = ${TradeAssetDirection.SENT}`
+        )
+        expect(queryResult.rows).toEqual([expect.objectContaining({ item_id: (itemOrder.sent[0] as CollectionItemTradeAsset).itemId })])
+      })
+
+      it('should return 201 status with trade body', async () => {
+        expect(response.status).toEqual(StatusCode.CREATED)
+        expect(await response.json()).toEqual({
+          data: { ...itemOrder, id: expect.any(String), createdAt: expect.any(Number), signer, contract: expect.any(String) },
+          ok: true
+        })
+      })
+    })
+
+    describe('and there is already an open order for the same item', () => {
+      let firstSignature: string
+      let secondSignature: string
+
+      beforeEach(async () => {
+        const { localFetch } = components
+        // The same signer lists the same item twice with two different signatures (a double-submit).
+        const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+          intent: 'dcl:create-trade',
+          signer: 'dcl:marketplace'
+        })
+        signer = signedRequest.identity.realAccount.address.toLowerCase()
+        firstSignature = Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+        secondSignature = Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+
+        await localFetch.fetch('/v1/trades', {
+          method: 'POST',
+          body: JSON.stringify({ ...itemOrder, signer, signature: firstSignature }),
+          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+        })
+        response = await localFetch.fetch('/v1/trades', {
+          method: 'POST',
+          body: JSON.stringify({ ...itemOrder, signer, signature: secondSignature }),
+          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+        })
+      })
+
+      it('should respond with a 409 conflict error', async () => {
+        expect(response.status).toEqual(StatusCode.CONFLICT)
+        expect(await response.json()).toEqual({
+          message: 'There is already an open order for this Item',
+          ok: false
+        })
+      })
+
+      it('should not insert the second trade in db', async () => {
+        const { dappsDatabase } = components
+        const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${secondSignature}`)
+        expect(queryResult.rowCount).toBe(0)
+      })
+
+      it('should keep a single open order for the item in db', async () => {
+        const { dappsDatabase } = components
+        const queryResult = await dappsDatabase.query(
+          SQL`SELECT t.id FROM marketplace.trades as t
+              JOIN marketplace.trade_assets as ta ON ta.trade_id = t.id AND ta.direction = ${TradeAssetDirection.SENT}
+              JOIN marketplace.trade_assets_item as item ON item.asset_id = ta.id
+              WHERE t.type = ${TradeType.PUBLIC_ITEM_ORDER} AND ta.contract_address = ${contractAddress} AND item.item_id = ${
+            (itemOrder.sent[0] as CollectionItemTradeAsset).itemId
+          }`
+        )
+        expect(queryResult.rowCount).toBe(1)
+      })
+    })
+
+    describe('and there is already an open order for a different item of the same collection', () => {
+      let secondItemSignature: string
+
+      beforeEach(async () => {
+        const { localFetch } = components
+        const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+          intent: 'dcl:create-trade',
+          signer: 'dcl:marketplace'
+        })
+        signer = signedRequest.identity.realAccount.address.toLowerCase()
+        const firstItemSignature = Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+        secondItemSignature = Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+
+        // List item 0...
+        await localFetch.fetch('/v1/trades', {
+          method: 'POST',
+          body: JSON.stringify({ ...itemOrder, signer, signature: firstItemSignature }),
+          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+        })
+        // ...then list item 1 of the same collection, which must not be considered a duplicate.
+        response = await localFetch.fetch('/v1/trades', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...itemOrder,
+            signer,
+            signature: secondItemSignature,
+            sent: [{ ...itemOrder.sent[0], itemId: '1' }]
+          }),
+          headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+        })
+      })
+
+      it('should return 201 status for the different item', async () => {
+        expect(response.status).toEqual(StatusCode.CREATED)
+      })
+
+      it('should insert the second item order in db', async () => {
+        const { dappsDatabase } = components
+        const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${secondItemSignature}`)
+        expect(queryResult.rowCount).toBe(1)
+      })
+    })
+  })
+
   describe('when getting a trade', () => {
     let trade: TradeCreation
     let response: Response

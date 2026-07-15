@@ -24,7 +24,7 @@ import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
-import { EstateContractNotFoundForChainId, InvalidTradeStructureError } from '../../src/ports/trades/errors'
+import { DuplicateItemOrderError, EstateContractNotFoundForChainId, InvalidTradeStructureError } from '../../src/ports/trades/errors'
 import { getNotificationEventForTrade, isValidEstateTrade, validateTradeByType } from '../../src/ports/trades/utils'
 import { SquidNetwork } from '../../src/types'
 
@@ -769,7 +769,7 @@ describe('when validating trade by type', () => {
       })
     })
 
-    describe('and the trades is correctly defined', () => {
+    describe('and the trade is correctly defined', () => {
       beforeEach(() => {
         trade.received = [
           {
@@ -791,8 +791,24 @@ describe('when validating trade by type', () => {
         ]
       })
 
-      it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      describe('and there is no open order for the item', () => {
+        beforeEach(() => {
+          queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] })
+        })
+
+        it('should resolve to true', () => {
+          return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        })
+      })
+
+      describe('and there is already an open order for the item', () => {
+        beforeEach(() => {
+          queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{}] })
+        })
+
+        it('should reject with a DuplicateItemOrderError', () => {
+          return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateItemOrderError())
+        })
       })
     })
 
