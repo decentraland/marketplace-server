@@ -119,6 +119,7 @@ export function createShopUnifiedHandler(
     const category = params.getString('category')
     const contractAddress = params.getString('contractAddress')
     const itemId = params.getString('itemId')
+    const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
     const wearableCategories = csv(params.getString('wearableCategory'))
     const minPriceCredits = params.getNumber('minPriceCredits')
@@ -136,6 +137,7 @@ export function createShopUnifiedHandler(
           category,
           contractAddress,
           itemId,
+          creator,
           rarities,
           wearableCategories,
           minPriceCredits,
