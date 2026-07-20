@@ -1,5 +1,6 @@
 import { Authenticator } from '@dcl/crypto'
-import { Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { ChainId, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { TestComponents } from '../../../src/types'
 import { getSignedFetchRequest } from '../../utils'
 
@@ -67,7 +68,7 @@ export async function createBidViaAPI(
     sent: [
       {
         assetType: TradeAssetType.ERC20,
-        contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+        contractAddress: getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address,
         extra: '0x',
         amount: price
       }
