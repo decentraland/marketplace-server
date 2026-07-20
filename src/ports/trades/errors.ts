@@ -18,6 +18,12 @@ export class InvalidTradeStructureError extends Error {
   }
 }
 
+export class InvalidTradePriceAssetError extends Error {
+  constructor() {
+    super('The price of a trade must be paid in MANA')
+  }
+}
+
 export class EstateContractNotFoundForChainId extends Error {
   constructor(public chainId: ChainId) {
     super(`Estate contract not found for chainId ${chainId}`)

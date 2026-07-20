@@ -13,6 +13,7 @@ import {
   Event,
   ChainId
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
 import { getMarketplaceContracts } from '../../logic/contracts'
 import { isEstateFingerprintValid } from '../../logic/trades/utils'
@@ -26,6 +27,7 @@ import {
   DuplicateItemOrderError,
   DuplicateNFTOrderError,
   EstateContractNotFoundForChainId,
+  InvalidTradePriceAssetError,
   InvalidTradeStructureError
 } from './errors'
 import { TradeEvent } from './types'
@@ -49,6 +51,30 @@ export function isUSDPeggedManaTradeAsset(asset: TradeAsset): asset is USDPegged
 // The price side of a listing/bid can be paid in MANA (ERC20) or as a USD-pegged amount settled in MANA at execution.
 export function isPriceTradeAsset(asset: TradeAsset): asset is ERC20TradeAsset | USDPeggedManaTradeAsset {
   return isERC20TradeAsset(asset) || isUSDPeggedManaTradeAsset(asset)
+}
+
+// The price of a trade must settle in MANA. A USD_PEGGED_MANA asset is always resolved to MANA at
+// execution time by the contract, so its contract address is irrelevant. A plain ERC20 asset, however,
+// is transferred verbatim from the signed contract address, so it must be restricted to the chain's
+// official MANA token. Without this check the price could be denominated in an arbitrary ERC20 that
+// the marketplace UI still presents to the seller as MANA.
+export function isValidPriceAsset(asset: TradeAsset, chainId: ChainId): boolean {
+  if (isUSDPeggedManaTradeAsset(asset)) {
+    return true
+  }
+
+  if (isERC20TradeAsset(asset)) {
+    let manaAddress: string
+    try {
+      manaAddress = getContract(ContractName.MANAToken, chainId).address.toLowerCase()
+    } catch {
+      // An unsupported chain has no MANA token, so the price asset cannot be valid.
+      return false
+    }
+    return asset.contractAddress.toLowerCase() === manaAddress
+  }
+
+  return false
 }
 
 function isBytesEmpty(bytes: string): boolean {
@@ -95,6 +121,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(type)
       }
 
+      // The bid price must settle in MANA, otherwise the seller could be paid in an arbitrary ERC20.
+      if (!isValidPriceAsset(sent[0], trade.chainId)) {
+        throw new InvalidTradePriceAssetError()
+      }
+
       const duplicateBid = await client.query(
         getBidsQuery({
           bidder: trade.signer,
@@ -118,6 +149,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradeStructureError(trade.type)
       }
 
+      // The order price must settle in MANA, otherwise the seller could be paid in an arbitrary ERC20.
+      if (!isValidPriceAsset(received[0], trade.chainId)) {
+        throw new InvalidTradePriceAssetError()
+      }
+
       const query = getNFTsQuery({
         contractAddresses: [trade.sent[0].contractAddress],
         tokenId: (trade.sent[0] as ERC721TradeAsset).tokenId,
@@ -137,6 +173,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
 
       if (!sendsCollectionItemAsset || !receivesPriceAsset) {
         throw new InvalidTradeStructureError(trade.type)
+      }
+
+      // The order price must settle in MANA, otherwise the seller could be paid in an arbitrary ERC20.
+      if (!isValidPriceAsset(received[0], trade.chainId)) {
+        throw new InvalidTradePriceAssetError()
       }
 
       const duplicateOrder = await client.query(

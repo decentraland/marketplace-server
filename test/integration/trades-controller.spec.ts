@@ -11,11 +11,14 @@ import {
   TradeAssetDirection,
   ChainId
 } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
 import { getSignedFetchRequest } from '../utils'
+
+const MANA_MAINNET_ADDRESS = getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address
 
 test('trades controller', function ({ components }) {
   beforeEach(() => {
@@ -49,7 +52,7 @@ test('trades controller', function ({ components }) {
         sent: [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            contractAddress: MANA_MAINNET_ADDRESS,
             extra: '0x',
             amount: '100'
           }
@@ -357,7 +360,7 @@ test('trades controller', function ({ components }) {
         sent: [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            contractAddress: MANA_MAINNET_ADDRESS,
             extra: '0x',
             amount: '100'
           }

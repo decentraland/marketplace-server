@@ -6,6 +6,7 @@ import {
   DuplicatedBidError,
   InvalidECDSASignatureError,
   EventNotGeneratedError,
+  InvalidTradePriceAssetError,
   InvalidTradeSignatureError,
   InvalidTradeSignerError,
   InvalidTradeStructureError,
@@ -77,6 +78,7 @@ export async function addTradeHandler(
       e instanceof TradeAlreadyExpiredError ||
       e instanceof TradeEffectiveAfterExpirationError ||
       e instanceof InvalidTradeStructureError ||
+      e instanceof InvalidTradePriceAssetError ||
       e instanceof InvalidTradeSignatureError ||
       e instanceof InvalidTradeSignerError ||
       e instanceof InvalidECDSASignatureError ||

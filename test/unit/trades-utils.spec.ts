@@ -24,7 +24,7 @@ import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
-import { EstateContractNotFoundForChainId, InvalidTradeStructureError } from '../../src/ports/trades/errors'
+import { EstateContractNotFoundForChainId, InvalidTradePriceAssetError, InvalidTradeStructureError } from '../../src/ports/trades/errors'
 import { getNotificationEventForTrade, isValidEstateTrade, validateTradeByType } from '../../src/ports/trades/utils'
 import { SquidNetwork } from '../../src/types'
 
@@ -394,6 +394,7 @@ describe('when validating trade by type', () => {
   let pgClient: IPgComponent
   let queryMock: jest.Mock
   let trade: Trade
+  const manaAddress = getContract(ContractName.MANAToken, ChainId.ETHEREUM_SEPOLIA).address
 
   beforeEach(() => {
     queryMock = jest.fn().mockResolvedValue({ rowCount: 0, rows: [] })
@@ -426,7 +427,7 @@ describe('when validating trade by type', () => {
       sent: [
         {
           assetType: TradeAssetType.ERC20,
-          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+          contractAddress: manaAddress,
           extra: '0x',
           amount: '100'
         }
@@ -531,6 +532,57 @@ describe('when validating trade by type', () => {
       })
     })
 
+    describe('and the sent asset is an ERC20 that is not MANA', () => {
+      beforeEach(() => {
+        trade.sent = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            extra: '0x',
+            amount: '100'
+          }
+        ]
+      })
+
+      it('should throw InvalidTradePriceAsset error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
+      })
+    })
+
+    describe('and the sent asset is a USD-pegged MANA asset', () => {
+      beforeEach(() => {
+        trade.sent = [
+          {
+            assetType: TradeAssetType.USD_PEGGED_MANA,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            extra: '0x',
+            amount: '100'
+          }
+        ]
+      })
+
+      it('should return true', () => {
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the sent asset is MANA with a checksummed (mixed-case) address', () => {
+      beforeEach(() => {
+        trade.sent = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress.toUpperCase().replace('0X', '0x'),
+            extra: '0x',
+            amount: '100'
+          }
+        ]
+      })
+
+      it('should return true', () => {
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
     describe('and the trades is correctly defined', () => {
       it('should return true', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
@@ -631,7 +683,7 @@ describe('when validating trade by type', () => {
         trade.received = [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            contractAddress: manaAddress,
             amount: '100',
             extra: '0x',
             beneficiary: '0x123'
@@ -650,6 +702,33 @@ describe('when validating trade by type', () => {
 
       it('should return true', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the received asset is an ERC20 that is not MANA', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            tokenId: '100',
+            extra: '0x'
+          }
+        ]
+      })
+
+      it('should throw InvalidTradePriceAsset error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
       })
     })
 
@@ -774,7 +853,7 @@ describe('when validating trade by type', () => {
         trade.received = [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            contractAddress: manaAddress,
             amount: '100',
             extra: '0x',
             beneficiary: '0x123'
@@ -793,6 +872,33 @@ describe('when validating trade by type', () => {
 
       it('should return true', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the received asset is an ERC20 that is not MANA', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+      })
+
+      it('should throw InvalidTradePriceAsset error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
       })
     })
 
