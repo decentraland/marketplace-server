@@ -48,7 +48,7 @@ describe('when creating the shop notifier component', () => {
       expect(url).toBe(`${SHOP_SERVER_URL}/notify/item-on-sale`)
       expect(init.method).toBe('POST')
       expect(headers['Content-Type']).toBe('application/json')
-      expect(headers['Authorization']).toBe(`Bearer ${NOTIFY_TRIGGER_TOKEN}`)
+      expect(headers['authorization']).toBe(`Bearer ${NOTIFY_TRIGGER_TOKEN}`)
       expect(init.body).toBe(JSON.stringify({ contractAddress: '0xabc', itemId: '42' }))
     })
 

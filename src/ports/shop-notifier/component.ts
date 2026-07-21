@@ -31,7 +31,7 @@ export async function createShopNotifierComponent(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${notifyTriggerToken}`
+          authorization: `Bearer ${notifyTriggerToken}`
         },
         body: JSON.stringify({ contractAddress, itemId }),
         signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS)
