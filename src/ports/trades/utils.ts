@@ -18,9 +18,9 @@ import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/tra
 import { getMarketplaceContracts } from '../../logic/contracts'
 import { isEstateFingerprintValid } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
-import { getItemByItemIdQuery, getItemsQuery } from '../items/queries'
+import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
-import { getNftByTokenIdQuery, getNFTsQuery } from '../nfts/queries'
+import { getNftByTokenIdQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
 import {
   DuplicatedBidError,
@@ -31,6 +31,7 @@ import {
   InvalidTradePriceAssetError,
   InvalidTradeStructureError
 } from './errors'
+import { getOpenItemOrderQuery, getOpenNFTOrderQuery } from './queries'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
@@ -155,13 +156,9 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradePriceAssetError()
       }
 
-      const query = getNFTsQuery({
-        contractAddresses: [trade.sent[0].contractAddress],
-        tokenId: (trade.sent[0] as ERC721TradeAsset).tokenId,
-        network: trade.network,
-        isOnSale: true
-      })
-      const duplicateOrder = await client.query(query)
+      const duplicateOrder = await client.query(
+        getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId, trade.network)
+      )
 
       if (duplicateOrder.rowCount > 0) {
         throw new DuplicateNFTOrderError()
@@ -197,12 +194,7 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateOrder = await client.query(
-        getItemsQuery({
-          contractAddresses: [trade.sent[0].contractAddress],
-          itemId: (trade.sent[0] as CollectionItemTradeAsset).itemId,
-          network: trade.network,
-          isOnSale: true
-        })
+        getOpenItemOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as CollectionItemTradeAsset).itemId, trade.network)
       )
 
       if (duplicateOrder.rowCount > 0) {

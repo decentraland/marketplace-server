@@ -16,6 +16,7 @@ import {
   TradeNotFoundBySignatureError,
   TradeNotFoundError,
   DuplicateNFTOrderError,
+  DuplicateItemOrderError,
   InvalidEstateTrade,
   EstateContractNotFoundForChainId
 } from '../../ports/trades/errors'
@@ -96,7 +97,7 @@ export async function addTradeHandler(
       }
     }
 
-    if (e instanceof DuplicatedBidError || e instanceof DuplicateNFTOrderError) {
+    if (e instanceof DuplicatedBidError || e instanceof DuplicateNFTOrderError || e instanceof DuplicateItemOrderError) {
       return {
         status: StatusCode.CONFLICT,
         body: {
