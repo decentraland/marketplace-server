@@ -4,6 +4,7 @@ import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, T
 import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   return SQL`
@@ -350,4 +351,29 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       OFFSET ${offset}
     )
     ORDER BY t.created_at DESC, ta.direction ASC`
+}
+
+// Resolves the item id of an ERC721 (secondary listing) asset. Uses the same join the trade queries and
+// the trades materialized view rely on: the squid `nft` table keyed by contract_address + token_id, from
+// which `item_blockchain_id` is the item id the NFT was minted from.
+export function getItemIdByTokenIdQuery(contractAddress: string, tokenId: string): SQLStatement {
+  return SQL`SELECT nft.item_blockchain_id::text AS item_id FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.nft AS nft WHERE nft.contract_address = ${contractAddress.toLowerCase()} AND nft.token_id = ${tokenId}::numeric LIMIT 1`)
+}
+
+// Transition check for the "item went on sale" waitlist ping. Returns a row when the item already has
+// ANOTHER open listing (item or nft order) besides the just-created trade, meaning it was already on
+// sale and no ping is warranted. Reads the trades materialized view, which can be up to
+// TRADES_MV_REFRESH_INTERVAL_SECONDS (~30s) stale; the worst case is a duplicate ping, which the Shop
+// dedupes, so a slightly stale read is acceptable here.
+export function getOtherOpenListingForItemQuery(contractAddress: string, itemId: string, excludeTradeId: string): SQLStatement {
+  return SQL`SELECT 1 FROM marketplace.`.append(TRADES_MV_NAME).append(
+    SQL` WHERE status = 'open'
+      AND type IN ('public_item_order', 'public_nft_order')
+      AND sent_contract_address = ${contractAddress.toLowerCase()}
+      AND sent_item_id = ${itemId}
+      AND id <> ${excludeTradeId}
+      LIMIT 1`
+  )
 }

@@ -36,6 +36,7 @@ import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
 import { createShopCatalogComponent } from './ports/shop-catalog/component'
+import { createShopNotifierComponent } from './ports/shop-notifier/component'
 import { createStatsComponent } from './ports/stats/component'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
@@ -148,7 +149,8 @@ export async function initComponents(): Promise<AppComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
-  const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
+  const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
+  const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -202,6 +204,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsWriteDatabase,
     catalog,
     shopCatalog,
+    shopNotifier,
     manaUsdRate,
     wertSigner,
     wertApi,

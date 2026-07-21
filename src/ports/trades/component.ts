@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -22,6 +22,8 @@ import {
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
+  getItemIdByTokenIdQuery,
+  getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
   getTradesByAddressQuery
@@ -54,8 +56,10 @@ type TradeWithAssetRow = {
   item_id: string | null
 }
 
-export function createTradesComponent(components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'>): ITradesComponent {
-  const { dappsDatabase: pg, eventPublisher, logs } = components
+export function createTradesComponent(
+  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier'>
+): ITradesComponent {
+  const { dappsDatabase: pg, eventPublisher, logs, shopNotifier } = components
   const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
@@ -218,7 +222,58 @@ export function createTradesComponent(components: Pick<AppComponents, 'dappsData
       logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
     }
 
+    // Best-effort: tell the Shop waitlist when this listing makes the item go on sale. The trade is
+    // already persisted, so this MUST NOT throw, delay or otherwise affect trade creation; the ping
+    // result is irrelevant to the response.
+    try {
+      await notifyShopIfItemGoesOnSale(insertedTrade)
+    } catch (e) {
+      logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
+    }
+
     return insertedTrade
+  }
+
+  // Notifies the Shop that an item transitioned from not-for-sale to on-sale, so it can email its
+  // waitlist. Only listings qualify (primary re-list via PUBLIC_ITEM_ORDER or secondary via
+  // PUBLIC_NFT_ORDER); bids and everything else return early. Skips when the item already had another
+  // open listing (it was already on sale) and when the item id cannot be resolved (never guesses).
+  async function notifyShopIfItemGoesOnSale(trade: Trade): Promise<void> {
+    if (trade.type !== TradeType.PUBLIC_ITEM_ORDER && trade.type !== TradeType.PUBLIC_NFT_ORDER) {
+      return
+    }
+
+    const sentAsset: TradeAsset | undefined = trade.sent[0]
+    if (!sentAsset) {
+      return
+    }
+    const contractAddress = sentAsset.contractAddress
+
+    // Resolve the item id of the asset being listed.
+    let itemId: string | undefined
+    if (sentAsset.assetType === TradeAssetType.COLLECTION_ITEM) {
+      // Primary re-list: the sold asset is the collection item itself, so its item id is direct.
+      itemId = sentAsset.itemId
+    } else if (sentAsset.assetType === TradeAssetType.ERC721) {
+      // Secondary listing: the sold asset is an ERC721 token; resolve it to the item id it was minted
+      // from via the squid `nft` table (same contract_address + token_id join the trade queries use).
+      const result = await pg.query<{ item_id: string | null }>(getItemIdByTokenIdQuery(contractAddress, sentAsset.tokenId))
+      itemId = result.rows[0]?.item_id ?? undefined
+    }
+
+    // Can't resolve an item id -> skip rather than guess.
+    if (!itemId) {
+      return
+    }
+
+    // Transition check: only ping on a real not-for-sale -> on-sale change. If any OTHER open listing of
+    // the same item already exists, the item was already on sale, so skip.
+    const otherOpen = await pg.query(getOtherOpenListingForItemQuery(contractAddress, itemId, trade.id))
+    if (otherOpen.rowCount && otherOpen.rowCount > 0) {
+      return
+    }
+
+    await shopNotifier.notifyItemOnSale({ contractAddress, itemId })
   }
 
   async function getTrade(id: string) {
