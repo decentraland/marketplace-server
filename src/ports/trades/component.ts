@@ -226,7 +226,7 @@ export function createTradesComponent(
     // The trade is already persisted, so we deliberately do NOT await — the ping (a couple of queries +
     // up to a 2s HTTP timeout) must not delay the trade response. Errors are swallowed here and inside
     // the notifier, so it can never affect trade creation.
-    void notifyShopIfItemGoesOnSale(insertedTrade).catch(e =>
+    void notifyShopIfItemGoesOnSale(insertedTrade).catch((e: unknown) =>
       logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
     )
 
