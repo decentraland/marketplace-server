@@ -159,6 +159,9 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
       )})`
     )
   }
+  if (filters.isSmart) {
+    query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
+  }
   if (filters.search) {
     query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
   }
@@ -295,6 +298,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
           c => c.toLowerCase()
         )})`
       )
+    }
+    if (filters.isSmart) {
+      query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
     }
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)

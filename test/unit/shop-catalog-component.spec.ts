@@ -199,6 +199,20 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContainEqual(['upper_body', 'hat'])
     })
 
+    it('should restrict to smart wearables when isSmart is set', async () => {
+      await shopCatalog.getShopListings({ isSmart: true })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain("COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'")
+    })
+
+    it('should NOT add the smart-wearable filter when isSmart is absent', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain("= 'smart_wearable_v1'")
+    })
+
     it('should translate credit price bounds into USD wei', async () => {
       await shopCatalog.getShopListings({ minPriceCredits: 3, maxPriceCredits: 10 })
 
