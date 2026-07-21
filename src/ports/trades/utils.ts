@@ -19,7 +19,6 @@ import { getMarketplaceContracts } from '../../logic/contracts'
 import { isEstateFingerprintValid } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
 import { getItemByItemIdQuery } from '../items/queries'
-import { getOpenItemOrderQuery, getOpenNFTOrderQuery } from './queries'
 import { DBItem } from '../items/types'
 import { getNftByTokenIdQuery } from '../nfts/queries'
 import { DBNFT } from '../nfts/types'
@@ -31,6 +30,7 @@ import {
   InvalidTradePriceAssetError,
   InvalidTradeStructureError
 } from './errors'
+import { getOpenItemOrderQuery, getOpenNFTOrderQuery } from './queries'
 import { TradeEvent } from './types'
 
 export function isERC20TradeAsset(asset: TradeAsset): asset is ERC20TradeAsset {
