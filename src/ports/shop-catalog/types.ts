@@ -44,6 +44,7 @@ export type ShopCatalogFilters = {
   creator?: string // item creator address — a creator's storefront (their credit-buyable listings)
   rarities?: string[]
   wearableCategories?: string[] // on-chain categories (upper_body, hat, ...)
+  isSmart?: boolean // restrict to smart wearables (Shop "Smart" filter)
   minPriceCredits?: number
   maxPriceCredits?: number
   search?: string

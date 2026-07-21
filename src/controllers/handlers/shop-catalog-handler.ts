@@ -44,6 +44,7 @@ export function createShopCatalogHandler(
     const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
     const wearableCategories = csv(params.getString('wearableCategory'))
+    const isSmart = params.getBoolean('isSmart')
     const minPriceCredits = params.getNumber('minPriceCredits')
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
@@ -59,6 +60,7 @@ export function createShopCatalogHandler(
         creator,
         rarities,
         wearableCategories,
+        isSmart,
         minPriceCredits,
         maxPriceCredits,
         search,
@@ -122,6 +124,7 @@ export function createShopUnifiedHandler(
     const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
     const wearableCategories = csv(params.getString('wearableCategory'))
+    const isSmart = params.getBoolean('isSmart')
     const minPriceCredits = params.getNumber('minPriceCredits')
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
@@ -140,6 +143,7 @@ export function createShopUnifiedHandler(
           creator,
           rarities,
           wearableCategories,
+          isSmart,
           minPriceCredits,
           maxPriceCredits,
           search,
