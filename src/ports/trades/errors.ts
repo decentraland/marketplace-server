@@ -24,6 +24,12 @@ export class InvalidTradePriceAssetError extends Error {
   }
 }
 
+export class InvalidCollectionItemCreatorError extends Error {
+  constructor() {
+    super('The signer of a collection item order must be the creator of the item')
+  }
+}
+
 export class EstateContractNotFoundForChainId extends Error {
   constructor(public chainId: ChainId) {
     super(`Estate contract not found for chainId ${chainId}`)

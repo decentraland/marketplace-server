@@ -27,6 +27,7 @@ import {
   DuplicateItemOrderError,
   DuplicateNFTOrderError,
   EstateContractNotFoundForChainId,
+  InvalidCollectionItemCreatorError,
   InvalidTradePriceAssetError,
   InvalidTradeStructureError
 } from './errors'
@@ -178,6 +179,21 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       // The order price must settle in MANA, otherwise the seller could be paid in an arbitrary ERC20.
       if (!isValidPriceAsset(received[0], trade.chainId)) {
         throw new InvalidTradePriceAssetError()
+      }
+
+      // A collection item order is a primary sale that mints from the collection, so only the item's
+      // creator can list it. The on-chain contract enforces this (reverting with NotCreator), but
+      // without this check the server would still admit an order signed by any wallet and surface it
+      // as the item's open listing (attacker price and beneficiary), defacing the item and blocking
+      // the creator's own listing via the duplicate-order check below.
+      // collection_id is stored lowercased, so normalize the address to avoid rejecting a legitimate
+      // creator who signs with a checksummed (mixed-case) contract address.
+      const itemResult = await client.query<DBItem>(
+        getItemByItemIdQuery(trade.sent[0].contractAddress.toLowerCase(), (trade.sent[0] as CollectionItemTradeAsset).itemId)
+      )
+      const item = itemResult.rows[0]
+      if (!item || !item.creator || item.creator.toLowerCase() !== trade.signer.toLowerCase()) {
+        throw new InvalidCollectionItemCreatorError()
       }
 
       const duplicateOrder = await client.query(
