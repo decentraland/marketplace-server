@@ -25,7 +25,7 @@ function buildConfig(values: Record<string, string | undefined>): IConfigCompone
 
 describe('when creating the shop notifier component', () => {
   beforeEach(() => {
-    fetchMock = jest.fn().mockResolvedValue({ status: 200, ok: true, json: () => Promise.resolve({}) })
+    fetchMock = jest.fn().mockResolvedValue({ status: 200, ok: true, json: () => Promise.resolve({}), text: () => Promise.resolve('') })
     fetchComponent = { fetch: fetchMock } as unknown as IFetchComponent
     logs = createTestLogsComponent({
       getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })

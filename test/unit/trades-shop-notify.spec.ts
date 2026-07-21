@@ -12,6 +12,10 @@ const VALID_SIGNATURE =
   '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c'
 const CONTRACT_ADDRESS = '0xcollectioncontract'
 
+// addTrade fires the shop-notify ping fire-and-forget (not awaited), so let the background promise —
+// itemId resolution + transition check + the notifier call — settle before asserting on it.
+const flushBackground = () => new Promise(resolve => setImmediate(resolve))
+
 let mockSigner: string
 let mockPg: IPgComponent
 let mockPgQuery: jest.Mock
@@ -144,6 +148,7 @@ describe('when adding a listing trade', () => {
 
       it('should notify the shop with the resolved contract address and item id', async () => {
         await tradesComponent.addTrade(itemOrderTrade, mockSigner)
+        await flushBackground()
         expect(notifyItemOnSaleMock).toHaveBeenCalledWith({ contractAddress: CONTRACT_ADDRESS, itemId: '42' })
       })
     })
@@ -155,6 +160,7 @@ describe('when adding a listing trade', () => {
 
       it('should not notify the shop', async () => {
         await tradesComponent.addTrade(itemOrderTrade, mockSigner)
+        await flushBackground()
         expect(notifyItemOnSaleMock).not.toHaveBeenCalled()
       })
     })
@@ -167,6 +173,7 @@ describe('when adding a listing trade', () => {
 
       it('should still return the created trade without throwing', async () => {
         const response = await tradesComponent.addTrade(itemOrderTrade, mockSigner)
+        await flushBackground()
         expect(response.id).toBe('listing-item-1')
       })
     })
@@ -217,6 +224,7 @@ describe('when adding a listing trade', () => {
 
     it('should resolve the item id from the token and notify the shop', async () => {
       await tradesComponent.addTrade(nftOrderTrade, mockSigner)
+      await flushBackground()
       expect(notifyItemOnSaleMock).toHaveBeenCalledWith({ contractAddress: CONTRACT_ADDRESS, itemId: '99' })
     })
   })
@@ -284,6 +292,7 @@ describe('when adding a listing trade', () => {
 
     it('should not notify the shop and should not query the materialized view', async () => {
       await tradesComponent.addTrade(bidTrade, mockSigner)
+      await flushBackground()
       expect(notifyItemOnSaleMock).not.toHaveBeenCalled()
       expect(mockTopLevelQuery).not.toHaveBeenCalled()
     })

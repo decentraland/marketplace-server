@@ -222,14 +222,13 @@ export function createTradesComponent(
       logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
     }
 
-    // Best-effort: tell the Shop waitlist when this listing makes the item go on sale. The trade is
-    // already persisted, so this MUST NOT throw, delay or otherwise affect trade creation; the ping
-    // result is irrelevant to the response.
-    try {
-      await notifyShopIfItemGoesOnSale(insertedTrade)
-    } catch (e) {
+    // Best-effort, fire-and-forget: tell the Shop waitlist when this listing makes the item go on sale.
+    // The trade is already persisted, so we deliberately do NOT await — the ping (a couple of queries +
+    // up to a 2s HTTP timeout) must not delay the trade response. Errors are swallowed here and inside
+    // the notifier, so it can never affect trade creation.
+    void notifyShopIfItemGoesOnSale(insertedTrade).catch(e =>
       logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
-    }
+    )
 
     return insertedTrade
   }

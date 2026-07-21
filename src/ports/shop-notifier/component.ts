@@ -27,7 +27,7 @@ export async function createShopNotifierComponent(
     }
 
     try {
-      await fetch.fetch(`${shopServerUrl}/notify/item-on-sale`, {
+      const response = await fetch.fetch(`${shopServerUrl}/notify/item-on-sale`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,6 +36,8 @@ export async function createShopNotifierComponent(
         body: JSON.stringify({ contractAddress, itemId }),
         signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS)
       })
+      // Drain the body so @dcl/fetch-component (native fetch) doesn't keep the socket tied up until GC.
+      await response.text().catch(() => undefined)
     } catch (error) {
       // Swallow + log: notifying the waitlist is best-effort and must never surface to the caller.
       logger.warn(
