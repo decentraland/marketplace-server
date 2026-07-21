@@ -156,7 +156,7 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateOrder = await client.query(
-        getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId)
+        getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId, trade.network)
       )
 
       if (duplicateOrder.rowCount > 0) {
@@ -178,7 +178,7 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateOrder = await client.query(
-        getOpenItemOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as CollectionItemTradeAsset).itemId)
+        getOpenItemOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as CollectionItemTradeAsset).itemId, trade.network)
       )
 
       if (duplicateOrder.rowCount > 0) {

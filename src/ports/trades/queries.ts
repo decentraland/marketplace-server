@@ -175,19 +175,21 @@ export function getTradesForTypeQuery(type: TradeType) {
   `
 }
 
-export function getOpenItemOrderQuery(contractAddress: string, itemId: string): SQLStatement {
+export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
   return SQL`SELECT 1 FROM (`
     .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
     .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
+    .append(SQL` AND item_order_trades.network = ${network}`)
     .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
     .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
     .append(SQL` LIMIT 1`)
 }
 
-export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string): SQLStatement {
+export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, network: string): SQLStatement {
   return SQL`SELECT 1 FROM (`
     .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
     .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
+    .append(SQL` AND nft_order_trades.network = ${network}`)
     .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
     .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
     .append(SQL` LIMIT 1`)
