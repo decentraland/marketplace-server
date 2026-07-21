@@ -222,6 +222,20 @@ describe('Shop Catalog Component', () => {
       // % and _ are escaped so they match literally instead of acting as wildcards.
       expect(sql.values).toContain('%50\\%\\_off%')
     })
+
+    it('should filter by a lowercased creator address bound as a parameter', async () => {
+      await shopCatalog.getShopListings({ creator: '0xCREATOR' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain("lower(COALESCE(item_p.creator, item_s.creator, '')) =")
+      expect(sql.values).toContain('0xcreator')
+    })
+
+    it('should not constrain by creator when none is supplied', async () => {
+      await shopCatalog.getShopListings({})
+
+      expect(query.mock.calls[0][0].text).not.toContain("lower(COALESCE(item_p.creator, item_s.creator, '')) =")
+    })
   })
 
   describe('when fetching a seller importable listings', () => {

@@ -137,6 +137,9 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
   if (filters.itemId != null) {
     query.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
   }
+  if (filters.creator) {
+    query.append(SQL` AND lower(COALESCE(item_p.creator, item_s.creator, '')) = ${filters.creator.toLowerCase()}`)
+  }
   if (filters.category === 'emote') {
     query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) ILIKE 'emote%'`)
   } else if (filters.category === 'wearable') {
@@ -270,6 +273,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     }
     if (filters.itemId != null) {
       query.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
+    }
+    if (filters.creator) {
+      query.append(SQL` AND lower(COALESCE(item_p.creator, item_s.creator, '')) = ${filters.creator.toLowerCase()}`)
     }
     if (filters.category === 'emote') {
       query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) ILIKE 'emote%'`)
