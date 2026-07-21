@@ -4,6 +4,7 @@ import { getNumberParameter, getParameter } from '../../logic/http'
 import { DBTrade } from '../../ports/trades'
 import {
   DuplicatedBidError,
+  InvalidCollectionItemCreatorError,
   InvalidECDSASignatureError,
   EventNotGeneratedError,
   InvalidTradePriceAssetError,
@@ -79,6 +80,7 @@ export async function addTradeHandler(
       e instanceof TradeEffectiveAfterExpirationError ||
       e instanceof InvalidTradeStructureError ||
       e instanceof InvalidTradePriceAssetError ||
+      e instanceof InvalidCollectionItemCreatorError ||
       e instanceof InvalidTradeSignatureError ||
       e instanceof InvalidTradeSignerError ||
       e instanceof InvalidECDSASignatureError ||

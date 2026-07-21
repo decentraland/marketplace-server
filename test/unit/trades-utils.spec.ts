@@ -24,7 +24,12 @@ import { DBItem, ItemType } from '../../src/ports/items/types'
 import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
-import { EstateContractNotFoundForChainId, InvalidTradePriceAssetError, InvalidTradeStructureError } from '../../src/ports/trades/errors'
+import {
+  EstateContractNotFoundForChainId,
+  InvalidCollectionItemCreatorError,
+  InvalidTradePriceAssetError,
+  InvalidTradeStructureError
+} from '../../src/ports/trades/errors'
 import { getNotificationEventForTrade, isValidEstateTrade, validateTradeByType } from '../../src/ports/trades/utils'
 import { SquidNetwork } from '../../src/types'
 
@@ -868,6 +873,130 @@ describe('when validating trade by type', () => {
             extra: '0x'
           }
         ]
+
+        // The item ownership query resolves to an item whose creator is the signer.
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: trade.signer }] })
+      })
+
+      it('should return true', () => {
+        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the signer is not the creator of the item', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+
+        // The item exists but its creator is a different address than the signer.
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: '0xanothercreator' }] })
+      })
+
+      it('should throw InvalidCollectionItemCreator error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+      })
+    })
+
+    describe('and the item does not exist', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+
+        // The item ownership query returns no rows.
+        queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      })
+
+      it('should throw InvalidCollectionItemCreator error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+      })
+    })
+
+    describe('and the item is missing its creator', () => {
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+
+        // The item exists but has no creator recorded.
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: null }] })
+      })
+
+      it('should throw InvalidCollectionItemCreator error', () => {
+        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+      })
+    })
+
+    describe('and the signer matches the creator with a different address casing', () => {
+      beforeEach(() => {
+        trade.signer = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+
+        // The stored creator is the same address as the signer but checksummed (mixed-case).
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: '0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD' }] })
       })
 
       it('should return true', () => {
@@ -922,6 +1051,9 @@ describe('when validating trade by type', () => {
             extra: '0x'
           }
         ]
+
+        // The item ownership query resolves to an item whose creator is the signer.
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: trade.signer }] })
       })
 
       it('should return true', () => {
