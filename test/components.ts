@@ -38,6 +38,7 @@ import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
 import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
+import { createShopNotifierComponent } from '../src/ports/shop-notifier/component'
 import { createStatsComponent } from '../src/ports/stats/component'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
@@ -117,8 +118,9 @@ async function initComponents(): Promise<TestComponents> {
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
+  const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const schemaValidator = await createSchemaValidatorComponent()
-  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs })
+  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
 
   const rentalsSubgraph = await createSubgraphComponent(
@@ -176,6 +178,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    shopNotifier,
     manaUsdRate,
     wertSigner,
     wertApi,
