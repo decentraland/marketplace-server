@@ -334,6 +334,7 @@ test('trades controller', function ({ components }) {
   describe('when getting a trade', () => {
     let trade: TradeCreation
     let response: Response
+    let createdTrade: { id: string }
 
     beforeEach(async () => {
       const { localFetch } = components
@@ -380,19 +381,24 @@ test('trades controller', function ({ components }) {
         body: JSON.stringify(trade),
         headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
       })
-      const createdTrade = (await createdTradeResponse.json()).data
+      createdTrade = (await createdTradeResponse.json()).data
       response = await localFetch.fetch(`/v1/trades/${createdTrade.id}`, {
         method: 'GET',
         headers: signedRequest.headers
       })
     })
 
-    it('should return 200 status with trade body', async () => {
+    it('should return 200 status with the trade body carrying the trade id (not the joined asset id)', async () => {
       expect(response.status).toEqual(StatusCode.OK)
-      expect(await response.json()).toEqual({
+      const body = await response.json()
+      expect(body).toEqual({
         data: { ...trade, id: expect.any(String), createdAt: expect.any(Number), contract: expect.any(String) },
         ok: true
       })
+      // Regression guard: trades and trade_assets both have an `id` column, so a `SELECT t.*, ta.*`
+      // let the asset's id clobber the trade's id — the endpoint returned the trade with its ASSET's
+      // id. Assert the returned id is the trade's own id (matches the POST response + the URL param).
+      expect(body.data.id).toEqual(createdTrade.id)
     })
   })
 })

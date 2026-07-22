@@ -6,8 +6,13 @@ import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
+  // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
+  // `marketplace.trade_assets` both have `id` and `created_at` columns, so `SELECT t.*, ta.*` let
+  // `ta.id`/`ta.created_at` clobber `t.id`/`t.created_at` in the result row — making getTrade return
+  // the trade with its ASSET's id instead of the trade's own id (the asset mapping never reads either
+  // column, so listing only the fields it needs keeps the trade's id/created_at intact).
   return SQL`
-    SELECT t.*, ta.*, erc721.token_id, erc20.amount, item.item_id
+    SELECT t.*, ta.direction, ta.asset_type, ta.contract_address, ta.beneficiary, ta.extra, erc721.token_id, erc20.amount, item.item_id
     FROM marketplace.trades as t
     JOIN marketplace.trade_assets as ta ON t.id = ta.trade_id
     LEFT JOIN marketplace.trade_assets_erc721 as erc721 ON ta.id = erc721.asset_id
