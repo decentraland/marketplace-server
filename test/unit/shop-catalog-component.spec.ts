@@ -17,6 +17,8 @@ function shopRow(overrides: Record<string, unknown> = {}) {
     item_type: 'wearable_v2',
     wearable_category: 'hat',
     creator: '0xcreator',
+    seller: null,
+    issued_id: null,
     price: (5n * WEI_PER_CREDIT).toString(),
     available: '10',
     network: 'MATIC',
@@ -63,6 +65,8 @@ function unifiedRow(overrides: Record<string, unknown> = {}) {
     wearable_category: 'hat',
     gender: 'unisex',
     creator: '0xcreator',
+    seller: null,
+    issued_id: null,
     price_credits: '5',
     mana_wei: null,
     available: '10',
@@ -135,6 +139,32 @@ describe('Shop Catalog Component', () => {
 
       expect(data[0]).toMatchObject({ rarity: 'mythic', listingType: 'secondary', tokenId: '99' })
     })
+
+    it('should surface the seller and issuedId for a secondary (resale) row', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          shopRow({
+            trade_type: 'public_nft_order',
+            token_id: '99',
+            item_id: null,
+            seller: '0xreseller',
+            issued_id: '42'
+          })
+        ]
+      })
+
+      const { data } = await shopCatalog.getShopListings({})
+
+      expect(data[0]).toMatchObject({ listingType: 'secondary', seller: '0xreseller', issuedId: '42' })
+    })
+
+    it('should leave seller and issuedId null for a primary row', async () => {
+      query.mockResolvedValueOnce({ rows: [shopRow({ seller: null, issued_id: null })] })
+
+      const { data } = await shopCatalog.getShopListings({})
+
+      expect(data[0]).toMatchObject({ listingType: 'primary', seller: null, issuedId: null })
+    })
   })
 
   describe('when building the shop listings query', () => {
@@ -148,6 +178,14 @@ describe('Shop Catalog Component', () => {
       const sql = query.mock.calls[0][0]
       expect(sql.text).toContain("ta.direction = 'received' AND ta.asset_type =")
       expect(sql.values).toContain(2)
+    })
+
+    it('should select the seller and issued id from the sent asset JSON (no extra join)', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain("mv.assets->'sent'->>'owner' AS seller")
+      expect(sql.text).toContain("mv.assets->'sent'->>'issued_id' AS issued_id")
     })
 
     it('should clamp pagination to the default page size and a zero offset', async () => {
@@ -433,6 +471,14 @@ describe('Shop Catalog Component', () => {
       expect(sql.text).toContain('AS price_credits')
     })
 
+    it('should select the seller and issued id from the sent asset JSON in each branch', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain("mv.assets->'sent'->>'owner' AS seller")
+      expect(text).toContain("mv.assets->'sent'->>'issued_id' AS issued_id")
+    })
+
     it('should apply the MANA/USD rate to legacy amounts but leave native amounts untouched', async () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 
@@ -561,6 +607,25 @@ describe('Shop Catalog Component', () => {
       const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
 
       expect(data[0]).toMatchObject({ source: 'native', listingType: 'secondary', tokenId: '99', priceCredits: 7 })
+    })
+
+    it('should surface the seller and issuedId for a secondary (resale) row', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({
+            source: 'native',
+            trade_type: 'public_nft_order',
+            token_id: '99',
+            item_id: null,
+            seller: '0xreseller',
+            issued_id: '42'
+          })
+        ]
+      })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(data[0]).toMatchObject({ listingType: 'secondary', seller: '0xreseller', issuedId: '42' })
     })
 
     it('should surface the body-shape-derived gender and coalesce a missing one to null', async () => {

@@ -26,6 +26,8 @@ export type ShopListing = {
   wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
   gender: ShopGender // male | female | unisex (from body shapes); null for emotes/unknown
   creator: string
+  seller: string | null // secondary (resale): the reseller = current owner of the sent NFT; null for primary
+  issuedId: string | null // secondary (resale): the NFT mint index (issued id); null for primary
   priceCredits: number // USD -> fixed credits (1 credit = $0.10)
   available: number
   network: string
@@ -178,6 +180,8 @@ export type ShopListingRow = {
   wearable_category: string | null
   gender: ShopGender
   creator: string | null
+  seller: string | null // secondary: sent NFT owner (from mv.assets->'sent'->>'owner'); null for primary
+  issued_id: string | null // secondary: sent NFT issued id (from mv.assets->'sent'->>'issued_id'); null for primary
   price: string
   available: string | null
   network: string | null
@@ -201,6 +205,8 @@ export type UnifiedListingRow = {
   wearable_category: string | null
   gender: ShopGender
   creator: string | null
+  seller: string | null // secondary: sent NFT owner (from mv.assets->'sent'->>'owner'); null for primary
+  issued_id: string | null // secondary: sent NFT issued id (from mv.assets->'sent'->>'issued_id'); null for primary
   price_credits: string
   mana_wei: string | null
   available: string | null

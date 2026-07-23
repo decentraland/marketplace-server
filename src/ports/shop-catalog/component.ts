@@ -200,6 +200,8 @@ function unifiedBranch(opts: {
           item_s.search_wearable_category, item_s.search_emote_category
         ) AS wearable_category,
         COALESCE(item_p.creator, item_s.creator, '') AS creator,
+        mv.assets->'sent'->>'owner' AS seller,
+        mv.assets->'sent'->>'issued_id' AS issued_id,
         `
     .append(usdWei)
     .append(
@@ -295,6 +297,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
           item_s.search_wearable_category, item_s.search_emote_category
         ) AS wearable_category,
         COALESCE(item_p.creator, item_s.creator, '') AS creator,
+        mv.assets->'sent'->>'owner' AS seller,
+        mv.assets->'sent'->>'issued_id' AS issued_id,
         mv.amount_received::text AS price,
         mv.available::text AS available,
         mv.network AS network,
@@ -392,6 +396,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         wearableCategory: r.wearable_category,
         gender: r.gender ?? null,
         creator: r.creator ?? '',
+        seller: r.seller ?? null,
+        issuedId: r.issued_id ?? null,
         priceCredits,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
@@ -637,6 +643,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         wearableCategory: r.wearable_category,
         gender: r.gender ?? null,
         creator: r.creator ?? '',
+        seller: r.seller ?? null,
+        issuedId: r.issued_id ?? null,
         priceCredits: Number(r.price_credits),
         manaWei: r.mana_wei ?? null,
         available: r.available ? Number(r.available) : 1,
