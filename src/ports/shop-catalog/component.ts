@@ -14,6 +14,8 @@ import {
   ShopListing,
   ShopListingRow,
   UnifiedCatalogFilters,
+  UnifiedItem,
+  UnifiedItemRow,
   UnifiedListing,
   UnifiedListingRow,
   SHOP_DEFAULT_PAGE_SIZE,
@@ -228,6 +230,45 @@ function unifiedBranch(opts: {
 
   appendUnifiedFilters(query, filters)
   return query
+}
+
+// Build the inner UNION ALL of the requested source branches (native and/or legacy). Shared by the
+// per-listing unified feed and the item-unified browse feed so both draw from the SAME credit-buyable
+// universe (native primary + native secondary + legacy primary) with identical filters. Legacy is
+// primary-only here -- legacy ERC20 SECONDARY is Phase 3; adding it later is a one-line change (drop
+// `primaryOnly`), and the item grouping/ordering below already extends to it unchanged.
+function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
+  const parts: SQLStatement[] = []
+  if (filters.source !== 'legacy') {
+    parts.push(
+      unifiedBranch({
+        source: 'native',
+        assetType: USD_PEGGED_ASSET_TYPE,
+        primaryOnly: false,
+        applyRate: false,
+        rateNumericString,
+        filters
+      })
+    )
+  }
+  if (filters.source !== 'native') {
+    parts.push(
+      unifiedBranch({
+        source: 'legacy',
+        assetType: ERC20_ASSET_TYPE,
+        primaryOnly: true,
+        applyRate: true,
+        rateNumericString,
+        filters
+      })
+    )
+  }
+
+  const inner = parts[0]
+  for (let i = 1; i < parts.length; i++) {
+    inner.append(SQL` UNION ALL `).append(parts[i])
+  }
+  return inner
 }
 
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
@@ -535,37 +576,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
     const rateNumericString = rateToNumericString(manaUsdRate)
 
-    // Build only the requested branch(es); default is both. `parts` are UNION ALL-ed together.
-    const parts: SQLStatement[] = []
-    if (filters.source !== 'legacy') {
-      parts.push(
-        unifiedBranch({
-          source: 'native',
-          assetType: USD_PEGGED_ASSET_TYPE,
-          primaryOnly: false,
-          applyRate: false,
-          rateNumericString,
-          filters
-        })
-      )
-    }
-    if (filters.source !== 'native') {
-      parts.push(
-        unifiedBranch({
-          source: 'legacy',
-          assetType: ERC20_ASSET_TYPE,
-          primaryOnly: true,
-          applyRate: true,
-          rateNumericString,
-          filters
-        })
-      )
-    }
-
-    const inner = parts[0]
-    for (let i = 1; i < parts.length; i++) {
-      inner.append(SQL` UNION ALL `).append(parts[i])
-    }
+    // Build only the requested branch(es); default is both, UNION ALL-ed together.
+    const inner = buildUnifiedInner(filters, rateNumericString)
 
     // Wrap the union so priceCredits, the price-range filter and the sort operate on the merged set.
     const query = SQL`
@@ -637,5 +649,111 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     return { data, total }
   }
 
-  return { getShopListings, getImportableListings, getLegacyListings, getUnifiedListings }
+  // The item-unified BROWSE feed: the same credit-buyable universe as getUnifiedListings, but collapsed
+  // to ONE row per (contract, item). Layered so each concern stays a distinct, reviewable SQL level:
+  //   u  -- the UNION ALL of the source branches (one row per open credit-buyable listing).
+  //   f  -- drop free/broken listings (usd_wei > 0) and attach a per-item listing_count window; this is
+  //         the "N listings" badge count and it is stable across every row of the same item.
+  //   d  -- DISTINCT ON (contract_address, item_id) keeps exactly one representative listing per item.
+  //         The ORDER BY makes the survivor: PRIMARY before secondary, then NATIVE (fixed USD) before
+  //         LEGACY (rate-floating MANA), then cheapest usd_wei, then trade_id for determinism. That is
+  //         precisely "primary price if present, else cheapest credit-buyable secondary", preferring a
+  //         stable USD headline over a rate-floating one. price_credits is CEIL(usd_wei / C) of the
+  //         survivor (same "Model B" rounding as every other feed).
+  // The outer query then applies the credit price-range on the HEADLINE price, the display sort, and
+  // pagination, exposing COUNT(*) OVER() as the total number of items. sent_item_id is populated for
+  // secondary rows too (mv_trades), so grouping needs no extra joins.
+  async function getShopItems(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[]; total: number }> {
+    const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
+    const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
+    const rateNumericString = rateToNumericString(manaUsdRate)
+
+    const inner = buildUnifiedInner(filters, rateNumericString)
+
+    const query = SQL`
+      SELECT
+        d.*,
+        COUNT(*) OVER() AS total
+      FROM (
+        SELECT DISTINCT ON (f.contract_address, f.item_id)
+          f.*,
+          CEIL(f.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits
+        FROM (
+          SELECT
+            u.*,
+            COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count
+          FROM (`.append(inner).append(SQL`) u
+          WHERE u.usd_wei > 0
+        ) f
+        ORDER BY
+          f.contract_address,
+          f.item_id,
+          (CASE WHEN f.trade_type = 'public_item_order' THEN 0 ELSE 1 END),
+          (CASE WHEN f.source = 'native' THEN 0 ELSE 1 END),
+          f.usd_wei ASC,
+          f.trade_id
+      ) d
+      WHERE d.usd_wei > 0`)
+
+    // Price-range on the item's DISPLAYED (headline) price -- see getUnifiedListings for the CEIL-consistent
+    // lower bound (usd_wei > (m - 1) * C). listing_count is intentionally NOT narrowed by this filter: the
+    // badge reflects how many listings the item has, independent of the price slider.
+    if (filters.minPriceCredits != null) {
+      const minWei = creditsToWei(filters.minPriceCredits)
+      if (minWei != null && minWei > 0n) {
+        query.append(SQL` AND d.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
+      }
+    }
+    if (filters.maxPriceCredits != null) {
+      const maxWei = creditsToWei(filters.maxPriceCredits)
+      if (maxWei != null) query.append(SQL` AND d.usd_wei <= ${maxWei.toString()}`)
+    }
+
+    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `d.trade_id`
+    // tiebreaker keeps pagination stable when many items share a headline usd_wei/name.
+    const order =
+      filters.sortBy === 'cheapest'
+        ? SQL` ORDER BY d.usd_wei ASC, d.trade_id`
+        : filters.sortBy === 'most_expensive'
+        ? SQL` ORDER BY d.usd_wei DESC, d.trade_id`
+        : filters.sortBy === 'name'
+        ? SQL` ORDER BY d.name ASC, d.trade_id`
+        : SQL` ORDER BY d.created_at DESC, d.trade_id`
+    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+
+    const result = await pg.query<UnifiedItemRow>(query)
+    const polygonChainId = getPolygonChainId()
+    const ethereumChainId = getEthereumChainId()
+    const total = result.rows[0] ? Number(result.rows[0].total) : 0
+
+    const data: UnifiedItem[] = result.rows.map(r => {
+      const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
+      return {
+        source: r.source,
+        tradeId: r.trade_id,
+        listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
+        contractAddress: r.contract_address,
+        itemId: r.item_id,
+        tokenId: r.token_id,
+        name: r.name ?? '',
+        thumbnail: r.image ?? '',
+        rarity: (r.rarity ?? 'common').toLowerCase(),
+        category: topLevelCategory(r.item_type),
+        wearableCategory: r.wearable_category,
+        gender: r.gender ?? null,
+        creator: r.creator ?? '',
+        priceCredits: Number(r.price_credits),
+        manaWei: r.mana_wei ?? null,
+        listingCount: Number(r.listing_count),
+        available: r.available ? Number(r.available) : 1,
+        network: isPolygon ? Network.MATIC : Network.ETHEREUM,
+        chainId: isPolygon ? polygonChainId : ethereumChainId,
+        createdAt: Number(r.created_at)
+      }
+    })
+
+    return { data, total }
+  }
+
+  return { getShopListings, getImportableListings, getLegacyListings, getUnifiedListings, getShopItems }
 }

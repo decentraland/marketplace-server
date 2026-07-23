@@ -20,6 +20,15 @@ const SOURCE_VALUES: Record<UnifiedListingSource, UnifiedListingSource> = {
   legacy: 'legacy'
 }
 
+// Valid `groupBy` values for the unified feed. 'listing' (default) -> one row per open trade (the PDP
+// resale view needs this). 'item' -> one row per item, priced primary-if-present else cheapest
+// credit-buyable secondary, with a per-item listingCount (the shop BROWSE feed).
+type UnifiedGroupBy = 'listing' | 'item'
+const GROUP_BY_VALUES: Record<UnifiedGroupBy, UnifiedGroupBy> = {
+  listing: 'listing',
+  item: 'item'
+}
+
 function csv(value?: string): string[] | undefined {
   const parts = value
     ?.split(',')
@@ -109,6 +118,10 @@ export function createShopLegacyHandler(
 // converted MANA->credits with the live rate) and a `source` discriminator. Same query params as
 // /v3/catalog/shop plus optional `source` (native|legacy). Sorting and minPriceCredits/maxPriceCredits
 // work across BOTH sources.
+//
+// `groupBy=item` collapses the feed to ONE row per item (priced primary-if-present else cheapest
+// credit-buyable secondary, plus a per-item listingCount) -- the shop BROWSE feed. The default
+// (`groupBy=listing`) keeps one row per open trade, which the PDP resale view depends on.
 export function createShopUnifiedHandler(
   components: Pick<AppComponents, 'shopCatalog' | 'manaUsdRate'>
 ): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/unified'>> {
@@ -130,28 +143,29 @@ export function createShopUnifiedHandler(
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
     const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
+    const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
+
+    const filters = {
+      first,
+      skip,
+      category,
+      contractAddress,
+      itemId,
+      creator,
+      rarities,
+      wearableCategories,
+      isSmart,
+      minPriceCredits,
+      maxPriceCredits,
+      search,
+      sortBy,
+      source
+    }
 
     return asJSON(async () => {
       const rate = manaUsdRate.getRate()
-      const { data, total } = await shopCatalog.getUnifiedListings(
-        {
-          first,
-          skip,
-          category,
-          contractAddress,
-          itemId,
-          creator,
-          rarities,
-          wearableCategories,
-          isSmart,
-          minPriceCredits,
-          maxPriceCredits,
-          search,
-          sortBy,
-          source
-        },
-        rate
-      )
+      const { data, total } =
+        groupBy === 'item' ? await shopCatalog.getShopItems(filters, rate) : await shopCatalog.getUnifiedListings(filters, rate)
       return { data, total }
     })
   }

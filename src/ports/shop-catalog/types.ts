@@ -125,6 +125,15 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
   source?: UnifiedListingSource
 }
 
+// The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the
+// surviving representative listing -- primary if present, else cheapest credit-buyable secondary) plus a
+// listingCount so the frontend can badge "N listings" / link to the PDP resale column. tradeId/listingType/
+// tokenId/priceCredits/source all describe that representative (headline) listing.
+export type UnifiedItem = UnifiedListing & {
+  // How many open credit-buyable listings this item has (primary + secondary, native + legacy).
+  listingCount: number
+}
+
 export interface IShopCatalogComponent {
   getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }>
   getImportableListings(seller: string): Promise<ImportableListing[]>
@@ -133,6 +142,10 @@ export interface IShopCatalogComponent {
   // caller supplies the current MANA/USD rate (USD per MANA) used to convert legacy prices to credits
   // and to make the price-range filter + sort comparable across both sources.
   getUnifiedListings(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedListing[]; total: number }>
+  // Same credit-buyable universe and filters as getUnifiedListings, but UNIFIED BY ITEM: one row per
+  // (contract, item), priced primary-if-present else cheapest credit-buyable secondary, carrying a
+  // per-item listingCount. This is the shop BROWSE feed; getUnifiedListings stays per-listing (PDP resale).
+  getShopItems(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[]; total: number }>
 }
 
 export type ImportableListingRow = {
@@ -194,6 +207,12 @@ export type UnifiedListingRow = {
   network: string | null
   created_at: string
   total: string
+}
+
+// Raw DB row for the item-unified feed, before mapping to UnifiedItem. Same columns as UnifiedListingRow
+// (of the surviving representative listing) plus the per-item listing_count.
+export type UnifiedItemRow = UnifiedListingRow & {
+  listing_count: string
 }
 
 // Raw DB row for the legacy (classic MANA) primary feed, before mapping to LegacyListing.
