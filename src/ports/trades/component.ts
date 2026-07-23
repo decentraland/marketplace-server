@@ -3,7 +3,7 @@ import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCre
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
-import { recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
+import { flushTradesMaterializedViewIfDirty, recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
@@ -310,12 +310,21 @@ export function createTradesComponent(
     await recreateTradesMaterializedView(pg)
   }
 
+  async function flushMaterializedViewIfDirty() {
+    const refreshed = await flushTradesMaterializedViewIfDirty(pg)
+    if (refreshed) {
+      logger.info('Flushed a debounced trades materialized view refresh')
+    }
+    return refreshed
+  }
+
   return {
     getTrades,
     getTradesByAddress,
     addTrade,
     getTrade,
     getTradeAcceptedEvent,
-    recreateMaterializedView
+    recreateMaterializedView,
+    flushMaterializedViewIfDirty
   }
 }

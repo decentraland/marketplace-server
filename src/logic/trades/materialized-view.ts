@@ -220,26 +220,44 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
     )
 
-    // Single-row gate recording the last refresh time, shared by every trigger
+    // Single-row gate recording the last refresh time, shared by every trigger.
+    // `dirty` marks that writes arrived while the debounce gate was closed (a
+    // refresh those writes never made it into); the app-side trailing flush uses
+    // it to guarantee a debounced refresh is never permanently dropped.
     await client.query(`
       CREATE TABLE IF NOT EXISTS marketplace.mv_trades_refresh_state (
         id boolean PRIMARY KEY DEFAULT true CHECK (id),
-        last_refresh timestamptz NOT NULL DEFAULT '-infinity'
+        last_refresh timestamptz NOT NULL DEFAULT '-infinity',
+        dirty boolean NOT NULL DEFAULT false
       );
     `)
+    // Add the column on already-provisioned databases where the table predates it.
+    await client.query('ALTER TABLE marketplace.mv_trades_refresh_state ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT false')
     await client.query('INSERT INTO marketplace.mv_trades_refresh_state (id) VALUES (true) ON CONFLICT (id) DO NOTHING')
     // Trigger functions run as whoever performs the write. Every user able to run
     // the trigger successfully is already a member of mv_trades_owner (the REFRESH
     // itself requires it), so that role is exactly the right audience for the gate
     await client.query('GRANT SELECT, UPDATE ON marketplace.mv_trades_refresh_state TO mv_trades_owner')
 
-    // Create refresh function. The UPDATE is an atomic gate: only one writing
+    // Create refresh function. The first UPDATE is an atomic gate: only one writing
     // statement per interval wins and pays the refresh; concurrent writers skip
     // immediately (SKIP LOCKED) instead of queueing behind the winner. last_refresh
     // must be clock_timestamp() (wall clock), not now() (transaction start): a
     // long-running writing transaction would otherwise record a stale timestamp and
     // re-open the gate immediately. Worst-case staleness is the interval plus the
     // winner's remaining transaction time, since the row lock is held to commit.
+    //
+    // The gate winner also clears `dirty` up front: it is about to REFRESH, so its
+    // snapshot supersedes any pending marker. Any write that commits after that
+    // snapshot re-sets `dirty` below and is picked up by the trailing flush.
+    //
+    // When the gate is closed (debounced) the writer instead marks the state row
+    // `dirty` so the app-side trailing flush knows changes arrived that this
+    // interval's refresh did not capture. This second UPDATE intentionally blocks
+    // on the gate winner's row lock: a writer whose change lands during an in-flight
+    // refresh must wait until that refresh commits and then flag `dirty`, otherwise
+    // its change could be silently dropped. It performs no REFRESH of its own, so it
+    // does not reintroduce the per-statement CONCURRENTLY storm the gate prevents.
     await client.query(`
       CREATE OR REPLACE FUNCTION refresh_trades_mv()
           RETURNS TRIGGER
@@ -247,7 +265,7 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           AS $$
           BEGIN
           UPDATE marketplace.mv_trades_refresh_state s
-             SET last_refresh = clock_timestamp()
+             SET last_refresh = clock_timestamp(), dirty = false
             FROM (
               SELECT id FROM marketplace.mv_trades_refresh_state
                WHERE last_refresh < now() - interval '${TRADES_MV_REFRESH_INTERVAL_SECONDS} seconds'
@@ -257,6 +275,10 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
 
           IF FOUND THEN
             REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME};
+          ELSE
+            UPDATE marketplace.mv_trades_refresh_state
+               SET dirty = true
+             WHERE id = true;
           END IF;
 
           RETURN NULL;
@@ -358,4 +380,39 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   } finally {
     client.release()
   }
+}
+
+// Trailing flush for the leading-edge debounce in refresh_trades_mv(). Writes that
+// arrive while the gate is closed only mark the state row `dirty`; nothing refreshes
+// the view for them until this runs. Intended to be invoked on an interval (~every
+// TRADES_MV_REFRESH_INTERVAL_SECONDS) so any debounced change is reflected within one
+// interval instead of waiting indefinitely for the next unrelated trigger.
+//
+// The claim UPDATE is the same atomic gate the trigger uses: it only proceeds when
+// the row is `dirty` AND the debounce interval has elapsed, and it clears `dirty` +
+// stamps last_refresh in one statement (FOR UPDATE SKIP LOCKED). That prevents two
+// flushers, or a flusher racing a trigger, from both refreshing, and it re-closes the
+// debounce gate so the concurrent trigger path stays quiet. As with the trigger, any
+// write committing after the REFRESH snapshot re-sets `dirty` and is caught next tick.
+// Returns true when it performed a REFRESH, false when there was nothing to flush.
+export async function flushTradesMaterializedViewIfDirty(db: IPgComponent): Promise<boolean> {
+  const claim = await db.query<{ id: boolean }>(`
+    UPDATE marketplace.mv_trades_refresh_state s
+       SET last_refresh = clock_timestamp(), dirty = false
+      FROM (
+        SELECT id FROM marketplace.mv_trades_refresh_state
+         WHERE dirty = true
+           AND last_refresh < now() - interval '${TRADES_MV_REFRESH_INTERVAL_SECONDS} seconds'
+         FOR UPDATE SKIP LOCKED
+      ) gate
+     WHERE s.id = gate.id
+    RETURNING s.id;
+  `)
+
+  if (!claim.rowCount) {
+    return false
+  }
+
+  await db.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME}`)
+  return true
 }

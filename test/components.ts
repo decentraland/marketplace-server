@@ -145,6 +145,9 @@ async function initComponents(): Promise<TestComponents> {
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
     startupDelay: 30
   })
+  const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => undefined, 30 * 1000, {
+    startupDelay: 30
+  })
 
   const transak = createTransakComponent(
     { fetch, logs, cache },
@@ -184,6 +187,7 @@ async function initComponents(): Promise<TestComponents> {
     wertApi,
     ens,
     updateBuilderServerItemsViewJob,
+    flushTradesMaterializedViewJob,
     access,
     lists,
     picks,

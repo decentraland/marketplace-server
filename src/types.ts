@@ -63,6 +63,7 @@ export type BaseComponents = {
   transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
+  flushTradesMaterializedViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent
