@@ -413,6 +413,14 @@ export async function flushTradesMaterializedViewIfDirty(db: IPgComponent): Prom
     return false
   }
 
-  await db.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME}`)
+  try {
+    await db.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME}`)
+  } catch (error) {
+    // The claim already cleared `dirty`, but the REFRESH failed — the changes it was meant to capture
+    // are still unreflected. Re-mark `dirty` so the next tick retries instead of silently dropping them
+    // (the exact bug this flush exists to prevent), then rethrow so the job's onError surfaces it.
+    await db.query('UPDATE marketplace.mv_trades_refresh_state SET dirty = true WHERE id = true')
+    throw error
+  }
   return true
 }

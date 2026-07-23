@@ -155,8 +155,15 @@ export async function initComponents(): Promise<AppComponents> {
   // arrived while the leading-edge debounce gate was closed only marks the state row
   // dirty, so this reflects it within one interval instead of waiting for an unrelated
   // trigger (see flushTradesMaterializedViewIfDirty).
+  const flushTradesMaterializedViewLogger = logs.getLogger('flush-trades-mv-job')
   const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => trades.flushMaterializedViewIfDirty(), thirtySeconds, {
-    startupDelay: thirtySeconds
+    startupDelay: thirtySeconds,
+    // A failed REFRESH re-marks the state row dirty (flushTradesMaterializedViewIfDirty) so it retries
+    // next tick; log it here so the failure isn't swallowed silently.
+    onError: error =>
+      flushTradesMaterializedViewLogger.error(
+        `Failed to flush the trades materialized view: ${error instanceof Error ? error.message : String(error)}`
+      )
   })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })

@@ -68,4 +68,24 @@ describe('when flushing a debounced trades materialized view refresh', () => {
       await expect(flushTradesMaterializedViewIfDirty(mockPg)).resolves.toBe(false)
     })
   })
+
+  describe('and the REFRESH fails after the claim', () => {
+    beforeEach(() => {
+      // claim wins, REFRESH throws, then the re-mark UPDATE runs
+      mockQuery
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: true }] })
+        .mockRejectedValueOnce(new Error('refresh boom'))
+        .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    })
+
+    it('should re-mark the state row dirty so the next tick retries, and rethrow', async () => {
+      await expect(flushTradesMaterializedViewIfDirty(mockPg)).rejects.toThrow('refresh boom')
+
+      // 3rd query restores dirty = true (the claim had cleared it before the failed REFRESH).
+      expect(mockQuery).toHaveBeenCalledTimes(3)
+      const remarkSql = mockQuery.mock.calls[2][0] as string
+      expect(remarkSql).toContain('UPDATE marketplace.mv_trades_refresh_state')
+      expect(remarkSql).toContain('SET dirty = true')
+    })
+  })
 })
