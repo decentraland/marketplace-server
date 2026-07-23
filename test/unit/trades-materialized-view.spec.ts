@@ -1,4 +1,4 @@
-import { flushTradesMaterializedViewIfDirty, TRADES_MV_NAME } from '../../src/logic/trades/materialized-view'
+import { ensureTradesRefreshGate, flushTradesMaterializedViewIfDirty, TRADES_MV_NAME } from '../../src/logic/trades/materialized-view'
 import { IPgComponent } from '../../src/ports/db/types'
 
 let mockQuery: jest.Mock
@@ -87,5 +87,44 @@ describe('when flushing a debounced trades materialized view refresh', () => {
       expect(remarkSql).toContain('UPDATE marketplace.mv_trades_refresh_state')
       expect(remarkSql).toContain('SET dirty = true')
     })
+  })
+})
+
+describe('when ensuring the trades refresh gate', () => {
+  let client: { query: jest.Mock; release: jest.Mock }
+
+  beforeEach(() => {
+    client = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }), release: jest.fn() }
+    ;(mockPg.getPool as jest.Mock).mockReturnValue({ connect: jest.fn().mockResolvedValue(client) })
+  })
+
+  it('applies the dirty column and the dirty-aware refresh function in its own committed transaction', async () => {
+    await ensureTradesRefreshGate(mockPg)
+
+    const sql = client.query.mock.calls.map(c => String(c[0]))
+    // Runs as its own BEGIN..COMMIT so a later privilege failure in the full recreate cannot roll it back.
+    expect(sql[0]).toBe('BEGIN')
+    expect(sql[sql.length - 1]).toBe('COMMIT')
+    // The `dirty` column is added idempotently (the app-side flush job depends on it).
+    expect(sql.some(s => s.includes('ADD COLUMN IF NOT EXISTS dirty'))).toBe(true)
+    // The refresh function is replaced in place (CREATE OR REPLACE, no DROP) and is dirty-aware.
+    const fn = sql.find(s => s.includes('CREATE OR REPLACE FUNCTION refresh_trades_mv'))
+    expect(fn).toBeDefined()
+    expect(fn).toContain('SET dirty = true')
+    expect(client.release).toHaveBeenCalled()
+  })
+
+  it('rolls back and rethrows if a gate statement fails, without leaking the connection', async () => {
+    client.query.mockReset()
+    client.query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockRejectedValueOnce(new Error('gate boom')) // first DDL statement fails
+
+    await expect(ensureTradesRefreshGate(mockPg)).rejects.toThrow('gate boom')
+
+    const sql = client.query.mock.calls.map(c => String(c[0]))
+    expect(sql).toContain('ROLLBACK')
+    expect(sql).not.toContain('COMMIT')
+    expect(client.release).toHaveBeenCalled()
   })
 })
