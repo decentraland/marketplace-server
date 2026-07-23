@@ -1086,9 +1086,11 @@ test('when getting NFTs', function ({ components }) {
       let skippedBody: NFTsResponse
 
       beforeEach(async () => {
-        await createWearableNFT(components, contractAddress, wearableTokenId)
-        await createParcelNFT(components, contractAddress, parcelTokenId)
-        await createEstateNFT(components, contractAddress, estateTokenId)
+        // Use distinct createdAt values so sortBy=newest produces a deterministic order
+        const now = Math.floor(Date.now() / 1000)
+        await createWearableNFT(components, contractAddress, wearableTokenId, { createdAt: now - 20 })
+        await createParcelNFT(components, contractAddress, parcelTokenId, { createdAt: now - 10 })
+        await createEstateNFT(components, contractAddress, estateTokenId, { createdAt: now })
 
         const { localFetch } = components
         allResponse = await localFetch.fetch(`/v1/nfts?first=100&sortBy=newest&contractAddress=${contractAddress}`)
@@ -1145,12 +1147,10 @@ test('when getting NFTs', function ({ components }) {
       let responseBody: NFTsResponse
 
       beforeEach(async () => {
-        await createWearableNFT(components, contractAddress, wearableTokenId)
-        // Add delay to ensure different timestamps
-        await new Promise(resolve => setTimeout(resolve, 50))
-        await createParcelNFT(components, contractAddress, parcelTokenId)
-        await new Promise(resolve => setTimeout(resolve, 50))
-        await createEstateNFT(components, contractAddress, estateTokenId)
+        const now = Math.floor(Date.now() / 1000)
+        await createWearableNFT(components, contractAddress, wearableTokenId, { createdAt: now - 20 })
+        await createParcelNFT(components, contractAddress, parcelTokenId, { createdAt: now - 10 })
+        await createEstateNFT(components, contractAddress, estateTokenId, { createdAt: now })
 
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?sortBy=newest&contractAddress=${contractAddress}`)
@@ -1181,12 +1181,10 @@ test('when getting NFTs', function ({ components }) {
       let responseBody: NFTsResponse
 
       beforeEach(async () => {
-        await createWearableNFT(components, contractAddress, wearableTokenId)
-        // Add delay to ensure different timestamps
-        await new Promise(resolve => setTimeout(resolve, 50))
-        await createParcelNFT(components, contractAddress, parcelTokenId)
-        await new Promise(resolve => setTimeout(resolve, 50))
-        await createEstateNFT(components, contractAddress, estateTokenId)
+        const now = Math.floor(Date.now() / 1000)
+        await createWearableNFT(components, contractAddress, wearableTokenId, { createdAt: now - 20 })
+        await createParcelNFT(components, contractAddress, parcelTokenId, { createdAt: now - 10 })
+        await createEstateNFT(components, contractAddress, estateTokenId, { createdAt: now })
 
         const { localFetch } = components
         response = await localFetch.fetch(`/v1/nfts?sortBy=oldest&contractAddress=${contractAddress}`)
