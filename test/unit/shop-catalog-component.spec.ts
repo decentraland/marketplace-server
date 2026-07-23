@@ -818,5 +818,26 @@ describe('Shop Catalog Component', () => {
         listingCount: 2
       })
     })
+
+    it('should surface the representative seller and issuedId for a secondary headline, null for a primary', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          itemRow({
+            trade_id: 'sec-1',
+            trade_type: 'public_nft_order',
+            token_id: '99',
+            item_id: null,
+            seller: '0xreseller',
+            issued_id: '42'
+          }),
+          itemRow({ trade_id: 'prim-1', trade_type: 'public_item_order', seller: null, issued_id: null })
+        ]
+      })
+
+      const { data } = await shopCatalog.getShopItems({}, 0.5)
+
+      expect(data[0]).toMatchObject({ listingType: 'secondary', seller: '0xreseller', issuedId: '42' })
+      expect(data[1]).toMatchObject({ listingType: 'primary', seller: null, issuedId: null })
+    })
   })
 })

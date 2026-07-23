@@ -750,6 +750,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         wearableCategory: r.wearable_category,
         gender: r.gender ?? null,
         creator: r.creator ?? '',
+        // Representative listing's seller + issued id (buildUnifiedInner carries both): populated when
+        // the headline listing is a secondary (resale), null when it's a primary (mint).
+        seller: r.seller ?? null,
+        issuedId: r.issued_id ?? null,
         priceCredits: Number(r.price_credits),
         manaWei: r.mana_wei ?? null,
         listingCount: Number(r.listing_count),
