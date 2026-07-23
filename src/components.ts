@@ -151,6 +151,20 @@ export async function initComponents(): Promise<AppComponents> {
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
+  // Trailing flush for the debounced trades materialized view refresh: any write that
+  // arrived while the leading-edge debounce gate was closed only marks the state row
+  // dirty, so this reflects it within one interval instead of waiting for an unrelated
+  // trigger (see flushTradesMaterializedViewIfDirty).
+  const flushTradesMaterializedViewLogger = logs.getLogger('flush-trades-mv-job')
+  const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => trades.flushMaterializedViewIfDirty(), thirtySeconds, {
+    startupDelay: thirtySeconds,
+    // A failed REFRESH re-marks the state row dirty (flushTradesMaterializedViewIfDirty) so it retries
+    // next tick; log it here so the failure isn't swallowed silently.
+    onError: error =>
+      flushTradesMaterializedViewLogger.error(
+        `Failed to flush the trades materialized view: ${error instanceof Error ? error.message : String(error)}`
+      )
+  })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -210,6 +224,7 @@ export async function initComponents(): Promise<AppComponents> {
     wertApi,
     ens,
     updateBuilderServerItemsViewJob,
+    flushTradesMaterializedViewJob,
     schemaValidator,
     snapshot,
     items,
