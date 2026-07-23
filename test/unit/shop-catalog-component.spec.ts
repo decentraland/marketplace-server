@@ -577,4 +577,181 @@ describe('Shop Catalog Component', () => {
       expect(data.map(d => d.gender)).toEqual(['male', 'female', null])
     })
   })
+
+  // An item-unified row: a UnifiedListingRow (the surviving representative listing) plus listing_count.
+  function itemRow(overrides: Record<string, unknown> = {}) {
+    return unifiedRow({ listing_count: '1', ...overrides })
+  }
+
+  describe('when building the item-unified query', () => {
+    const RATE = 0.5
+    const RATE_STR = RATE.toFixed(18)
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should collapse to one row per item via DISTINCT ON (contract_address, item_id)', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('SELECT DISTINCT ON (f.contract_address, f.item_id)')
+    })
+
+    it('should pick the representative listing primary-before-secondary, then native-before-legacy, then cheapest', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // The DISTINCT ON tiebreak ORDER BY must lead with the grouping key, then the priority chain.
+      expect(text).toContain('ORDER BY\n          f.contract_address,\n          f.item_id,')
+      expect(text).toContain("(CASE WHEN f.trade_type = 'public_item_order' THEN 0 ELSE 1 END)")
+      expect(text).toContain("(CASE WHEN f.source = 'native' THEN 0 ELSE 1 END)")
+      expect(text).toContain('f.usd_wei ASC')
+      expect(text).toContain('f.trade_id')
+    })
+
+    it('should attach a per-item listing_count window partitioned by (contract_address, item_id)', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count')
+    })
+
+    it('should compute the headline priceCredits in SQL as CEIL of the survivor usd_wei', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('CEIL(f.usd_wei /')
+      expect(text).toContain('AS price_credits')
+    })
+
+    it('should drop free/broken listings before grouping so they never headline or inflate the count', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('WHERE u.usd_wei > 0')
+    })
+
+    it('should merge native and legacy sources with UNION ALL by default', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('UNION ALL')
+      expect(sql.values).toContain(2)
+      expect(sql.values).toContain(1)
+    })
+
+    it('should restrict to a single source (no UNION ALL) when source is set', async () => {
+      await shopCatalog.getShopItems({ source: 'native' }, RATE)
+      let sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('UNION ALL')
+      expect(sql.values).toContain(2)
+      expect(sql.values).not.toContain(1)
+
+      query.mockClear()
+      await shopCatalog.getShopItems({ source: 'legacy' }, RATE)
+      sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('UNION ALL')
+      expect(sql.values).toContain(1)
+      expect(sql.values).not.toContain(2)
+    })
+
+    it('should apply the MANA/USD rate to legacy amounts only', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('mv.amount_received::numeric * ')
+      expect(sql.values).toContain(RATE_STR)
+    })
+
+    it('should filter the credit price range on the item headline price (ceil-consistent lower bound)', async () => {
+      await shopCatalog.getShopItems({ minPriceCredits: 3, maxPriceCredits: 10 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('d.usd_wei > ')
+      expect(sql.text).toContain('d.usd_wei <=')
+      expect(sql.values).toContain((2n * WEI_PER_CREDIT).toString())
+      expect(sql.values).toContain((10n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should not append a negative lower bound when minPriceCredits is 0', async () => {
+      await shopCatalog.getShopItems({ minPriceCredits: 0 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.values).not.toContain((-1n * WEI_PER_CREDIT).toString())
+    })
+
+    it('should sort the deduped items on fixed expressions with a stable trade_id tiebreaker', async () => {
+      await shopCatalog.getShopItems({ sortBy: 'cheapest' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.usd_wei ASC, d.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getShopItems({ sortBy: 'most_expensive' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.usd_wei DESC, d.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getShopItems({ sortBy: 'name' }, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.name ASC, d.trade_id')
+
+      query.mockClear()
+      await shopCatalog.getShopItems({}, RATE)
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.created_at DESC, d.trade_id')
+    })
+
+    it('should clamp pagination and bind LIMIT/OFFSET as params', async () => {
+      await shopCatalog.getShopItems({ first: 99999, skip: 10.7 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('LIMIT')
+      expect(sql.text).toContain('OFFSET')
+      expect(sql.values).toEqual(expect.arrayContaining([1000, 10]))
+    })
+
+    it('should count total items from COUNT(*) OVER() on the deduped set', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+      expect(query.mock.calls[0][0].text).toContain('COUNT(*) OVER() AS total')
+    })
+  })
+
+  describe('when mapping item-unified rows', () => {
+    it('should surface the representative listing and the per-item listingCount', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          itemRow({ source: 'native', trade_id: 'native-1', price_credits: '5', mana_wei: null, listing_count: '3', total: '2' }),
+          itemRow({
+            source: 'native',
+            trade_id: 'native-2',
+            trade_type: 'public_nft_order',
+            token_id: '99',
+            item_id: null,
+            price_credits: '7',
+            listing_count: '1',
+            total: '2'
+          })
+        ]
+      })
+
+      const { data, total } = await shopCatalog.getShopItems({}, 0.5)
+
+      expect(total).toBe(2)
+      expect(data[0]).toMatchObject({ tradeId: 'native-1', listingType: 'primary', priceCredits: 5, listingCount: 3 })
+      expect(data[1]).toMatchObject({ tradeId: 'native-2', listingType: 'secondary', tokenId: '99', priceCredits: 7, listingCount: 1 })
+    })
+
+    it('should carry the raw MANA price for a legacy representative and the source discriminator', async () => {
+      query.mockResolvedValueOnce({
+        rows: [itemRow({ source: 'legacy', trade_id: 'legacy-1', price_credits: '3', mana_wei: '2500000000000000000', listing_count: '2' })]
+      })
+
+      const { data } = await shopCatalog.getShopItems({}, 0.5)
+
+      expect(data[0]).toMatchObject({
+        source: 'legacy',
+        tradeId: 'legacy-1',
+        priceCredits: 3,
+        manaWei: '2500000000000000000',
+        listingCount: 2
+      })
+    })
+  })
 })
