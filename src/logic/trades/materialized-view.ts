@@ -10,7 +10,97 @@ export const TRADES_MV_NAME = 'mv_trades'
 // refresh, ~2s of temp-file I/O).
 export const TRADES_MV_REFRESH_INTERVAL_SECONDS = 30
 
+// --- App-owned refresh "gate" objects (state row + `dirty` column + refresh function) ------------
+// These are the only pieces of the materialized-view setup the runtime code depends on at request
+// time: every trigger calls refresh_trades_mv(), and the app-side trailing flush + the trigger both
+// read/write mv_trades_refresh_state.dirty. They touch ONLY objects the app DB user owns, so they can
+// always be applied — unlike the full recreate below, which drops/recreates the view + triggers on
+// squid-owned tables and can fail for a least-privilege runtime user. Kept as shared constants so
+// ensureTradesRefreshGate and recreateTradesMaterializedView never drift.
+const REFRESH_STATE_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS marketplace.mv_trades_refresh_state (
+    id boolean PRIMARY KEY DEFAULT true CHECK (id),
+    last_refresh timestamptz NOT NULL DEFAULT '-infinity',
+    dirty boolean NOT NULL DEFAULT false
+  );
+`
+// Add the column on already-provisioned databases where the table predates it.
+const REFRESH_STATE_DIRTY_COLUMN_SQL =
+  'ALTER TABLE marketplace.mv_trades_refresh_state ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT false'
+const REFRESH_STATE_ROW_SQL = 'INSERT INTO marketplace.mv_trades_refresh_state (id) VALUES (true) ON CONFLICT (id) DO NOTHING'
+// CREATE OR REPLACE (not DROP + CREATE): replacing the body in place keeps the existing triggers
+// attached, so this never needs to drop triggers on squid-owned tables the app user cannot touch.
+const REFRESH_FUNCTION_SQL = `
+  CREATE OR REPLACE FUNCTION refresh_trades_mv()
+      RETURNS TRIGGER
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+      UPDATE marketplace.mv_trades_refresh_state s
+         SET last_refresh = clock_timestamp(), dirty = false
+        FROM (
+          SELECT id FROM marketplace.mv_trades_refresh_state
+           WHERE last_refresh < now() - interval '${TRADES_MV_REFRESH_INTERVAL_SECONDS} seconds'
+           FOR UPDATE SKIP LOCKED
+        ) gate
+       WHERE s.id = gate.id;
+
+      IF FOUND THEN
+        REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME};
+      ELSE
+        UPDATE marketplace.mv_trades_refresh_state
+           SET dirty = true
+         WHERE id = true;
+      END IF;
+
+      RETURN NULL;
+  END;
+  $$;
+`
+
+// Apply the app-owned refresh gate in its OWN committed transaction, independent of the full
+// materialized-view recreate. This exists because the full recreate is atomic and drops/recreates
+// objects on squid-owned tables (e.g. DROP FUNCTION ... CASCADE cascades into triggers on
+// squid_marketplace.nft / squid_trades.trade the runtime user cannot drop): on a least-privilege
+// deployment that whole transaction rolls back, which previously took the `dirty` column and the
+// dirty-aware refresh function down with it. The trailing-flush job then errored every tick
+// ("column \"dirty\" does not exist") and debounced refreshes were never healed, so freshly-created
+// listings stayed invisible until an unrelated write triggered the next refresh. Running the gate
+// first, in its own transaction over app-owned objects only, guarantees it survives regardless of
+// what the privileged recreate below can or cannot do.
+export async function ensureTradesRefreshGate(db: IPgComponent) {
+  const client = await db.getPool().connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(REFRESH_STATE_TABLE_SQL)
+    await client.query(REFRESH_STATE_DIRTY_COLUMN_SQL)
+    await client.query(REFRESH_STATE_ROW_SQL)
+    await client.query(REFRESH_FUNCTION_SQL)
+    // Best-effort: the state row is read/updated by the trigger running as the writing role. Guarded
+    // so a missing role / insufficient privilege never rolls back the gate above.
+    await client.query(`
+      DO $$ BEGIN
+        GRANT SELECT, UPDATE ON marketplace.mv_trades_refresh_state TO mv_trades_owner;
+      EXCEPTION WHEN insufficient_privilege OR undefined_object THEN
+        RAISE NOTICE 'Skipping GRANT on mv_trades_refresh_state: %', SQLERRM;
+      END $$;
+    `)
+    await client.query('COMMIT')
+  } catch (error) {
+    console.error('Error ensuring trades refresh gate', error)
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export async function recreateTradesMaterializedView(db: IPgComponent) {
+  // Apply the app-owned refresh gate (state row + `dirty` column + refresh function) FIRST, in its
+  // own committed transaction, so a privilege failure in the full recreate below can never roll it
+  // back (see ensureTradesRefreshGate).
+  await ensureTradesRefreshGate(db)
+
   const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
   const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
   const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
@@ -220,71 +310,16 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
     )
 
-    // Single-row gate recording the last refresh time, shared by every trigger.
-    // `dirty` marks that writes arrived while the debounce gate was closed (a
-    // refresh those writes never made it into); the app-side trailing flush uses
-    // it to guarantee a debounced refresh is never permanently dropped.
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS marketplace.mv_trades_refresh_state (
-        id boolean PRIMARY KEY DEFAULT true CHECK (id),
-        last_refresh timestamptz NOT NULL DEFAULT '-infinity',
-        dirty boolean NOT NULL DEFAULT false
-      );
-    `)
-    // Add the column on already-provisioned databases where the table predates it.
-    await client.query('ALTER TABLE marketplace.mv_trades_refresh_state ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT false')
-    await client.query('INSERT INTO marketplace.mv_trades_refresh_state (id) VALUES (true) ON CONFLICT (id) DO NOTHING')
-    // Trigger functions run as whoever performs the write. Every user able to run
-    // the trigger successfully is already a member of mv_trades_owner (the REFRESH
-    // itself requires it), so that role is exactly the right audience for the gate
+    // Single-row gate + dirty-aware refresh function (see the shared constants + ensureTradesRefreshGate,
+    // which already applied these in its own committed transaction; re-run here so a fully-privileged
+    // recreate keeps a single source of truth). Idempotent.
+    await client.query(REFRESH_STATE_TABLE_SQL)
+    await client.query(REFRESH_STATE_DIRTY_COLUMN_SQL)
+    await client.query(REFRESH_STATE_ROW_SQL)
+    // Trigger functions run as whoever performs the write; every such role is a member of
+    // mv_trades_owner, so that role is the right audience for the gate.
     await client.query('GRANT SELECT, UPDATE ON marketplace.mv_trades_refresh_state TO mv_trades_owner')
-
-    // Create refresh function. The first UPDATE is an atomic gate: only one writing
-    // statement per interval wins and pays the refresh; concurrent writers skip
-    // immediately (SKIP LOCKED) instead of queueing behind the winner. last_refresh
-    // must be clock_timestamp() (wall clock), not now() (transaction start): a
-    // long-running writing transaction would otherwise record a stale timestamp and
-    // re-open the gate immediately. Worst-case staleness is the interval plus the
-    // winner's remaining transaction time, since the row lock is held to commit.
-    //
-    // The gate winner also clears `dirty` up front: it is about to REFRESH, so its
-    // snapshot supersedes any pending marker. Any write that commits after that
-    // snapshot re-sets `dirty` below and is picked up by the trailing flush.
-    //
-    // When the gate is closed (debounced) the writer instead marks the state row
-    // `dirty` so the app-side trailing flush knows changes arrived that this
-    // interval's refresh did not capture. This second UPDATE intentionally blocks
-    // on the gate winner's row lock: a writer whose change lands during an in-flight
-    // refresh must wait until that refresh commits and then flag `dirty`, otherwise
-    // its change could be silently dropped. It performs no REFRESH of its own, so it
-    // does not reintroduce the per-statement CONCURRENTLY storm the gate prevents.
-    await client.query(`
-      CREATE OR REPLACE FUNCTION refresh_trades_mv()
-          RETURNS TRIGGER
-          LANGUAGE plpgsql
-          AS $$
-          BEGIN
-          UPDATE marketplace.mv_trades_refresh_state s
-             SET last_refresh = clock_timestamp(), dirty = false
-            FROM (
-              SELECT id FROM marketplace.mv_trades_refresh_state
-               WHERE last_refresh < now() - interval '${TRADES_MV_REFRESH_INTERVAL_SECONDS} seconds'
-               FOR UPDATE SKIP LOCKED
-            ) gate
-           WHERE s.id = gate.id;
-
-          IF FOUND THEN
-            REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME};
-          ELSE
-            UPDATE marketplace.mv_trades_refresh_state
-               SET dirty = true
-             WHERE id = true;
-          END IF;
-
-          RETURN NULL;
-      END;
-      $$;
-    `)
+    await client.query(REFRESH_FUNCTION_SQL)
 
     // Create triggers - Entire operation will fail if any trigger cannot be created
     await client.query(`
