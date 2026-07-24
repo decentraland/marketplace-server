@@ -45,7 +45,8 @@ function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
 }
 
 export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
-  return SQL`
+  return (
+    SQL`
     SELECT
       id::text,
       id::text as trade_id,
@@ -68,10 +69,15 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (`
-    .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
-    .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
-    .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
-    .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
+      .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
+      // NOTE: broken-by-upgrade Estate orders are intentionally NOT filtered here.
+      // This feeds the asset detail page / My Assets, where the owner must still
+      // see their now-invalid listing (and visitors get the on-page upgrade
+      // warning). They are only hidden from the public browse feed (see landQueries).
+      .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
+      .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
+      .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
+  )
 }
 
 export function getLegacyOrdersQuery(): string {
