@@ -471,6 +471,60 @@ describe('Shop Catalog Component', () => {
       expect(sql.text).toContain('AS price_credits')
     })
 
+    // A client that wants to hide resales must be able to ask the SERVER for it. The feed is paginated
+    // and reports a total, so filtering rows out client-side yields short pages and an overstated count —
+    // the reason this filter exists rather than being left to the caller.
+    //
+    // Asserted by COUNTING the constraint, not by matching it: `mv.type = 'public_item_order'` already
+    // appears in the query's own joins, so a plain toContain would pass with no filter applied at all.
+    describe('and filtering by listing type', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const PRIMARY = "AND mv.type = 'public_item_order'"
+      const SECONDARY = "AND mv.type <> 'public_item_order'"
+
+      async function textFor(filters: Record<string, unknown>): Promise<string> {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0].text as string
+      }
+
+      // TWO added constraints, one per UNION branch (native + legacy). That is the point: a filter
+      // applied to only one branch would still let legacy resales through, which is exactly the leak a
+      // caller asking for `primary` would never notice.
+      it('should add a mint-only constraint to BOTH union branches when asked for primary', async () => {
+        const baseline = occurrences(await textFor({}), PRIMARY)
+
+        expect(occurrences(await textFor({ listingType: 'primary' }), PRIMARY)).toBe(baseline + 2)
+      })
+
+      it('should add the resale-only constraint to both union branches', async () => {
+        expect(occurrences(await textFor({ listingType: 'secondary' }), SECONDARY)).toBe(2)
+      })
+
+      it('should add a resale-only constraint when asked for secondary', async () => {
+        expect(await textFor({ listingType: 'secondary' })).toContain(SECONDARY)
+      })
+
+      it('should not constrain the type when omitted', async () => {
+        // Back-compat: every existing caller passes no listingType and must keep seeing both.
+        const text = await textFor({})
+
+        expect(occurrences(text, PRIMARY)).toBe(occurrences(await textFor({}), PRIMARY))
+        expect(text).not.toContain(SECONDARY)
+      })
+
+      it('should apply to the grouped item feed too, which is what the browse grid reads', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({}, RATE)
+        const baseline = occurrences(query.mock.calls[0][0].text as string, PRIMARY)
+
+        query.mockClear()
+        await shopCatalog.getShopItems({ listingType: 'primary' }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline + 2)
+      })
+    })
+
     it('should select the seller and issued id from the sent asset JSON in each branch', async () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 

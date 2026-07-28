@@ -167,6 +167,14 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
   if (filters.search) {
     query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
   }
+  // Primary is a `public_item_order` (minting from a collection); anything else is a resale. Same
+  // expression the row mapper uses for `listingType`, applied here so the filter and the reported value
+  // can never disagree.
+  if (filters.listingType === 'primary') {
+    query.append(SQL` AND mv.type = 'public_item_order'`)
+  } else if (filters.listingType === 'secondary') {
+    query.append(SQL` AND mv.type <> 'public_item_order'`)
+  }
 }
 
 // One branch of the unified UNION. `usdWei` is the USD-wei-equivalent expression: native listings are

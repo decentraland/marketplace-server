@@ -125,6 +125,14 @@ export type UnifiedListing = ShopListing & {
 // that the server has a MANA/USD rate) plus an optional source filter to restrict to one pool.
 export type UnifiedCatalogFilters = ShopCatalogFilters & {
   source?: UnifiedListingSource
+  /**
+   * Restrict the feed to primary (mint) or secondary (resale) listings. Omitted = both, which is the
+   * pre-existing behaviour.
+   *
+   * Exists so a client can hide resales WITHOUT filtering them out itself: the feed is paginated and
+   * carries a total, so dropping rows client-side returns short pages and an overstated count.
+   */
+  listingType?: ShopListingType
 }
 
 // The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the

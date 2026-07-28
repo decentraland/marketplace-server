@@ -1,7 +1,13 @@
 import { IHttpServerComponent } from '@dcl/core-commons'
 import { Params } from '../../logic/http/params'
 import { asJSON } from '../../logic/http/response'
-import { ShopSortBy, UnifiedListingSource, SHOP_DEFAULT_PAGE_SIZE, SHOP_MAX_PAGE_SIZE } from '../../ports/shop-catalog/types'
+import {
+  ShopListingType,
+  ShopSortBy,
+  UnifiedListingSource,
+  SHOP_DEFAULT_PAGE_SIZE,
+  SHOP_MAX_PAGE_SIZE
+} from '../../ports/shop-catalog/types'
 import { AppComponents, Context } from '../../types'
 import { getItemsParams } from './utils'
 
@@ -18,6 +24,12 @@ const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
 const SOURCE_VALUES: Record<UnifiedListingSource, UnifiedListingSource> = {
   native: 'native',
   legacy: 'legacy'
+}
+
+// Valid `listingType` values for the unified feed. Omitted = both.
+const LISTING_TYPE_VALUES: Record<ShopListingType, ShopListingType> = {
+  primary: 'primary',
+  secondary: 'secondary'
 }
 
 // Valid `groupBy` values for the unified feed. 'listing' (default) -> one row per open trade (the PDP
@@ -143,6 +155,10 @@ export function createShopUnifiedHandler(
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
     const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
+    // Omitted = both, which is the pre-existing behaviour. `getValue` rejects anything outside the set,
+    // so a typo is a 400 rather than a silently unfiltered feed — the failure mode that matters here,
+    // since a caller asking for `primary` and getting everything would show resales it meant to hide.
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
 
     const filters = {
@@ -159,7 +175,8 @@ export function createShopUnifiedHandler(
       maxPriceCredits,
       search,
       sortBy,
-      source
+      source,
+      listingType
     }
 
     return asJSON(async () => {
