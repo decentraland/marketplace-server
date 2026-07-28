@@ -639,6 +639,46 @@ LEFT JOIN (
     )
 }
 
+// Unix timestamp (2026-05-20 13:37:12 UTC) of the commit that started validating
+// new Estate trades against EstateRegistry.getFingerprintV2 (`9877d90`). Off-chain
+// trades created before this carry a legacy v1 (XOR) fingerprint in their signed
+// payload; trades created after are guaranteed v2-valid by the creation-time check.
+const ESTATE_V2_FINGERPRINT_VALIDATION_CUTOFF = 1779284232
+
+// Largest Estate (in LANDs) for which the upgraded EstateRegistry still honors the
+// legacy v1 fingerprint via verifyFingerprint's fallback. Estates above this can no
+// longer be executed with a v1 fingerprint. Mirrors the webapp's ESTATE_LR_XOR_SAFE_MAX_SIZE.
+const ESTATE_LR_XOR_SAFE_MAX_SIZE = 18
+
+/**
+ * Excludes off-chain Estate sell orders that are no longer executable on-chain
+ * after the EstateRegistry upgrade, so they are not surfaced as open listings.
+ *
+ * A `public_nft_order` whose sent asset is an Estate larger than the LR-XOR safe
+ * size AND that was signed before the v2-validation cutoff carries a stale v1
+ * fingerprint that `verifyFingerprint` will reject — buying it would revert. We
+ * keep ≤18-LAND estates (still honored via the contract's v1 fallback) and any
+ * trade created after the cutoff (v2-valid by construction).
+ *
+ * Returns a fresh SQLStatement each call (it is appended into multiple queries).
+ *
+ * TODO: once the on-chain v1 fallback deadline (2026-11-26 15:00 UTC) passes, ≤18
+ * LAND estates also stop honoring v1 — the size guard should be dropped then.
+ */
+export const getExcludeBrokenEstateTradesWhere = (): SQLStatement =>
+  SQL`
+    NOT (
+      unified_trades.type = 'public_nft_order'
+      AND unified_trades.sent_nft_category = ${NFTCategory.ESTATE}
+      AND unified_trades.created_at < to_timestamp(${ESTATE_V2_FINGERPRINT_VALIDATION_CUTOFF})
+      AND EXISTS (
+        SELECT 1 FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft broken_estate_nft
+        WHERE broken_estate_nft.id = unified_trades.sent_nft_id
+          AND broken_estate_nft.search_estate_size > ${ESTATE_LR_XOR_SAFE_MAX_SIZE}
+      )
+    )
+  `)
+
 export const getTradesCTE = ({
   cteName,
   category,
