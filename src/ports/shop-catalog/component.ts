@@ -35,6 +35,18 @@ const ERC20_ASSET_TYPE = TradeAssetType.ERC20
 // because the column is `numeric` and the value exceeds every JS number.
 const NO_PRICE_SENTINEL = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
 
+/**
+ * Upper bound on a row's USD-wei price, applied before `price_credits` is cast to bigint.
+ *
+ * Without it an absurd price does not merely render badly — `CEIL(usd_wei / C)::bigint` raises
+ * `bigint out of range` and the ENTIRE query aborts, so one bad item 500s the catalogue for every user. The
+ * sentinel guard above does not cover this: `sentinel - 1` clears it and still overflows.
+ *
+ * 1e30 USD wei is $1e12, or 10 trillion credits — orders of magnitude above any real item, and ~1e6 below
+ * the bigint ceiling, so the cast has room. Rows above it are dropped rather than fatal.
+ */
+const MAX_USD_WEI = '1000000000000000000000000000000'
+
 // The metadata joins, keyed off whatever relation is aliased `mv`. Split out from `metadataJoins` so the
 // CollectionStore branch can reuse them verbatim over its own base relation (see `storeBaseRelation`):
 // every shared expression — `appendUnifiedFilters`, `genderExpr` — reads these aliases, so reusing the
@@ -115,16 +127,34 @@ function storeBaseRelation(): SQLStatement {
         FROM `
     .append(s)
     .append(
-      // `search_is_collection_approved` is NOT optional: /v2/catalog applies it as a base WHERE, so omitting
-      // it here would surface collections the marketplace hides. available > 0 drops sold-out mints (the
-      // supply is finite and shrinks as other buyers mint), price > 0 drops free claims, which are not
-      // sales and would otherwise be advertised as free items.
+      // Each predicate, and why it is here rather than assumed:
+      //
+      // `search_is_collection_approved` mirrors the base WHERE /v2/catalog applies. NOTE it constrains only
+      // THIS branch — the trade branches carry no approval check, so an unapproved collection with an open
+      // trade is still reachable through the feed. Narrowing that is a change to existing behaviour and is
+      // deliberately out of scope here; this stops the store branch from ADDING to the exposure.
+      //
+      // `available > 0` drops sold-out mints: store supply is finite and shrinks as other buyers mint, so it
+      // has to be read at query time rather than trusted from an earlier snapshot.
+      //
+      // `price > 0` drops free claims, which are not sales and would be advertised as free items.
+      //
+      // `search_emote_outcome_type IS NULL` excludes SOCIAL emotes, which the marketplace deliberately hides
+      // (its clients all send includeSocialEmotes=false). The store branch is where the bulk of the minting
+      // catalogue enters, so without this the Shop would surface what the marketplace suppresses.
+      //
+      // `network <> 'ETHEREUM'` is insurance, not a live fix: every store row is Polygon today. But this row
+      // tells the client to call CollectionStore.buy, which exists only on Polygon, so an L1 row would offer
+      // a purchase that cannot settle. The trade branches need no equivalent — their network is a real
+      // property of the trade.
       SQL`.item i
         WHERE i.search_is_store_minter = true
           AND i.search_is_collection_approved = true
           AND i.available > 0
           AND i.price > 0
           AND i.price IS DISTINCT FROM ${NO_PRICE_SENTINEL}::numeric
+          AND i.search_emote_outcome_type IS NULL
+          AND i.network <> 'ETHEREUM'
       ) mv
       `
     )
@@ -707,7 +737,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         CEIL(sub.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits,
         COUNT(*) OVER() AS total
       FROM (`.append(inner).append(SQL`) sub
-      WHERE sub.usd_wei > 0`)
+      WHERE sub.usd_wei > 0 AND sub.usd_wei <= ${MAX_USD_WEI}::numeric`)
 
     // minPriceCredits is a floor on the DISPLAYED price, which is CEIL(usd_wei / USD_WEI_PER_CREDIT).
     // CEIL(x / C) >= m  <=>  x > (m - 1) * C, so the correct bound on usd_wei is (minWei - USD_WEI_PER_CREDIT).
@@ -808,7 +838,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
             u.*,
             COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count
           FROM (`.append(inner).append(SQL`) u
-          WHERE u.usd_wei > 0
+          WHERE u.usd_wei > 0 AND u.usd_wei <= ${MAX_USD_WEI}::numeric
         ) f
         ORDER BY
           f.contract_address,

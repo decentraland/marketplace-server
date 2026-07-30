@@ -489,17 +489,34 @@ describe('Shop Catalog Component', () => {
         return query.mock.calls[0][0].text as string
       }
 
-      // TWO added constraints, one per UNION branch (native + legacy). That is the point: a filter
-      // applied to only one branch would still let legacy resales through, which is exactly the leak a
-      // caller asking for `primary` would never notice.
-      it('should add a mint-only constraint to BOTH union branches when asked for primary', async () => {
+      /**
+       * One added constraint per UNION branch. Derived from the branch count rather than hardcoded: the
+       * invariant is "the filter reaches EVERY branch", and a literal silently stops testing that the
+       * moment a branch is added — which is what happened when the CollectionStore branch turned 2 into 3.
+       *
+       * The store branch gets the predicate too, and that is correct even though its `type` is a constant:
+       * for `primary` it is a tautology, and for `secondary` a contradiction that yields no store rows.
+       * A mint has no resale form, so "no store rows" is the right answer to a resale-only request.
+       */
+      const UNION_BRANCHES = 3
+
+      it('should add a mint-only constraint to every union branch when asked for primary', async () => {
         const baseline = occurrences(await textFor({}), PRIMARY)
 
-        expect(occurrences(await textFor({ listingType: 'primary' }), PRIMARY)).toBe(baseline + 2)
+        expect(occurrences(await textFor({ listingType: 'primary' }), PRIMARY)).toBe(baseline + UNION_BRANCHES)
       })
 
-      it('should add the resale-only constraint to both union branches', async () => {
-        expect(occurrences(await textFor({ listingType: 'secondary' }), SECONDARY)).toBe(2)
+      it('should add the resale-only constraint to every union branch', async () => {
+        expect(occurrences(await textFor({ listingType: 'secondary' }), SECONDARY)).toBe(UNION_BRANCHES)
+      })
+
+      it('should return no store rows for a resale-only request, since a mint has no resale form', async () => {
+        // The store branch's contradiction (`type` is the constant 'public_item_order' <> itself) is what
+        // makes this true, so a caller asking for resales never sees a mint offered as one.
+        const text = await textFor({ listingType: 'secondary' })
+
+        expect(text).toContain("'public_item_order'::text AS type")
+        expect(occurrences(text, SECONDARY)).toBe(UNION_BRANCHES)
       })
 
       it('should add a resale-only constraint when asked for secondary', async () => {
@@ -522,7 +539,7 @@ describe('Shop Catalog Component', () => {
         query.mockClear()
         await shopCatalog.getShopItems({ listingType: 'primary' }, RATE)
 
-        expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline + 2)
+        expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline + UNION_BRANCHES)
       })
     })
 
@@ -801,6 +818,33 @@ describe('Shop Catalog Component', () => {
       // `price > 0` does NOT exclude it, and an item carrying it would be advertised at ~1.16e42 credits.
       expect(text).toContain('i.price IS DISTINCT FROM')
       expect(values).toContain('115792089237316195423570985008687907853269984665640564039457584007913129639935')
+    })
+
+    it('should exclude social emotes, which the marketplace itself hides', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      // Every marketplace client sends includeSocialEmotes=false. The store branch is where the bulk of the
+      // minting catalogue enters, so without this the Shop surfaces what the marketplace suppresses.
+      expect(query.mock.calls[0][0].text).toContain('i.search_emote_outcome_type IS NULL')
+    })
+
+    it('should exclude L1 items, which cannot be minted through the Polygon-only store', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      // The row tells the client to call CollectionStore.buy; an ETHEREUM row would offer a purchase that
+      // cannot settle.
+      expect(query.mock.calls[0][0].text).toContain("i.network <> 'ETHEREUM'")
+    })
+
+    it('should bound the price before the bigint cast so one bad row cannot 500 the whole feed', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const { text, values } = query.mock.calls[0][0]
+      // CEIL(usd_wei / C)::bigint raises `bigint out of range` on an absurd price, aborting the ENTIRE
+      // query rather than dropping the row. The sentinel guard does not cover it — sentinel-1 clears that
+      // check and still overflows.
+      expect(text).toContain('u.usd_wei <=')
+      expect(values).toContain('1000000000000000000000000000000')
     })
 
     it('should cast the unioned id and enum columns to text so the branches can be merged', async () => {
