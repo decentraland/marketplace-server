@@ -29,12 +29,20 @@ const USD_PEGGED_ASSET_TYPE = TradeAssetType.USD_PEGGED_MANA
 // A classic MANA-priced received asset: a listing that predates the Shop and can be imported.
 const ERC20_ASSET_TYPE = TradeAssetType.ERC20
 
-// The shared FROM + metadata joins used by the shop feed + the import feed. Resolves item metadata
-// for primary (item_p -> wearable/emote) and secondary (nft + item_s) listings.
-function metadataJoins() {
+// uint256 max, which the squid writes into `item.price` to mean "no price set" rather than leaving it NULL.
+// A `price > 0` guard does NOT exclude it, so a store item carrying the sentinel would be advertised at
+// ~1.16e42 credits. ports/catalog guards the same value the same way (`getMinPriceWhere`); kept as a string
+// because the column is `numeric` and the value exceeds every JS number.
+const NO_PRICE_SENTINEL = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+
+// The metadata joins, keyed off whatever relation is aliased `mv`. Split out from `metadataJoins` so the
+// CollectionStore branch can reuse them verbatim over its own base relation (see `storeBaseRelation`):
+// every shared expression — `appendUnifiedFilters`, `genderExpr` — reads these aliases, so reusing the
+// join chain is what makes the filters provably identical across branches rather than identical by
+// inspection.
+function metadataJoinsOn() {
   const s = MARKETPLACE_SQUID_SCHEMA
-  return SQL`FROM marketplace.mv_trades mv
-      LEFT JOIN `
+  return SQL`LEFT JOIN `
     .append(s)
     .append(
       SQL`.item item_p ON mv.type = 'public_item_order'
@@ -64,6 +72,63 @@ function metadataJoins() {
     )
     .append(s)
     .append(SQL`.item item_s ON mv.type = 'public_nft_order' AND item_s.id = nft.item_id`)
+}
+
+// The shared FROM + metadata joins used by the shop feed + the import feed. Resolves item metadata
+// for primary (item_p -> wearable/emote) and secondary (nft + item_s) listings.
+function metadataJoins() {
+  return SQL`FROM marketplace.mv_trades mv
+      `.append(metadataJoinsOn())
+}
+
+/**
+ * The CollectionStore branch's base relation, shaped like `mv_trades` and aliased `mv`.
+ *
+ * A store item is NOT a trade: primary minting has no order and no signed listing. It is a property of the
+ * item — the CollectionStore is a minter for its collection, and the buyer calls `CollectionStore.buy` at
+ * `item.price`. So it cannot be recovered by filtering `mv_trades`; it needs its own source relation, which
+ * is why the Shop's feed was missing it entirely.
+ *
+ * Projected into mv_trades' column names rather than given its own branch shape, so the metadata joins, the
+ * gender expression and every browse filter apply UNCHANGED. That is the point: the alternative is a parallel
+ * set of filter expressions that has to be kept in step by hand.
+ *
+ * The predicate mirrors `getIsOnSaleWithTrades` in ports/catalog (which backs the marketplace's "only
+ * available for minting"), minus its V3-minter half — that half is the offchain primary trade the existing
+ * branch already covers, and including it here would double-count every item.
+ */
+function storeBaseRelation(): SQLStatement {
+  const s = MARKETPLACE_SQUID_SCHEMA
+  return SQL`FROM (
+        SELECT
+          i.id AS id,
+          'public_item_order'::text AS type,
+          i.collection_id AS sent_contract_address,
+          i.blockchain_id::text AS sent_item_id,
+          NULL::text AS sent_token_id,
+          NULL::text AS sent_nft_id,
+          i.price AS amount_received,
+          i.available AS available,
+          i.network AS network,
+          to_timestamp(i.created_at) AS created_at,
+          NULL::jsonb AS assets
+        FROM `
+    .append(s)
+    .append(
+      // `search_is_collection_approved` is NOT optional: /v2/catalog applies it as a base WHERE, so omitting
+      // it here would surface collections the marketplace hides. available > 0 drops sold-out mints (the
+      // supply is finite and shrinks as other buyers mint), price > 0 drops free claims, which are not
+      // sales and would otherwise be advertised as free items.
+      SQL`.item i
+        WHERE i.search_is_store_minter = true
+          AND i.search_is_collection_approved = true
+          AND i.available > 0
+          AND i.price > 0
+          AND i.price IS DISTINCT FROM ${NO_PRICE_SENTINEL}::numeric
+      ) mv
+      `
+    )
+    .append(metadataJoinsOn())
 }
 
 // Display gender as a SELECT expression, derived from the item's supported body shapes
@@ -182,23 +247,31 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
 // rate. Columns are identical across branches so the two can be UNIONed and sorted/paginated as one.
 function unifiedBranch(opts: {
   source: 'native' | 'legacy'
+  /** How the buyer acquires it: an offchain trade (`accept`) or a CollectionStore mint (`buy`). */
+  acquisition: 'trade' | 'store'
   assetType: number
   primaryOnly: boolean
   applyRate: boolean
   rateNumericString: string
   filters: UnifiedCatalogFilters
 }): SQLStatement {
-  const { source, assetType, primaryOnly, applyRate, rateNumericString, filters } = opts
+  const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters } = opts
+  const isStore = acquisition === 'store'
   const usdWei = applyRate ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)` : SQL`mv.amount_received::numeric`
 
   const query = SQL`
       SELECT
         ${source} AS source,
-        mv.id AS trade_id,
-        mv.type AS trade_type,
-        mv.sent_contract_address AS contract_address,
-        mv.sent_item_id AS item_id,
-        mv.sent_token_id AS token_id,
+        ${acquisition} AS acquisition,
+        -- ::text because the branches are UNIONed and their ids have different column types: mv_trades.id is
+        -- uuid, while the store relation carries item.id (varchar). Postgres refuses to match uuid with
+        -- varchar across a UNION. Casting both to text is invisible downstream — the row type was already
+        -- string — and keeps the ORDER BY tiebreaker deterministic.
+        mv.id::text AS trade_id,
+        mv.type::text AS trade_type,
+        mv.sent_contract_address::text AS contract_address,
+        mv.sent_item_id::text AS item_id,
+        mv.sent_token_id::text AS token_id,
         COALESCE(nft.name, w_p.name, e_p.name) AS name,
         COALESCE(nft.image, item_p.image, item_s.image) AS image,
         COALESCE(item_p.rarity, item_s.rarity, nft.search_wearable_rarity) AS rarity,
@@ -215,7 +288,7 @@ function unifiedBranch(opts: {
     .append(
       SQL` AS usd_wei,
         mv.available::text AS available,
-        mv.network AS network,
+        mv.network::text AS network,
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
         `
     )
@@ -225,7 +298,23 @@ function unifiedBranch(opts: {
     .append(SQL`, `)
     .append(genderExpr())
     .append(SQL` `)
-    .append(metadataJoins()).append(SQL`
+    // The store branch brings its own base relation; both then share the identical join chain and filters.
+    .append(isStore ? storeBaseRelation() : metadataJoins())
+
+  if (isStore) {
+    // The store relation has already filtered itself (minter / approved / available / price) and has no
+    // `status` column, no per-trade asset rows and nothing to restrict to primary — it is primary by
+    // construction. So none of the trade-shaped predicates below apply.
+    //
+    // `WHERE TRUE` is load-bearing: appendUnifiedFilters emits ` AND <clause>` per filter, so it needs a
+    // WHERE to append to. Without it a filtered request is a syntax error while an unfiltered one parses,
+    // which is the worst failure shape — it works until someone picks a rarity.
+    query.append(SQL` WHERE TRUE`)
+    appendUnifiedFilters(query, filters)
+    return query
+  }
+
+  query.append(SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)`)
 
@@ -253,6 +342,7 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
     parts.push(
       unifiedBranch({
         source: 'native',
+        acquisition: 'trade',
         assetType: USD_PEGGED_ASSET_TYPE,
         primaryOnly: false,
         applyRate: false,
@@ -265,6 +355,23 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
     parts.push(
       unifiedBranch({
         source: 'legacy',
+        acquisition: 'trade',
+        assetType: ERC20_ASSET_TYPE,
+        primaryOnly: true,
+        applyRate: true,
+        rateNumericString,
+        filters
+      })
+    )
+    // CollectionStore mints. `source: 'legacy'` because they are MANA-priced and must inherit the legacy
+    // price treatment exactly — server-converted at the live rate, re-priced client-side at checkout, and
+    // hidden when no rate is available. What differs is only HOW you buy it, which is `acquisition`. Folding
+    // these two orthogonal facts into one `source` enum is what would force every existing
+    // `source === 'legacy'` branch to be re-audited.
+    parts.push(
+      unifiedBranch({
+        source: 'legacy',
+        acquisition: 'store',
         assetType: ERC20_ASSET_TYPE,
         primaryOnly: true,
         applyRate: true,
@@ -639,7 +746,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
       return {
         source: r.source,
-        tradeId: r.trade_id,
+        acquisition: r.acquisition,
+        // A store row has no trade; the SQL keeps the item id in trade_id only as a sort tiebreaker.
+        tradeId: r.acquisition === 'store' ? null : r.trade_id,
         listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
         contractAddress: r.contract_address,
         itemId: r.item_id,
@@ -707,6 +816,12 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
           (CASE WHEN f.trade_type = 'public_item_order' THEN 0 ELSE 1 END),
           (CASE WHEN f.source = 'native' THEN 0 ELSE 1 END),
           f.usd_wei ASC,
+          -- An item can be BOTH minting through the store and listed as an offchain primary trade, so the
+          -- two branches can produce rows for the same item at the same price. Break that tie towards the
+          -- trade: its price is signed into the order, whereas CollectionStore.buy re-validates the prices
+          -- argument against the item's live on-chain price and reverts if it moved. Same price, strictly
+          -- safer purchase. Below usd_wei so a genuinely cheaper store mint still wins on price.
+          (CASE WHEN f.acquisition = 'trade' THEN 0 ELSE 1 END),
           f.trade_id
       ) d
       WHERE d.usd_wei > 0`)
@@ -746,7 +861,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
       return {
         source: r.source,
-        tradeId: r.trade_id,
+        acquisition: r.acquisition,
+        // A store row has no trade; the SQL keeps the item id in trade_id only as a sort tiebreaker.
+        tradeId: r.acquisition === 'store' ? null : r.trade_id,
         listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
         contractAddress: r.contract_address,
         itemId: r.item_id,

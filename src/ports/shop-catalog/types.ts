@@ -109,13 +109,43 @@ export type LegacyCatalogFilters = {
 
 // Which liquidity pool a unified item comes from: 'native' = credit-buyable (USD-pegged) Shop listing,
 // 'legacy' = classic MANA-priced primary converted to credits server-side via the live MANA/USD rate.
+//
+// This answers "how is it PRICED", nothing else. CollectionStore mints are 'legacy' — MANA-priced, live-rate
+// converted — even though they are acquired completely differently; see UnifiedAcquisition.
 export type UnifiedListingSource = 'native' | 'legacy'
+
+/**
+ * How the buyer acquires the item — a SEPARATE question from how it is priced.
+ *
+ * - 'trade': an offchain-marketplace signed order, bought with `accept([trade])`.
+ * - 'store': a CollectionStore mint, bought with `CollectionStore.buy([{ collection, ids, prices,
+ *   beneficiaries }])`. Not a listing at all: no order, no signature, and the supply is finite.
+ *
+ * These two facts used to coincide — everything MANA-priced was a legacy trade — so one enum covered both.
+ * CollectionStore mints break the coincidence (MANA-priced AND not a trade), and collapsing them back into
+ * `source` would silently change the meaning of every existing `source === 'legacy'` check, several of which
+ * decide whether an item is priced from the live rate or rendered unbuyable.
+ *
+ * It also drives the buy path and the failure modes the client has to surface: a store buy re-validates the
+ * price on-chain (so it can revert on a price move) and can sell out between browse and checkout.
+ */
+export type UnifiedAcquisition = 'trade' | 'store'
 
 // A unified feed item: the same shape as a ShopListing (so the frontend consumes both uniformly) plus
 // the source discriminator. Legacy items always carry a server-computed priceCredits, converted from
 // their raw MANA price with the live rate and rounded UP to whole credits (same "Model B" as native).
-export type UnifiedListing = ShopListing & {
+export type UnifiedListing = Omit<ShopListing, 'tradeId'> & {
+  /**
+   * `null` for a CollectionStore mint, which has no trade — there is no order and nothing signed.
+   *
+   * Deliberately nullable rather than a synthetic id: this value is threaded into
+   * `POST /credits/authorize` and persisted on the purchase intent, so a fabricated id would put a
+   * reference to a nonexistent trade into the money ledger. Nullable makes the compiler point at every
+   * caller that has to branch, instead of leaving it to be spotted in review.
+   */
+  tradeId: string | null
   source: UnifiedListingSource
+  acquisition: UnifiedAcquisition
   // Raw MANA price (wei), present only for legacy items so the client can size the purchase at the live
   // rate at checkout. `null` for native (USD-pegged) items.
   manaWei: string | null
@@ -201,7 +231,10 @@ export type ShopListingRow = {
 // computed in SQL (CEIL of the USD-wei-equivalent) so the merged feed is sorted/paginated as one set.
 export type UnifiedListingRow = {
   source: UnifiedListingSource
-  trade_id: string
+  acquisition: UnifiedAcquisition
+  // NULL on a store row (no trade). The SQL still carries the item id in this column for the DISTINCT ON
+  // tiebreaker; the mapper is what drops it, so nothing downstream can mistake it for a trade.
+  trade_id: string | null
   trade_type: string
   contract_address: string
   item_id: string | null

@@ -53,6 +53,7 @@ function legacyRow(overrides: Record<string, unknown> = {}) {
 function unifiedRow(overrides: Record<string, unknown> = {}) {
   return {
     source: 'native',
+    acquisition: 'trade',
     trade_id: 'trade-1',
     trade_type: 'public_item_order',
     contract_address: '0xcollection',
@@ -594,9 +595,14 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getUnifiedListings({ source: 'legacy' }, RATE)
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).not.toContain('UNION ALL')
       expect(sql.values).toContain(1)
       expect(sql.values).not.toContain(2)
+      // `legacy` is TWO branches, not one: the MANA-priced offchain trade and the CollectionStore mint. Both
+      // are legacy-priced (live rate) and differ only in how they are bought, so a UNION ALL is expected here
+      // even though a single source was requested.
+      expect(sql.text).toContain('UNION ALL')
+      expect(sql.values).toContain('store')
+      expect(sql.values).toContain('trade')
     })
 
     it('should restrict to the native source only when source=native (no legacy branch)', async () => {
@@ -697,6 +703,160 @@ describe('Shop Catalog Component', () => {
     })
   })
 
+  describe('when mapping a CollectionStore row to a model', () => {
+    it('should carry acquisition through and drop the trade id, which does not exist for a mint', async () => {
+      query.mockResolvedValueOnce({
+        rows: [itemRow({ source: 'legacy', acquisition: 'store', trade_id: '0xcollection-3', mana_wei: '1000' })]
+      })
+
+      const { data } = await shopCatalog.getShopItems({}, 0.5)
+
+      expect(data[0].acquisition).toBe('store')
+      // The SQL keeps item.id in trade_id purely as a DISTINCT ON tiebreaker. It must NOT reach the model:
+      // tradeId is threaded into POST /credits/authorize and persisted on the purchase intent, so a
+      // fabricated id would put a reference to a nonexistent trade into the money ledger.
+      expect(data[0].tradeId).toBeNull()
+      // Still legacy-priced, so it keeps the raw MANA price for the client to re-quote at the live rate.
+      expect(data[0].source).toBe('legacy')
+      expect(data[0].manaWei).toBe('1000')
+      expect(data[0].listingType).toBe('primary')
+    })
+
+    it('should keep the trade id on a trade row', async () => {
+      query.mockResolvedValueOnce({ rows: [itemRow({ acquisition: 'trade', trade_id: 'trade-7' })] })
+
+      const { data } = await shopCatalog.getShopItems({}, 0.5)
+
+      expect(data[0].acquisition).toBe('trade')
+      expect(data[0].tradeId).toBe('trade-7')
+    })
+
+    it('should do the same on the per-listing feed', async () => {
+      query.mockResolvedValueOnce({
+        rows: [unifiedRow({ source: 'legacy', acquisition: 'store', trade_id: '0xcollection-3' })]
+      })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+
+      expect(data[0].acquisition).toBe('store')
+      expect(data[0].tradeId).toBeNull()
+    })
+  })
+
+  /**
+   * The CollectionStore branch. These items are the majority of the sellable catalogue and they are NOT
+   * trades: primary minting has no order and nothing signed, so it cannot be recovered by filtering
+   * mv_trades. The branch therefore brings its own base relation, and what these tests pin is that it stays
+   * shaped like the others (so the shared filters keep applying) while carrying the facts that differ.
+   */
+  describe('when building the CollectionStore branch of the unified feed', () => {
+    const RATE = 0.5
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should read from the item table rather than from trades', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('search_is_store_minter = true')
+      // Shaped like mv_trades and aliased `mv`, which is what lets the metadata joins and every browse
+      // filter apply to it unchanged instead of needing a parallel set of expressions.
+      expect(text).toContain(') mv')
+      expect(text).toContain("'public_item_order'::text AS type")
+    })
+
+    it('should tag store rows with acquisition=store while keeping them legacy-priced', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const { values } = query.mock.calls[0][0]
+      // Three branches: native trade, legacy trade, legacy store.
+      expect(values).toContain('store')
+      expect(values.filter((v: unknown) => v === 'legacy')).toHaveLength(2)
+      expect(values).toContain('native')
+    })
+
+    it('should exclude collections the marketplace itself hides', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      // /v2/catalog applies this as a base WHERE; omitting it would surface unapproved collections that the
+      // marketplace does not show.
+      expect(query.mock.calls[0][0].text).toContain('search_is_collection_approved = true')
+    })
+
+    it('should exclude sold-out mints and free claims', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // Store supply is finite and shrinks as others mint, so available must be checked at read time.
+      expect(text).toContain('i.available > 0')
+      expect(text).toContain('i.price > 0')
+    })
+
+    it('should exclude the uint256-max sentinel the squid uses for "no price"', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const { text, values } = query.mock.calls[0][0]
+      // `price > 0` does NOT exclude it, and an item carrying it would be advertised at ~1.16e42 credits.
+      expect(text).toContain('i.price IS DISTINCT FROM')
+      expect(values).toContain('115792089237316195423570985008687907853269984665640564039457584007913129639935')
+    })
+
+    it('should cast the unioned id and enum columns to text so the branches can be merged', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // mv_trades.id is uuid and item.id is varchar; mv_trades.type is an enum. Postgres refuses to match
+      // those across a UNION, and the failure is a runtime error no type checker would catch.
+      expect(text).toContain('mv.id::text AS trade_id')
+      expect(text).toContain('mv.type::text AS trade_type')
+    })
+
+    it('should give the store branch a WHERE for the shared filters to append to', async () => {
+      await shopCatalog.getShopItems({ rarities: ['rare'] }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // appendUnifiedFilters emits ` AND <clause>`, so without a WHERE a FILTERED request is a syntax error
+      // while an unfiltered one parses — it would work until someone picked a rarity.
+      expect(text).toContain('WHERE TRUE')
+      expect(text.match(/lower\(COALESCE\(item_p\.rarity/g)).toHaveLength(3)
+    })
+
+    it('should apply the shared browse filters to the store branch as well', async () => {
+      await shopCatalog.getShopItems({ category: 'emote', creator: '0xAbC', search: 'hat' }, RATE)
+
+      const { text, values } = query.mock.calls[0][0]
+      // One occurrence per branch — the point of reusing the join chain is that this holds by construction.
+      expect(text.match(/ILIKE 'emote%'/g)).toHaveLength(3)
+      expect(values.filter((v: unknown) => v === '0xabc')).toHaveLength(3)
+      expect(values.filter((v: unknown) => v === '%hat%')).toHaveLength(3)
+    })
+
+    it('should not apply trade-only predicates to the store branch', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // The store relation has no status column and no per-trade asset rows. Two branches are trades, so
+      // these appear twice, not three times.
+      expect(text.match(/mv\.status = 'open'/g)).toHaveLength(2)
+      expect(text.match(/FROM marketplace\.trade_assets/g)).toHaveLength(2)
+    })
+
+    it('should break a price tie towards the trade, whose price is signed', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // An item can be both minting and listed as a primary trade at the same price. CollectionStore.buy
+      // re-validates the price on-chain and reverts if it moved; a trade cannot. Ordered BELOW usd_wei so a
+      // genuinely cheaper mint still wins on price.
+      const priceIdx = text.indexOf('f.usd_wei ASC')
+      const tieIdx = text.indexOf("f.acquisition = 'trade'")
+      expect(priceIdx).toBeGreaterThan(-1)
+      expect(tieIdx).toBeGreaterThan(priceIdx)
+    })
+  })
+
   // An item-unified row: a UnifiedListingRow (the surviving representative listing) plus listing_count.
   function itemRow(overrides: Record<string, unknown> = {}) {
     return unifiedRow({ listing_count: '1', ...overrides })
@@ -760,19 +920,24 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain(1)
     })
 
-    it('should restrict to a single source (no UNION ALL) when source is set', async () => {
+    it('should restrict to the requested source, native being the only single-branch one', async () => {
+      // native is one branch: USD-pegged trades. No legacy asset type, no store.
       await shopCatalog.getShopItems({ source: 'native' }, RATE)
       let sql = query.mock.calls[0][0]
       expect(sql.text).not.toContain('UNION ALL')
       expect(sql.values).toContain(2)
       expect(sql.values).not.toContain(1)
+      expect(sql.values).not.toContain('store')
 
       query.mockClear()
+      // legacy is TWO branches — the MANA-priced trade and the CollectionStore mint — so it unions even
+      // though one source was asked for. Still no native asset type.
       await shopCatalog.getShopItems({ source: 'legacy' }, RATE)
       sql = query.mock.calls[0][0]
-      expect(sql.text).not.toContain('UNION ALL')
+      expect(sql.text).toContain('UNION ALL')
       expect(sql.values).toContain(1)
       expect(sql.values).not.toContain(2)
+      expect(sql.values).toContain('store')
     })
 
     it('should apply the MANA/USD rate to legacy amounts only', async () => {
