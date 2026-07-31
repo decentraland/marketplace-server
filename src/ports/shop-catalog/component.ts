@@ -123,6 +123,9 @@ function storeBaseRelation(): SQLStatement {
           i.available AS available,
           i.network AS network,
           to_timestamp(i.created_at) AS created_at,
+          -- No seller and no issued id for a mint. NULL::jsonb rather than an empty object because the shared
+          -- SELECT reads mv.assets->'sent'->>'owner' and ->>'issued_id': Postgres propagates NULL through both
+          -- JSON operators, so those columns come back null with no branch in the SELECT list.
           NULL::jsonb AS assets
         FROM `
     .append(s)
@@ -416,6 +419,46 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
     inner.append(SQL` UNION ALL `).append(parts[i])
   }
   return inner
+}
+
+/**
+ * Row -> model for both unified feeds. They differ only in `listingCount`, which the item feed spreads on top.
+ *
+ * Shared because the two copies had already drifted apart in their comments, and the next field added to one
+ * would silently be missing from the other — the per-listing feed backs the PDP resale view while the item
+ * feed backs the browse grid, so a divergence shows up as the same item described two different ways.
+ */
+function mapUnifiedRow(r: UnifiedListingRow, polygonChainId: number, ethereumChainId: number): UnifiedListing {
+  const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
+  return {
+    source: r.source,
+    acquisition: r.acquisition,
+    // A store row has no trade; the SQL keeps the item id in trade_id only as a DISTINCT ON tiebreaker, and
+    // dropping it here is what stops a nonexistent trade reference reaching POST /credits/authorize.
+    tradeId: r.acquisition === 'store' ? null : r.trade_id,
+    listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
+    contractAddress: r.contract_address,
+    itemId: r.item_id,
+    tokenId: r.token_id,
+    name: r.name ?? '',
+    thumbnail: r.image ?? '',
+    rarity: (r.rarity ?? 'common').toLowerCase(),
+    category: topLevelCategory(r.item_type),
+    wearableCategory: r.wearable_category,
+    gender: r.gender ?? null,
+    creator: r.creator ?? '',
+    // Seller + issued id come from `mv.assets`, which the store relation supplies as NULL::jsonb — Postgres
+    // propagates NULL through the -> and ->> operators, so both land as null without a special case. That is
+    // the right answer for a mint: nobody is reselling it and no token has been issued yet.
+    seller: r.seller ?? null,
+    issuedId: r.issued_id ?? null,
+    priceCredits: Number(r.price_credits),
+    manaWei: r.mana_wei ?? null,
+    available: r.available ? Number(r.available) : 1,
+    network: isPolygon ? Network.MATIC : Network.ETHEREUM,
+    chainId: isPolygon ? polygonChainId : ethereumChainId,
+    createdAt: Number(r.created_at)
+  }
 }
 
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
@@ -772,34 +815,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data: UnifiedListing[] = result.rows.map(r => {
-      const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
-      return {
-        source: r.source,
-        acquisition: r.acquisition,
-        // A store row has no trade; the SQL keeps the item id in trade_id only as a sort tiebreaker.
-        tradeId: r.acquisition === 'store' ? null : r.trade_id,
-        listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
-        contractAddress: r.contract_address,
-        itemId: r.item_id,
-        tokenId: r.token_id,
-        name: r.name ?? '',
-        thumbnail: r.image ?? '',
-        rarity: (r.rarity ?? 'common').toLowerCase(),
-        category: topLevelCategory(r.item_type),
-        wearableCategory: r.wearable_category,
-        gender: r.gender ?? null,
-        creator: r.creator ?? '',
-        seller: r.seller ?? null,
-        issuedId: r.issued_id ?? null,
-        priceCredits: Number(r.price_credits),
-        manaWei: r.mana_wei ?? null,
-        available: r.available ? Number(r.available) : 1,
-        network: isPolygon ? Network.MATIC : Network.ETHEREUM,
-        chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
-      }
-    })
+    const data: UnifiedListing[] = result.rows.map(r => mapUnifiedRow(r, polygonChainId, ethereumChainId))
 
     return { data, total }
   }
@@ -887,37 +903,13 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data: UnifiedItem[] = result.rows.map(r => {
-      const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
-      return {
-        source: r.source,
-        acquisition: r.acquisition,
-        // A store row has no trade; the SQL keeps the item id in trade_id only as a sort tiebreaker.
-        tradeId: r.acquisition === 'store' ? null : r.trade_id,
-        listingType: r.trade_type === 'public_item_order' ? 'primary' : 'secondary',
-        contractAddress: r.contract_address,
-        itemId: r.item_id,
-        tokenId: r.token_id,
-        name: r.name ?? '',
-        thumbnail: r.image ?? '',
-        rarity: (r.rarity ?? 'common').toLowerCase(),
-        category: topLevelCategory(r.item_type),
-        wearableCategory: r.wearable_category,
-        gender: r.gender ?? null,
-        creator: r.creator ?? '',
-        // Representative listing's seller + issued id (buildUnifiedInner carries both): populated when
-        // the headline listing is a secondary (resale), null when it's a primary (mint).
-        seller: r.seller ?? null,
-        issuedId: r.issued_id ?? null,
-        priceCredits: Number(r.price_credits),
-        manaWei: r.mana_wei ?? null,
-        listingCount: Number(r.listing_count),
-        available: r.available ? Number(r.available) : 1,
-        network: isPolygon ? Network.MATIC : Network.ETHEREUM,
-        chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
-      }
-    })
+    const data: UnifiedItem[] = result.rows.map(r => ({
+      ...mapUnifiedRow(r, polygonChainId, ethereumChainId),
+      // The only field the grouped feed adds: how many rows the union produced for this item. NOTE it counts
+      // store mints alongside trades, so it is "credit-buyable offers" rather than strictly "listings" — a
+      // resale-only drill-down can legitimately come back empty for an item badged with a count.
+      listingCount: Number(r.listing_count)
+    }))
 
     return { data, total }
   }
