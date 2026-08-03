@@ -206,7 +206,17 @@ export function createShopRelatedHandler(
     const first = params.getNumber('first', RELATED_DEFAULT_LIMIT) ?? RELATED_DEFAULT_LIMIT
 
     return asJSON(async () => {
-      if (!contractAddress || !itemId) return { data: [] }
+      // `itemId` is validated here, not just checked for presence, because the query casts it:
+      // `item.blockchain_id = ${itemId}::numeric`. A non-numeric value reaches Postgres, which raises
+      // `invalid input syntax for type numeric`, and asJSON turns that into a 500 — so `?itemId=abc`
+      // answered with a server error instead of the empty rail this endpoint promises for anything it
+      // cannot resolve. `Params.getAddress` already gives `contractAddress` that guarantee; this gives it
+      // to the other half.
+      //
+      // It is reachable from a bad URL rather than only from a hand-written request: the Shop reads the id
+      // straight out of `/item/:contractAddress/:itemId`, so a malformed deep link would 500 the rail.
+      // Blockchain ids are non-negative integers, so a digit check is the whole constraint.
+      if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
       return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
     })
   }

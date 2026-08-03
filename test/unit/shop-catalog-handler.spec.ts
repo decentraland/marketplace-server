@@ -135,5 +135,34 @@ describe('when handling the related items endpoint', () => {
       expect(getRelatedItems).not.toHaveBeenCalled()
       expect(result.body).toEqual({ data: [] })
     })
+
+    /**
+     * A non-numeric itemId used to reach the query, where `blockchain_id = ${itemId}::numeric` made Postgres
+     * raise `invalid input syntax for type numeric` — a 500 from a public GET, for a request this endpoint
+     * promises to answer with an empty rail. Asserting `not.toHaveBeenCalled()` is the point: being rejected
+     * in the handler is what keeps it away from SQL.
+     *
+     * Reachable from a bad URL, not only from a hand-written request: the Shop takes the id from
+     * `/item/:contractAddress/:itemId`, so a malformed deep link would have 500'd the rail.
+     */
+    it.each(['abc', '1e3', '-1', '1.5', '3; DROP TABLE item', ' ', '0x03'])(
+      'should return an empty rail without querying for the non-numeric itemId %p',
+      async itemId => {
+        const result = await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=${encodeURIComponent(itemId)}`)
+
+        expect(getRelatedItems).not.toHaveBeenCalled()
+        expect(result.body).toEqual({ data: [] })
+      }
+    )
+
+    it('should still accept a large numeric itemId, which is a plain blockchain id and not junk', async () => {
+      // The guard must not reject legitimate ids: blockchain ids are unbounded integers, well past 2^53.
+      const big = '90071992547409910000'
+
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=${big}`)
+
+      expect(getRelatedItems).toHaveBeenCalledTimes(1)
+      expect(getRelatedItems.mock.calls[0][0]).toMatchObject({ itemId: big })
+    })
   })
 })
