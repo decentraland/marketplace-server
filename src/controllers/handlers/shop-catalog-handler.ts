@@ -5,6 +5,7 @@ import {
   ShopListingType,
   ShopSortBy,
   UnifiedListingSource,
+  RELATED_DEFAULT_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
   SHOP_MAX_PAGE_SIZE
 } from '../../ports/shop-catalog/types'
@@ -184,6 +185,39 @@ export function createShopUnifiedHandler(
       const { data, total } =
         groupBy === 'item' ? await shopCatalog.getShopItems(filters, rate) : await shopCatalog.getUnifiedListings(filters, rate)
       return { data, total }
+    })
+  }
+}
+
+// GET /v3/catalog/related?contractAddress=0x...&itemId=3&first=10 -- items SIMILAR to one item, backing
+// the PDP's fallback rail for when the item's own collection has nothing else to show. Rows have the same
+// shape as /v3/catalog/unified?groupBy=item (item-unified, credit-priced) so the client renders them with
+// the same card. Unpaginated: returns { data } only. An unknown/missing item yields an empty rail rather
+// than an error -- a recommendation nobody can make is not a client mistake.
+export function createShopRelatedHandler(
+  components: Pick<AppComponents, 'shopCatalog' | 'manaUsdRate'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/related'>> {
+  const { shopCatalog, manaUsdRate } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const contractAddress = params.getAddress('contractAddress')
+    const itemId = params.getString('itemId')
+    const first = params.getNumber('first', RELATED_DEFAULT_LIMIT) ?? RELATED_DEFAULT_LIMIT
+
+    return asJSON(async () => {
+      // `itemId` is validated here, not just checked for presence, because the query casts it:
+      // `item.blockchain_id = ${itemId}::numeric`. A non-numeric value reaches Postgres, which raises
+      // `invalid input syntax for type numeric`, and asJSON turns that into a 500 — so `?itemId=abc`
+      // answered with a server error instead of the empty rail this endpoint promises for anything it
+      // cannot resolve. `Params.getAddress` already gives `contractAddress` that guarantee; this gives it
+      // to the other half.
+      //
+      // It is reachable from a bad URL rather than only from a hand-written request: the Shop reads the id
+      // straight out of `/item/:contractAddress/:itemId`, so a malformed deep link would 500 the rail.
+      // Blockchain ids are non-negative integers, so a digit check is the whole constraint.
+      if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
+      return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
     })
   }
 }

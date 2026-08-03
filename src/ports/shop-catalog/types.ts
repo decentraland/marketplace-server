@@ -7,6 +7,11 @@ export const SHOP_DEFAULT_PAGE_SIZE = 48
 export const SHOP_MIN_PAGE_SIZE = 1
 export const SHOP_MAX_PAGE_SIZE = 1000
 
+// Bounds for the related-items rail. Kept separate from (and far below) the browse page size: this is a
+// single carousel, so a caller asking for hundreds would only widen a scan nothing can render.
+export const RELATED_DEFAULT_LIMIT = 10
+export const RELATED_MAX_LIMIT = 50
+
 export type ShopListingType = 'primary' | 'secondary'
 
 // Display gender, derived from a wearable's supported body shapes (BaseMale/BaseFemale). `null` for
@@ -174,6 +179,22 @@ export type UnifiedItem = UnifiedListing & {
   listingCount: number
 }
 
+// Identifies the item a related-items query is anchored on. Only the item's identity travels over the
+// wire: the similarity attributes (category/rarity) are resolved server-side so the rail is the same
+// whatever the client happens to have hydrated.
+export type RelatedItemsFilters = {
+  contractAddress: string
+  itemId: string
+  first?: number
+}
+
+// The anchor item's similarity attributes, resolved from the squid `item` row.
+export type ReferenceItem = {
+  category: string // top-level: 'wearable' | 'emote'
+  wearableCategory: string | null // on-chain category (upper_body, hat, ...) when applicable
+  rarity: string | null
+}
+
 export interface IShopCatalogComponent {
   getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }>
   getImportableListings(seller: string): Promise<ImportableListing[]>
@@ -186,6 +207,11 @@ export interface IShopCatalogComponent {
   // (contract, item), priced primary-if-present else cheapest credit-buyable secondary, carrying a
   // per-item listingCount. This is the shop BROWSE feed; getUnifiedListings stays per-listing (PDP resale).
   getShopItems(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[]; total: number }>
+  // Items SIMILAR to one item, drawn from the same credit-buyable, item-unified universe as getShopItems
+  // so the client can render them with the very same card. Same top-level + on-chain category is the hard
+  // filter; rarity only steers the ORDER (closest tier first). Excludes the anchor item. Unpaginated --
+  // it backs a single carousel, so there is no total to report.
+  getRelatedItems(filters: RelatedItemsFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[] }>
 }
 
 export type ImportableListingRow = {
@@ -260,6 +286,17 @@ export type UnifiedListingRow = {
 // (of the surviving representative listing) plus the per-item listing_count.
 export type UnifiedItemRow = UnifiedListingRow & {
   listing_count: string
+}
+
+// The related-items rail selects the same columns minus `total`: it is unpaginated, so there is no
+// COUNT(*) OVER() to carry.
+export type RelatedItemRow = Omit<UnifiedItemRow, 'total'>
+
+// Raw DB row for the anchor-item lookup that a related-items query starts from.
+export type ReferenceItemRow = {
+  rarity: string | null
+  item_type: string | null
+  wearable_category: string | null
 }
 
 // Raw DB row for the legacy (classic MANA) primary feed, before mapping to LegacyListing.
