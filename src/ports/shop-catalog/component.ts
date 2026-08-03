@@ -1,5 +1,5 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { Network, TradeAssetType } from '@dcl/schemas'
+import { Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
@@ -10,6 +10,10 @@ import {
   LegacyCatalogFilters,
   LegacyListing,
   LegacyListingRow,
+  ReferenceItem,
+  ReferenceItemRow,
+  RelatedItemRow,
+  RelatedItemsFilters,
   ShopCatalogFilters,
   ShopListing,
   ShopListingRow,
@@ -18,6 +22,8 @@ import {
   UnifiedItemRow,
   UnifiedListing,
   UnifiedListingRow,
+  RELATED_DEFAULT_LIMIT,
+  RELATED_MAX_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
   SHOP_MAX_PAGE_SIZE,
   SHOP_MIN_PAGE_SIZE
@@ -421,6 +427,52 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
   return inner
 }
 
+// The item-unified core: the UNION ALL of the source branches collapsed to ONE representative listing per
+// (contract, item). Layered so each concern stays a distinct, reviewable SQL level:
+//   u  -- the UNION ALL of the source branches (one row per open credit-buyable offer).
+//   f  -- drop free/broken offers (usd_wei > 0) and absurd ones (<= MAX_USD_WEI, which keeps the bigint cast
+//         below from aborting the whole query), then attach a per-item listing_count window; this is the
+//         "N listings" badge count and it is stable across every row of the same item.
+//   d  -- DISTINCT ON (contract_address, item_id) keeps exactly one representative offer per item.
+//         The ORDER BY makes the survivor: PRIMARY before secondary, then NATIVE (fixed USD) before
+//         LEGACY (rate-floating MANA), then cheapest usd_wei, then TRADE before STORE mint, then trade_id
+//         for determinism. That is precisely "primary price if present, else cheapest credit-buyable
+//         secondary", preferring a stable USD headline over a rate-floating one. price_credits is
+//         CEIL(usd_wei / C) of the survivor (same "Model B" rounding as every other feed).
+// Callers wrap this as `d` and add their own filtering/ordering/pagination on top. sent_item_id is
+// populated for secondary rows too (mv_trades), so grouping needs no extra joins.
+//
+// Shared by the browse feed and the related-items rail so the rail is drawn from exactly the same universe,
+// grouping and headline-price rules as the grid it is meant to mirror -- a divergence here would show the
+// same item at two different prices on two screens.
+function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
+  const inner = buildUnifiedInner(filters, rateNumericString)
+
+  return SQL`SELECT DISTINCT ON (f.contract_address, f.item_id)
+          f.*,
+          CEIL(f.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits
+        FROM (
+          SELECT
+            u.*,
+            COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count
+          FROM (`.append(inner).append(SQL`) u
+          WHERE u.usd_wei > 0 AND u.usd_wei <= ${MAX_USD_WEI}::numeric
+        ) f
+        ORDER BY
+          f.contract_address,
+          f.item_id,
+          (CASE WHEN f.trade_type = 'public_item_order' THEN 0 ELSE 1 END),
+          (CASE WHEN f.source = 'native' THEN 0 ELSE 1 END),
+          f.usd_wei ASC,
+          -- An item can be BOTH minting through the store and listed as an offchain primary trade, so the
+          -- two branches can produce rows for the same item at the same price. Break that tie towards the
+          -- trade: its price is signed into the order, whereas CollectionStore.buy re-validates the prices
+          -- argument against the item's live on-chain price and reverts if it moved. Same price, strictly
+          -- safer purchase. Below usd_wei so a genuinely cheaper store mint still wins on price.
+          (CASE WHEN f.acquisition = 'trade' THEN 0 ELSE 1 END),
+          f.trade_id`)
+}
+
 /**
  * Row -> model for both unified feeds. They differ only in `listingCount`, which the item feed spreads on top.
  *
@@ -428,7 +480,9 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
  * would silently be missing from the other — the per-listing feed backs the PDP resale view while the item
  * feed backs the browse grid, so a divergence shows up as the same item described two different ways.
  */
-function mapUnifiedRow(r: UnifiedListingRow, polygonChainId: number, ethereumChainId: number): UnifiedListing {
+// `total` is omitted from the parameter (not read here) so the unpaginated related-items rail, whose rows
+// carry no COUNT(*) OVER(), can be mapped by this very function instead of a near-copy of it.
+function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: number, ethereumChainId: number): UnifiedListing {
   const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
   return {
     source: r.source,
@@ -459,6 +513,40 @@ function mapUnifiedRow(r: UnifiedListingRow, polygonChainId: number, ethereumCha
     chainId: isPolygon ? polygonChainId : ethereumChainId,
     createdAt: Number(r.created_at)
   }
+}
+
+// Row -> model for the item-GROUPED feeds (the browse grid and the related-items rail). Extends the shared
+// per-listing mapper with the one field grouping adds. Shared for the same reason mapUnifiedRow is: the rail
+// is meant to be indistinguishable from the grid, so the two must not map a row differently.
+function mapUnifiedItemRow(r: RelatedItemRow, polygonChainId: number, ethereumChainId: number): UnifiedItem {
+  return {
+    ...mapUnifiedRow(r, polygonChainId, ethereumChainId),
+    // The only field the grouped feed adds: how many rows the union produced for this item. NOTE it counts
+    // store mints alongside trades, so it is "credit-buyable offers" rather than strictly "listings" — a
+    // resale-only drill-down can legitimately come back empty for an item badged with a count.
+    listingCount: Number(r.listing_count)
+  }
+}
+
+// Rarity ranks, scarcest (0) first, sourced from @dcl/schemas so the scale can never drift from the enum.
+const RARITY_RANKS: Record<string, number> = Object.fromEntries(Rarity.getRarities().map((rarity, index) => [rarity, index]))
+// Sorts a row whose rarity is missing or unrecognised behind every known tier.
+const UNKNOWN_RARITY_DISTANCE = Rarity.getRarities().length
+
+// "Prioritise rarity" as a sortable distance from the anchor's tier rather than a same/different boolean.
+// Rarity is an ORDERED scale, so distance degrades gracefully: exact matches lead, and when there aren't
+// enough of them the next-closest tiers fill the rail instead of an arbitrary tail. Distances are computed
+// in JS and bound as params, so the CASE contains no arithmetic and no interpolated input. An anchor with
+// an unknown rarity yields a constant, which leaves the ordering to the tiebreakers below it.
+function rarityDistanceExpr(referenceRarity: string | null): SQLStatement {
+  const referenceRank = referenceRarity == null ? undefined : RARITY_RANKS[referenceRarity.toLowerCase()]
+  if (referenceRank === undefined) return SQL`0`
+
+  const expr = SQL`CASE lower(d.rarity)`
+  for (const [rarity, rank] of Object.entries(RARITY_RANKS)) {
+    expr.append(SQL` WHEN ${rarity} THEN ${Math.abs(rank - referenceRank)}`)
+  }
+  return expr.append(SQL` ELSE ${UNKNOWN_RARITY_DISTANCE} END`)
 }
 
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
@@ -821,54 +909,20 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
   }
 
   // The item-unified BROWSE feed: the same credit-buyable universe as getUnifiedListings, but collapsed
-  // to ONE row per (contract, item). Layered so each concern stays a distinct, reviewable SQL level:
-  //   u  -- the UNION ALL of the source branches (one row per open credit-buyable listing).
-  //   f  -- drop free/broken listings (usd_wei > 0) and attach a per-item listing_count window; this is
-  //         the "N listings" badge count and it is stable across every row of the same item.
-  //   d  -- DISTINCT ON (contract_address, item_id) keeps exactly one representative listing per item.
-  //         The ORDER BY makes the survivor: PRIMARY before secondary, then NATIVE (fixed USD) before
-  //         LEGACY (rate-floating MANA), then cheapest usd_wei, then trade_id for determinism. That is
-  //         precisely "primary price if present, else cheapest credit-buyable secondary", preferring a
-  //         stable USD headline over a rate-floating one. price_credits is CEIL(usd_wei / C) of the
-  //         survivor (same "Model B" rounding as every other feed).
-  // The outer query then applies the credit price-range on the HEADLINE price, the display sort, and
-  // pagination, exposing COUNT(*) OVER() as the total number of items. sent_item_id is populated for
-  // secondary rows too (mv_trades), so grouping needs no extra joins.
+  // to ONE row per (contract, item) by buildItemUnifiedCore. The outer query then applies the credit
+  // price-range on the HEADLINE price, the display sort, and pagination, exposing COUNT(*) OVER() as the
+  // total number of items.
   async function getShopItems(filters: UnifiedCatalogFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[]; total: number }> {
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
     const rateNumericString = rateToNumericString(manaUsdRate)
-
-    const inner = buildUnifiedInner(filters, rateNumericString)
 
     const query = SQL`
       SELECT
         d.*,
         COUNT(*) OVER() AS total
       FROM (
-        SELECT DISTINCT ON (f.contract_address, f.item_id)
-          f.*,
-          CEIL(f.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits
-        FROM (
-          SELECT
-            u.*,
-            COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count
-          FROM (`.append(inner).append(SQL`) u
-          WHERE u.usd_wei > 0 AND u.usd_wei <= ${MAX_USD_WEI}::numeric
-        ) f
-        ORDER BY
-          f.contract_address,
-          f.item_id,
-          (CASE WHEN f.trade_type = 'public_item_order' THEN 0 ELSE 1 END),
-          (CASE WHEN f.source = 'native' THEN 0 ELSE 1 END),
-          f.usd_wei ASC,
-          -- An item can be BOTH minting through the store and listed as an offchain primary trade, so the
-          -- two branches can produce rows for the same item at the same price. Break that tie towards the
-          -- trade: its price is signed into the order, whereas CollectionStore.buy re-validates the prices
-          -- argument against the item's live on-chain price and reverts if it moved. Same price, strictly
-          -- safer purchase. Below usd_wei so a genuinely cheaper store mint still wins on price.
-          (CASE WHEN f.acquisition = 'trade' THEN 0 ELSE 1 END),
-          f.trade_id
+        `.append(buildItemUnifiedCore(filters, rateNumericString)).append(SQL`
       ) d
       WHERE d.usd_wei > 0`)
 
@@ -903,16 +957,93 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data: UnifiedItem[] = result.rows.map(r => ({
-      ...mapUnifiedRow(r, polygonChainId, ethereumChainId),
-      // The only field the grouped feed adds: how many rows the union produced for this item. NOTE it counts
-      // store mints alongside trades, so it is "credit-buyable offers" rather than strictly "listings" — a
-      // resale-only drill-down can legitimately come back empty for an item badged with a count.
-      listingCount: Number(r.listing_count)
-    }))
+    const data = result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId))
 
     return { data, total }
   }
 
-  return { getShopListings, getImportableListings, getLegacyListings, getUnifiedListings, getShopItems }
+  // The anchor item's similarity attributes. Read straight off the squid `item` row rather than passed in
+  // by the caller: the PDP knows the item's identity from its URL long before it has hydrated the item's
+  // rarity/category, so resolving here lets the rail be requested (and cached) on the first render.
+  // Returns null when the item is unknown, which the caller reports as "nothing similar".
+  async function getReferenceItem(contractAddress: string, itemId: string): Promise<ReferenceItem | null> {
+    const query = SQL`
+      SELECT
+        item.rarity AS rarity,
+        item.item_type AS item_type,
+        COALESCE(item.search_wearable_category, item.search_emote_category) AS wearable_category
+      FROM `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item item
+      WHERE item.collection_id = ${contractAddress.toLowerCase()}
+        AND item.blockchain_id = ${itemId}::numeric
+      LIMIT 1`
+      )
+
+    const result = await pg.query<ReferenceItemRow>(query)
+    const row = result.rows[0]
+    if (!row) return null
+
+    return {
+      category: topLevelCategory(row.item_type),
+      wearableCategory: row.wearable_category,
+      rarity: row.rarity
+    }
+  }
+
+  // Items SIMILAR to one item -- the fallback rail the PDP shows when the item's own collection has
+  // nothing else to offer.
+  //
+  // "Similar" is deliberately narrow for v1: SAME top-level category (wearable/emote) and, when the anchor
+  // has one, the SAME on-chain sub-category (hat, upper_body, dance, ...). Sub-category is the hard filter
+  // because "another wearable" is too broad to read as similar, while "another hat" does. Rarity is NOT a
+  // filter -- it only steers the ORDER, closest tier first (see rarityDistanceExpr), so a one-of-a-kind
+  // rarity still fills a full rail instead of returning two cards.
+  //
+  // Runs as two statements on purpose: the anchor lookup first, then the feed query built from the SAME
+  // shared browse-filter/grouping blocks as /v3/catalog/unified?groupBy=item. Folding the lookup into one
+  // statement would mean re-expressing those filters as SQL-side joins on the anchor row -- a second,
+  // divergent copy of logic the rest of this port already owns, to save a single-row indexed read.
+  async function getRelatedItems(filters: RelatedItemsFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[] }> {
+    const { contractAddress, itemId } = filters
+    const first = clampCount(filters.first, RELATED_DEFAULT_LIMIT, SHOP_MIN_PAGE_SIZE, RELATED_MAX_LIMIT)
+    const rateNumericString = rateToNumericString(manaUsdRate)
+
+    const reference = await getReferenceItem(contractAddress, itemId)
+    if (!reference) return { data: [] }
+
+    const core = buildItemUnifiedCore(
+      {
+        category: reference.category,
+        wearableCategories: reference.wearableCategory ? [reference.wearableCategory] : undefined
+      },
+      rateNumericString
+    )
+
+    const query = SQL`
+      SELECT d.*
+      FROM (
+        `.append(core).append(SQL`
+      ) d
+      WHERE d.usd_wei > 0`)
+
+    // Drop the anchor itself. Written as a disjunction (not `NOT (a AND b)`) because item_id is nullable:
+    // a NULL item_id would make the negated form evaluate to NULL and silently discard the row.
+    query.append(SQL` AND (d.contract_address <> ${contractAddress.toLowerCase()} OR COALESCE(d.item_id, '') <> ${itemId})`)
+
+    // Rarity first (closest tier to the anchor), then newest, then trade_id so the rail is deterministic.
+    query
+      .append(SQL` ORDER BY `)
+      .append(rarityDistanceExpr(reference.rarity))
+      .append(SQL`, d.created_at DESC, d.trade_id LIMIT ${first}`)
+
+    const result = await pg.query<RelatedItemRow>(query)
+    const polygonChainId = getPolygonChainId()
+    const ethereumChainId = getEthereumChainId()
+
+    return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId)) }
+  }
+
+  return { getShopListings, getImportableListings, getLegacyListings, getUnifiedListings, getShopItems, getRelatedItems }
 }

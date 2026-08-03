@@ -5,6 +5,7 @@ import {
   ShopListingType,
   ShopSortBy,
   UnifiedListingSource,
+  RELATED_DEFAULT_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
   SHOP_MAX_PAGE_SIZE
 } from '../../ports/shop-catalog/types'
@@ -184,6 +185,29 @@ export function createShopUnifiedHandler(
       const { data, total } =
         groupBy === 'item' ? await shopCatalog.getShopItems(filters, rate) : await shopCatalog.getUnifiedListings(filters, rate)
       return { data, total }
+    })
+  }
+}
+
+// GET /v3/catalog/related?contractAddress=0x...&itemId=3&first=10 -- items SIMILAR to one item, backing
+// the PDP's fallback rail for when the item's own collection has nothing else to show. Rows have the same
+// shape as /v3/catalog/unified?groupBy=item (item-unified, credit-priced) so the client renders them with
+// the same card. Unpaginated: returns { data } only. An unknown/missing item yields an empty rail rather
+// than an error -- a recommendation nobody can make is not a client mistake.
+export function createShopRelatedHandler(
+  components: Pick<AppComponents, 'shopCatalog' | 'manaUsdRate'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/related'>> {
+  const { shopCatalog, manaUsdRate } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const contractAddress = params.getAddress('contractAddress')
+    const itemId = params.getString('itemId')
+    const first = params.getNumber('first', RELATED_DEFAULT_LIMIT) ?? RELATED_DEFAULT_LIMIT
+
+    return asJSON(async () => {
+      if (!contractAddress || !itemId) return { data: [] }
+      return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
     })
   }
 }

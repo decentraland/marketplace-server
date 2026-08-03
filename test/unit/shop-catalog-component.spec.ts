@@ -1103,4 +1103,248 @@ describe('Shop Catalog Component', () => {
       expect(data[1]).toMatchObject({ listingType: 'primary', seller: null, issuedId: null })
     })
   })
+
+  // The related-items rail runs TWO statements: the anchor-item lookup, then the feed query. So every test
+  // here queues the anchor row first and reads query.mock.calls[1] for the feed SQL.
+  describe('when building the related items query', () => {
+    const RATE = 0.5
+    const CONTRACT = '0xCollection'
+    const ANCHOR = { contractAddress: CONTRACT, itemId: '3' }
+
+    function referenceRow(overrides: Record<string, unknown> = {}) {
+      return { rarity: 'rare', item_type: 'wearable_v2', wearable_category: 'hat', ...overrides }
+    }
+
+    function mockAnchor(overrides: Record<string, unknown> = {}) {
+      query.mockResolvedValueOnce({ rows: [referenceRow(overrides)] })
+      query.mockResolvedValueOnce({ rows: [] })
+    }
+
+    it('should resolve the anchor item from the squid item table by collection and blockchain id', async () => {
+      mockAnchor()
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('item.collection_id =')
+      expect(sql.text).toContain('item.blockchain_id =')
+      // The contract is lowercased so a checksummed address from the URL still matches the squid row.
+      expect(sql.values).toEqual(expect.arrayContaining([CONTRACT.toLowerCase(), '3']))
+    })
+
+    it('should return nothing and skip the feed query when the anchor item is unknown', async () => {
+      query.mockResolvedValueOnce({ rows: [] })
+
+      const { data } = await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      expect(data).toEqual([])
+      expect(query).toHaveBeenCalledTimes(1)
+    })
+
+    it('should hard-filter on the anchor top-level category and on-chain sub-category', async () => {
+      mockAnchor({ item_type: 'wearable_v2', wearable_category: 'hat' })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      expect(sql.text).toContain("NOT ILIKE 'emote%'")
+      expect(sql.text).toContain('search_wearable_category')
+      expect(sql.values).toEqual(expect.arrayContaining([['hat']]))
+    })
+
+    it('should filter emotes to emotes when the anchor is an emote', async () => {
+      mockAnchor({ item_type: 'emote_v1', wearable_category: 'dance' })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      expect(sql.text).toContain("ILIKE 'emote%'")
+      expect(sql.values).toEqual(expect.arrayContaining([['dance']]))
+    })
+
+    it('should fall back to the top-level category alone when the anchor has no sub-category', async () => {
+      mockAnchor({ wearable_category: null })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      expect(sql.text).not.toContain('lower(COALESCE(item_p.search_wearable_category')
+      expect(sql.text).toContain("NOT ILIKE 'emote%'")
+    })
+
+    it('should exclude the anchor item with a NULL-safe disjunction, not a negated conjunction', async () => {
+      mockAnchor()
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      // `NOT (contract = x AND item_id = y)` evaluates to NULL — and so drops the row — whenever item_id
+      // is NULL, which would silently hide every secondary-only row from the rail.
+      expect(sql.text).toContain('d.contract_address <> ')
+      expect(sql.text).toContain("COALESCE(d.item_id, '') <> ")
+      expect(sql.text).not.toContain('NOT (d.contract_address')
+    })
+
+    it('should order by distance from the anchor rarity, then newest, then trade id', async () => {
+      mockAnchor({ rarity: 'rare' })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      expect(sql.text).toContain('ORDER BY CASE lower(d.rarity)')
+      expect(sql.text).toContain('d.created_at DESC, d.trade_id')
+      // The CASE binds a precomputed distance per tier: the anchor's own rarity is 0 (so exact matches
+      // lead), its neighbours 1, and so on outwards along the scarcity scale.
+      const distances = sql.values.slice(sql.values.indexOf('unique'))
+      expect(distances).toEqual(expect.arrayContaining(['rare', 0, 'uncommon', 1, 'epic', 1, 'common', 2]))
+    })
+
+    it('should place an unrecognised rarity behind every known tier', async () => {
+      mockAnchor({ rarity: 'unique' })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      // 8 known tiers -> the ELSE distance is 8, further than the widest real gap (unique..common = 7).
+      expect(sql.text).toContain('ELSE $')
+      expect(sql.values).toEqual(expect.arrayContaining([8]))
+    })
+
+    it('should apply no rarity preference when the anchor rarity is missing or unknown', async () => {
+      mockAnchor({ rarity: null })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const sql = query.mock.calls[1][0]
+      expect(sql.text).toContain('ORDER BY 0, d.created_at DESC')
+      expect(sql.text).not.toContain('CASE lower(d.rarity)')
+    })
+
+    it('should reuse the item-unified grouping so the rail is one card per item', async () => {
+      mockAnchor()
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const text = query.mock.calls[1][0].text as string
+      expect(text).toContain('SELECT DISTINCT ON (f.contract_address, f.item_id)')
+      expect(text).toContain('COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count')
+      expect(text).toContain('CEIL(f.usd_wei /')
+      expect(text).toContain('UNION ALL')
+    })
+
+    // The rail is supposed to be indistinguishable from the browse grid, so every guard and tiebreak the
+    // grid applies has to reach it through the shared core. These are the assertions that fail if someone
+    // adds one to getShopItems' own SQL instead of to buildItemUnifiedCore.
+    it('should inherit the price bound that stops one absurd row aborting the query', async () => {
+      mockAnchor()
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const { text, values } = query.mock.calls[1][0]
+      expect(text).toContain('u.usd_wei <=')
+      expect(values).toContain('1000000000000000000000000000000')
+    })
+
+    it('should inherit the tie-break towards the trade over an equally-priced store mint', async () => {
+      mockAnchor()
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const text = query.mock.calls[1][0].text as string
+      const priceIdx = text.indexOf('f.usd_wei ASC')
+      const tieIdx = text.indexOf("f.acquisition = 'trade'")
+      expect(priceIdx).toBeGreaterThan(-1)
+      expect(tieIdx).toBeGreaterThan(priceIdx)
+    })
+
+    it('should draw from all three credit-buyable branches, store mints included', async () => {
+      mockAnchor({ item_type: 'emote_v1', wearable_category: 'dance' })
+
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+
+      const text = query.mock.calls[1][0].text as string
+      // native trade + legacy trade + CollectionStore mint. The similarity filter must land on all three —
+      // one occurrence per branch — or the rail would silently mix in unrelated store items.
+      expect(text.match(/UNION ALL/g)).toHaveLength(2)
+      expect(text).toContain('i.search_is_store_minter = true')
+      expect(text.match(/ILIKE 'emote%'/g)).toHaveLength(3)
+      expect(text.match(/lower\(COALESCE\(item_p\.search_wearable_category/g)).toHaveLength(3)
+    })
+
+    it('should clamp the limit to the related cap and never paginate', async () => {
+      mockAnchor()
+      await shopCatalog.getRelatedItems({ ...ANCHOR, first: 9999 }, RATE)
+
+      let sql = query.mock.calls[1][0]
+      expect(sql.text).toContain('LIMIT')
+      expect(sql.text).not.toContain('OFFSET')
+      expect(sql.text).not.toContain('COUNT(*) OVER() AS total')
+      expect(sql.values).toContain(50)
+
+      query.mockClear()
+      mockAnchor()
+      await shopCatalog.getRelatedItems(ANCHOR, RATE)
+      sql = query.mock.calls[1][0]
+      expect(sql.values).toContain(10)
+    })
+  })
+
+  describe('when mapping related item rows', () => {
+    // The anchor lookup, then the feed. `itemRow` is the SAME row factory the browse-grid tests use, minus
+    // `total` — the rail is unpaginated, so the mapper must not depend on a COUNT(*) OVER() column.
+    function mockRail(overrides: Record<string, unknown> = {}) {
+      const { total: _total, ...row } = itemRow(overrides)
+      query.mockResolvedValueOnce({ rows: [{ rarity: 'rare', item_type: 'wearable_v2', wearable_category: 'hat' }] })
+      query.mockResolvedValueOnce({ rows: [row] })
+    }
+
+    it('should return the same item-unified shape the browse grid renders', async () => {
+      mockRail({
+        trade_id: 'related-1',
+        contract_address: '0xother',
+        item_id: '7',
+        name: 'Another Hat',
+        price_credits: '4',
+        available: '2',
+        listing_count: '3'
+      })
+
+      const { data } = await shopCatalog.getRelatedItems({ contractAddress: '0xcollection', itemId: '3' }, 0.5)
+
+      expect(data).toHaveLength(1)
+      expect(data[0]).toMatchObject({
+        source: 'native',
+        acquisition: 'trade',
+        tradeId: 'related-1',
+        listingType: 'primary',
+        contractAddress: '0xother',
+        itemId: '7',
+        rarity: 'rare',
+        category: 'wearable',
+        wearableCategory: 'hat',
+        gender: 'unisex',
+        priceCredits: 4,
+        listingCount: 3,
+        available: 2
+      })
+    })
+
+    it('should drop the trade id for a store mint, which has none', async () => {
+      // Store mints reach the rail through the shared union, so the rail can surface a row with no trade.
+      // A fabricated id here would put a reference to a nonexistent trade into the purchase intent.
+      mockRail({ source: 'legacy', acquisition: 'store', trade_id: '0xcollection-3', mana_wei: '1000' })
+
+      const { data } = await shopCatalog.getRelatedItems({ contractAddress: '0xcollection', itemId: '3' }, 0.5)
+
+      expect(data[0]).toMatchObject({ acquisition: 'store', tradeId: null, source: 'legacy', manaWei: '1000' })
+    })
+
+    it('should carry the reseller and issued id through for a secondary row', async () => {
+      mockRail({ trade_type: 'public_nft_order', token_id: '99', item_id: null, seller: '0xreseller', issued_id: '5013' })
+
+      const { data } = await shopCatalog.getRelatedItems({ contractAddress: '0xcollection', itemId: '3' }, 0.5)
+
+      expect(data[0]).toMatchObject({ listingType: 'secondary', tokenId: '99', seller: '0xreseller', issuedId: '5013' })
+    })
+  })
 })

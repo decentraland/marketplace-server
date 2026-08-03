@@ -1,5 +1,5 @@
 import { URL } from 'url'
-import { createShopUnifiedHandler } from '../../src/controllers/handlers/shop-catalog-handler'
+import { createShopRelatedHandler, createShopUnifiedHandler } from '../../src/controllers/handlers/shop-catalog-handler'
 
 // The unified handler is a factory: createShopUnifiedHandler(components) -> (context) => response. These
 // tests drive the `groupBy` dispatch (per-listing default vs item-unified) and confirm the parsed filters
@@ -69,6 +69,71 @@ describe('when handling the unified shop catalog endpoint', () => {
         sortBy: 'cheapest',
         search: 'cool'
       })
+    })
+  })
+})
+
+// The related handler answers the PDP's fallback rail. These tests cover what it lets through to the
+// component and, above all, what it refuses to guess when the anchor item is not fully identified.
+describe('when handling the related items endpoint', () => {
+  const CONTRACT = '0x1234567890123456789012345678901234567890'
+  let getRelatedItems: jest.Mock
+  let getRate: jest.Mock
+  let handler: ReturnType<typeof createShopRelatedHandler>
+
+  const noop = jest.fn()
+  const invoke = (url: string) => handler({ url: new URL(url), request: {} } as any, noop)
+
+  beforeEach(() => {
+    getRelatedItems = jest.fn().mockResolvedValue({ data: [{ tradeId: 'related-1' }] })
+    getRate = jest.fn().mockReturnValue(0.5)
+    handler = createShopRelatedHandler({ shopCatalog: { getRelatedItems }, manaUsdRate: { getRate } } as any)
+  })
+
+  describe('and the anchor item is fully identified', () => {
+    it('should forward the anchor and the live rate, and return the rail', async () => {
+      const result = await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+
+      expect(getRelatedItems).toHaveBeenCalledTimes(1)
+      expect(getRelatedItems.mock.calls[0][0]).toMatchObject({ contractAddress: CONTRACT, itemId: '3' })
+      expect(getRelatedItems.mock.calls[0][1]).toBe(0.5)
+      expect(result.body).toEqual({ data: [{ tradeId: 'related-1' }] })
+    })
+
+    it('should default the limit to the related rail size', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+
+      expect(getRelatedItems.mock.calls[0][0].first).toBe(10)
+    })
+
+    it('should pass an explicit limit through for the component to clamp', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&first=20`)
+
+      expect(getRelatedItems.mock.calls[0][0].first).toBe(20)
+    })
+  })
+
+  describe('and the anchor item is missing or malformed', () => {
+    it('should return an empty rail without querying when the itemId is absent', async () => {
+      const result = await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}`)
+
+      expect(getRelatedItems).not.toHaveBeenCalled()
+      expect(result.body).toEqual({ data: [] })
+    })
+
+    it('should return an empty rail without querying when the contractAddress is absent', async () => {
+      const result = await invoke('http://localhost/v3/catalog/related?itemId=3')
+
+      expect(getRelatedItems).not.toHaveBeenCalled()
+      expect(result.body).toEqual({ data: [] })
+    })
+
+    it('should return an empty rail when the contractAddress is not an address', async () => {
+      // Params.getAddress validates the shape, so a junk contract never reaches a query.
+      const result = await invoke('http://localhost/v3/catalog/related?contractAddress=not-an-address&itemId=3')
+
+      expect(getRelatedItems).not.toHaveBeenCalled()
+      expect(result.body).toEqual({ data: [] })
     })
   })
 })
