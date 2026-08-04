@@ -139,7 +139,6 @@ export function getTradesForTypeQuery(type: TradeType) {
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
-          AND t.signer = trade_status.caller
         ) THEN '${ListingStatus.CANCELLED}'
         WHEN (t.expires_at < now()::timestamptz(3)) THEN '${ListingStatus.CANCELLED}'
         WHEN (
@@ -177,7 +176,28 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '${type}'
-    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index, trade_status.caller
+    /**
+     * NOT grouped by trade_status.caller.
+     *
+     * A trade has one row in squid_trades.trade per ON-CHAIN ACTION, and their callers differ — a
+     * cancellation is called by the signer, an execution by whoever bought (a contract, for a relayed or
+     * credits-funded purchase). Grouping by caller therefore split ONE trade into one group per caller,
+     * and the status CASE was then evaluated per group: the group holding the cancellation counted it and
+     * returned cancelled, while the group holding the execution counted no cancellation and fell through
+     * to open.
+     *
+     * That produced two contradictory rows for the same trade, and getOpenItemOrderQuery does
+     * WHERE status = 'open' LIMIT 1 — so any item whose order had been BOTH executed at least once and
+     * then cancelled became permanently unlistable, rejected with "There is already an open order for this
+     * Item". Both the Shop catalogue and the Builder correctly showed the item as not for sale, because
+     * getTradesForTypeQueryWithFilters (below) never grouped by caller, so nothing surfaced the phantom
+     * listing that was doing the blocking.
+     *
+     * caller was in the GROUP BY only because the CASE above referenced it; removing that reference is
+     * what allows this to group by the trade, which is the unit a status describes. It now matches the
+     * filtered query verbatim.
+     */
+    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
 }
 
