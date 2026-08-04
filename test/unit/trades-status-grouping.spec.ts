@@ -25,15 +25,14 @@ jest.mock('../../src/logic/chainIds', () => ({
  */
 describe('when building the duplicate-order guards', () => {
   it('should not group the status by caller, which would split one trade into several rows', () => {
-    for (const sql of [
-      getOpenItemOrderQuery('0xcontract', '0', Network.MATIC),
-      getOpenNFTOrderQuery('0xcontract', '1', Network.MATIC)
-    ].map(q => (q as unknown as { text: string }).text)) {
+    for (const sql of [getOpenItemOrderQuery('0xcontract', '0', Network.MATIC), getOpenNFTOrderQuery('0xcontract', '1', Network.MATIC)].map(
+      q => (q as unknown as { text: string }).text
+    )) {
       // Match the CLAUSE, not the string: the explanatory comment above it also says "GROUP BY" and names
       // the column, and it lives inside the SQL template literal, so a plain search finds the prose first.
-      const groupBy = sql.match(/GROUP BY\s+t\.id[^\n]*/)
-      expect(groupBy).not.toBeNull()
-      expect(groupBy![0]).not.toContain('trade_status.caller')
+      const groupBy = sql.match(/GROUP BY\s+t\.id[^\n]*/)?.[0]
+      expect(groupBy).toBeDefined()
+      expect(groupBy).not.toContain('trade_status.caller')
     }
   })
 
