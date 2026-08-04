@@ -59,6 +59,26 @@ function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlay
   return SQL` item.search_emote_loop = false `
 }
 
+// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
+// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
+// search into an unbounded wildcard scan.
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
+// "Buyable right now": primary liquidity only -- an open v3 item order or the classic store minter,
+// with stock left. Built fresh per call because a SQLStatement carries its own bound parameters and
+// cannot be reused across the positive and negated branches.
+function getIsOnSalePredicate(): SQLStatement {
+  return SQL` (((unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true) OR item.search_is_store_minter = true) AND item.available > 0) `
+}
+
+// Item name as the other shop feeds resolve it (/v3/catalog/unified, /v3/catalog/shop) -- the
+// wearable's or the emote's, whichever the metadata join produced.
+function getItemNameExpression(): SQLStatement {
+  return SQL` COALESCE(wearable.name, emote.name) `
+}
+
 // TODO: Add sort by logic
 function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
   if (!filters) {
@@ -71,10 +91,17 @@ function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
     creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
   const FITLER_BY_RARITY = filters.rarities && filters.rarities.length ? SQL` item.rarity = ANY (${filters.rarities}) ` : null
   const FILTER_BY_SOLD_OUT = filters.isSoldOut ? SQL` item.available = 0 ` : null
-  const FILTER_BY_IS_ON_SALE = filters.isOnSale
-    ? SQL` (((unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true) OR item.search_is_store_minter = true) AND item.available > 0) `
-    : null
-  const FILTER_BY_TEXT = filters.search ? SQL` item.search_text % ${filters.search} ` : null
+  // isOnSale=false is a real filter, not a no-op: it must return the complement of isOnSale=true so
+  // "All" is always a superset of "On sale" and "Not for sale" is the difference. `available` and the
+  // minter flags are NOT NULL, so the negation is two-valued and needs no NULL guard.
+  const FILTER_BY_IS_ON_SALE =
+    filters.isOnSale === undefined ? null : filters.isOnSale ? getIsOnSalePredicate() : SQL` NOT `.append(getIsOnSalePredicate())
+  // Case-insensitive substring over the item NAME -- the same rule /v3/catalog/unified and
+  // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. The previous
+  // `search_text % q` was whole-string trigram similarity against name+description+tags: because
+  // similarity is normalized over the trigram union, a short query against a long text scores below
+  // the 0.3 threshold, which made items with rich descriptions unsearchable by their own name.
+  const FILTER_BY_TEXT = filters.search ? getItemNameExpression().append(SQL` ILIKE ${'%' + escapeLike(filters.search) + '%'} `) : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
   const FILTER_BY_WEARABLE_ACCESSORY = filters.isWearableAccessory ? SQL` item.search_is_wearable_accessory = true ` : null
   const FILTER_BY_WEARABLE_SMART = filters.isWearableSmart ? SQL` item.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
@@ -319,6 +346,11 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
                           ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
                         )
                         .append(getItemsWhereStatement(filters))
+                        // Without an ORDER BY the planner is free to return rows in any order, so
+                        // LIMIT/OFFSET paging could repeat or skip items between pages of the same
+                        // grid. `item.id` breaks ties so the order is total, not just deterministic.
+                        // (Honouring the `sortBy` param is still pending -- see the TODO above.)
+                        .append(SQL` ORDER BY item.created_at DESC, item.id ASC `)
                         .append(getItemsLimitAndOffsetStatement(filters))
                     )
                 )
