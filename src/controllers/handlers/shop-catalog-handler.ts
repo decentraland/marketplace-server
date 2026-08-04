@@ -7,7 +7,9 @@ import {
   UnifiedListingSource,
   RELATED_DEFAULT_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
-  SHOP_MAX_PAGE_SIZE
+  SHOP_MAX_PAGE_SIZE,
+  TRENDING_DEFAULT_DAYS,
+  TRENDING_DEFAULT_LIMIT
 } from '../../ports/shop-catalog/types'
 import { AppComponents, Context } from '../../types'
 import { getItemsParams } from './utils'
@@ -161,6 +163,10 @@ export function createShopUnifiedHandler(
     // since a caller asking for `primary` and getting everything would show resales it meant to hide.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
+    // Same contract as every other feed: included unless `includeSocialEmotes=false` is sent, so the default
+    // is byte-for-byte the pre-existing response. Read as a string rather than through the presence-based
+    // `getBoolean`, which would read `includeSocialEmotes=false` as `true`.
+    const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
 
     const filters = {
       first,
@@ -177,7 +183,8 @@ export function createShopUnifiedHandler(
       search,
       sortBy,
       source,
-      listingType
+      listingType,
+      includeSocialEmotes
     }
 
     return asJSON(async () => {
@@ -219,6 +226,49 @@ export function createShopRelatedHandler(
       if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
       return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
     })
+  }
+}
+
+/**
+ * GET /v3/catalog/trending?first=12&listingType=primary&includeSocialEmotes=false&days=1 -- the items
+ * SELLING most right now, drawn from the same credit-buyable, item-unified universe as
+ * /v3/catalog/unified?groupBy=item so the client renders them with the same card at the same credit price.
+ *
+ * Why not /v1/trendings: that endpoint answers "what is trending" in the marketplace's own terms -- MANA
+ * prices, no credit price, no acquisition path (a store mint and a signed trade are indistinguishable), and
+ * an `isOnSale` item may have no credit-buyable listing at all. It also returns its ranking SHUFFLED, so the
+ * order carries no information. See getTrendingItems for what this computes instead.
+ *
+ * Unpaginated: returns { data } only. Cached for an hour, the same as /v1/trendings -- the window only moves
+ * at midnight and the query is a scan of `sale`, so a per-visitor recomputation buys nothing.
+ */
+export function createShopTrendingHandler(
+  components: Pick<AppComponents, 'shopCatalog' | 'manaUsdRate'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/trending'>> {
+  const { shopCatalog, manaUsdRate } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const first = params.getNumber('first', TRENDING_DEFAULT_LIMIT) ?? TRENDING_DEFAULT_LIMIT
+    const days = params.getNumber('days', TRENDING_DEFAULT_DAYS) ?? TRENDING_DEFAULT_DAYS
+    const category = params.getString('category')
+    const rarities = csv(params.getString('rarity'))
+    const wearableCategories = csv(params.getString('wearableCategory'))
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
+    const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
+    // Included by default, excluded only on an explicit `includeSocialEmotes=false` -- the same contract as
+    // /v1/items, /v2/catalog and /v1/trendings. Read as a string rather than through `getBoolean`, which is
+    // presence-based and would read `includeSocialEmotes=false` as `true`.
+    const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
+
+    return asJSON(
+      async () =>
+        shopCatalog.getTrendingItems(
+          { first, days, category, rarities, wearableCategories, listingType, source, includeSocialEmotes },
+          manaUsdRate.getRate()
+        ),
+      { 'Cache-Control': 'public,max-age=3600,s-maxage=3600' }
+    )
   }
 }
 

@@ -1,5 +1,8 @@
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
 import { IShopCatalogComponent } from '../../src/ports/shop-catalog/types'
+// The same helper the component uses to resolve the look-back window, so the expected bound is derived the
+// same way rather than restated as a literal that would need editing whenever the window changes.
+import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
 
 // 1 credit = $0.10 = 1e17 USD wei.
 const WEI_PER_CREDIT = 100000000000000000n
@@ -1039,6 +1042,22 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopItems({}, RATE)
       expect(query.mock.calls[0][0].text).toContain('COUNT(*) OVER() AS total')
     })
+
+    it('should exclude social emotes from every branch on includeSocialEmotes=false', async () => {
+      await shopCatalog.getShopItems({ includeSocialEmotes: false }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // Before this filter existed, a social emote could reach the Shop's browse grid through an offchain
+      // trade on one -- the CollectionStore branch excludes them at source, but the two trade branches did
+      // not. One occurrence per branch, or the union leaves a way around it.
+      expect(text.match(/COALESCE\(item_p\.search_emote_outcome_type, item_s\.search_emote_outcome_type\) IS NULL/g)).toHaveLength(3)
+    })
+
+    it('should include social emotes by default, leaving the pre-existing response unchanged', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      expect(query.mock.calls[0][0].text).not.toContain('search_emote_outcome_type, item_s.search_emote_outcome_type) IS NULL')
+    })
   })
 
   describe('when mapping item-unified rows', () => {
@@ -1286,6 +1305,218 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getRelatedItems(ANCHOR, RATE)
       sql = query.mock.calls[1][0]
       expect(sql.values).toContain(10)
+    })
+  })
+
+  describe('when building the trending items query', () => {
+    const RATE = 0.5
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should rank on sales made inside the look-back window, in a single query', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      // One statement. The marketplace's row costs 1 + N queries (one item lookup per distinct item sold),
+      // so this assertion is the whole performance claim.
+      expect(query).toHaveBeenCalledTimes(1)
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('WITH sales_window AS')
+      expect(text).toContain('COUNT(*)::int AS sales')
+      expect(text).toContain('SUM(sale.price::numeric) AS volume')
+      expect(text).toContain('sale.timestamp > ')
+    })
+
+    it('should bind the window as a unix SECONDS bound derived from midnight N days ago', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const { values } = query.mock.calls[0][0]
+      const expected = Math.floor(getDateXDaysAgo(1).getTime() / 1000)
+      expect(values).toContain(expected)
+      // `sale.timestamp` is stored in seconds; binding milliseconds would silently match every sale ever.
+      expect(values).not.toContain(expected * 1000)
+    })
+
+    it('should widen the window with days and clamp it to the supported range', async () => {
+      await shopCatalog.getTrendingItems({ days: 7 }, RATE)
+      expect(query.mock.calls[0][0].values).toContain(Math.floor(getDateXDaysAgo(7).getTime() / 1000))
+
+      query.mockClear()
+      await shopCatalog.getTrendingItems({ days: 9999 }, RATE)
+      expect(query.mock.calls[0][0].values).toContain(Math.floor(getDateXDaysAgo(7).getTime() / 1000))
+
+      query.mockClear()
+      await shopCatalog.getTrendingItems({ days: 0 }, RATE)
+      expect(query.mock.calls[0][0].values).toContain(Math.floor(getDateXDaysAgo(1).getTime() / 1000))
+    })
+
+    it('should ignore sales that carry no item identity rather than counting and discarding them', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      expect(query.mock.calls[0][0].text).toContain('sale.search_item_id IS NOT NULL')
+    })
+
+    it('should join the sales window to the item-unified core on (contract_address, item_id)', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // An INNER join is what guarantees the rail can only contain credit-buyable items: an item that is
+      // trending but has no open credit-buyable offer has no row in the core to join to.
+      expect(text).toContain('JOIN sales_window w ON w.contract_address = d.contract_address AND w.item_id = d.item_id')
+      expect(text).not.toContain('LEFT JOIN sales_window')
+      expect(text).toContain('sale.search_item_id::text AS item_id')
+    })
+
+    it('should reuse the item-unified core so the rail is one credit-priced card per item', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('SELECT DISTINCT ON (f.contract_address, f.item_id)')
+      expect(text).toContain('COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count')
+      expect(text).toContain('CEIL(f.usd_wei /')
+      // native trade + legacy trade + CollectionStore mint
+      expect(text.match(/UNION ALL/g)).toHaveLength(2)
+      expect(text).toContain('i.search_is_store_minter = true')
+    })
+
+    it('should split the slots 60/40 between the sales and volume signals, summing to the requested size', async () => {
+      await shopCatalog.getTrendingItems({ first: 12 }, RATE)
+
+      const { text, values } = query.mock.calls[0][0]
+      expect(text).toContain('AS sales_rank')
+      expect(text).toContain('AS volume_rank')
+      expect(text).toContain('WHERE by_sales OR volume_rank <= ')
+      // ceil(12 * 0.6) = 8 by sales, 12 - 8 = 4 by volume. The marketplace's fractional Array.slice pair
+      // would ask for 7 + 4 = 11 here and under-fill the rail by one even with plenty of supply.
+      expect(values).toContain(8)
+      expect(values).toContain(4)
+      expect(values).toContain(12)
+    })
+
+    it('should rank the volume pass only over the items the sales pass did not take', async () => {
+      await shopCatalog.getTrendingItems({ first: 12 }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('PARTITION BY (ranked.sales_rank <= ')
+      expect(text).toContain('ORDER BY ranked.volume DESC, ranked.sales DESC')
+    })
+
+    it('should rank volume on what the sales actually settled at, not the current price times the count', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('SUM(sale.price::numeric) AS volume')
+      // /v1/trendings multiplies the item's LIVE price by its sale count, so a creator re-pricing an item
+      // rewrites its past volume. Nothing here may multiply a price by a count.
+      expect(text).not.toMatch(/sales\s*\*/)
+    })
+
+    it('should order by the ranking and break every tie down to the unique item key', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // (contract_address, item_id) is unique out of the core's DISTINCT ON, so ending the ORDER BY on it
+      // makes the order TOTAL — which is what stops the LIMIT dropping or duplicating rows.
+      expect(text).toContain('ORDER BY by_sales DESC, (CASE WHEN by_sales THEN sales_rank ELSE volume_rank END), contract_address, item_id')
+      expect(text).toContain('LIMIT ')
+    })
+
+    it('should never shuffle the ranking it just computed', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).not.toContain('random()')
+      expect(text).not.toContain('ORDER BY md5')
+    })
+
+    it('should be unpaginated: no OFFSET and no total', async () => {
+      await shopCatalog.getTrendingItems({ first: 12 }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).not.toContain('OFFSET')
+      expect(text).not.toContain('COUNT(*) OVER() AS total')
+    })
+
+    it('should clamp the requested size to the rail cap', async () => {
+      await shopCatalog.getTrendingItems({ first: 9999 }, RATE)
+      expect(query.mock.calls[0][0].values).toContain(50)
+
+      query.mockClear()
+      await shopCatalog.getTrendingItems({}, RATE)
+      expect(query.mock.calls[0][0].values).toContain(12)
+    })
+
+    it('should exclude social emotes on every branch when includeSocialEmotes is false', async () => {
+      await shopCatalog.getTrendingItems({ includeSocialEmotes: false }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // Once per branch (native trade, legacy trade, store mint) — a filter that lands on only some of the
+      // union is a filter a social emote can walk around.
+      expect(text.match(/COALESCE\(item_p\.search_emote_outcome_type, item_s\.search_emote_outcome_type\) IS NULL/g)).toHaveLength(3)
+    })
+
+    it('should include social emotes by default, matching every other feed', async () => {
+      await shopCatalog.getTrendingItems({}, RATE)
+
+      expect(query.mock.calls[0][0].text).not.toContain('search_emote_outcome_type, item_s.search_emote_outcome_type) IS NULL')
+    })
+
+    it('should restrict the rail to primary listings when asked, on every branch', async () => {
+      await shopCatalog.getTrendingItems({ listingType: 'primary' }, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect((text.match(/mv\.type = 'public_item_order'/g) ?? []).length).toBeGreaterThanOrEqual(3)
+      expect(text).not.toContain("mv.type <> 'public_item_order'")
+    })
+  })
+
+  describe('when mapping trending item rows', () => {
+    function trendingRow(overrides: Record<string, unknown> = {}) {
+      const { total: _total, ...row } = itemRow(overrides)
+      return { sales: 7, volume: '1000', ...row }
+    }
+
+    it('should return the item-unified shape the browse grid renders, plus the ranking signal', async () => {
+      query.mockResolvedValueOnce({
+        rows: [trendingRow({ trade_id: 'trending-1', item_id: '9', price_credits: '6', listing_count: '2', sales: 42 })]
+      })
+
+      const { data } = await shopCatalog.getTrendingItems({}, 0.5)
+
+      expect(data).toHaveLength(1)
+      expect(data[0]).toMatchObject({
+        tradeId: 'trending-1',
+        listingType: 'primary',
+        itemId: '9',
+        priceCredits: 6,
+        listingCount: 2,
+        trendingSales: 42
+      })
+    })
+
+    it('should carry a credit price for a rate-converted legacy row as well as a USD-pegged one', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          trendingRow({ source: 'native', trade_id: 'native-1', price_credits: '3', mana_wei: null }),
+          trendingRow({ source: 'legacy', trade_id: 'legacy-1', item_id: '4', price_credits: '11', mana_wei: '22000000000000000000' })
+        ]
+      })
+
+      const { data } = await shopCatalog.getTrendingItems({}, 0.5)
+
+      expect(data.map(d => d.priceCredits)).toEqual([3, 11])
+      expect(data.map(d => d.manaWei)).toEqual([null, '22000000000000000000'])
+    })
+
+    it('should drop the trade id for a store mint that trends', async () => {
+      query.mockResolvedValueOnce({
+        rows: [trendingRow({ source: 'legacy', acquisition: 'store', trade_id: '0xcollection-3', mana_wei: '1000' })]
+      })
+
+      const { data } = await shopCatalog.getTrendingItems({}, 0.5)
+
+      expect(data[0]).toMatchObject({ acquisition: 'store', tradeId: null })
     })
   })
 
