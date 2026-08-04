@@ -1,5 +1,5 @@
-import { Params } from '../../src/logic/http/params'
 import { getItemsParams } from '../../src/controllers/handlers/utils'
+import { Params } from '../../src/logic/http/params'
 import { getCatalogItemsQuery, getItemsQuery } from '../../src/ports/items/queries'
 import { ItemQueryFilters } from '../../src/ports/items/types'
 

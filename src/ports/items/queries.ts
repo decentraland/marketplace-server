@@ -95,19 +95,13 @@ function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
   // "All" is always a superset of "On sale" and "Not for sale" is the difference. `available` and the
   // minter flags are NOT NULL, so the negation is two-valued and needs no NULL guard.
   const FILTER_BY_IS_ON_SALE =
-    filters.isOnSale === undefined
-      ? null
-      : filters.isOnSale
-        ? getIsOnSalePredicate()
-        : SQL` NOT `.append(getIsOnSalePredicate())
+    filters.isOnSale === undefined ? null : filters.isOnSale ? getIsOnSalePredicate() : SQL` NOT `.append(getIsOnSalePredicate())
   // Case-insensitive substring over the item NAME -- the same rule /v3/catalog/unified and
   // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. The previous
   // `search_text % q` was whole-string trigram similarity against name+description+tags: because
   // similarity is normalized over the trigram union, a short query against a long text scores below
   // the 0.3 threshold, which made items with rich descriptions unsearchable by their own name.
-  const FILTER_BY_TEXT = filters.search
-    ? getItemNameExpression().append(SQL` ILIKE ${'%' + escapeLike(filters.search) + '%'} `)
-    : null
+  const FILTER_BY_TEXT = filters.search ? getItemNameExpression().append(SQL` ILIKE ${'%' + escapeLike(filters.search) + '%'} `) : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
   const FILTER_BY_WEARABLE_ACCESSORY = filters.isWearableAccessory ? SQL` item.search_is_wearable_accessory = true ` : null
   const FILTER_BY_WEARABLE_SMART = filters.isWearableSmart ? SQL` item.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
