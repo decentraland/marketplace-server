@@ -149,4 +149,98 @@ describe('Items catalog feed (getCatalogItems)', () => {
       expect(sql.values).toEqual(expect.arrayContaining([20, 40]))
     })
   })
+
+  // The isOnSale filter used to be part of this PR: it wrapped the predicate in `NOT COALESCE(..., false)`.
+  // #383 landed the same fix on main with a plainer negation and the reason this one had it backwards --
+  // `available` and the minter flags are NOT NULL, so the negation is two-valued and the COALESCE guarded
+  // nothing. Its three cases (true / false / omitted) are covered in items-queries.spec.ts, so the block
+  // that used to sit here would only have asserted a mechanism that no longer exists.
+
+  describe('when filtering by a credit price range', () => {
+    it('should compare the credit price against minPriceCredits', async () => {
+      await items.getCatalogItems({ minPriceCredits: 3 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('NULLIF(')
+      expect(sql.text).toContain(', 0) >= ')
+      expect(sql.values).toContain(3)
+    })
+
+    it('should compare the credit price against maxPriceCredits', async () => {
+      await items.getCatalogItems({ maxPriceCredits: 12 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain(', 0) <= ')
+      expect(sql.values).toContain(12)
+    })
+
+    it('should exclude not-for-sale items from both bounds by nulling their 0 credit price', async () => {
+      await items.getCatalogItems({ maxPriceCredits: 12 }, RATE)
+
+      const sql = query.mock.calls[0][0]
+      // Without NULLIF a 0-credit (not-for-sale) item satisfies every upper bound.
+      expect(sql.text).toContain('NULLIF(')
+    })
+
+    it('should not add any credit range predicate when neither bound is given', async () => {
+      await items.getCatalogItems({}, RATE)
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain(', 0) >= ')
+      expect(sql.text).not.toContain(', 0) <= ')
+    })
+  })
+
+  describe('when sorting the catalog-items feed', () => {
+    const orderBy = (sql: { text: string }) => sql.text.slice(sql.text.lastIndexOf('ORDER BY')).replace(/\s+/g, ' ')
+
+    it('should default to newest first', async () => {
+      await items.getCatalogItems({}, RATE)
+
+      expect(orderBy(query.mock.calls[0][0])).toContain('ORDER BY item.created_at DESC')
+    })
+
+    it('should always break ties on item.id so LIMIT/OFFSET pages stay stable', async () => {
+      for (const sortBy of [undefined, 'cheapest', 'most_expensive', 'name'] as const) {
+        query.mockClear()
+        await items.getCatalogItems({ sortBy }, RATE)
+
+        expect(orderBy(query.mock.calls[0][0])).toContain('item.id ASC')
+      }
+    })
+
+    it('should sort cheapest by the credit price, pushing not-for-sale items last', async () => {
+      await items.getCatalogItems({ sortBy: 'cheapest' }, RATE)
+
+      const order = orderBy(query.mock.calls[0][0])
+      expect(order).toContain('ORDER BY NULLIF(')
+      expect(order).toContain('ASC NULLS LAST')
+    })
+
+    it('should sort most_expensive by the credit price descending', async () => {
+      await items.getCatalogItems({ sortBy: 'most_expensive' }, RATE)
+
+      const order = orderBy(query.mock.calls[0][0])
+      expect(order).toContain('CEIL(item.price::numeric')
+      expect(order).toContain('DESC, item.id ASC')
+    })
+
+    it('should sort by the coalesced wearable/emote name', async () => {
+      await items.getCatalogItems({ sortBy: 'name' }, RATE)
+
+      // Case-insensitive on the function name: the expression comes from getItemNameExpression(), the one
+      // place that decides which name an item HAS, and whether it spells it COALESCE or coalesce is not a
+      // behaviour this test should be able to break.
+      expect(orderBy(query.mock.calls[0][0])).toMatch(/ORDER BY\s+coalesce\(wearable\.name, emote\.name\) ASC/i)
+    })
+
+    it('should place ORDER BY before LIMIT/OFFSET', async () => {
+      await items.getCatalogItems({ first: 10, skip: 20, sortBy: 'name' }, RATE)
+
+      const { text } = query.mock.calls[0][0]
+      expect(text).toContain('ORDER BY')
+      expect(text.lastIndexOf('ORDER BY')).toBeGreaterThan(-1)
+      expect(text.lastIndexOf('ORDER BY')).toBeLessThan(text.lastIndexOf('LIMIT'))
+    })
+  })
 })

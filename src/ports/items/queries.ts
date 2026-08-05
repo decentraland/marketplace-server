@@ -3,6 +3,7 @@ import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeAss
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { ShopSortBy } from '../shop-catalog/types'
 import { getWhereStatementFromFilters } from '../utils'
 import { ItemQueryFilters, ItemType } from './types'
 import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
@@ -15,7 +16,7 @@ export function getItemById(itemId: string) {
       `)
 }
 
-function getItemsLimitAndOffsetStatement(filters: ItemFilters) {
+function getItemsLimitAndOffsetStatement(filters: Pick<ItemFilters, 'first' | 'skip'>) {
   const limit = filters?.first ? filters.first : DEFAULT_LIMIT
   const offset = filters?.skip ? filters.skip : 0
 
@@ -79,8 +80,12 @@ function getItemNameExpression(): SQLStatement {
   return SQL` COALESCE(wearable.name, emote.name) `
 }
 
-// TODO: Add sort by logic
-function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
+// Sorting is NOT this builder's job, and the `TODO: Add sort by logic` that used to sit here read as if
+// nothing sorted at all. /v3/catalog/items sorts through getCatalogItemsOrderByStatement below.
+// /v1/items (getItemsQuery) still emits no ORDER BY, which is a real paging hazard there — LIMIT/OFFSET
+// over an unordered plan can repeat or drop a row between pages — but the fix belongs in that query, not
+// in the WHERE clause both feeds share.
+function getItemsWhereStatement(filters: ItemQueryFilters, rateNumericString = '0'): SQLStatement {
   if (!filters) {
     return SQL``
   }
@@ -121,6 +126,18 @@ function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
   const FILTER_BY_MAX_PRICE = filters.maxPrice
     ? SQL` ((item.search_is_store_minter = true AND item.price <= ${filters.maxPrice}) OR (item.search_is_marketplace_v3_minter = true AND unified_trades.assets -> 'received' ->> 'amount')::numeric(78) <= ${filters.maxPrice}) `
     : null
+  // Credit-denominated price range (the Shop's own unit), as opposed to the MANA-wei minPrice/maxPrice
+  // above. NULLIF drops not-for-sale items (their credit price is 0) out of BOTH bounds: asking for
+  // "at most 5 credits" must not surface items that carry no price at all. Only /v3/catalog/items parses
+  // these params, so /v1/items never reaches this branch.
+  const FILTER_BY_MIN_PRICE_CREDITS =
+    filters.minPriceCredits != null
+      ? SQL` NULLIF(`.append(priceCreditsExpr(rateNumericString)).append(SQL`, 0) >= ${filters.minPriceCredits} `)
+      : null
+  const FILTER_BY_MAX_PRICE_CREDITS =
+    filters.maxPriceCredits != null
+      ? SQL` NULLIF(`.append(priceCreditsExpr(rateNumericString)).append(SQL`, 0) <= ${filters.maxPriceCredits} `)
+      : null
   const FILTER_BY_HAS_SOUND = filters.emoteHasSound ? SQL` emote.has_sound = true ` : null
   const FILTER_BY_HAS_GEOMETRY = filters.emoteHasGeometry ? SQL` emote.has_geometry = true ` : null
   // For now, let's filter if the outcome type is not null
@@ -150,6 +167,8 @@ function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
     FILTER_BY_NETWORK,
     FILTER_BY_MIN_PRICE,
     FILTER_BY_MAX_PRICE,
+    FILTER_BY_MIN_PRICE_CREDITS,
+    FILTER_BY_MAX_PRICE_CREDITS,
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
     FILTER_BY_OUTCOME_TYPE,
@@ -239,15 +258,16 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
 // string so the SQL numeric math stays exact (no float precision loss).
 const USD_WEI_PER_CREDIT = '100000000000000000'
 
-// The asset-type-aware `price_credits` column for the catalog-items feed. Unlike the mixed-unit
-// `/v1/items` `price`, this normalizes every item to whole credits, CEIL-consistent with the native
-// Shop path ("Model B"):
+// The asset-type-aware whole-credit price of an item. Unlike the mixed-unit `/v1/items` `price`, this
+// normalizes every item to whole credits, CEIL-consistent with the native Shop path ("Model B"):
 //   - a v3 trade priced in USD-pegged MANA (asset_type = USD_PEGGED_MANA) is already USD wei -> no rate;
 //   - a v3 trade priced in classic MANA/ERC20, or a classic store-minter `item.price` (MANA wei), is
 //     multiplied by the MANA/USD rate to reach USD wei;
 //   - anything not currently for sale (available = 0, no open minter) -> 0.
 // The trade branch mirrors fromDBItemToItem's precedence (open v3 trade wins over the store minter).
-function getPriceCreditsSelect(rateNumericString: string): SQLStatement {
+// Returned as a bare expression (not the aliased column) because WHERE and ORDER BY cannot reference a
+// SELECT alias inside an expression, so the credit range filter and the credit sorts re-derive it.
+function priceCreditsExpr(rateNumericString: string): SQLStatement {
   return SQL`
       CASE
         WHEN item.available > 0 AND unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true THEN
@@ -264,14 +284,42 @@ function getPriceCreditsSelect(rateNumericString: string): SQLStatement {
         WHEN item.available > 0 AND item.search_is_store_minter = true THEN
           CEIL(item.price::numeric * ${rateNumericString}::numeric / ${USD_WEI_PER_CREDIT}::numeric)
         ELSE 0
-      END::bigint AS price_credits`
+      END`
+}
+
+function getPriceCreditsSelect(rateNumericString: string): SQLStatement {
+  return priceCreditsExpr(rateNumericString).append(SQL`::bigint AS price_credits`)
+}
+
+// Ordering for the catalog-items feed. A deterministic order is not cosmetic here: the feed is paged
+// with LIMIT/OFFSET, and without ORDER BY Postgres may return a row on two pages (or none) as the plan
+// shifts, so an infinite-scroll grid duplicates and drops items. `item.id` breaks ties so equal keys
+// (same creation block, same price, same name) page stably. Fixed expressions only — user input never
+// reaches ORDER BY.
+function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy?: ShopSortBy): SQLStatement {
+  switch (sortBy) {
+    // Not-for-sale items price at 0 credits, which would otherwise head the cheapest list; NULLIF sends
+    // them to the end, where "cheapest" means cheapest thing you can actually buy.
+    case 'cheapest':
+      return SQL` ORDER BY NULLIF(`.append(priceCreditsExpr(rateNumericString)).append(SQL`, 0) ASC NULLS LAST, item.id ASC `)
+    case 'most_expensive':
+      return SQL` ORDER BY `.append(priceCreditsExpr(rateNumericString)).append(SQL` DESC, item.id ASC `)
+    case 'name':
+      return SQL` ORDER BY `.append(getItemNameExpression()).append(SQL` ASC, item.id ASC `)
+    // Listed rather than left to fall through: ShopSortBy has four members and this switch covers all
+    // four, so naming 'newest' makes the mapping readable without checking the type to see what is missing.
+    case 'newest':
+    default:
+      return SQL` ORDER BY item.created_at DESC, item.id ASC `
+  }
 }
 
 // The credit-aware catalog-items feed backing GET /v3/catalog/items. Same data source and full-catalog
 // semantics as getItemsQuery (ALL items incl. not-on-sale, keyed by item, filterable by creator/contract
-// address/category/rarity/search) but with a server-computed, asset-type-aware `price_credits` per item.
-// Mirrors getItemsQuery's SELECT/joins so the row maps through fromDBItemToItem unchanged, plus the one
-// extra column. `rateNumericString` is the MANA/USD rate as a fixed-precision numeric literal.
+// address/category/rarity/search) but with a server-computed, asset-type-aware `price_credits` per item,
+// a credit-denominated price range and a sort. Mirrors getItemsQuery's SELECT/joins so the row maps
+// through fromDBItemToItem unchanged, plus the one extra column. `rateNumericString` is the MANA/USD rate
+// as a fixed-precision numeric literal.
 export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumericString = '0') {
   return getTradesCTE({
     category: filters.category,
@@ -345,12 +393,8 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
                         .append(
                           ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
                         )
-                        .append(getItemsWhereStatement(filters))
-                        // Without an ORDER BY the planner is free to return rows in any order, so
-                        // LIMIT/OFFSET paging could repeat or skip items between pages of the same
-                        // grid. `item.id` breaks ties so the order is total, not just deterministic.
-                        // (Honouring the `sortBy` param is still pending -- see the TODO above.)
-                        .append(SQL` ORDER BY item.created_at DESC, item.id ASC `)
+                        .append(getItemsWhereStatement(filters, rateNumericString))
+                        .append(getCatalogItemsOrderByStatement(rateNumericString, filters.sortBy))
                         .append(getItemsLimitAndOffsetStatement(filters))
                     )
                 )

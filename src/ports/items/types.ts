@@ -1,7 +1,18 @@
 import { BodyShape, EmoteCategory, Item, ItemFilters, Network, Rarity, WearableCategory, EmoteOutcomeType } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
+import { ShopSortBy } from '../shop-catalog/types'
 
-export type ItemQueryFilters = ItemFilters & { includeSocialEmotes?: boolean }
+export type ItemQueryFilters = Omit<ItemFilters, 'sortBy'> & {
+  includeSocialEmotes?: boolean
+  // Credit-denominated price range and sort. Parsed only by GET /v3/catalog/items (the credit-aware feed);
+  // /v1/items never sets them, so its query keeps its current unsorted, MANA-ranged behaviour.
+  minPriceCredits?: number
+  maxPriceCredits?: number
+  // Wider than @dcl/schemas' ItemSortBy, which has no `most_expensive`. Nothing set ItemFilters.sortBy
+  // before (neither items query sorted at all), so replacing it keeps a single meaning for the param
+  // instead of leaving two sort fields with different vocabularies.
+  sortBy?: ShopSortBy
+}
 
 export interface IItemsComponent {
   validateItemExists(itemId: string): Promise<void>

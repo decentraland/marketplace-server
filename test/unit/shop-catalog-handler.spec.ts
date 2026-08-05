@@ -1,5 +1,6 @@
 import { URL } from 'url'
 import {
+  createCatalogItemsHandler,
   createShopRelatedHandler,
   createShopTrendingHandler,
   createShopUnifiedHandler
@@ -262,6 +263,77 @@ describe('when handling the related items endpoint', () => {
 
       expect(getRelatedItems).toHaveBeenCalledTimes(1)
       expect(getRelatedItems.mock.calls[0][0]).toMatchObject({ itemId: big })
+    })
+  })
+})
+
+// The catalog-items handler answers the full-catalog (incl. not-for-sale) credit-aware feed the Shop's
+// creator storefront and browse "All" grid read. On top of the /v1/items params it parses a sort and a
+// CREDIT-denominated price range, so these tests pin what reaches the component.
+describe('when handling the catalog items endpoint', () => {
+  let getCatalogItems: jest.Mock
+  let getRate: jest.Mock
+  let handler: ReturnType<typeof createCatalogItemsHandler>
+
+  const noop = jest.fn()
+  const invoke = (url: string) => handler({ url: new URL(url), request: {} } as any, noop)
+
+  beforeEach(() => {
+    getCatalogItems = jest.fn().mockResolvedValue({ data: [{ id: 'item-1', priceCredits: 4 }], total: 1 })
+    getRate = jest.fn().mockReturnValue(0.5)
+    handler = createCatalogItemsHandler({ items: { getCatalogItems }, manaUsdRate: { getRate } } as any)
+  })
+
+  describe('and a creator is provided', () => {
+    it('should forward the creator and return the data/total envelope', async () => {
+      const result = await invoke('http://localhost/v3/catalog/items?creator=0xCREATOR')
+
+      expect(getCatalogItems.mock.calls[0][0]).toMatchObject({ creator: ['0xCREATOR'] })
+      expect(getCatalogItems.mock.calls[0][1]).toBe(0.5)
+      expect(result.body).toEqual({ data: [{ id: 'item-1', priceCredits: 4 }], total: 1 })
+    })
+
+    it('should leave isOnSale unset so items are listed whether or not they are for sale', async () => {
+      await invoke('http://localhost/v3/catalog/items?creator=0xCREATOR')
+
+      expect(getCatalogItems.mock.calls[0][0].isOnSale).toBeUndefined()
+    })
+  })
+
+  describe('and a sort is provided', () => {
+    it('should forward a supported sort', async () => {
+      await invoke('http://localhost/v3/catalog/items?sortBy=most_expensive')
+
+      expect(getCatalogItems.mock.calls[0][0].sortBy).toBe('most_expensive')
+    })
+
+    it('should drop an unsupported sort rather than reach ORDER BY with it', async () => {
+      await invoke('http://localhost/v3/catalog/items?sortBy=recently_listed')
+
+      expect(getCatalogItems.mock.calls[0][0].sortBy).toBeUndefined()
+    })
+  })
+
+  describe('and a credit price range is provided', () => {
+    it('should forward both credit bounds as numbers', async () => {
+      await invoke('http://localhost/v3/catalog/items?minPriceCredits=2&maxPriceCredits=30')
+
+      expect(getCatalogItems.mock.calls[0][0]).toMatchObject({ minPriceCredits: 2, maxPriceCredits: 30 })
+    })
+
+    it('should leave the credit bounds unset when absent, so no range is applied', async () => {
+      await invoke('http://localhost/v3/catalog/items')
+
+      expect(getCatalogItems.mock.calls[0][0].minPriceCredits).toBeUndefined()
+      expect(getCatalogItems.mock.calls[0][0].maxPriceCredits).toBeUndefined()
+    })
+  })
+
+  describe('and isOnSale=false is provided', () => {
+    it('should forward false (not undefined) so the component can negate the on-sale predicate', async () => {
+      await invoke('http://localhost/v3/catalog/items?isOnSale=false')
+
+      expect(getCatalogItems.mock.calls[0][0].isOnSale).toBe(false)
     })
   })
 })
