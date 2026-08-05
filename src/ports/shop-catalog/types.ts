@@ -349,6 +349,9 @@ export type UnifiedListingRow = {
 // (of the surviving representative listing) plus the per-item listing_count.
 export type UnifiedItemRow = UnifiedListingRow & {
   listing_count: string
+  // Epoch ms of the item's most recent listing across ALL its rows -- the "newest" sort key. Deliberately
+  // NOT mapped into UnifiedItem: `createdAt` there stays the representative listing's own date.
+  item_listed_at: string
 }
 
 // The related-items rail selects the same columns minus `total`: it is unpaginated, so there is no

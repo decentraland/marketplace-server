@@ -797,6 +797,18 @@ describe('Shop Catalog Component', () => {
       expect(values).toContain('native')
     })
 
+    it('should date a mint by when it went on sale, not by when the item was published', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // A mint has no listing row, so the trade branches' created_at has no counterpart here. first_listed_at
+      // is the item's on-sale date (what the marketplace's own NEWEST sort reads); item.created_at is only its
+      // publication date and would sort a long-published item that was listed today as old. Coalesced because
+      // the squid leaves first_listed_at null on items it never saw listed.
+      expect(text).toContain('COALESCE(to_timestamp(i.first_listed_at), to_timestamp(i.created_at)) AS created_at')
+      expect(text).not.toContain('to_timestamp(i.created_at) AS created_at')
+    })
+
     it('should exclude collections the marketplace itself hides', async () => {
       await shopCatalog.getShopItems({}, RATE)
 
@@ -1026,7 +1038,26 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getShopItems({}, RATE)
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.created_at DESC, d.trade_id')
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.item_listed_at DESC, d.trade_id')
+    })
+
+    it('should sort newest on the per-item listing date, not on the representative row own date', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // The survivor of the DISTINCT ON is chosen by price and listing kind, never by recency. Ordering on
+      // its created_at made an item with a brand-new resale sort by the date of the old primary listing that
+      // won the grouping.
+      expect(text).toContain('MAX(u.created_at) OVER (PARTITION BY u.contract_address, u.item_id) AS item_listed_at')
+      expect(text).not.toContain('ORDER BY d.created_at')
+    })
+
+    it('should window item_listed_at over the same partition as listing_count so it costs no extra pass', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      const partition = 'OVER (PARTITION BY u.contract_address, u.item_id)'
+      expect(text.match(new RegExp(partition.replace(/[()]/g, '\\$&'), 'g'))).toHaveLength(2)
     })
 
     it('should clamp pagination and bind LIMIT/OFFSET as params', async () => {
@@ -1211,7 +1242,8 @@ describe('Shop Catalog Component', () => {
 
       const sql = query.mock.calls[1][0]
       expect(sql.text).toContain('ORDER BY CASE lower(d.rarity)')
-      expect(sql.text).toContain('d.created_at DESC, d.trade_id')
+      // Same recency key as the grid this rail mirrors.
+      expect(sql.text).toContain('d.item_listed_at DESC, d.trade_id')
       // The CASE binds a precomputed distance per tier: the anchor's own rarity is 0 (so exact matches
       // lead), its neighbours 1, and so on outwards along the scarcity scale.
       const distances = sql.values.slice(sql.values.indexOf('unique'))
@@ -1235,7 +1267,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getRelatedItems(ANCHOR, RATE)
 
       const sql = query.mock.calls[1][0]
-      expect(sql.text).toContain('ORDER BY 0, d.created_at DESC')
+      expect(sql.text).toContain('ORDER BY 0, d.item_listed_at DESC')
       expect(sql.text).not.toContain('CASE lower(d.rarity)')
     })
 
