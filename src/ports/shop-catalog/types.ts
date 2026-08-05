@@ -12,6 +12,33 @@ export const SHOP_MAX_PAGE_SIZE = 1000
 export const RELATED_DEFAULT_LIMIT = 10
 export const RELATED_MAX_LIMIT = 50
 
+// Bounds for the trending rail. Same reasoning as the related-items caps: one carousel, so a caller asking
+// for hundreds would only widen a scan nothing can render.
+export const TRENDING_DEFAULT_LIMIT = 12
+export const TRENDING_MAX_LIMIT = 50
+
+/**
+ * The look-back window, in days, over which sales are counted. 1 = "since midnight yesterday", the SAME
+ * window the marketplace's own trending row uses (both resolve it through `getDateXDaysAgo`), so the two
+ * rows are computed over the same slice of history.
+ *
+ * Capped at a week: the window is a full scan of `sale` above a timestamp, and a year-long request would be
+ * a cheap way to make an expensive query.
+ */
+export const TRENDING_DEFAULT_DAYS = 1
+export const TRENDING_MIN_DAYS = 1
+export const TRENDING_MAX_DAYS = 7
+
+/**
+ * How the rail's slots are split between the two ranking signals, matching the marketplace's own row: 60%
+ * of the slots go to the items with the MOST SALES, the remaining 40% to the biggest TRADED VOLUME among
+ * whatever the first pass did not already take.
+ *
+ * Both signals are kept because either alone is misleading: sales count alone lets a 1-credit item that sold
+ * 50 times bury a 200-credit item that sold 10, and volume alone is dominated by a single expensive sale.
+ */
+export const TRENDING_SALES_CUT = 0.6
+
 export type ShopListingType = 'primary' | 'secondary'
 
 // Display gender, derived from a wearable's supported body shapes (BaseMale/BaseFemale). `null` for
@@ -168,6 +195,16 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    * carries a total, so dropping rows client-side returns short pages and an overstated count.
    */
   listingType?: ShopListingType
+  /**
+   * Whether SOCIAL emotes (emotes carrying an outcome type) may appear. Omitted/true = included, which is
+   * the pre-existing behaviour of this feed and the same default as /v1/items, /v2/catalog and
+   * /v1/trendings — every one of those includes them unless `includeSocialEmotes=false` is sent explicitly.
+   *
+   * NOTE the CollectionStore branch excludes them unconditionally (see `storeBaseRelation`), so before this
+   * filter existed the only way a social emote could reach the feed was through an offchain trade on one.
+   * That is exactly the hole a client-side filter cannot close on a paginated feed, hence the server flag.
+   */
+  includeSocialEmotes?: boolean
 }
 
 // The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the
@@ -186,6 +223,28 @@ export type RelatedItemsFilters = {
   contractAddress: string
   itemId: string
   first?: number
+}
+
+/**
+ * Filters for the trending rail.
+ *
+ * Deliberately a NARROWED `UnifiedCatalogFilters`: the trending query wraps the shared item-unified core,
+ * which is where `category`/`rarities`/`listingType`/`includeSocialEmotes`/... are applied, but the outer
+ * layers that implement pagination, display sort and the credit price-range live in `getShopItems` and are
+ * NOT part of this query. Omitting them from the type is what stops a caller passing `sortBy` or
+ * `maxPriceCredits` and being silently ignored — the ranking IS the sort here, and a rail has no pages.
+ */
+export type TrendingItemsFilters = Omit<UnifiedCatalogFilters, 'skip' | 'sortBy' | 'minPriceCredits' | 'maxPriceCredits'> & {
+  // Look-back window in days (clamped to [TRENDING_MIN_DAYS, TRENDING_MAX_DAYS]).
+  days?: number
+}
+
+// A trending rail entry: the item-unified shape the browse grid and the related rail already render, plus
+// the ranking signal that put it there. `trendingSales` is exposed so the ordering is verifiable from
+// outside the server (and so a client could explain the row) — it is the sale COUNT inside the window, which
+// includes resales and mints alike; see getTrendingItems on why the signal is broader than the row.
+export type TrendingItem = UnifiedItem & {
+  trendingSales: number
 }
 
 // The anchor item's similarity attributes, resolved from the squid `item` row.
@@ -212,6 +271,10 @@ export interface IShopCatalogComponent {
   // filter; rarity only steers the ORDER (closest tier first). Excludes the anchor item. Unpaginated --
   // it backs a single carousel, so there is no total to report.
   getRelatedItems(filters: RelatedItemsFilters, manaUsdRate: number): Promise<{ data: UnifiedItem[] }>
+  // The TRENDING rail: the items that sold most in the look-back window, restricted to the same
+  // credit-buyable, item-unified universe as getShopItems so every card is one the Shop can actually sell.
+  // Unpaginated (a single carousel) and ordered BY the ranking, so there is no total and no caller sort.
+  getTrendingItems(filters: TrendingItemsFilters, manaUsdRate: number): Promise<{ data: TrendingItem[] }>
 }
 
 export type ImportableListingRow = {
@@ -291,6 +354,14 @@ export type UnifiedItemRow = UnifiedListingRow & {
 // The related-items rail selects the same columns minus `total`: it is unpaginated, so there is no
 // COUNT(*) OVER() to carry.
 export type RelatedItemRow = Omit<UnifiedItemRow, 'total'>
+
+// Raw DB row for the trending rail: the unpaginated item-unified columns plus the ranking signals. `volume`
+// is a numeric SUM of MANA wei so it comes back as a string; it only ever feeds the ORDER BY, and is not
+// mapped into the response.
+export type TrendingItemRow = RelatedItemRow & {
+  sales: number
+  volume: string
+}
 
 // Raw DB row for the anchor-item lookup that a related-items query starts from.
 export type ReferenceItemRow = {

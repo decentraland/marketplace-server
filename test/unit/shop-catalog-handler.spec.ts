@@ -1,5 +1,9 @@
 import { URL } from 'url'
-import { createShopRelatedHandler, createShopUnifiedHandler } from '../../src/controllers/handlers/shop-catalog-handler'
+import {
+  createShopRelatedHandler,
+  createShopTrendingHandler,
+  createShopUnifiedHandler
+} from '../../src/controllers/handlers/shop-catalog-handler'
 
 // The unified handler is a factory: createShopUnifiedHandler(components) -> (context) => response. These
 // tests drive the `groupBy` dispatch (per-listing default vs item-unified) and confirm the parsed filters
@@ -70,6 +74,101 @@ describe('when handling the unified shop catalog endpoint', () => {
         search: 'cool'
       })
     })
+  })
+
+  describe('and includeSocialEmotes is provided', () => {
+    it('should exclude social emotes only on an explicit false', async () => {
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=false')
+      expect(getShopItems.mock.calls[0][0].includeSocialEmotes).toBe(false)
+    })
+
+    it('should include them when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item')
+      expect(getShopItems.mock.calls[0][0].includeSocialEmotes).toBe(true)
+    })
+
+    it('should include them for any value other than the literal false', async () => {
+      // `Params.getBoolean` is presence-based, so reading this flag through it would turn
+      // `includeSocialEmotes=false` into `true` -- the exact inversion that matters.
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=true')
+      expect(getShopItems.mock.calls[0][0].includeSocialEmotes).toBe(true)
+    })
+  })
+})
+
+// The trending handler backs the Shop home's Trending row. What matters here is that the row's two
+// non-negotiables -- no social emotes, no resales -- travel from the query string to the component, and that
+// the response is cached rather than recomputed per visitor.
+describe('when handling the trending items endpoint', () => {
+  let getTrendingItems: jest.Mock
+  let getRate: jest.Mock
+  let handler: ReturnType<typeof createShopTrendingHandler>
+
+  const noop = jest.fn()
+  const invoke = (url: string) => handler({ url: new URL(url), request: {} } as any, noop)
+
+  beforeEach(() => {
+    getTrendingItems = jest.fn().mockResolvedValue({ data: [{ tradeId: 'trending-1', trendingSales: 9 }] })
+    getRate = jest.fn().mockReturnValue(0.5)
+    handler = createShopTrendingHandler({ shopCatalog: { getTrendingItems }, manaUsdRate: { getRate } } as any)
+  })
+
+  it('should return the rail with the live rate applied and no total', async () => {
+    const result = await invoke('http://localhost/v3/catalog/trending')
+
+    expect(getTrendingItems).toHaveBeenCalledTimes(1)
+    expect(getTrendingItems.mock.calls[0][1]).toBe(0.5)
+    expect(result.body).toEqual({ data: [{ tradeId: 'trending-1', trendingSales: 9 }] })
+  })
+
+  it('should default the size and the window to the rail defaults', async () => {
+    await invoke('http://localhost/v3/catalog/trending')
+
+    expect(getTrendingItems.mock.calls[0][0]).toMatchObject({ first: 12, days: 1 })
+  })
+
+  it('should pass an explicit size and window through for the component to clamp', async () => {
+    await invoke('http://localhost/v3/catalog/trending?first=30&days=7')
+
+    expect(getTrendingItems.mock.calls[0][0]).toMatchObject({ first: 30, days: 7 })
+  })
+
+  it('should exclude social emotes only on an explicit includeSocialEmotes=false', async () => {
+    await invoke('http://localhost/v3/catalog/trending?includeSocialEmotes=false')
+    expect(getTrendingItems.mock.calls[0][0].includeSocialEmotes).toBe(false)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending')
+    expect(getTrendingItems.mock.calls[0][0].includeSocialEmotes).toBe(true)
+  })
+
+  it('should forward listingType so a client that does not sell resales can exclude them server-side', async () => {
+    await invoke('http://localhost/v3/catalog/trending?listingType=primary')
+
+    expect(getTrendingItems.mock.calls[0][0].listingType).toBe('primary')
+  })
+
+  it('should reject an unknown listingType rather than silently returning resales too', async () => {
+    await invoke('http://localhost/v3/catalog/trending?listingType=primaries')
+
+    expect(getTrendingItems.mock.calls[0][0].listingType).toBeUndefined()
+  })
+
+  it('should forward the browse filters the rail supports', async () => {
+    await invoke('http://localhost/v3/catalog/trending?category=emote&rarity=Rare,EPIC&wearableCategory=hat&source=native')
+
+    expect(getTrendingItems.mock.calls[0][0]).toMatchObject({
+      category: 'emote',
+      rarities: ['Rare', 'EPIC'],
+      wearableCategories: ['hat'],
+      source: 'native'
+    })
+  })
+
+  it('should cache the rail for an hour instead of recomputing it per visitor', async () => {
+    const result = await invoke('http://localhost/v3/catalog/trending')
+
+    expect(result.headers).toMatchObject({ 'Cache-Control': 'public,max-age=3600,s-maxage=3600' })
   })
 })
 

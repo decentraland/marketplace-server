@@ -3,6 +3,10 @@ import { Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
+// The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
+// two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
+// kind of thing that drifts by an hour and makes the two rows quietly disagree.
+import { getDateXDaysAgo } from '../trendings/utils'
 import {
   IShopCatalogComponent,
   ImportableListing,
@@ -17,6 +21,9 @@ import {
   ShopCatalogFilters,
   ShopListing,
   ShopListingRow,
+  TrendingItem,
+  TrendingItemRow,
+  TrendingItemsFilters,
   UnifiedCatalogFilters,
   UnifiedItem,
   UnifiedItemRow,
@@ -26,7 +33,13 @@ import {
   RELATED_MAX_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
   SHOP_MAX_PAGE_SIZE,
-  SHOP_MIN_PAGE_SIZE
+  SHOP_MIN_PAGE_SIZE,
+  TRENDING_DEFAULT_DAYS,
+  TRENDING_DEFAULT_LIMIT,
+  TRENDING_MAX_DAYS,
+  TRENDING_MAX_LIMIT,
+  TRENDING_MIN_DAYS,
+  TRENDING_SALES_CUT
 } from './types'
 
 // The received-asset type that marks a credit-buyable (Shop) listing, as opposed to a classic
@@ -270,6 +283,13 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
   }
   if (filters.search) {
     query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+  }
+  // Social emotes are INCLUDED by default and excluded only on an explicit `includeSocialEmotes=false`,
+  // matching /v1/items, /v2/catalog and /v1/trendings so one convention covers every feed. COALESCE over
+  // both item joins so it lands on primary (item_p) and secondary (item_s) rows alike; the store branch
+  // already excludes them at its base relation, so this is a no-op there rather than a second rule.
+  if (filters.includeSocialEmotes === false) {
+    query.append(SQL` AND COALESCE(item_p.search_emote_outcome_type, item_s.search_emote_outcome_type) IS NULL`)
   }
   // Primary is a `public_item_order` (minting from a collection); anything else is a resale. Same
   // expression the row mapper uses for `listingType`, applied here so the filter and the reported value
@@ -1045,5 +1065,119 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId)) }
   }
 
-  return { getShopListings, getImportableListings, getLegacyListings, getUnifiedListings, getShopItems, getRelatedItems }
+  /**
+   * The TRENDING rail: what is selling right now, restricted to what the Shop can actually sell.
+   *
+   * Ranking (the marketplace's own composition, made deterministic):
+   *   - `sales_window` counts every sale of each item inside the look-back window and sums what those sales
+   *     were actually paid at. Both signals matter -- see TRENDING_SALES_CUT.
+   *   - the first 60% of the slots go to the highest sale COUNT; the remaining 40% to the highest VOLUME
+   *     among the items the first pass did not already take.
+   *   - the rows come back IN that order. The marketplace shuffles its equivalent before returning it, which
+   *     throws the ranking away: the row shows a trending SET in arbitrary order.
+   *
+   * Two deliberate asymmetries:
+   *
+   * The SIGNAL is broader than the ROW. `sale` counts mints and resales, primary and secondary, MANA-priced
+   * and credit-priced -- demand for an item is demand however it was met. What the row may DISPLAY is then
+   * narrowed by the shared item-unified core plus the caller's filters, so an item that is trending purely on
+   * resales but has no credit-buyable listing is simply absent rather than shown unbuyable.
+   *
+   * `volume` is the sum of the PRICES THOSE SALES SETTLED AT, not the item's current price times its sale
+   * count. The latter (what /v1/trendings computes) re-prices history with a number that can have changed
+   * since: a creator who cuts their price rewrites their own past volume.
+   *
+   * Unpaginated and ordered by a TOTAL order -- `(contract_address, item_id)` is unique out of the core's
+   * DISTINCT ON, so no two rows can compare equal and the LIMIT cannot drop or duplicate a row.
+   */
+  async function getTrendingItems(filters: TrendingItemsFilters, manaUsdRate: number): Promise<{ data: TrendingItem[] }> {
+    const first = clampCount(filters.first, TRENDING_DEFAULT_LIMIT, SHOP_MIN_PAGE_SIZE, TRENDING_MAX_LIMIT)
+    const days = clampCount(filters.days, TRENDING_DEFAULT_DAYS, TRENDING_MIN_DAYS, TRENDING_MAX_DAYS)
+    const rateNumericString = rateToNumericString(manaUsdRate)
+
+    // Slot split, ceil + remainder rather than the marketplace's two fractional `Array.slice` calls: those
+    // truncate independently, so a 12-slot rail asks for slice(0, 7.2) + slice(0, 4.8) and returns 11 rows
+    // even with plenty of supply. This always adds up to `first`.
+    const salesSlots = Math.ceil(first * TRENDING_SALES_CUT)
+    const volumeSlots = first - salesSlots
+
+    // `sale.timestamp` is stored in SECONDS. Same window helper the marketplace's trending row uses, so the
+    // two rows are computed over the same slice of history rather than over two similar-looking ones.
+    const fromSeconds = Math.floor(getDateXDaysAgo(days).getTime() / 1000)
+
+    const query = SQL`
+      WITH sales_window AS (
+        SELECT
+          sale.search_contract_address AS contract_address,
+          sale.search_item_id::text AS item_id,
+          COUNT(*)::int AS sales,
+          SUM(sale.price::numeric) AS volume
+        FROM `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.sale sale
+        WHERE sale.timestamp > ${fromSeconds}
+          -- A sale with no item identity cannot be attributed to an item, so it cannot be ranked. The
+          -- marketplace drops these too (its reducer skips falsy itemIds); doing it in SQL means they never
+          -- reach the join instead of being counted and then discarded.
+          AND sale.search_item_id IS NOT NULL
+        GROUP BY 1, 2
+      ),
+      listed AS (
+        SELECT d.*, w.sales, w.volume
+        FROM (
+          `
+      )
+      .append(buildItemUnifiedCore(filters, rateNumericString)).append(SQL`
+        ) d
+        JOIN sales_window w ON w.contract_address = d.contract_address AND w.item_id = d.item_id
+        WHERE d.usd_wei > 0
+      ),
+      ranked AS (
+        SELECT
+          listed.*,
+          ROW_NUMBER() OVER (
+            ORDER BY listed.sales DESC, listed.volume DESC, listed.contract_address, listed.item_id
+          ) AS sales_rank
+        FROM listed
+      ),
+      composed AS (
+        SELECT
+          ranked.*,
+          (ranked.sales_rank <= ${salesSlots}) AS by_sales,
+          -- Ranked by volume WITHIN each half of the sales split, so the fill pass ranks exactly the items
+          -- the sales pass left behind. Partitioning on the same predicate is what keeps the two passes from
+          -- needing a second scan to subtract one from the other.
+          ROW_NUMBER() OVER (
+            PARTITION BY (ranked.sales_rank <= ${salesSlots})
+            ORDER BY ranked.volume DESC, ranked.sales DESC, ranked.contract_address, ranked.item_id
+          ) AS volume_rank
+        FROM ranked
+      )
+      SELECT *
+      FROM composed
+      WHERE by_sales OR volume_rank <= ${volumeSlots}
+      -- Sales block first (booleans sort false < true, so DESC puts the block ahead), each block in its own
+      -- rank order, then the unique item key so the order is total.
+      ORDER BY by_sales DESC, (CASE WHEN by_sales THEN sales_rank ELSE volume_rank END), contract_address, item_id
+      LIMIT ${first}`)
+
+    const result = await pg.query<TrendingItemRow>(query)
+    const polygonChainId = getPolygonChainId()
+    const ethereumChainId = getEthereumChainId()
+
+    return {
+      data: result.rows.map(r => ({ ...mapUnifiedItemRow(r, polygonChainId, ethereumChainId), trendingSales: Number(r.sales) }))
+    }
+  }
+
+  return {
+    getShopListings,
+    getImportableListings,
+    getLegacyListings,
+    getUnifiedListings,
+    getShopItems,
+    getRelatedItems,
+    getTrendingItems
+  }
 }
