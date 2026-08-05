@@ -1,4 +1,4 @@
-import * as authorizationMiddleware from 'decentraland-crypto-middleware'
+import * as authorizationMiddleware from '@dcl/crypto-middleware'
 import { createWertSignerAndSessionCreatorHandler } from '../../src/controllers/handlers/wert-signer-and-session-creator-handler'
 import { WertSession } from '../../src/ports/wert/api/types'
 import { WertMessage } from '../../src/ports/wert/signer/types'

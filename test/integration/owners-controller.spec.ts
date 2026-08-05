@@ -57,12 +57,10 @@ test('when getting owners', function ({ components }) {
       )
       const responseBody = await response.json()
       expect(response.status).toEqual(200)
-      expect(responseBody).toEqual(
-        expect.objectContaining({
-          data: expect.any(Array),
-          total: expect.any(Number)
-        })
-      )
+      // responseBody.data comes from native fetch's response.json(), so it's an array from a
+      // different realm — `expect.any(Array)` (instanceof) fails; use realm-safe checks instead.
+      expect(Array.isArray(responseBody.data)).toBe(true)
+      expect(typeof responseBody.total).toBe('number')
     })
   })
 })

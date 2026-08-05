@@ -24,15 +24,17 @@ function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
   }
 }
 
+const MAX_LIMIT = 1000
+
 function getOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const limit = filters?.first ? filters.first : 1000
+  const limit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : MAX_LIMIT
   const offset = filters?.skip ? filters.skip : 0
 
   return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
 function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
-  const finalLimit = filters?.first ? filters.first : 1000
+  const finalLimit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : MAX_LIMIT
   const finalOffset = filters?.skip ? filters.skip : 0
 
   // For inner queries, we need to fetch enough records to account for the final offset
@@ -43,7 +45,8 @@ function getInnerOrdersLimitAndOffsetStatement(filters: OrderFilters) {
 }
 
 export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
-  return SQL`
+  return (
+    SQL`
     SELECT
       id::text,
       id::text as trade_id,
@@ -66,10 +69,15 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM expires_at) as expires_at,
       network
     FROM (`
-    .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
-    .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
-    .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
-    .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
+      .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
+      // NOTE: broken-by-upgrade Estate orders are intentionally NOT filtered here.
+      // This feeds the asset detail page / My Assets, where the owner must still
+      // see their now-invalid listing (and visitors get the on-page upgrade
+      // warning). They are only hidden from the public browse feed (see landQueries).
+      .append(filters.nftIds ? SQL` AND sent_nft_id = ANY(${filters.nftIds})` : SQL``)
+      .append(filters.owner ? SQL` AND signer = ${filters.owner.toLowerCase()}` : SQL``)
+      .append(SQL`) as trades WHERE signer = assets -> 'sent' ->> 'owner'`)
+  )
 }
 
 export function getLegacyOrdersQuery(): string {
@@ -145,14 +153,17 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
   }
   const commonQueryParts = getOrdersSortByStatement(filters).append(getInnerOrdersLimitAndOffsetStatement(filters))
 
-  const orderTradesQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  // No COUNT(*) OVER() here: the data query's row count is never read (the orders component and the
+  // nfts component both ignore it and the total comes from getOrdersCountQuery). Dropping the window
+  // aggregate lets the ORDER BY + LIMIT short-circuit to a top-N instead of scanning the full set.
+  const orderTradesQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getTradesOrdersQuery(filters))
     .append(SQL`) as order_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
     .append(commonQueryParts)
 
-  const legacyOrdersQuery = SQL`SELECT *, COUNT(*) OVER() as count `
+  const legacyOrdersQuery = SQL`SELECT * `
     .append(SQL`FROM (`)
     .append(getLegacyOrdersQuery())
     .append(getWhereStatementFromFilters(ordersFilters))
@@ -208,8 +219,8 @@ export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] 
         SELECT COUNT(*) AS trades_count, 
                NULL::bigint AS orders_count
         FROM (
-          SELECT *, 
-                 COUNT(*) OVER() AS trades_count
+          -- inner window count removed: the outer COUNT(*) above already produces the total
+          SELECT 1
           FROM (
             `
       .append(getTradesOrdersQuery(filters))

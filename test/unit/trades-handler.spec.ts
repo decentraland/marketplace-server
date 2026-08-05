@@ -1,4 +1,3 @@
-import { Request } from 'node-fetch'
 import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
 import {
   addTradeHandler,
@@ -8,6 +7,7 @@ import {
 } from '../../src/controllers/handlers/trades-handler'
 import {
   DuplicatedBidError,
+  DuplicateNFTOrderError,
   DuplicateItemOrderError,
   EstateContractNotFoundForChainId,
   InvalidEstateTrade,
@@ -35,6 +35,7 @@ describe('when handling the creation of a new trade', () => {
       components: {
         trades: {
           recreateMaterializedView: jest.fn().mockResolvedValue({}),
+          flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
           getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
           addTrade: jest.fn().mockResolvedValue({}),
@@ -105,6 +106,7 @@ describe('when handling the creation of a new trade', () => {
       },
       { errorName: 'InvalidOwnerError', error: new InvalidOwnerError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT },
+      { errorName: 'DuplicateNFTOrderError', error: new DuplicateNFTOrderError(), code: StatusCode.CONFLICT },
       { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
       beforeEach(() => {
@@ -169,6 +171,7 @@ describe('when handling the retrieval of a trade', () => {
         components: {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
+            flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
@@ -205,6 +208,7 @@ describe('when handling the retrieval of a trade', () => {
         components: {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
+            flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
@@ -242,6 +246,7 @@ describe('when handling the retrieval of a trade', () => {
         components: {
           trades: {
             recreateMaterializedView: jest.fn().mockResolvedValue({}),
+            flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
             getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
             getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
             addTrade: jest.fn().mockResolvedValue({}),
@@ -276,6 +281,7 @@ describe('when handling the retrieval of a trade accepted event', () => {
       components: {
         trades: {
           recreateMaterializedView: jest.fn().mockResolvedValue({}),
+          flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
           getTrades: jest.fn().mockResolvedValue({ data: [], count: 0 }),
           getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }),
           addTrade: jest.fn().mockResolvedValue({}),
@@ -366,6 +372,7 @@ describe('when handling the retrieval of a trade accepted event', () => {
         components: {
           trades: {
             recreateMaterializedView: recreateMaterializedViewMock,
+            flushMaterializedViewIfDirty: jest.fn().mockResolvedValue(false),
             getTrades: jest.fn(),
             getTradesByAddress: jest.fn(),
             addTrade: jest.fn(),

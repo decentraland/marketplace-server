@@ -2,7 +2,6 @@ import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item } from '@dcl/
 
 export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
-  total_rows: number
   id: string
   urn: string
   image: string
@@ -49,9 +48,10 @@ export type CatalogQueryFilters = Omit<CatalogFilters, 'sortBy' | 'sortDirection
   sortDirection?: CatalogSortDirection
   limit?: number
   offset?: number
+  includeSocialEmotes?: boolean
 }
 
-export type CatalogOptions = CatalogFilters & { pickedBy?: string }
+export type CatalogOptions = CatalogFilters & { pickedBy?: string; includeSocialEmotes?: boolean }
 
 export interface ICatalogComponent {
   fetch(

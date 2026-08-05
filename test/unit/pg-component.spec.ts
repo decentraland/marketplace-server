@@ -1,11 +1,18 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { IConfigComponent, IDatabase, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
-import { createTestMetricsComponent } from '@well-known-components/metrics'
-import * as BasePgComponent from '@well-known-components/pg-component'
+import { createTestMetricsComponent } from '@dcl/metrics'
+import * as BasePgComponent from '@dcl/pg-component'
 import { metricDeclarations } from '../../src/metrics'
 import { createPgComponent } from '../../src/ports/db/component'
 import { IPgComponent } from '../../src/ports/db/types'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
+
+// @dcl/pg-component re-exports createPgComponent through `export *`, which compiles to a
+// non-configurable getter that jest.spyOn cannot redefine. Mock the module instead.
+jest.mock('@dcl/pg-component', () => ({
+  ...jest.requireActual('@dcl/pg-component'),
+  createPgComponent: jest.fn()
+}))
 
 let dbQueryMock: jest.Mock
 let dbClientQueryMock: jest.Mock
@@ -20,7 +27,7 @@ beforeEach(async () => {
   dbClientQueryMock = jest.fn()
   dbClientReleaseMock = jest.fn().mockResolvedValue(undefined)
 
-  jest.spyOn(BasePgComponent, 'createPgComponent').mockImplementation(async () =>
+  jest.mocked(BasePgComponent.createPgComponent).mockImplementation(async () =>
     createTestPgComponent({
       query: dbQueryMock,
       getPool: jest.fn().mockReturnValue({

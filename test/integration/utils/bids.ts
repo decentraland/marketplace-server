@@ -1,7 +1,6 @@
 import { Authenticator } from '@dcl/crypto'
 import { ChainId, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
-import { getPolygonChainId } from '../../../src/logic/chainIds'
 import { TestComponents } from '../../../src/types'
 import { getSignedFetchRequest } from '../../utils'
 
@@ -23,7 +22,6 @@ export async function createBidViaAPI(
   const { localFetch } = components
   const { contractAddress, price, network = Network.ETHEREUM } = options
 
-  const contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
   const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
     intent: 'dcl:create-trade',
     signer: 'dcl:marketplace'
@@ -51,7 +49,7 @@ export async function createBidViaAPI(
           }
         ]
 
-  const bid: TradeCreation & { contract: string } = {
+  const bid: TradeCreation = {
     signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
     signer,
     chainId: 1,
@@ -66,12 +64,11 @@ export async function createBidViaAPI(
       salt: '0x',
       uses: 1
     },
-    contract,
     network,
     sent: [
       {
         assetType: TradeAssetType.ERC20,
-        contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+        contractAddress: getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address,
         extra: '0x',
         amount: price
       }

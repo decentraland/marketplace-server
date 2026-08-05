@@ -19,6 +19,7 @@ import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapte
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
 import { IEventPublisherComponent } from '../../src/ports/events/types'
+import { IShopNotifierComponent } from '../../src/ports/shop-notifier/types'
 import {
   DBTrade,
   DBTradeAsset,
@@ -44,9 +45,11 @@ let mockTrade: TradeCreation
 let mockSigner: string
 let mockPg: IPgComponent
 let mockEventPublisher: IEventPublisherComponent
+let mockShopNotifier: IShopNotifierComponent
 let tradesComponent: ITradesComponent
 let logs: ILoggerComponent
 let publishMessageMock: jest.Mock
+let notifyItemOnSaleMock: jest.Mock
 
 describe('when adding a new trade', () => {
   beforeEach(() => {
@@ -96,6 +99,7 @@ describe('when adding a new trade', () => {
         connect: jest.fn().mockResolvedValue(mockPgClient)
       }),
       withTransaction: jest.fn(),
+      withAsyncContextTransaction: jest.fn(),
       start: jest.fn(),
       query: jest.fn(),
       stop: jest.fn(),
@@ -108,12 +112,22 @@ describe('when adding a new trade', () => {
       publishMessage: publishMessageMock
     }
 
+    notifyItemOnSaleMock = jest.fn().mockResolvedValue(undefined)
+    mockShopNotifier = {
+      notifyItemOnSale: notifyItemOnSaleMock
+    }
+
     logs = createTestLogsComponent({
-      getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined })
+      getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
     })
 
     jest.clearAllMocks()
-    tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
+    tradesComponent = createTradesComponent({
+      dappsDatabase: mockPg,
+      eventPublisher: mockEventPublisher,
+      logs,
+      shopNotifier: mockShopNotifier
+    })
   })
 
   describe('when the expiration date is in the past', () => {
@@ -358,7 +372,8 @@ describe('when adding a new trade', () => {
         dappsDatabase: mockWritePg,
         dappsReadDatabase: mockReadPg,
         eventPublisher: mockEventPublisher,
-        logs
+        logs,
+        shopNotifier: mockShopNotifier
       })
 
       await tradesComponent.addTrade(mockTrade, mockSigner)
@@ -416,6 +431,7 @@ describe('when getting a trade', () => {
       const mockPg = {
         getPool: jest.fn(),
         withTransaction: jest.fn(),
+        withAsyncContextTransaction: jest.fn(),
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),
@@ -425,7 +441,12 @@ describe('when getting a trade', () => {
       mockEventPublisher = {
         publishMessage: publishMessageMock
       }
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
+      tradesComponent = createTradesComponent({
+        dappsDatabase: mockPg,
+        eventPublisher: mockEventPublisher,
+        logs,
+        shopNotifier: mockShopNotifier
+      })
     })
 
     it('should throw TradeNotFoundError', async () => {
@@ -522,6 +543,7 @@ describe('when getting a trade', () => {
       const mockPg = {
         getPool: jest.fn(),
         withTransaction: jest.fn(),
+        withAsyncContextTransaction: jest.fn(),
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),
@@ -531,7 +553,12 @@ describe('when getting a trade', () => {
         publishMessage: jest.fn()
       }
 
-      tradesComponent = createTradesComponent({ dappsDatabase: mockPg, eventPublisher: mockEventPublisher, logs })
+      tradesComponent = createTradesComponent({
+        dappsDatabase: mockPg,
+        eventPublisher: mockEventPublisher,
+        logs,
+        shopNotifier: mockShopNotifier
+      })
     })
 
     it('should return trade', async () => {

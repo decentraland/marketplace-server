@@ -1,14 +1,14 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
-import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
-import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
-import { createSubgraphComponent } from '@well-known-components/thegraph-component'
-import { createTracerComponent } from '@well-known-components/tracer-component'
+import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
+import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
+import { createHttpTracerComponent } from '@dcl/http-tracer-component'
 import { createInMemoryCacheComponent } from '@dcl/memory-cache-component'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createRedisComponent } from '@dcl/redis-component'
 import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
+import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
@@ -27,6 +27,7 @@ import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
 import { createJobComponent } from './ports/job'
+import { createManaUsdRateComponent } from './ports/mana-rate/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
 import { createOwnersComponent } from './ports/owners/component'
@@ -34,6 +35,8 @@ import { createPricesComponents } from './ports/prices'
 import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
+import { createShopCatalogComponent } from './ports/shop-catalog/component'
+import { createShopNotifierComponent } from './ports/shop-notifier/component'
 import { createStatsComponent } from './ports/stats/component'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
@@ -83,7 +86,7 @@ export async function initComponents(): Promise<AppComponents> {
   const eventPublisher = await createEventPublisher({ config })
   const cors = {
     origin: CORS_ORIGIN.split(';').map(origin => new RegExp(origin)),
-    methods: CORS_METHODS
+    methods: CORS_METHODS.split(',')
   }
   const tracer = createTracerComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { config })
@@ -144,7 +147,30 @@ export async function initComponents(): Promise<AppComponents> {
 
   // catalog
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
-  const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, dappsReadDatabase, eventPublisher, logs })
+  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const manaUsdRate = await createManaUsdRateComponent({ config, logs })
+  const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
+  const trades = await createTradesComponent({
+    dappsDatabase: dappsWriteDatabase,
+    dappsReadDatabase,
+    eventPublisher,
+    logs,
+    shopNotifier
+  })
+  // Trailing flush for the debounced trades materialized view refresh: any write that
+  // arrived while the leading-edge debounce gate was closed only marks the state row
+  // dirty, so this reflects it within one interval instead of waiting for an unrelated
+  // trigger (see flushTradesMaterializedViewIfDirty).
+  const flushTradesMaterializedViewLogger = logs.getLogger('flush-trades-mv-job')
+  const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => trades.flushMaterializedViewIfDirty(), thirtySeconds, {
+    startupDelay: thirtySeconds,
+    // A failed REFRESH re-marks the state row dirty (flushTradesMaterializedViewIfDirty) so it retries
+    // next tick; log it here so the failure isn't swallowed silently.
+    onError: error =>
+      flushTradesMaterializedViewLogger.error(
+        `Failed to flush the trades materialized view: ${error instanceof Error ? error.message : String(error)}`
+      )
+  })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -174,7 +200,14 @@ export async function initComponents(): Promise<AppComponents> {
   )
   createHttpTracerComponent({ server, tracer })
   instrumentHttpServerWithRequestLogger({ server, logger: logs })
-  await instrumentHttpServerWithMetrics({ metrics, server, config })
+  // createMetricsComponent always initializes a prom-client registry; the IMetricsComponent type marks
+  // `registry` optional, so assert it is present rather than guarding a case that cannot happen.
+  await instrumentHttpServerWithPromClientRegistry({
+    server,
+    config,
+    metrics,
+    registry: metrics.registry as NonNullable<typeof metrics.registry>
+  })
 
   return {
     bids,
@@ -190,10 +223,14 @@ export async function initComponents(): Promise<AppComponents> {
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
     catalog,
+    shopCatalog,
+    shopNotifier,
+    manaUsdRate,
     wertSigner,
     wertApi,
     ens,
     updateBuilderServerItemsViewJob,
+    flushTradesMaterializedViewJob,
     schemaValidator,
     snapshot,
     items,

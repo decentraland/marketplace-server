@@ -1,10 +1,10 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeType, WearableGender } from '@dcl/schemas'
+import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeAssetType, TradeType, WearableGender } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
 import { getWhereStatementFromFilters } from '../utils'
-import { ItemType } from './types'
+import { ItemQueryFilters, ItemType } from './types'
 import { DEFAULT_LIMIT, getItemTypesFromNFTCategory } from './utils'
 
 export function getItemById(itemId: string) {
@@ -59,8 +59,28 @@ function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlay
   return SQL` item.search_emote_loop = false `
 }
 
+// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
+// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
+// search into an unbounded wildcard scan.
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
+// "Buyable right now": primary liquidity only -- an open v3 item order or the classic store minter,
+// with stock left. Built fresh per call because a SQLStatement carries its own bound parameters and
+// cannot be reused across the positive and negated branches.
+function getIsOnSalePredicate(): SQLStatement {
+  return SQL` (((unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true) OR item.search_is_store_minter = true) AND item.available > 0) `
+}
+
+// Item name as the other shop feeds resolve it (/v3/catalog/unified, /v3/catalog/shop) -- the
+// wearable's or the emote's, whichever the metadata join produced.
+function getItemNameExpression(): SQLStatement {
+  return SQL` COALESCE(wearable.name, emote.name) `
+}
+
 // TODO: Add sort by logic
-function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
+function getItemsWhereStatement(filters: ItemQueryFilters): SQLStatement {
   if (!filters) {
     return SQL``
   }
@@ -71,10 +91,17 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     creators && creators.length ? SQL` LOWER(item.creator) = ANY(${creators.map(creator => creator.toLowerCase())}) ` : null
   const FITLER_BY_RARITY = filters.rarities && filters.rarities.length ? SQL` item.rarity = ANY (${filters.rarities}) ` : null
   const FILTER_BY_SOLD_OUT = filters.isSoldOut ? SQL` item.available = 0 ` : null
-  const FILTER_BY_IS_ON_SALE = filters.isOnSale
-    ? SQL` (((unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true) OR item.search_is_store_minter = true) AND item.available > 0) `
-    : null
-  const FILTER_BY_TEXT = filters.search ? SQL` item.search_text % ${filters.search} ` : null
+  // isOnSale=false is a real filter, not a no-op: it must return the complement of isOnSale=true so
+  // "All" is always a superset of "On sale" and "Not for sale" is the difference. `available` and the
+  // minter flags are NOT NULL, so the negation is two-valued and needs no NULL guard.
+  const FILTER_BY_IS_ON_SALE =
+    filters.isOnSale === undefined ? null : filters.isOnSale ? getIsOnSalePredicate() : SQL` NOT `.append(getIsOnSalePredicate())
+  // Case-insensitive substring over the item NAME -- the same rule /v3/catalog/unified and
+  // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. The previous
+  // `search_text % q` was whole-string trigram similarity against name+description+tags: because
+  // similarity is normalized over the trigram union, a short query against a long text scores below
+  // the 0.3 threshold, which made items with rich descriptions unsearchable by their own name.
+  const FILTER_BY_TEXT = filters.search ? getItemNameExpression().append(SQL` ILIKE ${'%' + escapeLike(filters.search) + '%'} `) : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
   const FILTER_BY_WEARABLE_ACCESSORY = filters.isWearableAccessory ? SQL` item.search_is_wearable_accessory = true ` : null
   const FILTER_BY_WEARABLE_SMART = filters.isWearableSmart ? SQL` item.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
@@ -99,6 +126,9 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
   // For now, let's filter if the outcome type is not null
   const FILTER_BY_OUTCOME_TYPE = filters.emoteOutcomeType ? SQL` emote.outcome_type IS NOT NULL ` : null
   const FILTER_BY_URNS = filters.urns && filters.urns.length ? SQL` item.urn = ANY (${filters.urns}) ` : null
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
+  const EXCLUDE_SOCIAL_EMOTES = filters.includeSocialEmotes === false ? SQL` emote.outcome_type IS NULL ` : null
   return getWhereStatementFromFilters([
     FILTER_BY_CATEGORY,
     FILTER_BY_CREATOR,
@@ -123,11 +153,12 @@ function getItemsWhereStatement(filters: ItemFilters): SQLStatement {
     FILTER_BY_HAS_SOUND,
     FILTER_BY_HAS_GEOMETRY,
     FILTER_BY_OUTCOME_TYPE,
-    FILTER_BY_URNS
+    FILTER_BY_URNS,
+    EXCLUDE_SOCIAL_EMOTES
   ])
 }
 
-export function getItemsQuery(filters: ItemFilters = {}) {
+export function getItemsQuery(filters: ItemQueryFilters = {}) {
   return getTradesCTE({
     category: filters.category,
     first: filters.first,
@@ -202,6 +233,130 @@ export function getItemsQuery(filters: ItemFilters = {}) {
           )
       )
   )
+}
+
+// 1 credit = $0.10; $1 = 1e18 USD wei = 10 credits, so 1 credit = 1e17 USD wei. Kept as a literal
+// string so the SQL numeric math stays exact (no float precision loss).
+const USD_WEI_PER_CREDIT = '100000000000000000'
+
+// The asset-type-aware `price_credits` column for the catalog-items feed. Unlike the mixed-unit
+// `/v1/items` `price`, this normalizes every item to whole credits, CEIL-consistent with the native
+// Shop path ("Model B"):
+//   - a v3 trade priced in USD-pegged MANA (asset_type = USD_PEGGED_MANA) is already USD wei -> no rate;
+//   - a v3 trade priced in classic MANA/ERC20, or a classic store-minter `item.price` (MANA wei), is
+//     multiplied by the MANA/USD rate to reach USD wei;
+//   - anything not currently for sale (available = 0, no open minter) -> 0.
+// The trade branch mirrors fromDBItemToItem's precedence (open v3 trade wins over the store minter).
+function getPriceCreditsSelect(rateNumericString: string): SQLStatement {
+  return SQL`
+      CASE
+        WHEN item.available > 0 AND unified_trades.id IS NOT NULL AND item.search_is_marketplace_v3_minter = true THEN
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM marketplace.trade_assets ta
+              WHERE ta.trade_id = unified_trades.id
+                AND ta.direction = 'received'
+                AND ta.asset_type = ${TradeAssetType.USD_PEGGED_MANA}
+            )
+            THEN CEIL((unified_trades.assets -> 'received' ->> 'amount')::numeric / ${USD_WEI_PER_CREDIT}::numeric)
+            ELSE CEIL((unified_trades.assets -> 'received' ->> 'amount')::numeric * ${rateNumericString}::numeric / ${USD_WEI_PER_CREDIT}::numeric)
+          END
+        WHEN item.available > 0 AND item.search_is_store_minter = true THEN
+          CEIL(item.price::numeric * ${rateNumericString}::numeric / ${USD_WEI_PER_CREDIT}::numeric)
+        ELSE 0
+      END::bigint AS price_credits`
+}
+
+// The credit-aware catalog-items feed backing GET /v3/catalog/items. Same data source and full-catalog
+// semantics as getItemsQuery (ALL items incl. not-on-sale, keyed by item, filterable by creator/contract
+// address/category/rarity/search) but with a server-computed, asset-type-aware `price_credits` per item.
+// Mirrors getItemsQuery's SELECT/joins so the row maps through fromDBItemToItem unchanged, plus the one
+// extra column. `rateNumericString` is the MANA/USD rate as a fixed-precision numeric literal.
+export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumericString = '0') {
+  return getTradesCTE({
+    category: filters.category,
+    first: filters.first,
+    skip: filters.skip
+  })
+    .append(
+      SQL`
+    SELECT
+      COUNT(*) OVER() as count,
+      item.id,
+      item.image,
+      item.uri,
+      item.blockchain_id as item_id,
+      item.collection_id as contract_address,
+      coalesce(wearable.rarity, emote.rarity) as rarity,
+      item.price,
+      item.available,
+      item.creator,
+      item.beneficiary,
+      item.created_at,
+      item.updated_at,
+      item.reviewed_at,
+      item.sold_at,
+      item.urn,
+      item.network,
+      item.search_is_store_minter,
+      item.search_is_marketplace_v3_minter,
+      unified_trades.id as trade_id,
+	    coalesce(wearable.name, emote.name) as name,
+      wearable.body_shapes as wearable_body_shapes,
+      emote.body_shapes as emote_body_shapes,
+      wearable.category as wearable_category,
+      emote.category as emote_category,
+      item.item_type,
+      emote.loop,
+      emote.has_sound,
+      emote.has_geometry,
+      emote.outcome_type as emote_outcome_type,
+      coalesce (wearable.description, emote.description) as description,
+      coalesce (to_timestamp(item.first_listed_at) AT TIME ZONE 'UTC', unified_trades.created_at) as first_listed_at,
+      unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
+      unified_trades.expires_at as trade_expires_at,
+      unified_trades.trade_contract as trade_contract,
+      unified_trades.assets -> 'received' ->> 'amount' as trade_price,`
+    )
+    .append(getPriceCreditsSelect(rateNumericString))
+    .append(
+      SQL`
+    FROM
+      `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.item item
+    LEFT JOIN `
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`.metadata metadata on
+      item.metadata_id = metadata.id
+    LEFT JOIN `
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.wearable wearable on
+      metadata.wearable_id = wearable.id
+    LEFT JOIN `
+                    .append(MARKETPLACE_SQUID_SCHEMA)
+                    .append(
+                      SQL`.emote emote on
+      metadata.emote_id = emote.id
+  `
+                        .append(
+                          ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
+                        )
+                        .append(getItemsWhereStatement(filters))
+                        // Without an ORDER BY the planner is free to return rows in any order, so
+                        // LIMIT/OFFSET paging could repeat or skip items between pages of the same
+                        // grid. `item.id` breaks ties so the order is total, not just deterministic.
+                        // (Honouring the `sortBy` param is still pending -- see the TODO above.)
+                        .append(SQL` ORDER BY item.created_at DESC, item.id ASC `)
+                        .append(getItemsLimitAndOffsetStatement(filters))
+                    )
+                )
+            )
+        )
+    )
 }
 
 export function getUtilityByItem(contractAddress: string, itemId: string) {

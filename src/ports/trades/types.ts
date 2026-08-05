@@ -7,6 +7,7 @@ export type ITradesComponent = {
   getTrade(id: string): Promise<Trade>
   getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>
   recreateMaterializedView(): Promise<void>
+  flushMaterializedViewIfDirty(): Promise<boolean>
 }
 
 export enum TradeEvent {

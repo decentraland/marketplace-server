@@ -1,4 +1,4 @@
-import { ListingStatus, NFTCategory, NFTFilters, RentalStatus } from '@dcl/schemas'
+import { ListingStatus, NFTCategory, RentalStatus } from '@dcl/schemas'
 import { fromNFTsAndOrdersToNFTsResult } from '../../adapters/nfts'
 import { getEthereumChainId } from '../../logic/chainIds'
 import { getMarketplaceContracts } from '../../logic/contracts'
@@ -10,7 +10,7 @@ import { formatQueryForLogging } from '../utils'
 import { getENSsCount } from './ensQueries'
 import { InvalidSearchByTenantAndOwnerError, InvalidTokenIdError, MissingContractAddressParamError } from './errors'
 import { getNFTsQuery } from './queries'
-import { DBNFT, INFTsComponent } from './types'
+import { DBNFT, INFTsComponent, NFTQueryFilters } from './types'
 import { getNFTFilters } from './utils'
 
 export const MAX_SUBGRAPH_QUERY_IN_ELEMENTS = 500
@@ -18,7 +18,7 @@ export const MAX_SUBGRAPH_QUERY_IN_ELEMENTS = 500
 export function createNFTsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'config' | 'rentals'>): INFTsComponent {
   const { dappsDatabase: pg, config, rentals } = components
 
-  async function getNFTs(filters: NFTFilters) {
+  async function getNFTs(filters: NFTQueryFilters) {
     const { owner, tenant, tokenId, contractAddresses } = filters
     if (owner && tenant) {
       throw new InvalidSearchByTenantAndOwnerError()

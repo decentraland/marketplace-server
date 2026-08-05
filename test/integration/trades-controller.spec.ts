@@ -1,4 +1,3 @@
-import { Response } from 'node-fetch'
 import SQL from 'sql-template-strings'
 import { Authenticator } from '@dcl/crypto'
 import {
@@ -14,11 +13,12 @@ import {
 } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import * as chainIdUtils from '../../src/logic/chainIds'
-import { getPolygonChainId } from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
 import { getSignedFetchRequest } from '../utils'
+
+const MANA_MAINNET_ADDRESS = getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address
 
 test('trades controller', function ({ components }) {
   beforeEach(() => {
@@ -28,13 +28,11 @@ test('trades controller', function ({ components }) {
   })
 
   describe('when inserting a bid', () => {
-    let bid: TradeCreation & { contract: string }
+    let bid: TradeCreation
     let response: Response
     let signer: string
-    let contract: string
 
     beforeEach(() => {
-      contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
       bid = {
         signature: Math.random().toString(),
         signer: '0xtest', // the value stored will be change in the test as the signer is the one that signed the request
@@ -50,12 +48,11 @@ test('trades controller', function ({ components }) {
           salt: '0x',
           uses: 1
         },
-        contract,
         network: Network.ETHEREUM,
         sent: [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            contractAddress: MANA_MAINNET_ADDRESS,
             extra: '0x',
             amount: '100'
           }
@@ -156,7 +153,7 @@ test('trades controller', function ({ components }) {
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
           expect(await response.json()).toEqual({
-            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer, contract: expect.any(String) },
             ok: true
           })
         })
@@ -248,7 +245,7 @@ test('trades controller', function ({ components }) {
         it('should return 201 status with trade body', async () => {
           expect(response.status).toEqual(StatusCode.CREATED)
           expect(await response.json()).toEqual({
-            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer },
+            data: { ...bid, id: expect.any(String), createdAt: expect.any(Number), signer, contract: expect.any(String) },
             ok: true
           })
         })
@@ -335,8 +332,9 @@ test('trades controller', function ({ components }) {
   })
 
   describe('when getting a trade', () => {
-    let trade: TradeCreation & { contract: string }
+    let trade: TradeCreation
     let response: Response
+    let createdTrade: { id: string }
 
     beforeEach(async () => {
       const { localFetch } = components
@@ -344,7 +342,6 @@ test('trades controller', function ({ components }) {
         intent: 'dcl:create-trade',
         signer: 'dcl:marketplace'
       })
-      const contract = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId() as unknown as ChainId).address
       trade = {
         signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
         signer: signedRequest.identity.realAccount.address.toLowerCase(),
@@ -360,12 +357,11 @@ test('trades controller', function ({ components }) {
           salt: '0x',
           uses: 1
         },
-        contract,
         network: Network.ETHEREUM,
         sent: [
           {
             assetType: TradeAssetType.ERC20,
-            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            contractAddress: MANA_MAINNET_ADDRESS,
             extra: '0x',
             amount: '100'
           }
@@ -385,19 +381,24 @@ test('trades controller', function ({ components }) {
         body: JSON.stringify(trade),
         headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
       })
-      const createdTrade = (await createdTradeResponse.json()).data
+      createdTrade = (await createdTradeResponse.json()).data
       response = await localFetch.fetch(`/v1/trades/${createdTrade.id}`, {
         method: 'GET',
         headers: signedRequest.headers
       })
     })
 
-    it('should return 200 status with trade body', async () => {
+    it('should return 200 status with the trade body carrying the trade id (not the joined asset id)', async () => {
       expect(response.status).toEqual(StatusCode.OK)
-      expect(await response.json()).toEqual({
-        data: { ...trade, id: expect.any(String), createdAt: expect.any(Number) },
+      const body = await response.json()
+      expect(body).toEqual({
+        data: { ...trade, id: expect.any(String), createdAt: expect.any(Number), contract: expect.any(String) },
         ok: true
       })
+      // Regression guard: trades and trade_assets both have an `id` column, so a `SELECT t.*, ta.*`
+      // let the asset's id clobber the trade's id — the endpoint returned the trade with its ASSET's
+      // id. Assert the returned id is the trade's own id (matches the POST response + the URL param).
+      expect(body.data.id).toEqual(createdTrade.id)
     })
   })
 })

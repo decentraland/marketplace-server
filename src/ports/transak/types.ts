@@ -1,6 +1,6 @@
 export type ITransakComponent = {
-  getOrder(orderId: string): Promise<OrderResponse>
-  getWidget(options?: WidgetOptions): Promise<string>
+  getOrder(orderId: string, userIp?: string): Promise<OrderResponse>
+  getWidget(options?: WidgetOptions, userIp?: string): Promise<string>
   getOrRefreshAccessToken(force?: boolean): Promise<string>
 }
 

@@ -5,7 +5,7 @@ export const BaseTradeAssetSchema: JSONSchema<BaseTradeAsset> = {
   properties: {
     assetType: {
       type: 'integer',
-      enum: [TradeAssetType.ERC20, TradeAssetType.ERC721, TradeAssetType.COLLECTION_ITEM]
+      enum: [TradeAssetType.ERC20, TradeAssetType.USD_PEGGED_MANA, TradeAssetType.ERC721, TradeAssetType.COLLECTION_ITEM]
     },
     contractAddress: {
       type: 'string',
@@ -25,6 +25,14 @@ export const TradeCreationAssetSchema: JSONSchema<TradeAsset> = {
       properties: {
         ...BaseTradeAssetSchema.properties,
         assetType: { const: TradeAssetType.ERC20 },
+        amount: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' }
+      },
+      required: [...BaseTradeAssetSchema.required, 'amount']
+    },
+    {
+      properties: {
+        ...BaseTradeAssetSchema.properties,
+        assetType: { const: TradeAssetType.USD_PEGGED_MANA },
         amount: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' }
       },
       required: [...BaseTradeAssetSchema.required, 'amount']

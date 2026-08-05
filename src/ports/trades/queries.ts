@@ -4,10 +4,16 @@ import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, T
 import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
+  // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
+  // `marketplace.trade_assets` both have `id` and `created_at` columns, so `SELECT t.*, ta.*` let
+  // `ta.id`/`ta.created_at` clobber `t.id`/`t.created_at` in the result row — making getTrade return
+  // the trade with its ASSET's id instead of the trade's own id (the asset mapping never reads either
+  // column, so listing only the fields it needs keeps the trade's id/created_at intact).
   return SQL`
-    SELECT t.*, ta.*, erc721.token_id, erc20.amount, item.item_id
+    SELECT t.*, ta.direction, ta.asset_type, ta.contract_address, ta.beneficiary, ta.extra, erc721.token_id, erc20.amount, item.item_id
     FROM marketplace.trades as t
     JOIN marketplace.trade_assets as ta ON t.id = ta.trade_id
     LEFT JOIN marketplace.trade_assets_erc721 as erc721 ON ta.id = erc721.asset_id
@@ -70,6 +76,7 @@ export function getInsertTradeAssetValueByTypeQuery(asset: TradeAsset | TradeAss
           ${asset.tokenId}
         ) RETURNING *;`
     case TradeAssetType.ERC20:
+    case TradeAssetType.USD_PEGGED_MANA:
       return SQL`INSERT INTO marketplace.trade_assets_erc20 (
         asset_id,
         amount
@@ -132,7 +139,6 @@ export function getTradesForTypeQuery(type: TradeType) {
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
-          AND t.signer = trade_status.caller
         ) THEN '${ListingStatus.CANCELLED}'
         WHEN (t.expires_at < now()::timestamptz(3)) THEN '${ListingStatus.CANCELLED}'
         WHEN (
@@ -170,8 +176,49 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '${type}'
-    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index, trade_status.caller
+    /**
+     * NOT grouped by trade_status.caller.
+     *
+     * A trade has one row in squid_trades.trade per ON-CHAIN ACTION, and their callers differ — a
+     * cancellation is called by the signer, an execution by whoever bought (a contract, for a relayed or
+     * credits-funded purchase). Grouping by caller therefore split ONE trade into one group per caller,
+     * and the status CASE was then evaluated per group: the group holding the cancellation counted it and
+     * returned cancelled, while the group holding the execution counted no cancellation and fell through
+     * to open.
+     *
+     * That produced two contradictory rows for the same trade, and getOpenItemOrderQuery does
+     * WHERE status = 'open' LIMIT 1 — so any item whose order had been BOTH executed at least once and
+     * then cancelled became permanently unlistable, rejected with "There is already an open order for this
+     * Item". Both the Shop catalogue and the Builder correctly showed the item as not for sale, because
+     * getTradesForTypeQueryWithFilters (below) never grouped by caller, so nothing surfaced the phantom
+     * listing that was doing the blocking.
+     *
+     * caller was in the GROUP BY only because the CASE above referenced it; removing that reference is
+     * what allows this to group by the trade, which is the unit a status describes. It now matches the
+     * filtered query verbatim.
+     */
+    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
+}
+
+export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
+  return SQL`SELECT 1 FROM (`
+    .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
+    .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
+    .append(SQL` AND item_order_trades.network = ${network}`)
+    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
+    .append(SQL` LIMIT 1`)
+}
+
+export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, network: string): SQLStatement {
+  return SQL`SELECT 1 FROM (`
+    .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
+    .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
+    .append(SQL` AND nft_order_trades.network = ${network}`)
+    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
+    .append(SQL` LIMIT 1`)
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
@@ -329,4 +376,29 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       OFFSET ${offset}
     )
     ORDER BY t.created_at DESC, ta.direction ASC`
+}
+
+// Resolves the item id of an ERC721 (secondary listing) asset. Uses the same join the trade queries and
+// the trades materialized view rely on: the squid `nft` table keyed by contract_address + token_id, from
+// which `item_blockchain_id` is the item id the NFT was minted from.
+export function getItemIdByTokenIdQuery(contractAddress: string, tokenId: string): SQLStatement {
+  return SQL`SELECT nft.item_blockchain_id::text AS item_id FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.nft AS nft WHERE nft.contract_address = ${contractAddress.toLowerCase()} AND nft.token_id = ${tokenId}::numeric LIMIT 1`)
+}
+
+// Transition check for the "item went on sale" waitlist ping. Returns a row when the item already has
+// ANOTHER open listing (item or nft order) besides the just-created trade, meaning it was already on
+// sale and no ping is warranted. Reads the trades materialized view, which can be up to
+// TRADES_MV_REFRESH_INTERVAL_SECONDS (~30s) stale; the worst case is a duplicate ping, which the Shop
+// dedupes, so a slightly stale read is acceptable here.
+export function getOtherOpenListingForItemQuery(contractAddress: string, itemId: string, excludeTradeId: string): SQLStatement {
+  return SQL`SELECT 1 FROM marketplace.`.append(TRADES_MV_NAME).append(
+    SQL` WHERE status = 'open'
+      AND type IN ('public_item_order', 'public_nft_order')
+      AND sent_contract_address = ${contractAddress.toLowerCase()}
+      AND sent_item_id = ${itemId}
+      AND id <> ${excludeTradeId}
+      LIMIT 1`
+  )
 }

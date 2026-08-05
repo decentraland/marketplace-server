@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@well-known-components/http-server'
 import { IConfigComponent } from '@well-known-components/interfaces'
+import { IFetchComponent } from '@dcl/core-commons'
 import { createWertApi } from '../../src/ports/wert/api/component'
 import { WertSession } from '../../src/ports/wert/api/types'
 

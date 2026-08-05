@@ -1,14 +1,7 @@
-import type { IFetchComponent } from '@well-known-components/http-server'
-import type {
-  IConfigComponent,
-  ILoggerComponent,
-  IHttpServerComponent,
-  IBaseComponent,
-  IMetricsComponent
-} from '@well-known-components/interfaces'
-import type { ICacheStorageComponent } from '@dcl/core-commons'
+import type { IConfigComponent, ILoggerComponent, IBaseComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import type { ICacheStorageComponent, IFetchComponent, IHttpServerComponent } from '@dcl/core-commons'
+import type * as authorizationMiddleware from '@dcl/crypto-middleware'
 import { ISchemaValidatorComponent } from '@dcl/schema-validator-component'
-import type * as authorizationMiddleware from 'decentraland-crypto-middleware'
 import { metricDeclarations } from './metrics'
 import { IAccountsComponent } from './ports/accounts/types'
 import { IActivityComponent } from './ports/activity/types'
@@ -26,6 +19,7 @@ import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
+import { IManaUsdRateComponent } from './ports/mana-rate/types'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
 import { IOwnersComponent } from './ports/owners/types'
@@ -33,6 +27,8 @@ import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
+import { IShopCatalogComponent } from './ports/shop-catalog/types'
+import { IShopNotifierComponent } from './ports/shop-notifier/types'
 import { IStatsComponent } from './ports/stats/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
@@ -59,11 +55,15 @@ export type BaseComponents = {
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
+  shopCatalog: IShopCatalogComponent
+  shopNotifier: IShopNotifierComponent
+  manaUsdRate: IManaUsdRateComponent
   wertSigner: IWertSignerComponent
   wertApi: IWertApiComponent
   transak: ITransakComponent
   ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
+  flushTradesMaterializedViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent

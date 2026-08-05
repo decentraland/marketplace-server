@@ -400,7 +400,7 @@ export const getNetworkWhere = (filters: CatalogFilters) => {
 }
 
 /** Helper to build WHERE clause with item-level filters only (no joins needed) */
-const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
+const getItemLevelFiltersWhere = (filters: CatalogQueryFilters) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
@@ -421,7 +421,12 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const whereClause = SQL`WHERE items.search_is_collection_approved = true`
+  if (filters.includeSocialEmotes === false) {
+    whereClause.append(SQL` AND items.search_emote_outcome_type IS NULL`)
+  }
   if (conditions.length > 0) {
     whereClause.append(SQL` AND `)
     conditions.forEach((condition, index) => {
@@ -437,7 +442,7 @@ const getItemLevelFiltersWhere = (filters: CatalogFilters) => {
   return whereClause
 }
 
-export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) => {
+export const getCollectionsQueryWhere = (filters: CatalogQueryFilters, isV2 = false) => {
   const conditions = [
     filters.category ? getCategoryWhere(filters) : undefined,
     filters.rarities?.length ? getRaritiesWhere(filters) : undefined,
@@ -463,7 +468,12 @@ export const getCollectionsQueryWhere = (filters: CatalogFilters, isV2 = false) 
     filters.network ? getNetworkWhere(filters) : undefined
   ].filter(Boolean)
 
+  // Social emotes (those with an outcome type) are included by default; excluded only when includeSocialEmotes=false.
+  // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const result = SQL`WHERE items.search_is_collection_approved = true `
+  if (filters.includeSocialEmotes === false) {
+    result.append(SQL` AND items.search_emote_outcome_type IS NULL `)
+  }
   if (!conditions.length) {
     return result
   } else {
@@ -629,6 +639,46 @@ LEFT JOIN (
     )
 }
 
+// Unix timestamp (2026-05-20 13:37:12 UTC) of the commit that started validating
+// new Estate trades against EstateRegistry.getFingerprintV2 (`9877d90`). Off-chain
+// trades created before this carry a legacy v1 (XOR) fingerprint in their signed
+// payload; trades created after are guaranteed v2-valid by the creation-time check.
+const ESTATE_V2_FINGERPRINT_VALIDATION_CUTOFF = 1779284232
+
+// Largest Estate (in LANDs) for which the upgraded EstateRegistry still honors the
+// legacy v1 fingerprint via verifyFingerprint's fallback. Estates above this can no
+// longer be executed with a v1 fingerprint. Mirrors the webapp's ESTATE_LR_XOR_SAFE_MAX_SIZE.
+const ESTATE_LR_XOR_SAFE_MAX_SIZE = 18
+
+/**
+ * Excludes off-chain Estate sell orders that are no longer executable on-chain
+ * after the EstateRegistry upgrade, so they are not surfaced as open listings.
+ *
+ * A `public_nft_order` whose sent asset is an Estate larger than the LR-XOR safe
+ * size AND that was signed before the v2-validation cutoff carries a stale v1
+ * fingerprint that `verifyFingerprint` will reject — buying it would revert. We
+ * keep ≤18-LAND estates (still honored via the contract's v1 fallback) and any
+ * trade created after the cutoff (v2-valid by construction).
+ *
+ * Returns a fresh SQLStatement each call (it is appended into multiple queries).
+ *
+ * TODO: once the on-chain v1 fallback deadline (2026-11-26 15:00 UTC) passes, ≤18
+ * LAND estates also stop honoring v1 — the size guard should be dropped then.
+ */
+export const getExcludeBrokenEstateTradesWhere = (): SQLStatement =>
+  SQL`
+    NOT (
+      unified_trades.type = 'public_nft_order'
+      AND unified_trades.sent_nft_category = ${NFTCategory.ESTATE}
+      AND unified_trades.created_at < to_timestamp(${ESTATE_V2_FINGERPRINT_VALIDATION_CUTOFF})
+      AND EXISTS (
+        SELECT 1 FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft broken_estate_nft
+        WHERE broken_estate_nft.id = unified_trades.sent_nft_id
+          AND broken_estate_nft.search_estate_size > ${ESTATE_LR_XOR_SAFE_MAX_SIZE}
+      )
+    )
+  `)
+
 export const getTradesCTE = ({
   cteName,
   category,
@@ -668,13 +718,11 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
               MIN(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS min_order_amount_received,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS max_order_amount_received,
               -- Item amount is the minimum value for public_item_order
-              MAX(assets -> 'sent' ->> 'token_id') AS token_id, -- Max token_id for public_nft_order
-              assets -> 'sent' ->> 'item_id' AS item_id, -- Max item_id for public_item_order
+              assets -> 'sent' ->> 'item_id' AS item_id, -- item_id grouping key for public_item_order
               MAX(created_at) AS max_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
-              MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at,
-              json_agg(assets) AS aggregated_assets -- Aggregate the assets into a JSON array
+              MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at
           FROM unified_trades
             WHERE status = 'open' and (available IS NULL OR available > 0)`
     .append(filters.onlyMinting ? SQL` AND type = 'public_item_order'` : SQL``)
@@ -1163,7 +1211,6 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
 export const getCollectionsItemsCatalogQuery = (filters: CatalogQueryFilters) => {
   const query = SQL`
             SELECT
-              COUNT(*) OVER() as total_rows,
               items.id,
               items.blockchain_id,
               items.search_is_collection_approved,

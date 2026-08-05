@@ -1,5 +1,5 @@
-import { IFetchComponent } from '@well-known-components/interfaces'
 import pLimit from 'p-limit'
+import { IFetchComponent } from '@dcl/core-commons'
 import { PaginatedResponse } from '@dcl/schemas'
 import { HTTPSuccessResponseBody } from '../../types'
 import { FetchRentalListingsError } from './errors'
@@ -51,6 +51,7 @@ export async function queryMultipleTimesWhenExceedingUrlLimit<T>(
         try {
           const response = await fetchComponent.fetch(url)
           if (!response.ok) {
+            await response.body?.cancel().catch(() => undefined)
             throw new FetchRentalListingsError(response)
           }
 

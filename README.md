@@ -108,6 +108,19 @@ Optional authentication (provides personalized results):
 | Payments | `GET /v1/transak/orders/{id}` | Get Transak order details |
 | ENS | `GET /v1/ens/generate` | Generate ENS name image |
 
+### Payment Gateway Security (Transak)
+
+The webapp never talks to Transak's REST API directly. It only calls this server's `/v1/transak/*` endpoints, and this server performs every server-to-server call to Transak (token refresh, order lookup, widget session) from `src/ports/transak/component.ts`.
+
+Transak enforces a mandatory partner security policy (effective **2026-07-15**, see the [official guide](https://docs.transak.com/guides/mandatory-security-changes)). Here is how each requirement is satisfied:
+
+1. **Backend-only API access.** Transak's APIs are called exclusively from this backend, so their egress IPs can be whitelisted by Transak. The frontend has no direct access — this was already the architecture.
+2. **Partner API key in a header (`x-api-key`).** `TRANSAK_API_KEY` is sent as the `x-api-key` header on every outbound Transak call, alongside the existing `api-secret` / `access-token` auth.
+3. **End-user IP forwarding (`x-user-ip`).** For user-initiated calls (`getOrder`, `getWidget`) the originating client IP is resolved from the incoming request — `cf-connecting-ip` (Cloudflare), falling back to the left-most `x-forwarded-for` entry — via `getClientIp` (`src/logic/http/ip.ts`), and forwarded as `x-user-ip`. It is intentionally omitted on the partner-level token-refresh call, which is not tied to a single user. This value is only trustworthy while the service is reachable exclusively through the Cloudflare/ingress that overwrites these headers; treat it as a Transak fraud/geo signal, not as an authentication input.
+4. **CORS restricted to Decentraland front-end domains.** Configured operationally via the `CORS_ORIGIN` environment variable (semicolon-separated origins, no wildcard), enforced at deploy time — keep it scoped to the marketplace/account front-ends.
+
+**Operational follow-ups (not code):** share this service's egress IPs (staging + production) with Transak for whitelisting, and complete the Transak partner security checklist.
+
 ## Database Schema
 
 See [docs/database-schema.md](docs/database-schema.md) for detailed schema, column definitions, and relationships.

@@ -1,9 +1,9 @@
 import SQL from 'sql-template-strings'
-import { Event, Trade, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
-import { recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
+import { flushTradesMaterializedViewIfDirty, recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import { IPgComponent } from '../db/types'
@@ -23,6 +23,8 @@ import {
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
+  getItemIdByTokenIdQuery,
+  getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
   getTradesByAddressQuery
@@ -56,9 +58,11 @@ type TradeWithAssetRow = {
 }
 
 export function createTradesComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs'> & { dappsReadDatabase?: IPgComponent }
+  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier'> & {
+    dappsReadDatabase?: IPgComponent
+  }
 ): ITradesComponent {
-  const { dappsDatabase: pg, dappsReadDatabase, eventPublisher, logs } = components
+  const { dappsDatabase: pg, dappsReadDatabase, eventPublisher, logs, shopNotifier } = components
   // Route read-only validation + notification queries to the read replica when one is wired, keeping
   // the write primary for the insert transaction. Falls back to the write DB if no replica is given.
   const readPg = dappsReadDatabase ?? pg
@@ -236,6 +240,14 @@ export function createTradesComponent(
     // already durably persisted, so return it immediately.
     void notifyTradeCreated(insertedTrade, signer)
 
+    // Same deal for the Shop waitlist ping (a couple of queries plus up to a 2s HTTP timeout): tell the
+    // waitlist when this listing makes the item go on sale, but never on the caller's clock. It sits here
+    // rather than at the end of notifyTradeCreated so it does not queue behind the SNS publish — the two
+    // are independent, and neither can affect trade creation.
+    void notifyShopIfItemGoesOnSale(insertedTrade).catch((e: unknown) =>
+      logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
+    )
+
     return insertedTrade
   }
 
@@ -253,6 +265,48 @@ export function createTradesComponent(
         isErrorWithMessage(e) ? e.message : (e as any)
       )
     }
+  }
+
+  // Notifies the Shop that an item transitioned from not-for-sale to on-sale, so it can email its
+  // waitlist. Only listings qualify (primary re-list via PUBLIC_ITEM_ORDER or secondary via
+  // PUBLIC_NFT_ORDER); bids and everything else return early. Skips when the item already had another
+  // open listing (it was already on sale) and when the item id cannot be resolved (never guesses).
+  async function notifyShopIfItemGoesOnSale(trade: Trade): Promise<void> {
+    if (trade.type !== TradeType.PUBLIC_ITEM_ORDER && trade.type !== TradeType.PUBLIC_NFT_ORDER) {
+      return
+    }
+
+    const sentAsset: TradeAsset | undefined = trade.sent[0]
+    if (!sentAsset) {
+      return
+    }
+    const contractAddress = sentAsset.contractAddress
+
+    // Resolve the item id of the asset being listed.
+    let itemId: string | undefined
+    if (sentAsset.assetType === TradeAssetType.COLLECTION_ITEM) {
+      // Primary re-list: the sold asset is the collection item itself, so its item id is direct.
+      itemId = sentAsset.itemId
+    } else if (sentAsset.assetType === TradeAssetType.ERC721) {
+      // Secondary listing: the sold asset is an ERC721 token; resolve it to the item id it was minted
+      // from via the squid `nft` table (same contract_address + token_id join the trade queries use).
+      const result = await pg.query<{ item_id: string | null }>(getItemIdByTokenIdQuery(contractAddress, sentAsset.tokenId))
+      itemId = result.rows[0]?.item_id ?? undefined
+    }
+
+    // Can't resolve an item id -> skip rather than guess.
+    if (!itemId) {
+      return
+    }
+
+    // Transition check: only ping on a real not-for-sale -> on-sale change. If any OTHER open listing of
+    // the same item already exists, the item was already on sale, so skip.
+    const otherOpen = await pg.query(getOtherOpenListingForItemQuery(contractAddress, itemId, trade.id))
+    if (otherOpen.rowCount && otherOpen.rowCount > 0) {
+      return
+    }
+
+    await shopNotifier.notifyItemOnSale({ contractAddress, itemId })
   }
 
   async function getTrade(id: string) {
@@ -290,12 +344,21 @@ export function createTradesComponent(
     await recreateTradesMaterializedView(pg)
   }
 
+  async function flushMaterializedViewIfDirty() {
+    const refreshed = await flushTradesMaterializedViewIfDirty(pg)
+    if (refreshed) {
+      logger.info('Flushed a debounced trades materialized view refresh')
+    }
+    return refreshed
+  }
+
   return {
     getTrades,
     getTradesByAddress,
     addTrade,
     getTrade,
     getTradeAcceptedEvent,
-    recreateMaterializedView
+    recreateMaterializedView,
+    flushMaterializedViewIfDirty
   }
 }

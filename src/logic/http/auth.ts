@@ -1,4 +1,4 @@
-import { IHttpServerComponent } from '@well-known-components/interfaces'
+import { IHttpServerComponent } from '@dcl/core-commons'
 import { HandlerContextWithPath, StatusCode } from '../../types'
 
 export async function validateApiToken(

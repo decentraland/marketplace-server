@@ -1,4 +1,3 @@
-import { NFTFilters } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { Params } from '../../logic/http/params'
 import { InvalidSearchByTenantAndOwnerError, InvalidTokenIdError, MissingContractAddressParamError } from '../../ports/nfts/errors'
@@ -15,7 +14,7 @@ export async function getNFTsHandler(context: Pick<HandlerContextWithPath<'nfts'
 
     const caller: string | undefined = context.verification?.auth.toLowerCase()
 
-    const filters: NFTFilters = getNFTParams(params)
+    const filters = getNFTParams(params)
 
     const { data, total } = await nfts.getNFTs(
       {

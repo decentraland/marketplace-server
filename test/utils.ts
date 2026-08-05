@@ -1,7 +1,7 @@
 import { Authenticator } from '@dcl/crypto'
 import { createUnsafeIdentity } from '@dcl/crypto/dist/crypto'
+import { AUTH_CHAIN_HEADER_PREFIX, AUTH_METADATA_HEADER, AUTH_TIMESTAMP_HEADER } from '@dcl/crypto-middleware'
 import { AuthChain } from '@dcl/schemas'
-import { AUTH_CHAIN_HEADER_PREFIX, AUTH_METADATA_HEADER, AUTH_TIMESTAMP_HEADER } from 'decentraland-crypto-middleware/lib/types'
 
 export async function getIdentity() {
   const ephemeralIdentity = createUnsafeIdentity()

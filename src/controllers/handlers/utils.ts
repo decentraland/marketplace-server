@@ -36,13 +36,16 @@ function parsePrice(value: string, paramName: string): string {
 export const getItemsParams = (params: Params) => {
   const maxPrice = params.getString('maxPrice')
   const minPrice = params.getString('minPrice')
+  // `getBoolean` only reports presence, so a bare `?isOnSale=` used to read as `false`. An empty value
+  // carries no intent -- treat it as absent so it means "no status filter", not "not for sale".
+  const isOnSale = params.getString('isOnSale')
   return {
     first: params.getNumber('first'),
     skip: params.getNumber('skip'),
     category: params.getValue<NFTCategory>('category', NFTCategory),
     creator: params.getList('creator'),
     isSoldOut: params.getBoolean('isSoldOut'),
-    isOnSale: params.getBoolean('isOnSale') ? params.getString('isOnSale') === 'true' : undefined,
+    isOnSale: isOnSale ? isOnSale === 'true' : undefined,
     search: params.getString('search'),
     isWearableHead: params.getBoolean('isWearableHead'),
     isWearableAccessory: params.getBoolean('isWearableAccessory'),
@@ -62,11 +65,13 @@ export const getItemsParams = (params: Params) => {
     maxPrice: maxPrice && maxPrice.trim() ? parsePrice(maxPrice, 'maxPrice') : undefined,
     minPrice: minPrice && minPrice.trim() ? parsePrice(minPrice, 'minPrice') : undefined,
     urns: params.getList('urn'),
-    ids: params.getList('id')
+    ids: params.getList('id'),
+    // Social emotes are included by default; excluded only when includeSocialEmotes=false is explicitly set
+    includeSocialEmotes: params.getString('includeSocialEmotes') !== 'false'
   }
 }
 
-export const getNFTParams = (params: Params): NFTFilters => {
+export const getNFTParams = (params: Params): NFTFilters & { includeSocialEmotes?: boolean } => {
   const maxPrice = params.getString('maxPrice')
   const minPrice = params.getString('minPrice')
   return {
@@ -108,7 +113,9 @@ export const getNFTParams = (params: Params): NFTFilters => {
     rentalDays: params
       .getList('rentalDays')
       .map(days => Number.parseInt(days))
-      .filter(number => !Number.isNaN(number))
+      .filter(number => !Number.isNaN(number)),
+    // Social emotes are included by default; excluded only when includeSocialEmotes=false is explicitly set
+    includeSocialEmotes: params.getString('includeSocialEmotes') !== 'false'
   }
 }
 
