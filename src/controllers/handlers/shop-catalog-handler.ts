@@ -277,6 +277,10 @@ export function createShopTrendingHandler(
 // contractAddress, category, rarity, search, ...) but every item carries a server-computed,
 // asset-type-aware priceCredits (USD-pegged items pass through; MANA-priced ones are converted with the
 // live MANA/USD rate). Returns { data, total } where each item is the /v1/items shape plus priceCredits.
+//
+// On top of the /v1/items params it accepts `sortBy` and a CREDIT-denominated price range
+// (minPriceCredits/maxPriceCredits) -- the Shop's own unit, unlike the MANA-wei minPrice/maxPrice. Both
+// are parsed here rather than in the shared getItemsParams so /v1/items keeps its current behaviour.
 export function createCatalogItemsHandler(
   components: Pick<AppComponents, 'items' | 'manaUsdRate'>
 ): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/items'>> {
@@ -284,7 +288,12 @@ export function createCatalogItemsHandler(
 
   return async context => {
     const params = new Params(context.url.searchParams)
-    const filters = getItemsParams(params)
+    const filters = {
+      ...getItemsParams(params),
+      minPriceCredits: params.getNumber('minPriceCredits'),
+      maxPriceCredits: params.getNumber('maxPriceCredits'),
+      sortBy: params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
+    }
 
     return asJSON(async () => {
       const rate = manaUsdRate.getRate()
