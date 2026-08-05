@@ -1038,21 +1038,32 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getShopItems({}, RATE)
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.item_listed_at DESC, d.trade_id')
+      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.item_first_listed_at DESC, d.trade_id')
     })
 
-    it('should sort newest on the per-item listing date, not on the representative row own date', async () => {
+    it('should sort newest on when the item first became buyable, not on the representative row own date', async () => {
       await shopCatalog.getShopItems({}, RATE)
 
       const text = query.mock.calls[0][0].text as string
-      // The survivor of the DISTINCT ON is chosen by price and listing kind, never by recency. Ordering on
-      // its created_at made an item with a brand-new resale sort by the date of the old primary listing that
-      // won the grouping.
-      expect(text).toContain('MAX(u.created_at) OVER (PARTITION BY u.contract_address, u.item_id) AS item_listed_at')
+      // The survivor of the DISTINCT ON is chosen by price and listing kind, never by date, so its created_at
+      // is arbitrary with respect to recency once an item has more than one open offer (a store mint plus an
+      // offchain primary trade, say).
+      expect(text).toContain('MIN(u.created_at) OVER (PARTITION BY u.contract_address, u.item_id) AS item_first_listed_at')
       expect(text).not.toContain('ORDER BY d.created_at')
     })
 
-    it('should window item_listed_at over the same partition as listing_count so it costs no extra pass', async () => {
+    it('should take the earliest listing date, not the latest, so a re-listed item does not read as new', async () => {
+      await shopCatalog.getShopItems({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      // "Newest" answers when the item first became buyable -- the same thing the store branch's
+      // first_listed_at means. The latest date would be RECENTLY_LISTED semantics, a separate sort in the
+      // marketplace, and would let a long-minting item jump to the front of the grid on a second listing.
+      expect(text).toContain('MIN(u.created_at) OVER')
+      expect(text).not.toContain('MAX(u.created_at) OVER')
+    })
+
+    it('should window item_first_listed_at over the same partition as listing_count so it costs no extra pass', async () => {
       await shopCatalog.getShopItems({}, RATE)
 
       const text = query.mock.calls[0][0].text as string
@@ -1243,7 +1254,7 @@ describe('Shop Catalog Component', () => {
       const sql = query.mock.calls[1][0]
       expect(sql.text).toContain('ORDER BY CASE lower(d.rarity)')
       // Same recency key as the grid this rail mirrors.
-      expect(sql.text).toContain('d.item_listed_at DESC, d.trade_id')
+      expect(sql.text).toContain('d.item_first_listed_at DESC, d.trade_id')
       // The CASE binds a precomputed distance per tier: the anchor's own rarity is 0 (so exact matches
       // lead), its neighbours 1, and so on outwards along the scarcity scale.
       const distances = sql.values.slice(sql.values.indexOf('unique'))
@@ -1267,7 +1278,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getRelatedItems(ANCHOR, RATE)
 
       const sql = query.mock.calls[1][0]
-      expect(sql.text).toContain('ORDER BY 0, d.item_listed_at DESC')
+      expect(sql.text).toContain('ORDER BY 0, d.item_first_listed_at DESC')
       expect(sql.text).not.toContain('CASE lower(d.rarity)')
     })
 

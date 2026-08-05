@@ -456,8 +456,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
 //   u  -- the UNION ALL of the source branches (one row per open credit-buyable offer).
 //   f  -- drop free/broken offers (usd_wei > 0) and absurd ones (<= MAX_USD_WEI, which keeps the bigint cast
 //         below from aborting the whole query), then attach two per-item windows over the same partition:
-//         listing_count (the "N listings" badge) and item_listed_at (the item's MOST RECENT listing date).
-//         Both are stable across every row of the same item.
+//         listing_count (the "N listings" badge) and item_first_listed_at (the EARLIEST of the item's open
+//         listing dates). Both are stable across every row of the same item.
 //   d  -- DISTINCT ON (contract_address, item_id) keeps exactly one representative offer per item.
 //         The ORDER BY makes the survivor: PRIMARY before secondary, then NATIVE (fixed USD) before
 //         LEGACY (rate-floating MANA), then cheapest usd_wei, then TRADE before STORE mint, then trade_id
@@ -467,9 +467,16 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
 // Callers wrap this as `d` and add their own filtering/ordering/pagination on top. sent_item_id is
 // populated for secondary rows too (mv_trades), so grouping needs no extra joins.
 //
-// Recency ordering MUST use item_listed_at, never the survivor's own created_at: the survivor is picked by
-// price and listing kind, so an item whose fresh resale just landed would otherwise still sort by the date of
-// the old primary listing that won the DISTINCT ON.
+// Recency ordering MUST use item_first_listed_at, never the survivor's own created_at: the survivor is picked
+// by price and listing kind, never by date, so its date is arbitrary with respect to recency once an item has
+// more than one open offer (a store mint plus an offchain primary trade, or two primary listings at different
+// prices).
+//
+// EARLIEST, not latest: "newest" here answers "when did this item first become buyable", which is what the
+// store branch's first_listed_at already means and what the marketplace's own NEWEST sort computes. Taking the
+// latest instead would be RECENTLY_LISTED semantics -- a separate sort there -- and would let a long-minting
+// item jump to the front of the grid on a second listing. Cancelled and sold-out listings leave the open set,
+// so a plain re-list still surfaces as new under either aggregate.
 //
 // Shared by the browse feed and the related-items rail so the rail is drawn from exactly the same universe,
 // grouping and headline-price rules as the grid it is meant to mirror -- a divergence here would show the
@@ -484,7 +491,7 @@ function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString:
           SELECT
             u.*,
             COUNT(*) OVER (PARTITION BY u.contract_address, u.item_id) AS listing_count,
-            MAX(u.created_at) OVER (PARTITION BY u.contract_address, u.item_id) AS item_listed_at
+            MIN(u.created_at) OVER (PARTITION BY u.contract_address, u.item_id) AS item_first_listed_at
           FROM (`.append(inner).append(SQL`) u
           WHERE u.usd_wei > 0 AND u.usd_wei <= ${MAX_USD_WEI}::numeric
         ) f
@@ -972,8 +979,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `d.trade_id`
     // tiebreaker keeps pagination stable when many items share a headline usd_wei/name. Newest orders on
-    // item_listed_at (the item's most recent listing), NOT on the representative row's created_at -- see
-    // buildItemUnifiedCore.
+    // item_first_listed_at (when the item first became buyable), NOT on the representative row's created_at
+    // -- see buildItemUnifiedCore.
     const order =
       filters.sortBy === 'cheapest'
         ? SQL` ORDER BY d.usd_wei ASC, d.trade_id`
@@ -981,7 +988,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ? SQL` ORDER BY d.usd_wei DESC, d.trade_id`
         : filters.sortBy === 'name'
         ? SQL` ORDER BY d.name ASC, d.trade_id`
-        : SQL` ORDER BY d.item_listed_at DESC, d.trade_id`
+        : SQL` ORDER BY d.item_first_listed_at DESC, d.trade_id`
     query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<UnifiedItemRow>(query)
@@ -1069,7 +1076,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     query
       .append(SQL` ORDER BY `)
       .append(rarityDistanceExpr(reference.rarity))
-      .append(SQL`, d.item_listed_at DESC, d.trade_id LIMIT ${first}`)
+      .append(SQL`, d.item_first_listed_at DESC, d.trade_id LIMIT ${first}`)
 
     const result = await pg.query<RelatedItemRow>(query)
     const polygonChainId = getPolygonChainId()
