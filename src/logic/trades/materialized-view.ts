@@ -459,3 +459,50 @@ export async function flushTradesMaterializedViewIfDirty(db: IPgComponent): Prom
   }
   return true
 }
+
+/**
+ * Refresh the view NOW, for a write whose author is about to read it back.
+ *
+ * The debounce above is a throughput guard: the triggers also fire on the squid's `nft`/`item` writes,
+ * and paying a refresh per statement there starved the indexers. That reasoning does not apply to a
+ * trade INSERT — there is exactly one in the whole service (`addTrade`), it happens when a person signs
+ * a listing, and that person's very next request is a read that has to contain it. Under the shared
+ * interval they instead got the previous state for up to 30s: the Builder rendered a listing it had just
+ * created as `◈ 0.0`, because `/v1/items` reads `trade_price` from this view.
+ *
+ * Skips the elapsed-time condition, which is the entire point, but keeps the SAME single-row claim as
+ * the periodic flush, so:
+ *   - two refreshes can still never run at once (`FOR UPDATE SKIP LOCKED`), and
+ *   - losing that race is harmless: the trigger has already set `dirty`, so the periodic flush picks the
+ *     change up on its next tick. That is exactly today's behaviour, which is why this can only ever
+ *     make staleness shorter, never longer.
+ *
+ * Returns true when it performed a REFRESH, false when another refresh already held the claim.
+ */
+export async function forceFlushTradesMaterializedView(db: IPgComponent): Promise<boolean> {
+  const claim = await db.query<{ id: boolean }>(`
+    UPDATE marketplace.mv_trades_refresh_state s
+       SET last_refresh = clock_timestamp(), dirty = false
+      FROM (
+        SELECT id FROM marketplace.mv_trades_refresh_state
+         WHERE id = true
+         FOR UPDATE SKIP LOCKED
+      ) gate
+     WHERE s.id = gate.id
+    RETURNING s.id;
+  `)
+
+  if (!claim.rowCount) {
+    return false
+  }
+
+  try {
+    await db.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME}`)
+  } catch (error) {
+    // Same contract as the periodic flush: the claim cleared `dirty`, so a failed REFRESH has to put it
+    // back or the write this ran for is dropped silently.
+    await db.query('UPDATE marketplace.mv_trades_refresh_state SET dirty = true WHERE id = true')
+    throw error
+  }
+  return true
+}

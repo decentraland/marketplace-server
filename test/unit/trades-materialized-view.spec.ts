@@ -1,4 +1,9 @@
-import { ensureTradesRefreshGate, flushTradesMaterializedViewIfDirty, TRADES_MV_NAME } from '../../src/logic/trades/materialized-view'
+import {
+  ensureTradesRefreshGate,
+  flushTradesMaterializedViewIfDirty,
+  forceFlushTradesMaterializedView,
+  TRADES_MV_NAME
+} from '../../src/logic/trades/materialized-view'
 import { IPgComponent } from '../../src/ports/db/types'
 
 let mockQuery: jest.Mock
@@ -126,5 +131,76 @@ describe('when ensuring the trades refresh gate', () => {
     expect(sql).toContain('ROLLBACK')
     expect(sql).not.toContain('COMMIT')
     expect(client.release).toHaveBeenCalled()
+  })
+})
+
+/**
+ * The forced refresh, for a write whose author is about to read it back.
+ *
+ * The distinction that matters: it drops the debounce (the whole point — a signer must not be served a
+ * view that lacks the listing they just created) while keeping the single-row claim, so it can still
+ * never run two refreshes at once and a lost race degrades to today's periodic flush.
+ */
+describe('when forcing a trades materialized view refresh after a write', () => {
+  describe('and no other refresh holds the claim', () => {
+    beforeEach(() => {
+      mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: true }] }).mockResolvedValueOnce({ rowCount: 0, rows: [] })
+    })
+
+    it('should claim the refresh without waiting for the debounce interval', async () => {
+      await forceFlushTradesMaterializedView(mockPg)
+
+      const claimSql = mockQuery.mock.calls[0][0] as string
+      expect(claimSql).toContain('UPDATE marketplace.mv_trades_refresh_state')
+      expect(claimSql).toContain('last_refresh = clock_timestamp()')
+      // THE difference from the periodic flush: no elapsed-time condition.
+      expect(claimSql).not.toContain('last_refresh <')
+      expect(claimSql).not.toContain('interval')
+    })
+
+    it('should still serialize against a concurrent refresh', async () => {
+      await forceFlushTradesMaterializedView(mockPg)
+
+      expect(mockQuery.mock.calls[0][0] as string).toContain('FOR UPDATE SKIP LOCKED')
+    })
+
+    it('should refresh concurrently, so readers are never blocked', async () => {
+      const refreshed = await forceFlushTradesMaterializedView(mockPg)
+
+      expect(mockQuery.mock.calls[1][0]).toBe(`REFRESH MATERIALIZED VIEW CONCURRENTLY marketplace.${TRADES_MV_NAME}`)
+      expect(refreshed).toBe(true)
+    })
+  })
+
+  describe('and another refresh already holds the claim', () => {
+    beforeEach(() => {
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] })
+    })
+
+    // Harmless by design: the trigger already set `dirty`, so the periodic flush catches the change on
+    // its next tick — which is exactly the behaviour that existed before this function.
+    it('should not refresh, leaving the change to the periodic flush', async () => {
+      const refreshed = await forceFlushTradesMaterializedView(mockPg)
+
+      expect(refreshed).toBe(false)
+      expect(mockQuery).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('and the refresh itself fails', () => {
+    beforeEach(() => {
+      mockQuery
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: true }] })
+        .mockRejectedValueOnce(new Error('refresh boom'))
+        .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+    })
+
+    // The claim cleared `dirty`. Without putting it back, the listing this ran for would never be
+    // reflected by anything — the silent-drop bug the periodic flush exists to prevent.
+    it('should re-mark the state row dirty and rethrow', async () => {
+      await expect(forceFlushTradesMaterializedView(mockPg)).rejects.toThrow('refresh boom')
+
+      expect(mockQuery.mock.calls[2][0]).toContain('SET dirty = true')
+    })
   })
 })

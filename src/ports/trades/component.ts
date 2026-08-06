@@ -3,7 +3,11 @@ import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCre
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
-import { flushTradesMaterializedViewIfDirty, recreateTradesMaterializedView } from '../../logic/trades/materialized-view'
+import {
+  flushTradesMaterializedViewIfDirty,
+  forceFlushTradesMaterializedView,
+  recreateTradesMaterializedView
+} from '../../logic/trades/materialized-view'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
@@ -228,6 +232,24 @@ export function createTradesComponent(
     // the notifier, so it can never affect trade creation.
     void notifyShopIfItemGoesOnSale(insertedTrade).catch((e: unknown) =>
       logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
+    )
+
+    // Reflect this listing in mv_trades now, rather than up to 30s from now.
+    //
+    // Every read of a listing's price goes through that view (`/v1/items` and the catalog both read
+    // `trade_price` from it), and the signer's next request is one of those reads. The debounce the
+    // triggers share is sized for the squid's write firehose, so under it a just-created listing showed
+    // as not-for-sale — the Builder rendered `◈ 0.0` — until an unrelated write happened to reopen the
+    // gate. See forceFlushTradesMaterializedView.
+    //
+    // NOT awaited, following the notifier above: the trade is already committed, and a ~2s REFRESH must
+    // not be charged to the request that created it. The tradeoff is a much smaller race — a read landing
+    // inside that refresh can still miss it — where the previous behaviour was a 30s certainty.
+    void forceFlushTradesMaterializedView(pg).catch((e: unknown) =>
+      logger.error(
+        `Could not refresh the trades materialized view after creating trade ${insertedTrade.id}`,
+        isErrorWithMessage(e) ? e.message : (e as any)
+      )
     )
 
     return insertedTrade
