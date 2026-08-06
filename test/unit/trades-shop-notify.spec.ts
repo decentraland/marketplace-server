@@ -1,5 +1,6 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
 import { ChainId, Network, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { forceFlushTradesMaterializedView } from '../../src/logic/trades/materialized-view'
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
 import { IEventPublisherComponent } from '../../src/ports/events/types'
@@ -8,6 +9,18 @@ import { DBTrade, DBTradeAsset, ITradesComponent, createTradesComponent } from '
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
 
+/**
+ * These specs are about the shop-notify ping, and they drive it through a shared `pg.query` mock whose
+ * responses are queued in order. `addTrade` also refreshes the trades materialized view fire-and-forget,
+ * which issues queries of its own against that same mock and interleaves with the notifier's — so it is
+ * stubbed out here. Its own behaviour is covered in trades-materialized-view.spec.ts.
+ */
+jest.mock('../../src/logic/trades/materialized-view', () => ({
+  forceFlushTradesMaterializedView: jest.fn(),
+  flushTradesMaterializedViewIfDirty: jest.fn(),
+  recreateTradesMaterializedView: jest.fn()
+}))
+
 const VALID_SIGNATURE =
   '0x6e1ac0d382ee06b56c6376a9ea5a7641bc7efc6c50ea12728e09637072c60bf15574a2ced086ef1f7f8fbb4a6ab7b925e08c34c918f57d0b63e036eff21fa2ee1c'
 const CONTRACT_ADDRESS = '0xcollectioncontract'
@@ -15,6 +28,8 @@ const CONTRACT_ADDRESS = '0xcollectioncontract'
 // addTrade fires the shop-notify ping fire-and-forget (not awaited), so let the background promise —
 // itemId resolution + transition check + the notifier call — settle before asserting on it.
 const flushBackground = () => new Promise(resolve => setImmediate(resolve))
+
+const forceFlushMock = forceFlushTradesMaterializedView as jest.Mock
 
 let mockSigner: string
 let mockPg: IPgComponent
@@ -63,6 +78,9 @@ function stubTransaction(insertedTrade: DBTrade, sentAsset: DBTradeAsset, sentVa
 
 describe('when adding a listing trade', () => {
   beforeEach(() => {
+    // Re-armed here rather than in the jest.mock factory: this project sets `resetMocks: true`, which
+    // strips implementations before every test, and the fire-and-forget caller would await `undefined`.
+    forceFlushMock.mockResolvedValue(true)
     mockSigner = '0x1234567890'
     mockPgQuery = jest.fn()
     mockTopLevelQuery = jest.fn()
@@ -144,6 +162,15 @@ describe('when adding a listing trade', () => {
     describe('and there is no other open listing for the item', () => {
       beforeEach(() => {
         mockTopLevelQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }) // transition check: none
+      })
+
+      // The listing has to be visible to the very next read, and every price read goes through
+      // mv_trades — so a created listing forces the refresh instead of waiting out the 30s debounce.
+      it('should refresh the trades materialized view', async () => {
+        await tradesComponent.addTrade(itemOrderTrade, mockSigner)
+        await flushBackground()
+
+        expect(forceFlushMock).toHaveBeenCalled()
       })
 
       it('should notify the shop with the resolved contract address and item id', async () => {
@@ -288,6 +315,18 @@ describe('when adding a listing trade', () => {
         })
         .mockResolvedValueOnce({ rows: [{ amount: '1000' }] })
         .mockResolvedValueOnce({ rows: [{ token_id: '7' }] })
+    })
+
+    /**
+     * A bid can never appear in mv_trades: the view's body inner-joins a CTE filtered to
+     * `type IN ('public_item_order', 'public_nft_order')`. So refreshing for one is seconds of I/O for a
+     * row that does not exist, and this is what keeps the forced refresh to listings only.
+     */
+    it('should not refresh the trades materialized view', async () => {
+      await tradesComponent.addTrade(bidTrade, mockSigner)
+      await flushBackground()
+
+      expect(forceFlushMock).not.toHaveBeenCalled()
     })
 
     it('should not notify the shop and should not query the materialized view', async () => {
