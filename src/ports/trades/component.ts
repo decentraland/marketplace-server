@@ -245,12 +245,18 @@ export function createTradesComponent(
     // NOT awaited, following the notifier above: the trade is already committed, and a ~2s REFRESH must
     // not be charged to the request that created it. The tradeoff is a much smaller race — a read landing
     // inside that refresh can still miss it — where the previous behaviour was a 30s certainty.
-    void forceFlushTradesMaterializedView(pg).catch((e: unknown) =>
-      logger.error(
-        `Could not refresh the trades materialized view after creating trade ${insertedTrade.id}`,
-        isErrorWithMessage(e) ? e.message : (e as any)
+    //
+    // Listings only. The view's own body inner-joins a CTE filtered to
+    // `type IN ('public_item_order', 'public_nft_order')`, so a bid can never appear in it and refreshing
+    // for one would be seconds of I/O for a row that does not exist.
+    if (insertedTrade.type === TradeType.PUBLIC_ITEM_ORDER || insertedTrade.type === TradeType.PUBLIC_NFT_ORDER) {
+      void forceFlushTradesMaterializedView(pg).catch((e: unknown) =>
+        logger.error(
+          `Could not refresh the trades materialized view after creating trade ${insertedTrade.id}`,
+          isErrorWithMessage(e) ? e.message : (e as any)
+        )
       )
-    )
+    }
 
     return insertedTrade
   }
