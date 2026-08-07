@@ -98,9 +98,21 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     }
   }
 
+  /**
+   * Whether `price` below is the open trade's amount rather than the store minter's.
+   *
+   * This decides both the number and the unit, which is why the two are derived from one flag: a trade
+   * can be priced in USD-pegged MANA, in which case `price` is USD wei and rendering it with the MANA
+   * glyph overstates how cheap the item is. Consumers cannot tell from the number alone, so `tradeId`
+   * goes out with it — but ONLY here, where the trade is what set the price. An item that sells through
+   * the store minter while an open trade also exists is priced in MANA, and handing out the trade id
+   * there would make a caller mislabel a perfectly correct MANA figure.
+   */
+  const pricedByTrade = +dbItem.available > 0 && !!dbItem.open_item_trade_id && !!dbItem.search_is_marketplace_v3_minter
+
   let price = '0'
   if (+dbItem.available > 0) {
-    if (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter) {
+    if (pricedByTrade) {
       price = dbItem.open_item_trade_price ?? '0'
     } else if (dbItem.search_is_store_minter) {
       price = dbItem.price
@@ -122,6 +134,10 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     available: +dbItem.available,
     isOnSale:
       !!(dbItem.search_is_store_minter || (dbItem.open_item_trade_id && dbItem.search_is_marketplace_v3_minter)) && +dbItem.available > 0,
+    // The trade the price came from, so a consumer can read its asset type and render the right unit.
+    // `/v1/items` already carries this; the catalog leaving it out is why a USD-pegged listing shows in
+    // the browse grid with a MANA glyph on a figure that is dollars.
+    ...(pricedByTrade ? { tradeId: dbItem.open_item_trade_id as string } : {}),
     creator: dbItem.creator,
     data,
     network: itemNetwork.toUpperCase() === 'POLYGON' ? Network.MATIC : Network.ETHEREUM,
