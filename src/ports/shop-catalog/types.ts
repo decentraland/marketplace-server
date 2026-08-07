@@ -247,6 +247,39 @@ export type TrendingItem = UnifiedItem & {
   trendingSales: number
 }
 
+/** Look-back window and size for the shop's creator rail. */
+export const TOP_CREATORS_DEFAULT_LIMIT = 30
+export const TOP_CREATORS_MAX_LIMIT = 60
+export const TOP_CREATORS_DEFAULT_DAYS = 30
+export const TOP_CREATORS_MIN_DAYS = 1
+export const TOP_CREATORS_MAX_DAYS = 365
+
+export type TopCreatorsFilters = {
+  first?: number
+  days?: number
+}
+
+/**
+ * A creator ranked by how much of THEIR catalogue sold in the window.
+ *
+ * Deliberately not `/v1/rankings/creators`, which reads the squid's per-account day data and so counts
+ * only sales where the creator's own address was the seller. A primary mint is executed by the buyer
+ * against the store, so it never lands there — and for a shop whose creators sell mostly primary, that
+ * undercounts them severalfold (measured: 14 vs 35 over the same 30 days for the same creator). This
+ * attributes a sale to whoever CREATED the item, which is the question the rail is actually asking.
+ *
+ * `sales` counts mints and resales alike: both are that creator's work changing hands.
+ */
+export type TopCreator = {
+  id: string // creator wallet address
+  sales: number
+}
+
+export type TopCreatorRow = {
+  creator: string
+  sales: number
+}
+
 // The anchor item's similarity attributes, resolved from the squid `item` row.
 export type ReferenceItem = {
   category: string // top-level: 'wearable' | 'emote'
@@ -275,6 +308,7 @@ export interface IShopCatalogComponent {
   // credit-buyable, item-unified universe as getShopItems so every card is one the Shop can actually sell.
   // Unpaginated (a single carousel) and ordered BY the ranking, so there is no total and no caller sort.
   getTrendingItems(filters: TrendingItemsFilters, manaUsdRate: number): Promise<{ data: TrendingItem[] }>
+  getTopCreators(filters: TopCreatorsFilters): Promise<{ data: TopCreator[] }>
 }
 
 export type ImportableListingRow = {

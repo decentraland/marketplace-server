@@ -28,6 +28,7 @@ import {
   createShopLegacyHandler,
   createShopRelatedHandler,
   createShopTrendingHandler,
+  createShopTopCreatorsHandler,
   createShopUnifiedHandler
 } from './handlers/shop-catalog-handler'
 import { getStatsHandler } from './handlers/stats-handler'
@@ -111,6 +112,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v3/catalog/items', createCatalogItemsHandler(components))
   router.get('/v3/catalog/related', createShopRelatedHandler(components))
   router.get('/v3/catalog/trending', createShopTrendingHandler(components))
+  router.get('/v3/catalog/creators', createShopTopCreatorsHandler(components))
   router.get('/v3/catalog/importable', createShopImportableHandler(components))
 
   router.get('/v1/trades', getTradesHandler)

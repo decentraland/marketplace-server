@@ -39,7 +39,15 @@ import {
   TRENDING_MAX_DAYS,
   TRENDING_MAX_LIMIT,
   TRENDING_MIN_DAYS,
-  TRENDING_SALES_CUT
+  TRENDING_SALES_CUT,
+  TOP_CREATORS_DEFAULT_DAYS,
+  TOP_CREATORS_DEFAULT_LIMIT,
+  TOP_CREATORS_MAX_DAYS,
+  TOP_CREATORS_MAX_LIMIT,
+  TOP_CREATORS_MIN_DAYS,
+  TopCreator,
+  TopCreatorRow,
+  TopCreatorsFilters
 } from './types'
 
 // The received-asset type that marks a credit-buyable (Shop) listing, as opposed to a classic
@@ -1171,6 +1179,48 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     }
   }
 
+  /**
+   * Creators ranked by how many of THEIR items sold in the window.
+   *
+   * Attribution is by `item.creator`, not by who executed the sale — see TopCreator on why the account
+   * day data the marketplace's own ranking reads cannot answer this for a primary-sales shop.
+   *
+   * Ranked here, filtered by the caller: who is presentable (a claimed name, no duplicates) needs the
+   * Catalyst, which this service does not talk to. So the rail asks for more rows than it shows and
+   * makes that call itself.
+   */
+  async function getTopCreators(filters: TopCreatorsFilters): Promise<{ data: TopCreator[] }> {
+    const first = clampCount(filters.first, TOP_CREATORS_DEFAULT_LIMIT, 1, TOP_CREATORS_MAX_LIMIT)
+    const days = clampCount(filters.days, TOP_CREATORS_DEFAULT_DAYS, TOP_CREATORS_MIN_DAYS, TOP_CREATORS_MAX_DAYS)
+    // `sale.timestamp` is stored in SECONDS. Same window helper the trending rail uses, so the two rows
+    // are computed over the same slice of history rather than over two similar-looking ones.
+    const fromSeconds = Math.floor(getDateXDaysAgo(days).getTime() / 1000)
+
+    const query = SQL`
+      SELECT item.creator AS creator, COUNT(*)::int AS sales
+      FROM `
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.sale sale
+        JOIN `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item item ON item.id = sale.item_id
+        WHERE sale.timestamp > ${fromSeconds}
+          -- A sale with no item cannot be attributed to a creator, so it cannot be ranked.
+          AND sale.item_id IS NOT NULL
+          -- Unapproved collections are not browsable, so their creators are not introducible either.
+          AND item.search_is_collection_approved = true
+        GROUP BY item.creator
+        ORDER BY sales DESC, item.creator ASC
+        LIMIT ${first}`
+      )
+
+    const result = await pg.query<TopCreatorRow>(query)
+    return { data: result.rows.map(row => ({ id: row.creator, sales: Number(row.sales) })) }
+  }
+
   return {
     getShopListings,
     getImportableListings,
@@ -1178,6 +1228,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     getUnifiedListings,
     getShopItems,
     getRelatedItems,
-    getTrendingItems
+    getTrendingItems,
+    getTopCreators
   }
 }
