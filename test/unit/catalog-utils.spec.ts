@@ -1,6 +1,6 @@
 import { Network } from '@dcl/schemas'
-import { fromCollectionsItemDbResultToCatalogItem } from '../../src/ports/catalog/utils'
 import { CollectionsItemDBResult } from '../../src/ports/catalog/types'
+import { fromCollectionsItemDbResultToCatalogItem } from '../../src/ports/catalog/utils'
 
 /**
  * THE UNIT THE CATALOG'S `price` IS IN.
