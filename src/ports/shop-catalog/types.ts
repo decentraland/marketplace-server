@@ -272,12 +272,22 @@ export type TopCreatorsFilters = {
  */
 export type TopCreator = {
   id: string // creator wallet address
+  /** Sales in the requested window. What the ranking is ORDERED by. */
   sales: number
+  /** Sales over all time. What the row DISPLAYS — a creator's standing, not their last month. */
+  totalSales: number
+  /** Approved collections they have published. */
+  collections: number
+  /** Approved items across those collections. */
+  items: number
 }
 
 export type TopCreatorRow = {
   creator: string
   sales: number
+  total_sales: number
+  collections: number
+  items: number
 }
 
 // The anchor item's similarity attributes, resolved from the squid `item` row.
