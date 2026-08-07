@@ -44,6 +44,7 @@ import {
   TOP_CREATORS_DEFAULT_LIMIT,
   TOP_CREATORS_MAX_DAYS,
   TOP_CREATORS_MAX_LIMIT,
+  TOP_CREATORS_MIN_ITEMS,
   TOP_CREATORS_MIN_DAYS,
   TopCreator,
   TopCreatorRow,
@@ -1234,8 +1235,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
              COALESCE(c.collections, 0) AS collections, COALESCE(c.items, 0) AS items
       FROM ranked r
       LEFT JOIN catalogue c ON c.creator = r.creator
-      -- A creator with no sale in the window is not "top" anything, however much they have published.
+      -- A creator with no sale in the window is not "top" anything, however much they have published; one
+      -- with almost nothing published is not worth browsing, however well the month went.
       WHERE r.sales > 0
+        AND COALESCE(c.items, 0) >= ${TOP_CREATORS_MIN_ITEMS}
       ORDER BY r.sales DESC, r.creator ASC
       LIMIT ${first}`
       )

@@ -1,5 +1,5 @@
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
-import { IShopCatalogComponent } from '../../src/ports/shop-catalog/types'
+import { IShopCatalogComponent, TOP_CREATORS_MIN_ITEMS } from '../../src/ports/shop-catalog/types'
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
 // same way rather than restated as a literal that would need editing whenever the window changes.
 import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
@@ -1409,6 +1409,22 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getTopCreators({})
 
       expect(query.mock.calls[0][0].text as string).toContain('WHERE r.sales > 0')
+    })
+
+    /**
+     * The other half of that rule, and the one a 30-day window makes necessary: a month can be won on ONE
+     * lucky item, and a creator with a four-item catalogue is not somewhere to send a shopper to browse.
+     *
+     * Enforced HERE rather than by the caller, next to the sales floor it belongs with — a caller that has
+     * to re-filter is a caller that can forget to, and one reading an older deploy would not even have the
+     * count to filter on.
+     */
+    it('should leave out a creator with almost nothing published, however well the month went', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const { text, values } = query.mock.calls[0][0]
+      expect(text).toContain('COALESCE(c.items, 0) >=')
+      expect(values).toContain(TOP_CREATORS_MIN_ITEMS)
     })
   })
 

@@ -248,6 +248,18 @@ export type TrendingItem = UnifiedItem & {
 }
 
 /** Look-back window and size for the shop's creator rail. */
+/**
+ * The smallest published catalogue a "top creator" can have.
+ *
+ * Ranking over a 30-day window means a month can be won on ONE lucky item: production had a creator third
+ * on 33 sales of two items — real demand, 27 distinct buyers, simply a hit — whose whole catalogue was four
+ * items. The row exists to send someone off to browse a creator, and four items is not something to browse.
+ *
+ * Taken off the production distribution rather than invented: the median candidate has 36 published items,
+ * and of the thirty ranked only three fall under ten — at four, four and one. Nothing sits near the line.
+ */
+export const TOP_CREATORS_MIN_ITEMS = 10
+
 export const TOP_CREATORS_DEFAULT_LIMIT = 30
 export const TOP_CREATORS_MAX_LIMIT = 60
 export const TOP_CREATORS_DEFAULT_DAYS = 30
