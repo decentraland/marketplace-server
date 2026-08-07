@@ -1308,6 +1308,77 @@ describe('Shop Catalog Component', () => {
     })
   })
 
+  /**
+   * The rail exists because `/v1/rankings/creators` cannot answer this question: it attributes a sale to
+   * the SELLER, and a primary mint is executed by the buyer against the store, so a creator who sells
+   * mostly primary barely registers there. These pin the attribution and the window.
+   */
+  describe('when building the top creators query', () => {
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should attribute a sale to whoever created the item, in a single query', async () => {
+      await shopCatalog.getTopCreators({})
+
+      expect(query).toHaveBeenCalledTimes(1)
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('item.creator AS creator')
+      expect(text).toContain('GROUP BY item.creator')
+      // The join is the whole point: without it this would be the seller, which is the number we are
+      // deliberately not using.
+      expect(text).toContain('item.id = sale.item_id')
+    })
+
+    it('should bind the window as a unix SECONDS bound derived from midnight N days ago', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const { values } = query.mock.calls[0][0]
+      const expected = Math.floor(getDateXDaysAgo(30).getTime() / 1000)
+      expect(values).toContain(expected)
+      // `sale.timestamp` is stored in seconds; binding milliseconds would match every sale ever made.
+      expect(values).not.toContain(expected * 1000)
+    })
+
+    it('should clamp the window and the row count to the supported range', async () => {
+      await shopCatalog.getTopCreators({ days: 9999, first: 9999 })
+      let values = query.mock.calls[0][0].values
+      expect(values).toContain(Math.floor(getDateXDaysAgo(365).getTime() / 1000))
+      expect(values).toContain(60)
+
+      query.mockClear()
+      await shopCatalog.getTopCreators({ days: 0, first: 0 })
+      values = query.mock.calls[0][0].values
+      expect(values).toContain(Math.floor(getDateXDaysAgo(1).getTime() / 1000))
+      expect(values).toContain(1)
+    })
+
+    it('should leave out sales with no item and creators whose collections are not approved', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('sale.item_id IS NOT NULL')
+      // An unapproved collection is not browsable, so its creator is not introducible either.
+      expect(text).toContain('item.search_is_collection_approved = true')
+    })
+
+    it('should return the ranked creators with their sale counts', async () => {
+      query.mockResolvedValue({
+        rows: [
+          { creator: '0xa', sales: 62 },
+          { creator: '0xb', sales: 34 }
+        ]
+      })
+
+      await expect(shopCatalog.getTopCreators({})).resolves.toEqual({
+        data: [
+          { id: '0xa', sales: 62 },
+          { id: '0xb', sales: 34 }
+        ]
+      })
+    })
+  })
+
   describe('when building the trending items query', () => {
     const RATE = 0.5
 

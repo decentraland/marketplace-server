@@ -8,6 +8,8 @@ import {
   RELATED_DEFAULT_LIMIT,
   SHOP_DEFAULT_PAGE_SIZE,
   SHOP_MAX_PAGE_SIZE,
+  TOP_CREATORS_DEFAULT_DAYS,
+  TOP_CREATORS_DEFAULT_LIMIT,
   TRENDING_DEFAULT_DAYS,
   TRENDING_DEFAULT_LIMIT
 } from '../../ports/shop-catalog/types'
@@ -315,6 +317,32 @@ export function createShopImportableHandler(
     return asJSON(async () => {
       if (!seller) return { data: [] }
       return { data: await shopCatalog.getImportableListings(seller) }
+    })
+  }
+}
+
+/**
+ * The shop's creator rail: who has sold the most of their own catalogue lately.
+ *
+ * Separate from `/v1/rankings/creators` on purpose — that one attributes a sale to the seller, so a
+ * primary mint (executed by the buyer against the store) never reaches the creator's tally. See
+ * TopCreator in the shop-catalog types for the measured gap.
+ *
+ * Cached for an hour like the other shop rails: the window is 30 days, so a fresher answer would change
+ * nothing a visitor could notice.
+ */
+export function createShopTopCreatorsHandler(
+  components: Pick<AppComponents, 'shopCatalog'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/creators'>> {
+  const { shopCatalog } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const first = params.getNumber('first', TOP_CREATORS_DEFAULT_LIMIT) ?? TOP_CREATORS_DEFAULT_LIMIT
+    const days = params.getNumber('days', TOP_CREATORS_DEFAULT_DAYS) ?? TOP_CREATORS_DEFAULT_DAYS
+
+    return asJSON(async () => shopCatalog.getTopCreators({ first, days }), {
+      'Cache-Control': 'public,max-age=3600,s-maxage=3600'
     })
   }
 }
