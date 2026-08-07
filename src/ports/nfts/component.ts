@@ -77,7 +77,7 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
 
       return {
         data: fromNFTsAndOrdersToNFTsResult(nfts.rows, orders.rows, listings || rentalListings),
-        total: total ? Number(total.rows[0]?.total) ?? 0 : nfts.rowCount > 0 ? Number(nfts.rows[0].count) : 0
+        total: total ? Number(total.rows[0]?.total) ?? 0 : (nfts.rowCount ?? 0) > 0 ? Number(nfts.rows[0].count) : 0
       }
     } catch (error) {
       if ((error as Error).message === 'Query read timeout') {
