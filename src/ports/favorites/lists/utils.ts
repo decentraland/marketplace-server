@@ -1,7 +1,7 @@
 import { DuplicatedListError, ListNotFoundError } from './errors'
 
-export function validateListExists(id: string, result: { rowCount: number }) {
-  if (result.rowCount === 0) {
+export function validateListExists(id: string, result: { rowCount: number | null }) {
+  if (!result.rowCount) {
     throw new ListNotFoundError(id)
   }
 }
