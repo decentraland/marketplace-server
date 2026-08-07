@@ -10,6 +10,12 @@ describe('when validating if a list exists', () => {
     })
   })
 
+  describe('and the query does not report a row count', () => {
+    it('should throw a ListNotFound error', () => {
+      expect(() => validateListExists(listId, { rowCount: null })).toThrowError(new ListNotFoundError(listId))
+    })
+  })
+
   describe('and the query returns some results', () => {
     it('should throw a ListNotFound error', () => {
       expect(() => validateListExists(listId, { rowCount: 5 })).not.toThrowError(new ListNotFoundError(listId))
