@@ -1,5 +1,6 @@
 import { fromDBCollectionToCollection } from '../../adapters/collections'
 import { AppComponents } from '../../types'
+import { extractCount } from '../pagination'
 import { getCollectionsCountQuery, getCollectionsQuery } from './queries'
 import { CollectionFilters, DBCollection, ICollectionsComponent } from './types'
 
@@ -31,7 +32,7 @@ export function createCollectionsComponent(components: Pick<AppComponents, 'dapp
       pg.query<DBCollection>(getCollectionsQuery(filters)),
       pg.query<{ count: string }>(getCollectionsCountQuery(filters))
     ])
-    return { data: collections.rows.map(fromDBCollectionToCollection), total: Number(count.rows?.[0]?.count ?? 0) }
+    return { data: collections.rows.map(fromDBCollectionToCollection), total: extractCount(count) }
   }
 
   return {

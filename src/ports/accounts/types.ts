@@ -31,7 +31,6 @@ export type DBAccount = {
   earned: string
   royalties: string
   collections: number
-  count: number
 }
 
 export type Account = {

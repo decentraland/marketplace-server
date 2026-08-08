@@ -37,6 +37,7 @@ export type CreateDBNFTOptions = {
   distanceToPlaza?: number
   estateSize?: number
   rentalStatus?: string
+  createdAt?: number
 }
 
 export async function createSquidDBItem(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, options: CreateDBItemOptions): Promise<void> {
@@ -293,7 +294,8 @@ export async function createSquidDBNFT(dbComponent: Pick<BaseComponents, 'dappsD
     rarity = Rarity.COMMON,
     adjacentToRoad = false,
     distanceToPlaza = 100,
-    estateSize = 1
+    estateSize = 1,
+    createdAt = Math.floor(Date.now() / 1000)
   } = options
 
   // Insert account if it doesn't exist
@@ -395,16 +397,16 @@ export async function createSquidDBNFT(dbComponent: Pick<BaseComponents, 'dappsD
       'https://example.com/token/${tokenId}',
       '${name}',
       '${image}',
-      ${Math.floor(Date.now() / 1000)},
-      ${Math.floor(Date.now() / 1000)},
-      ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
-      ${Math.floor(Date.now() / 1000)},
+      ${createdAt},
+      ${createdAt},
+      ${isOnSale ? createdAt : 'NULL'},
+      ${createdAt},
       0,
       0,
       ${isOnSale ? "'open'" : 'NULL'},
       ${isOnSale ? price : 'NULL'},
-      ${isOnSale ? Math.floor(Date.now() / 1000) + 86400 : 'NULL'},
-      ${isOnSale ? Math.floor(Date.now() / 1000) : 'NULL'},
+      ${isOnSale ? createdAt + 86400 : 'NULL'},
+      ${isOnSale ? createdAt : 'NULL'},
       ${category === 'parcel' || category === 'estate' ? 'true' : 'false'},
       '${name.toLowerCase()}',
       ${category === 'parcel' ? 'true' : 'false'},

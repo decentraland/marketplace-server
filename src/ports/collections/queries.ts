@@ -1,6 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { getLimitAndOffsetStatement } from '../pagination'
 import { getWhereStatementFromFilters } from '../utils'
 import { CollectionFilters, CollectionSortBy } from './types'
 
@@ -19,14 +20,6 @@ function getCollectionsSortByStatement(filters: CollectionFilters): SQLStatement
     default:
       return SQL` ORDER BY name ASC `
   }
-}
-
-function getCollectionsLimitAndOffsetStatement(filters: CollectionFilters): SQLStatement {
-  const MAX_LIMIT = 1000
-  const limit = filters?.first ? Math.min(filters.first, MAX_LIMIT) : MAX_LIMIT
-  const offset = filters?.skip ? filters.skip : 0
-
-  return SQL` LIMIT ${limit} OFFSET ${offset} `
 }
 
 function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement {
@@ -59,7 +52,7 @@ function getCollectionsWhereStatement(filters: CollectionFilters): SQLStatement 
 
 export function getCollectionsQuery(filters: CollectionFilters): SQLStatement {
   return SQL`
-    SELECT 
+    SELECT
       id,
       owner,
       creator,
@@ -80,14 +73,13 @@ export function getCollectionsQuery(filters: CollectionFilters): SQLStatement {
       search_text,
       base_uri,
       chain_id,
-      network,
-      COUNT(*) OVER() as count
+      network
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.collection`)
     .append(getCollectionsWhereStatement(filters))
     .append(getCollectionsSortByStatement(filters))
-    .append(getCollectionsLimitAndOffsetStatement(filters))
+    .append(getLimitAndOffsetStatement(filters, { maxLimit: 1000 }))
 }
 
 export function getCollectionsCountQuery(filters: CollectionFilters): SQLStatement {

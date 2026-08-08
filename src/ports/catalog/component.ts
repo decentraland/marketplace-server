@@ -6,6 +6,7 @@ import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
+import { extractCount } from '../pagination'
 import { formatQueryForLogging } from '../utils'
 import {
   getCollectionsItemsCatalogQuery,
@@ -70,10 +71,10 @@ export async function createCatalogComponent(
       const totalQuery = getCollectionsItemsCountQuery(filters)
       const [items, totalItems] = await Promise.all([
         client.query<CollectionsItemDBResult>(query),
-        client.query<{ total: number }>(totalQuery)
+        client.query<{ count: string }>(totalQuery)
       ])
       catalogItems = items.rows.map(res => fromCollectionsItemDbResultToCatalogItem(res, network))
-      total = totalItems.rows[0]?.total ?? 0
+      total = extractCount(totalItems)
 
       const pickStats = await picks.getPicksStats(
         catalogItems.map(({ id }) => id),

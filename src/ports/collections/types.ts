@@ -48,7 +48,6 @@ export type DBCollection = {
   base_uri: string
   chain_id: number
   network: SquidNetwork
-  count: number
 }
 
 export type Collection = {
