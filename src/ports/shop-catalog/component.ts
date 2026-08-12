@@ -44,6 +44,7 @@ import {
   TOP_CREATORS_DEFAULT_LIMIT,
   TOP_CREATORS_MAX_DAYS,
   TOP_CREATORS_MAX_LIMIT,
+  TOP_CREATORS_MIN_ITEMS,
   TOP_CREATORS_MIN_DAYS,
   TopCreator,
   TopCreatorRow,
@@ -1196,9 +1197,18 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     // are computed over the same slice of history rather than over two similar-looking ones.
     const fromSeconds = Math.floor(getDateXDaysAgo(days).getTime() / 1000)
 
+    // Two aggregates over the same creators, joined once. `ranked` counts SALES — windowed for the order
+    // and unwindowed for the figure the row shows — and `catalogue` counts what they have PUBLISHED, which
+    // lives in `item` and so cannot come from the same GROUP BY without multiplying rows by their sales.
+    //
+    // The window is a FILTER rather than a WHERE so both counts come out of one pass: putting it in the
+    // WHERE would make the all-time total a count of the last 30 days too.
     const query = SQL`
-      SELECT item.creator AS creator, COUNT(*)::int AS sales
-      FROM `
+      WITH ranked AS (
+        SELECT item.creator AS creator,
+               COUNT(*) FILTER (WHERE sale.timestamp > ${fromSeconds})::int AS sales,
+               COUNT(*)::int AS total_sales
+        FROM `
       .append(MARKETPLACE_SQUID_SCHEMA)
       .append(
         SQL`.sale sale
@@ -1207,18 +1217,42 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(MARKETPLACE_SQUID_SCHEMA)
       .append(
         SQL`.item item ON item.id = sale.item_id
-        WHERE sale.timestamp > ${fromSeconds}
-          -- A sale with no item cannot be attributed to a creator, so it cannot be ranked.
-          AND sale.item_id IS NOT NULL
+        WHERE sale.item_id IS NOT NULL
           -- Unapproved collections are not browsable, so their creators are not introducible either.
           AND item.search_is_collection_approved = true
         GROUP BY item.creator
-        ORDER BY sales DESC, item.creator ASC
-        LIMIT ${first}`
+      ), catalogue AS (
+        SELECT creator, COUNT(*)::int AS items, COUNT(DISTINCT collection_id)::int AS collections
+        FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item
+        WHERE search_is_collection_approved = true
+        GROUP BY creator
+      )
+      SELECT r.creator, r.sales, r.total_sales,
+             COALESCE(c.collections, 0) AS collections, COALESCE(c.items, 0) AS items
+      FROM ranked r
+      LEFT JOIN catalogue c ON c.creator = r.creator
+      -- A creator with no sale in the window is not "top" anything, however much they have published; one
+      -- with almost nothing published is not worth browsing, however well the month went.
+      WHERE r.sales > 0
+        AND COALESCE(c.items, 0) >= ${TOP_CREATORS_MIN_ITEMS}
+      ORDER BY r.sales DESC, r.creator ASC
+      LIMIT ${first}`
       )
 
     const result = await pg.query<TopCreatorRow>(query)
-    return { data: result.rows.map(row => ({ id: row.creator, sales: Number(row.sales) })) }
+    return {
+      data: result.rows.map(row => ({
+        id: row.creator,
+        sales: Number(row.sales),
+        totalSales: Number(row.total_sales),
+        collections: Number(row.collections),
+        items: Number(row.items)
+      }))
+    }
   }
 
   return {

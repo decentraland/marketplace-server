@@ -1,5 +1,5 @@
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
-import { IShopCatalogComponent } from '../../src/ports/shop-catalog/types'
+import { IShopCatalogComponent, TOP_CREATORS_MIN_ITEMS } from '../../src/ports/shop-catalog/types'
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
 // same way rather than restated as a literal that would need editing whenever the window changes.
 import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
@@ -1362,20 +1362,69 @@ describe('Shop Catalog Component', () => {
       expect(text).toContain('item.search_is_collection_approved = true')
     })
 
-    it('should return the ranked creators with their sale counts', async () => {
+    it('should return the ranked creators with their counts', async () => {
       query.mockResolvedValue({
-        rows: [
-          { creator: '0xa', sales: 62 },
-          { creator: '0xb', sales: 34 }
-        ]
+        rows: [{ creator: '0xa', sales: 62, total_sales: 3514, collections: 30, items: 166 }]
       })
 
       await expect(shopCatalog.getTopCreators({})).resolves.toEqual({
-        data: [
-          { id: '0xa', sales: 62 },
-          { id: '0xb', sales: 34 }
-        ]
+        data: [{ id: '0xa', sales: 62, totalSales: 3514, collections: 30, items: 166 }]
       })
+    })
+
+    /**
+     * The window has to be a FILTER on the count, not a WHERE on the scan.
+     *
+     * In the WHERE it would bound BOTH counts, and the all-time total would silently become a second copy
+     * of the 30-day one — a creator with 3,514 lifetime sales introduced as having 62.
+     */
+    it('should window the ranking count without windowing the lifetime one', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toMatch(/COUNT\(\*\) FILTER \(WHERE sale\.timestamp >/)
+      expect(text).toContain('COUNT(*)::int AS total_sales')
+      // The scan's own WHERE — everything between the join and the grouping. The window must not be in it;
+      // matching on the whole query cannot tell this clause apart from the FILTER's own `WHERE`.
+      const scanWhere = text.slice(text.indexOf('item.id = sale.item_id'), text.indexOf('GROUP BY item.creator'))
+      expect(scanWhere).not.toContain('sale.timestamp')
+    })
+
+    /**
+     * Published counts come from `item`, and they cannot share the sales GROUP BY: joined to `sale`, one
+     * item is one row PER SALE, so a creator's item count would come back multiplied by how well it sold.
+     */
+    it('should count what a creator published separately from what they sold', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('COUNT(DISTINCT collection_id)::int AS collections')
+      expect(text).toContain('LEFT JOIN catalogue')
+      // LEFT, so a creator whose sales we can see but whose catalogue we cannot still ranks.
+      expect(text).toContain('COALESCE(c.collections, 0)')
+    })
+
+    // Published-but-dormant is not "top" anything; without this the LEFT JOIN would let a zero through.
+    it('should leave out a creator who sold nothing in the window', async () => {
+      await shopCatalog.getTopCreators({})
+
+      expect(query.mock.calls[0][0].text as string).toContain('WHERE r.sales > 0')
+    })
+
+    /**
+     * The other half of that rule, and the one a 30-day window makes necessary: a month can be won on ONE
+     * lucky item, and a creator with a four-item catalogue is not somewhere to send a shopper to browse.
+     *
+     * Enforced HERE rather than by the caller, next to the sales floor it belongs with — a caller that has
+     * to re-filter is a caller that can forget to, and one reading an older deploy would not even have the
+     * count to filter on.
+     */
+    it('should leave out a creator with almost nothing published, however well the month went', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const { text, values } = query.mock.calls[0][0]
+      expect(text).toContain('COALESCE(c.items, 0) >=')
+      expect(values).toContain(TOP_CREATORS_MIN_ITEMS)
     })
   })
 
