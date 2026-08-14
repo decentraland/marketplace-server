@@ -1,4 +1,5 @@
 import { IHttpServerComponent } from '@dcl/core-commons'
+import { GenderFilterOption } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { asJSON } from '../../logic/http/response'
 import {
@@ -52,6 +53,18 @@ function csv(value?: string): string[] | undefined {
     .map(v => v.trim())
     .filter(Boolean)
   return parts && parts.length ? parts : undefined
+}
+
+// `wearableGender`, in either encoding a caller might reasonably reach for: this feed's
+// comma-separated lists (what `rarity` and `wearableCategory` take) or the repeated
+// `&wearableGender=male&wearableGender=female` form /v1/items takes, which is where the param and its
+// values come from. Anything outside GenderFilterOption is dropped, so a typo leaves the feed
+// unfiltered instead of asking for a body shape no item declares.
+function genderList(params: Params): GenderFilterOption[] | undefined {
+  const valid = Object.values(GenderFilterOption) as string[]
+  const requested = new Set([...(csv(params.getString('wearableGender')) ?? []), ...params.getList('wearableGender')])
+  const genders = [...requested].filter((value): value is GenderFilterOption => valid.includes(value))
+  return genders.length ? genders : undefined
 }
 
 // GET /v3/catalog/shop -- curated feed of credit-buyable (USD-pegged) listings for the Shop.
@@ -155,6 +168,7 @@ export function createShopUnifiedHandler(
     const rarities = csv(params.getString('rarity'))
     const wearableCategories = csv(params.getString('wearableCategory'))
     const isSmart = params.getBoolean('isSmart')
+    const wearableGenders = genderList(params)
     const minPriceCredits = params.getNumber('minPriceCredits')
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
@@ -180,6 +194,7 @@ export function createShopUnifiedHandler(
       rarities,
       wearableCategories,
       isSmart,
+      wearableGenders,
       minPriceCredits,
       maxPriceCredits,
       search,

@@ -77,6 +77,44 @@ describe('when handling the unified shop catalog endpoint', () => {
     })
   })
 
+  // Two encodings reach this feed: its own comma-separated lists (`rarity`, `wearableCategory`) and the
+  // repeated form /v1/items takes, which is where `wearableGender` and its values come from. A caller
+  // reaching for the wrong one used to get an unfiltered page that still looked filtered, so both are
+  // accepted and anything else is dropped.
+  describe('and a wearable gender is provided', () => {
+    const gendersOf = () => getUnifiedListings.mock.calls[0][0].wearableGenders
+
+    it('should parse a single value', async () => {
+      await invoke('http://localhost/v3/catalog/unified?wearableGender=male')
+
+      expect(gendersOf()).toEqual(['male'])
+    })
+
+    it("should parse this feed's comma-separated form", async () => {
+      await invoke('http://localhost/v3/catalog/unified?wearableGender=male,female')
+
+      expect(gendersOf()).toEqual(['male', 'female'])
+    })
+
+    it('should parse the repeated form without duplicating the first value', async () => {
+      await invoke('http://localhost/v3/catalog/unified?wearableGender=male&wearableGender=female')
+
+      expect(gendersOf()).toEqual(['male', 'female'])
+    })
+
+    it('should drop unknown values rather than ask for a body shape no item declares', async () => {
+      await invoke('http://localhost/v3/catalog/unified?wearableGender=bogus')
+
+      expect(gendersOf()).toBeUndefined()
+    })
+
+    it('should leave the filter off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+
+      expect(gendersOf()).toBeUndefined()
+    })
+  })
+
   describe('and includeSocialEmotes is provided', () => {
     it('should exclude social emotes only on an explicit false', async () => {
       await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=false')

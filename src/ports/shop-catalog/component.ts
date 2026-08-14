@@ -1,5 +1,5 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
-import { Network, Rarity, TradeAssetType } from '@dcl/schemas'
+import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
@@ -206,6 +206,22 @@ function genderExpr() {
     END AS gender`
 }
 
+// The body shapes an item must declare to satisfy a `wearableGender` filter. Mirrors the mapping
+// /v1/items uses (ports/items/queries getGenderWhereStatement): UNISEX asks for both shapes, so it is
+// the same request as MALE + FEMALE. Returns [] when nothing recognizable was asked for, which leaves
+// the feed unfiltered rather than silently empty.
+function genderBodyShapes(genders: GenderFilterOption[]): string[] {
+  const hasUnisex = genders.includes(GenderFilterOption.UNISEX)
+  const bodyShapes: string[] = []
+  if (hasUnisex || genders.includes(GenderFilterOption.MALE)) {
+    bodyShapes.push('BaseMale')
+  }
+  if (hasUnisex || genders.includes(GenderFilterOption.FEMALE)) {
+    bodyShapes.push('BaseFemale')
+  }
+  return bodyShapes
+}
+
 // 1 credit = $0.10; $1 = 1e18 USD wei = 10 credits, so 1 credit = 1e17 USD wei.
 const USD_WEI_PER_CREDIT = 100000000000000000n
 
@@ -289,6 +305,19 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
   }
   if (filters.isSmart) {
     query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
+  }
+  // Same column, COALESCE and ::text[] cast as `genderExpr`, so what this selects and what the row
+  // reports as `gender` can never disagree. `@>` is "declares all of these", which is what makes
+  // `wearableGender=male` mean "wearable BY a male avatar" -- male-exclusive items plus unisex ones --
+  // rather than male-exclusive only. An emote declares no wearable body shapes, so it matches nothing
+  // here; that is the same wearables-only scope the param has on /v1/items.
+  if (filters.wearableGenders?.length) {
+    const bodyShapes = genderBodyShapes(filters.wearableGenders)
+    if (bodyShapes.length) {
+      query.append(
+        SQL` AND COALESCE(item_p.search_wearable_body_shapes, item_s.search_wearable_body_shapes)::text[] @> ${bodyShapes}::text[]`
+      )
+    }
   }
   if (filters.search) {
     query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)

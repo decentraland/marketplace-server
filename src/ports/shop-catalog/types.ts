@@ -1,3 +1,5 @@
+import { GenderFilterOption } from '@dcl/schemas'
+
 // The Shop's curated read model: only credit-buyable (USD-pegged) offchain listings, unified across
 // primary (public_item_order) and secondary (public_nft_order), with the tradeId included so the
 // client can buy/cancel without a second lookup. Lighter than /v2/catalog (no owners/picks/etc.).
@@ -79,6 +81,21 @@ export type ShopCatalogFilters = {
   rarities?: string[]
   wearableCategories?: string[] // on-chain categories (upper_body, hat, ...)
   isSmart?: boolean // restrict to smart wearables (Shop "Smart" filter)
+  /**
+   * Body shapes the item must support, taking the `wearableGender` values /v1/items already takes
+   * (`GenderFilterOption`) with its semantics: the item must declare ALL of the requested shapes,
+   * so `[MALE]` keeps male-exclusive AND unisex items, while `[MALE, FEMALE]` — equivalently
+   * `[UNISEX]` — keeps only the items that ship both, which is what `gender: 'unisex'` reports on
+   * the way out.
+   *
+   * Exists so a client can drop the body shapes its player cannot wear WITHOUT filtering rows
+   * itself: the feed is paginated and carries a total, so dropping rows client-side returns short
+   * pages and an overstated count.
+   *
+   * Wearables-only, like the param it is named after: an emote declares no wearable body shapes,
+   * so combining this with `category=emote` selects nothing.
+   */
+  wearableGenders?: GenderFilterOption[]
   minPriceCredits?: number
   maxPriceCredits?: number
   search?: string
