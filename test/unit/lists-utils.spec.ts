@@ -1,5 +1,6 @@
+import { DEFAULT_LIST_ID } from '../../src/migrations/favorites/1678303321034_default-list'
 import { DuplicatedListError, ListNotFoundError } from '../../src/ports/favorites/lists/errors'
-import { validateDuplicatedListName, validateListExists } from '../../src/ports/favorites/lists/utils'
+import { isDefaultList, validateDuplicatedListName, validateListExists } from '../../src/ports/favorites/lists/utils'
 
 describe('when validating if a list exists', () => {
   const listId = 'list-id'
@@ -35,6 +36,44 @@ describe('when validating if a list name is being duplicated', () => {
   describe('and the error does not have has the constraint of a unique name', () => {
     it('should not throw the error', () => {
       expect(() => validateDuplicatedListName(name, {})).not.toThrowError(new DuplicatedListError(name))
+    })
+  })
+})
+
+describe('when checking if an id points to the default list', () => {
+  describe('and the id is the canonical default list id', () => {
+    it('should return true', () => {
+      expect(isDefaultList(DEFAULT_LIST_ID)).toBe(true)
+    })
+  })
+
+  describe('and the id is the default list id spelled in uppercase', () => {
+    it('should return true because Postgres resolves it to the same row', () => {
+      expect(isDefaultList(DEFAULT_LIST_ID.toUpperCase())).toBe(true)
+    })
+  })
+
+  describe('and the id is the default list id without hyphens', () => {
+    it('should return true because Postgres resolves it to the same row', () => {
+      expect(isDefaultList(DEFAULT_LIST_ID.replace(/-/g, ''))).toBe(true)
+    })
+  })
+
+  describe('and the id is the default list id wrapped in braces', () => {
+    it('should return true because Postgres resolves it to the same row', () => {
+      expect(isDefaultList(`{${DEFAULT_LIST_ID}}`)).toBe(true)
+    })
+  })
+
+  describe('and the id is the default list id in uppercase and without hyphens', () => {
+    it('should return true because Postgres resolves it to the same row', () => {
+      expect(isDefaultList(DEFAULT_LIST_ID.replace(/-/g, '').toUpperCase())).toBe(true)
+    })
+  })
+
+  describe('and the id belongs to another list', () => {
+    it('should return false', () => {
+      expect(isDefaultList('11111111-1111-1111-1111-111111111111')).toBe(false)
     })
   })
 })

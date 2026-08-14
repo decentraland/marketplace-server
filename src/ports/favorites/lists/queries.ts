@@ -1,13 +1,14 @@
 import SQL from 'sql-template-strings'
-import { DEFAULT_LIST_ID, DEFAULT_LIST_USER_ADDRESS } from '../../../migrations/favorites/1678303321034_default-list'
+import { DEFAULT_LIST_USER_ADDRESS } from '../../../migrations/favorites/1678303321034_default-list'
 import { Permission } from '../access'
 import { GRANTED_TO_ALL } from './constants'
 import { GetListOptions } from './types'
+import { isDefaultList } from './utils'
 
 export function getListQuery(listId: string, { requiredPermission, considerDefaultList = true, userAddress }: GetListOptions) {
   const query = SQL`SELECT favorites.lists.id, favorites.lists.name, favorites.lists.description, favorites.lists.user_address, favorites.lists.created_at`
 
-  query.append(listId === DEFAULT_LIST_ID ? SQL`, MAX(favorites.picks.created_at) as updated_at` : SQL`, favorites.lists.updated_at`)
+  query.append(isDefaultList(listId) ? SQL`, MAX(favorites.picks.created_at) as updated_at` : SQL`, favorites.lists.updated_at`)
 
   query.append(
     SQL`, favorites.acl.permission AS permission, COUNT(favorites.picks.item_id) AS items_count, COUNT(favorites.acl.permission) = 0 AS is_private,
