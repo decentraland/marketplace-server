@@ -1070,17 +1070,28 @@ describe('when updating a list', () => {
 
   describe('and the request is trying to update the default list', () => {
     beforeEach(() => {
-      params = { id: DEFAULT_LIST_ID }
-      jsonMock.mockResolvedValueOnce({})
+      jsonMock.mockResolvedValue({})
     })
 
-    it('should return a response with a message saying that the default list cannot be modified and the 400 status code', () => {
-      return expect(updateListHandler({ components, verification, request, params })).resolves.toEqual({
-        status: StatusCode.BAD_REQUEST,
-        body: {
-          ok: false,
-          message: 'The default list cannot be modified.'
-        }
+    describe.each([
+      ['the canonical id', DEFAULT_LIST_ID],
+      ['an uppercase id', DEFAULT_LIST_ID.toUpperCase()],
+      ['an id without hyphens', DEFAULT_LIST_ID.replace(/-/g, '')],
+      ['an uppercase id without hyphens', DEFAULT_LIST_ID.replace(/-/g, '').toUpperCase()],
+      ['an id wrapped in braces', `{${DEFAULT_LIST_ID}}`]
+    ])('and the default list id is provided as %s', (_spelling, id) => {
+      beforeEach(() => {
+        params = { id }
+      })
+
+      it('should return a response with a message saying that the default list cannot be modified and the 400 status code', () => {
+        return expect(updateListHandler({ components, verification, request, params })).resolves.toEqual({
+          status: StatusCode.BAD_REQUEST,
+          body: {
+            ok: false,
+            message: 'The default list cannot be modified.'
+          }
+        })
       })
     })
   })

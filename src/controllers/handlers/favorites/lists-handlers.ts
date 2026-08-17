@@ -8,11 +8,11 @@ import {
 } from '../../../adapters/lists'
 import { TPick } from '../../../adapters/picks'
 import { getPaginationParams, getParameter } from '../../../logic/http'
-import { DEFAULT_LIST_ID } from '../../../migrations/favorites/1678303321034_default-list'
 import { Permission } from '../../../ports/favorites/access'
 import { AccessNotFoundError, DuplicatedAccessError } from '../../../ports/favorites/access/errors'
 import { AddItemToListBody, AddListRequestBody, ListSortBy, ListSortDirection, UpdateListRequestBody } from '../../../ports/favorites/lists'
 import { DuplicatedListError, ListNotFoundError, PickAlreadyExistsError, PickNotFoundError } from '../../../ports/favorites/lists/errors'
+import { isDefaultList } from '../../../ports/favorites/lists/utils'
 import { ItemNotFoundError } from '../../../ports/items/errors'
 import { HandlerContextWithPath, HTTPResponse, StatusCode } from '../../../types'
 import { AccessBody } from './types'
@@ -518,7 +518,7 @@ export async function updateListHandler(
     }
   }
 
-  if (params.id === DEFAULT_LIST_ID) {
+  if (isDefaultList(params.id)) {
     return {
       status: StatusCode.BAD_REQUEST,
       body: {
