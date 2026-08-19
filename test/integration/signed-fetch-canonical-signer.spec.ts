@@ -13,11 +13,11 @@ const PATH = `/v1/lists/${LIST_ID}/picks/${ITEM_ID}`
  */
 test('signed-fetch canonical signer guard', function ({ components }) {
   /**
-   * `getAuthHeaders` lowercases the payload before signing but delivers the metadata header with its
-   * original casing, so a mixed-case `signer` produces a signature byte-identical to the canonical
-   * spelling's. That desync is the attack: the request is genuinely authentic while reading
-   * differently to the case-sensitive comparison the service authorizes on. Nothing here weakens the
-   * signature.
+   * `getAuthHeaders` signs the metadata bytes verbatim, so a mixed-case `signer` is covered by the
+   * signature and the request is genuinely authentic — it simply reads differently to the
+   * case-sensitive comparison the service authorizes on. That desync is the attack, and since
+   * 6.0.0 no longer canonicalizes metadata the gate itself has to refuse it. Nothing here weakens
+   * the signature.
    */
   async function deletePick(metadata: Record<string, unknown>) {
     const { localFetch } = components
@@ -47,12 +47,13 @@ test('signed-fetch canonical signer guard', function ({ components }) {
       })
       const body = await response.json()
 
-      // Without the canonical-metadata guard the mixed-case spelling passes the strict
-      // `=== 'decentraland-kernel-scene'` check in controllers/utils.ts, so a scene request is
-      // authenticated as a directly user-signed one and the handler runs.
+      // `rejectIfSigner` refuses a non-canonical `signer` instead of comparing it, so a scene
+      // request cannot be authenticated as a directly user-signed one. With a bare
+      // `=== 'decentraland-kernel-scene'` check the mixed-case spelling would pass the gate and the
+      // handler would run — the library stopped canonicalizing metadata in 6.0.0, so this is the
+      // only layer left that can say no.
       expect(response.status).toBe(400)
-      // The raw metadata is echoed back truncated at 64 characters, so match the prefix only.
-      expect(body.message).toMatch(/^Invalid chain metadata: /)
+      expect(body).toEqual({ ok: false, message: 'Invalid signer' })
     })
   })
 

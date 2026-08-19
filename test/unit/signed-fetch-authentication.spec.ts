@@ -1,7 +1,7 @@
 import type { IFetchComponent } from '@dcl/core-commons'
 import { AuthLinkType, Authenticator, type AuthChain } from '@dcl/crypto'
 import { RequestError, verify } from '@dcl/crypto-middleware'
-import { validateNotKernelSceneSigner } from '../../src/controllers/utils'
+import { validateAuthMetadata, validateNotKernelSceneSigner } from '../../src/controllers/utils'
 import { getAuthHeaders, getIdentity } from '../utils'
 
 const METHOD = 'POST'
@@ -55,18 +55,25 @@ describe('SignedFetch authentication', () => {
     await expect(verify(METHOD, PATH, headers)).rejects.toBeInstanceOf(RequestError)
   })
 
+  /**
+   * 6.0.0 removed the library's canonical-metadata check: metadata now reaches the service exactly
+   * as it was signed, so `verify` on its own has no opinion about casing or padding. Refusing a
+   * re-spelled value is the service's `metadataValidator` now — the same gate routes.ts installs,
+   * built from the composable predicates in controllers/utils.ts.
+   */
   it.each([
-    ['mixed-case signer', { ...METADATA, signer: 'Dcl:Marketplace' }],
-    ['whitespace-padded signer', { ...METADATA, signer: ' dcl:marketplace' }],
-    ['mixed-case intent', { ...METADATA, intent: 'Dcl:Marketplace:Add-Pick' }],
-    ['whitespace-padded intent', { ...METADATA, intent: 'dcl:marketplace:add-pick ' }]
-  ])('rejects a %s before service authorization', async (_case, metadata) => {
+    ['mixed-case signer', { ...METADATA, signer: 'Dcl:Marketplace' }, 'Invalid auth signer'],
+    ['whitespace-padded signer', { ...METADATA, signer: ' dcl:marketplace' }, 'Invalid auth signer'],
+    ['mixed-case intent', { ...METADATA, intent: 'Dcl:Marketplace:Add-Pick' }, 'Invalid auth intent to perform this operation'],
+    ['whitespace-padded intent', { ...METADATA, intent: 'dcl:marketplace:add-pick ' }, 'Invalid auth intent to perform this operation']
+  ])('rejects a %s at the service metadata validator', async (_case, metadata, message) => {
     const { headers } = await signedHeaders(PATH, metadata)
+    const metadataValidator = validateAuthMetadata(['dcl:marketplace'], 'dcl:marketplace:add-pick')
 
-    await expect(verify(METHOD, PATH, headers)).rejects.toMatchObject({
-      statusCode: 400,
-      message: expect.stringContaining('Invalid chain metadata')
-    })
+    await expect(verify(METHOD, PATH, headers, { metadataValidator })).rejects.toMatchObject({ statusCode: 400, message })
+    // Nothing is wrong with the signature: the metadata bytes are signed verbatim, so the library
+    // alone accepts the request. That is precisely why the gate has to do the rejecting.
+    await expect(verify(METHOD, PATH, headers)).resolves.toMatchObject({ authMetadata: metadata })
   })
 
   it('rejects expired and malformed auth headers', async () => {
