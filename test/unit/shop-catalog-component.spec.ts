@@ -1,3 +1,4 @@
+import { GenderFilterOption } from '@dcl/schemas'
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
 import { IShopCatalogComponent, TOP_CREATORS_MIN_ITEMS } from '../../src/ports/shop-catalog/types'
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
@@ -543,6 +544,69 @@ describe('Shop Catalog Component', () => {
         await shopCatalog.getShopItems({ listingType: 'primary' }, RATE)
 
         expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline + UNION_BRANCHES)
+      })
+    })
+
+    // The body-shape filter a client needs to hide what its player cannot wear. Same reasoning as
+    // listingType above: the feed is paginated and reports a total, so dropping rows client-side yields
+    // short pages and an overstated count.
+    //
+    // Asserted by COUNTING the bound form, not by matching the column: `search_wearable_body_shapes`
+    // already appears in the SELECT's gender expression, so a plain toContain would pass with no filter
+    // applied at all. Only the filter BINDS its shapes (`@> $n`); the gender expression uses literals.
+    describe('and filtering by wearable gender', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const BOUND_BODY_SHAPES = '::text[] @> $'
+      const UNION_BRANCHES = 3
+
+      async function sqlFor(filters: Record<string, unknown>) {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0]
+      }
+
+      it('should bind the requested shape into every union branch', async () => {
+        const sql = await sqlFor({ wearableGenders: [GenderFilterOption.MALE] })
+
+        expect(occurrences(sql.text as string, BOUND_BODY_SHAPES)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual(['BaseMale'])
+      })
+
+      it('should keep unisex items in a single-gender request', async () => {
+        // `@>` is "declares all of", so one shape means "wearable BY a male avatar" — male-exclusive
+        // items plus unisex ones — rather than male-exclusive only. The one-element array is what makes
+        // that true, and it is the whole point of the filter for an avatar-driven caller.
+        const sql = await sqlFor({ wearableGenders: [GenderFilterOption.MALE] })
+
+        expect(sql.values).toContainEqual(['BaseMale'])
+        expect(sql.values).not.toContainEqual(['BaseMale', 'BaseFemale'])
+      })
+
+      it('should require both shapes when asked for male and female', async () => {
+        const sql = await sqlFor({ wearableGenders: [GenderFilterOption.MALE, GenderFilterOption.FEMALE] })
+
+        expect(sql.values).toContainEqual(['BaseMale', 'BaseFemale'])
+      })
+
+      it('should treat unisex as a request for both shapes', async () => {
+        // The same rows as asking for male AND female: an item declaring both IS the unisex one, which
+        // is exactly what the gender expression reports on the way out.
+        const sql = await sqlFor({ wearableGenders: [GenderFilterOption.UNISEX] })
+
+        expect(sql.values).toContainEqual(['BaseMale', 'BaseFemale'])
+      })
+
+      it('should not constrain body shapes when omitted', async () => {
+        expect(occurrences((await sqlFor({})).text as string, BOUND_BODY_SHAPES)).toBe(0)
+      })
+
+      it('should apply to the grouped item feed too, which is what the browse grid reads', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({ wearableGenders: [GenderFilterOption.FEMALE] }, RATE)
+        const sql = query.mock.calls[0][0]
+
+        expect(occurrences(sql.text as string, BOUND_BODY_SHAPES)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual(['BaseFemale'])
       })
     })
 
