@@ -1,12 +1,14 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { HDNodeWallet, TypedDataDomain, Wallet, zeroPadValue, toBeArray, Contract } from 'ethers'
+import { HDNodeWallet, TypedDataDomain, TypedDataEncoder, Wallet, zeroPadValue, toBeArray, Contract } from 'ethers'
 import { ChainId, Network, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../../src/logic/date'
 import {
   MARKETPLACE_TRADE_TYPES,
   getValueFromTradeAsset,
+  getOffChainMarketplaceAddresses,
   isEstateFingerprintValid,
+  resolveTradeSignature,
   validateTradeSignature
 } from '../../src/logic/trades/utils'
 import { MarketplaceContractNotFound } from '../../src/ports/trades/errors'
@@ -220,6 +222,197 @@ describe('when getting the value from a trade asset', () => {
           extra: '0x'
         })
       ).toBe('1000000000000000000')
+    })
+  })
+})
+
+describe('when resolving which marketplace version a trade signature belongs to', () => {
+  let chainId: ChainId
+  let wallet: HDNodeWallet
+  let signerAddress: string
+  let trade: TradeCreation
+  let values: Record<string, unknown>
+
+  beforeEach(async () => {
+    wallet = Wallet.createRandom()
+    signerAddress = (await wallet.getAddress()).toLowerCase()
+    // Sepolia has both a V2 and a V3 deployment, so both are real candidates here.
+    chainId = ChainId.ETHEREUM_SEPOLIA
+    trade = {
+      signer: signerAddress,
+      chainId,
+      signature: '0x',
+      network: Network.ETHEREUM,
+      type: TradeType.BID,
+      checks: {
+        uses: 1,
+        expiration: new Date('2023-02-28 00:00:00').getTime(),
+        effective: new Date('2023-02-28 00:00:00').getTime(),
+        salt: zeroPadValue(toBeArray(chainId), 32),
+        allowedRoot: '0x',
+        contractSignatureIndex: 0,
+        signerSignatureIndex: 0,
+        externalChecks: []
+      },
+      sent: [
+        {
+          assetType: TradeAssetType.ERC20,
+          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+          amount: '100',
+          extra: '0x'
+        }
+      ],
+      received: [
+        {
+          assetType: TradeAssetType.ERC721,
+          contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+          tokenId: '1',
+          extra: '0x',
+          beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+        }
+      ]
+    }
+    values = {
+      checks: {
+        uses: trade.checks.uses,
+        expiration: fromMillisecondsToSeconds(trade.checks.expiration),
+        effective: fromMillisecondsToSeconds(trade.checks.effective),
+        salt: zeroPadValue(trade.checks.salt, 32),
+        contractSignatureIndex: trade.checks.contractSignatureIndex,
+        signerSignatureIndex: trade.checks.signerSignatureIndex,
+        allowedRoot: zeroPadValue(trade.checks.allowedRoot, 32),
+        externalChecks: []
+      },
+      sent: trade.sent.map(asset => ({
+        assetType: asset.assetType,
+        contractAddress: asset.contractAddress,
+        value: getValueFromTradeAsset(asset),
+        extra: asset.extra
+      })),
+      received: trade.received.map(asset => ({
+        assetType: asset.assetType,
+        contractAddress: asset.contractAddress,
+        value: getValueFromTradeAsset(asset),
+        extra: asset.extra,
+        beneficiary: 'beneficiary' in asset ? asset.beneficiary : undefined
+      }))
+    }
+  })
+
+  describe('and the trade was signed against the V3 marketplace', () => {
+    let marketplace: ContractData
+    let domain: TypedDataDomain
+
+    beforeEach(async () => {
+      marketplace = getContract(ContractName.OffChainMarketplaceV3, chainId)
+      domain = {
+        name: marketplace.name,
+        version: marketplace.version,
+        salt: zeroPadValue(toBeArray(chainId), 32),
+        verifyingContract: marketplace.address
+      }
+      trade.signature = await wallet.signTypedData(domain, MARKETPLACE_TRADE_TYPES, values)
+    })
+
+    it('should report V3 as the contract the signature belongs to', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.contract.address).toBe(marketplace.address)
+    })
+
+    it('should return the EIP-712 digest under the V3 domain, which is what V3 keys cancellations on', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.digest).toBe(TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values))
+    })
+
+    it('should consider the signature valid', () => {
+      expect(validateTradeSignature(trade, signerAddress)).toBe(true)
+    })
+  })
+
+  describe('and the trade was signed against the V2 marketplace', () => {
+    let marketplace: ContractData
+    let domain: TypedDataDomain
+
+    beforeEach(async () => {
+      marketplace = getContract(ContractName.OffChainMarketplaceV2, chainId)
+      domain = {
+        name: marketplace.name,
+        version: marketplace.version,
+        salt: zeroPadValue(toBeArray(chainId), 32),
+        verifyingContract: marketplace.address
+      }
+      trade.signature = await wallet.signTypedData(domain, MARKETPLACE_TRADE_TYPES, values)
+    })
+
+    // A trade signed against the older version must keep working while clients roll over to V3.
+    it('should report V2 as the contract the signature belongs to', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.contract.address).toBe(marketplace.address)
+    })
+
+    it('should return the digest under the V2 domain, not the V3 one', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.digest).toBe(TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values))
+    })
+  })
+
+  describe('and the signature belongs to a different signer', () => {
+    beforeEach(async () => {
+      const marketplace = getContract(ContractName.OffChainMarketplaceV3, chainId)
+      trade.signature = await wallet.signTypedData(
+        {
+          name: marketplace.name,
+          version: marketplace.version,
+          salt: zeroPadValue(toBeArray(chainId), 32),
+          verifyingContract: marketplace.address
+        },
+        MARKETPLACE_TRADE_TYPES,
+        values
+      )
+    })
+
+    it('should return null rather than matching any version', () => {
+      expect(resolveTradeSignature(trade, '0x165cd37b4c644c2921454429e7f9358d18a45e14')).toBeNull()
+    })
+  })
+
+  describe('and no marketplace version is deployed on the chain', () => {
+    beforeEach(async () => {
+      // Signed first, then moved to an unsupported chain: the ECDSA shape check runs before contract
+      // lookup, so an unsigned trade would fail on that instead of on the missing contract.
+      const marketplace = getContract(ContractName.OffChainMarketplaceV3, chainId)
+      trade.signature = await wallet.signTypedData(
+        {
+          name: marketplace.name,
+          version: marketplace.version,
+          salt: zeroPadValue(toBeArray(chainId), 32),
+          verifyingContract: marketplace.address
+        },
+        MARKETPLACE_TRADE_TYPES,
+        values
+      )
+      trade.chainId = ChainId.ETHEREUM_KOVAN
+    })
+
+    it('should throw a contract not found error', () => {
+      expect(() => resolveTradeSignature(trade, signerAddress)).toThrow(new MarketplaceContractNotFound(trade.chainId, trade.network))
+    })
+  })
+})
+
+describe('when listing the off-chain marketplace addresses of a chain', () => {
+  describe('and the chain has a V3 deployment', () => {
+    it('should include the V3 address alongside the older versions', () => {
+      expect(getOffChainMarketplaceAddresses(ChainId.MATIC_AMOY)).toContain(
+        getContract(ContractName.OffChainMarketplaceV3, ChainId.MATIC_AMOY).address.toLowerCase()
+      )
+    })
+  })
+
+  describe('and the chain has no V3 deployment', () => {
+    // V3 is testnet-only, and this list feeds SQL that runs on mainnet, so an absent version has to be
+    // skipped rather than throw.
+    it('should return the deployed versions without throwing', () => {
+      expect(getOffChainMarketplaceAddresses(ChainId.MATIC_MAINNET)).toEqual([
+        getContract(ContractName.OffChainMarketplace, ChainId.MATIC_MAINNET).address.toLowerCase(),
+        getContract(ContractName.OffChainMarketplaceV2, ChainId.MATIC_MAINNET).address.toLowerCase()
+      ])
     })
   })
 })

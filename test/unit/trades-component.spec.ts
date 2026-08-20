@@ -17,6 +17,7 @@ import {
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
+import { TradeSignatureMatch } from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
 import { IEventPublisherComponent } from '../../src/ports/events/types'
 import { IShopNotifierComponent } from '../../src/ports/shop-notifier/types'
@@ -49,10 +50,15 @@ let tradesComponent: ITradesComponent
 let logs: ILoggerComponent
 let publishMessageMock: jest.Mock
 let notifyItemOnSaleMock: jest.Mock
+let signatureMatch: TradeSignatureMatch
 
 describe('when adding a new trade', () => {
   beforeEach(() => {
     mockSigner = '0x1234567890'
+    signatureMatch = {
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      digest: '0x71dc7036c75ab7570a8b79d4a452c5a4d3ac4fdf0b2cc58d518d979f0ec557ff'
+    }
     mockTrade = {
       signer: mockSigner,
       signature:
@@ -180,7 +186,7 @@ describe('when adding a new trade', () => {
 
   describe('when the trade signature is invalid', () => {
     beforeEach(() => {
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(false)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(null)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
     })
@@ -193,7 +199,7 @@ describe('when adding a new trade', () => {
   describe('when a estate trade is not valid in the available estate chain ids', () => {
     beforeEach(() => {
       mockTrade.chainId = ChainId.ETHEREUM_SEPOLIA
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(false)
     })
@@ -214,7 +220,7 @@ describe('when adding a new trade', () => {
     let event: Event
 
     beforeEach(async () => {
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
       mockPgQuery = jest.fn()
@@ -297,10 +303,7 @@ describe('when adding a new trade', () => {
 
     it('should add the trade to the database', async () => {
       expect(mockPgQuery).toHaveBeenCalledWith(
-        getInsertTradeQuery(
-          { ...mockTrade, contract: getContract(ContractName.OffChainMarketplaceV2, mockTrade.chainId).address },
-          mockSigner
-        )
+        getInsertTradeQuery({ ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.digest }, mockSigner)
       )
     })
 

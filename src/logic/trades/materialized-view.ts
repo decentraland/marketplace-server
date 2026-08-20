@@ -1,7 +1,7 @@
 import { IPgComponent } from '@dcl/pg-component'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../chainIds'
+import { getOffChainMarketplaceAddresses } from './utils'
 
 export const TRADES_MV_NAME = 'mv_trades'
 // Minimum time between materialized view refreshes. Writes on the source tables
@@ -101,10 +101,15 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   // back (see ensureTradesRefreshGate).
   await ensureTradesRefreshGate(db)
 
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
+  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
+  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
+  // would make getContract throw here and abort the whole view recreation.
+  const marketplaceAddresses = [
+    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
+    ...getOffChainMarketplaceAddresses(getPolygonChainId())
+  ]
+    .map(address => `'${address}'`)
+    .join(',\n              ')
   // Start transaction
   const client = await db.getPool().connect()
   try {
@@ -264,8 +269,11 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       ) AS av
       ON t.id = av.trade_id
 
+      -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
+      -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
+      -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
       LEFT JOIN squid_trades.trade AS st
-      ON st.signature = t.hashed_signature
+      ON (st.signature = t.hashed_signature OR st.trade_digest = t.trade_digest)
 
       LEFT JOIN squid_trades.signature_index AS si_signer
       ON LOWER(si_signer.address) = LOWER(t.signer)
@@ -274,10 +282,7 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           SELECT *
           FROM squid_trades.signature_index idx
           WHERE LOWER(idx.address) IN (
-              '${marketplacePolygon.address}',
-              '${marketplaceEthereum.address}',
-              '${marketplacePolygonV2.address}',
-              '${marketplaceEthereumV2.address}'
+              ${marketplaceAddresses}
           )
       ) AS si_contract
       ON t.network = si_contract.network

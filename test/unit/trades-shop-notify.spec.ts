@@ -1,5 +1,6 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
 import { ChainId, Network, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { forceFlushTradesMaterializedView } from '../../src/logic/trades/materialized-view'
 import * as signatureUtils from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
@@ -101,7 +102,10 @@ describe('when adding a listing trade', () => {
     })
 
     // Isolate the shop-notify path: signature/structure validations pass, the SNS notification is a no-op.
-    jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+    jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue({
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.MATIC_MAINNET),
+      digest: '0x71dc7036c75ab7570a8b79d4a452c5a4d3ac4fdf0b2cc58d518d979f0ec557ff'
+    })
     jest.spyOn(signatureUtils, 'validateAssetOwnership').mockResolvedValue(true)
     jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
     jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValue(true)

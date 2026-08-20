@@ -1,10 +1,10 @@
 import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
+import { getOffChainMarketplaceAddresses } from '../../logic/trades/utils'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
@@ -21,7 +21,7 @@ export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
     LEFT JOIN marketplace.trade_assets_item as item ON ta.id = item.asset_id`.append(customWhere ? SQL` WHERE `.append(customWhere) : SQL``)
 }
 
-export function getInsertTradeQuery(trade: TradeCreation & { contract: string }, signer: string) {
+export function getInsertTradeQuery(trade: TradeCreation & { contract: string; tradeDigest: string }, signer: string) {
   return SQL`INSERT INTO marketplace.trades (
     chain_id,
     checks,
@@ -30,6 +30,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string },
     network,
     signature,
     hashed_signature,
+    trade_digest,
     signer,
     type,
     contract
@@ -41,6 +42,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string },
    ${trade.network},
    ${trade.signature},
    ${keccak256(trade.signature)},
+   ${trade.tradeDigest},
    ${signer.toLowerCase()},
    ${trade.type},
    ${trade.contract}
@@ -102,10 +104,15 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 }
 
 export function getTradesForTypeQuery(type: TradeType) {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
+  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
+  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
+  // would make getContract throw there.
+  const marketplaceAddresses = [
+    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
+    ...getOffChainMarketplaceAddresses(getPolygonChainId())
+  ]
+    .map(address => `'${address}'`)
+    .join(',')
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -172,9 +179,13 @@ export function getTradesForTypeQuery(type: TradeType) {
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
+    -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
+    -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
+    -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
+    LEFT JOIN squid_trades.trade as trade_status
+      ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
+    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (${marketplaceAddresses})) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '${type}'
     /**
      * NOT grouped by trade_status.caller.
@@ -222,10 +233,15 @@ export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, n
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
+  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
+  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
+  // would make getContract throw there.
+  const marketplaceAddresses = [
+    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
+    ...getOffChainMarketplaceAddresses(getPolygonChainId())
+  ]
+    .map(address => `'${address}'`)
+    .join(',')
   return SQL`
     SELECT
       t.id,
@@ -298,28 +314,23 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
             .append(
               SQL`
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
+    -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
+    -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
+    -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
+    LEFT JOIN squid_trades.trade as trade_status
+      ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('`
-                .append(marketplaceEthereum.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplaceEthereumV2.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplacePolygon.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplacePolygonV2.address.toLowerCase())
-                .append(SQL`')`)
+    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (`
+                .append(marketplaceAddresses)
                 .append(
-                  SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
-                    SQL`')) as contract_signature_index ON t.network = contract_signature_index.network
+                  SQL`)) as contract_signature_index ON t.network = contract_signature_index.network
     WHERE t.type = '`
-                      .append(type)
-                      .append(
-                        SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
+                    .append(type)
+                    .append(
+                      SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `)
-                      )
-                  )
+                    )
                 )
             )
         )

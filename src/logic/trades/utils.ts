@@ -1,5 +1,14 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { Contract, TypedDataField, TypedDataDomain, verifyTypedData, toBeArray, zeroPadValue, JsonRpcProvider } from 'ethers'
+import {
+  Contract,
+  TypedDataField,
+  TypedDataDomain,
+  TypedDataEncoder,
+  verifyTypedData,
+  toBeArray,
+  zeroPadValue,
+  JsonRpcProvider
+} from 'ethers'
 import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
@@ -78,24 +87,66 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
   ]
 }
 
-export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
-  if (!hasECDSASignatureAValidV(trade.signature)) {
-    throw new InvalidECDSASignatureError()
-  }
+/**
+ * Off-chain marketplace versions a trade can be signed against, newest first.
+ *
+ * The EIP-712 domain names its verifying contract, so the marketplace version is part of what the
+ * signer signed: one trade signed against V2 and against V3 produces different digests and different
+ * signatures. Pinning a single version would therefore reject every trade signed against the other one
+ * for as long as clients are mid-rollout, so resolution tries each deployed version and keeps whichever
+ * the signature actually verifies against. Newest first, so new trades settle on the newest deployment.
+ */
+export const OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [ContractName.OffChainMarketplaceV3, ContractName.OffChainMarketplaceV2]
 
-  let offChainMarketplaceContract: ContractData
-  try {
-    offChainMarketplaceContract = getContract(ContractName.OffChainMarketplaceV2, trade.chainId)
-  } catch (e) {
-    throw new MarketplaceContractNotFound(trade.chainId, trade.network)
-  }
+/**
+ * Every off-chain marketplace version, oldest first, for enumerating addresses the indexer may hold rows
+ * for. Distinct from OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES, which lists only the versions a NEW trade may
+ * be signed against.
+ */
+const ALL_OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [
+  ContractName.OffChainMarketplace,
+  ContractName.OffChainMarketplaceV2,
+  ContractName.OffChainMarketplaceV3
+]
 
+/**
+ * Addresses of every off-chain marketplace version deployed on a chain, lowercased.
+ *
+ * Lowercased because every SQL comparison against these is written as `LOWER(address) IN (...)`, and some
+ * entries in the contract registry are checksummed — a checksummed literal on the right-hand side of that
+ * comparison can never match.
+ */
+export function getOffChainMarketplaceAddresses(chainId: ChainId): string[] {
+  return ALL_OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<string[]>((addresses, contractName) => {
+    try {
+      addresses.push(getContract(contractName, chainId).address.toLowerCase())
+    } catch (e) {
+      // Version not deployed on this chain.
+    }
+    return addresses
+  }, [])
+}
+
+/** The marketplace versions deployed on a chain, newest first. Empty if none are. */
+export function getOffChainMarketplaceContracts(chainId: ChainId): ContractData[] {
+  return OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<ContractData[]>((contracts, contractName) => {
+    try {
+      contracts.push(getContract(contractName, chainId))
+    } catch (e) {
+      // Not every version exists on every chain — V3 is testnet-only for now, so getContract throws
+      // for it on mainnet. A version that is not deployed is simply not a candidate.
+    }
+    return contracts
+  }, [])
+}
+
+function getTradeTypedData(trade: TradeCreation, contract: ContractData): { domain: TypedDataDomain; values: Record<string, unknown> } {
   const SALT = zeroPadValue(toBeArray(trade.chainId), 32)
   const domain: TypedDataDomain = {
-    name: offChainMarketplaceContract.name,
-    version: offChainMarketplaceContract.version,
+    name: contract.name,
+    version: contract.version,
     salt: SALT,
-    verifyingContract: offChainMarketplaceContract.address
+    verifyingContract: contract.address
   }
 
   const values = {
@@ -132,7 +183,47 @@ export function validateTradeSignature(trade: TradeCreation, signer: string): bo
     }))
   }
 
-  return verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer
+  return { domain, values }
+}
+
+export type TradeSignatureMatch = {
+  /** The marketplace version the signature verified against. */
+  contract: ContractData
+  /**
+   * The trade's EIP-712 digest under that contract's domain.
+   *
+   * This is the identifier V3 keys cancellations and use counts on, so it has to be stored to be able
+   * to correlate a V3 SignatureCancelled event back to the trade it cancels.
+   */
+  digest: string
+}
+
+/**
+ * Verifies the signature and reports which marketplace version produced it, plus that version's digest.
+ * Returns null when no deployed version verifies, i.e. the signature does not belong to this signer.
+ */
+export function resolveTradeSignature(trade: TradeCreation, signer: string): TradeSignatureMatch | null {
+  if (!hasECDSASignatureAValidV(trade.signature)) {
+    throw new InvalidECDSASignatureError()
+  }
+
+  const contracts = getOffChainMarketplaceContracts(trade.chainId)
+  if (!contracts.length) {
+    throw new MarketplaceContractNotFound(trade.chainId, trade.network)
+  }
+
+  for (const contract of contracts) {
+    const { domain, values } = getTradeTypedData(trade, contract)
+    if (verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer) {
+      return { contract, digest: TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values) }
+    }
+  }
+
+  return null
+}
+
+export function validateTradeSignature(trade: TradeCreation, signer: string): boolean {
+  return resolveTradeSignature(trade, signer) !== null
 }
 
 export function isERC721TradeAsset(asset: TradeAsset): asset is ERC721TradeAsset {
