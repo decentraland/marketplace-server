@@ -57,7 +57,7 @@ describe('when adding a new trade', () => {
     mockSigner = '0x1234567890'
     signatureMatch = {
       contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
-      digest: '0x71dc7036c75ab7570a8b79d4a452c5a4d3ac4fdf0b2cc58d518d979f0ec557ff'
+      cancellationDigest: null
     }
     mockTrade = {
       signer: mockSigner,
@@ -303,7 +303,10 @@ describe('when adding a new trade', () => {
 
     it('should add the trade to the database', async () => {
       expect(mockPgQuery).toHaveBeenCalledWith(
-        getInsertTradeQuery({ ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.digest }, mockSigner)
+        getInsertTradeQuery(
+          { ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.cancellationDigest },
+          mockSigner
+        )
       )
     })
 

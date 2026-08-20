@@ -193,7 +193,7 @@ export function createTradesComponent(
     const insertedTrade = await pg.withTransaction(
       async client => {
         const query = getInsertTradeQuery(
-          { ...trade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.digest },
+          { ...trade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.cancellationDigest },
           signer
         )
         const insertedTrade = await client.query<DBTrade>(query)

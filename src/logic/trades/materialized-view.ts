@@ -269,9 +269,10 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       ) AS av
       ON t.id = av.trade_id
 
-      -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
-      -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
-      -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
+      -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
+      -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both
+      -- sides ONLY for the versions that key on it, so the two columns mean the same thing and NULL never
+      -- equals NULL — a V1/V2 trade can only match through hashed_signature, a V3 one through the digest.
       LEFT JOIN squid_trades.trade AS st
       ON (st.signature = t.hashed_signature OR st.trade_digest = t.trade_digest)
 

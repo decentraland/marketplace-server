@@ -319,7 +319,9 @@ describe('when resolving which marketplace version a trade signature belongs to'
     })
 
     it('should return the EIP-712 digest under the V3 domain, which is what V3 keys cancellations on', () => {
-      expect(resolveTradeSignature(trade, signerAddress)?.digest).toBe(TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values))
+      expect(resolveTradeSignature(trade, signerAddress)?.cancellationDigest).toBe(
+        TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values)
+      )
     })
 
     it('should consider the signature valid', () => {
@@ -347,8 +349,11 @@ describe('when resolving which marketplace version a trade signature belongs to'
       expect(resolveTradeSignature(trade, signerAddress)?.contract.address).toBe(marketplace.address)
     })
 
-    it('should return the digest under the V2 domain, not the V3 one', () => {
-      expect(resolveTradeSignature(trade, signerAddress)?.digest).toBe(TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values))
+    // V2 keys cancellations on keccak256(signature bytes), which the trade already stores as
+    // hashed_signature. Storing a digest here would leave trade_digest meaning something different on
+    // each side of the indexer join, since the indexer only records one for V3.
+    it('should not return a cancellation digest, because V2 does not key cancellations on one', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.cancellationDigest).toBeNull()
     })
   })
 

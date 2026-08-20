@@ -99,6 +99,15 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
 export const OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [ContractName.OffChainMarketplaceV3, ContractName.OffChainMarketplaceV2]
 
 /**
+ * Versions that identify a trade by its EIP-712 digest rather than by keccak256 of the signature bytes.
+ *
+ * This is what a cancellation is keyed on, so it decides which value has to be stored to be able to
+ * correlate a SignatureCancelled event back to its trade. V1 and V2 key on the signature hash, which the
+ * trade already stores as `hashed_signature`; V3 keys on the digest, which nothing else records.
+ */
+const DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES: ContractName[] = [ContractName.OffChainMarketplaceV3]
+
+/**
  * Every off-chain marketplace version, oldest first, for enumerating addresses the indexer may hold rows
  * for. Distinct from OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES, which lists only the versions a NEW trade may
  * be signed against.
@@ -128,16 +137,19 @@ export function getOffChainMarketplaceAddresses(chainId: ChainId): string[] {
 }
 
 /** The marketplace versions deployed on a chain, newest first. Empty if none are. */
-export function getOffChainMarketplaceContracts(chainId: ChainId): ContractData[] {
-  return OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<ContractData[]>((contracts, contractName) => {
-    try {
-      contracts.push(getContract(contractName, chainId))
-    } catch (e) {
-      // Not every version exists on every chain — V3 is testnet-only for now, so getContract throws
-      // for it on mainnet. A version that is not deployed is simply not a candidate.
-    }
-    return contracts
-  }, [])
+export function getOffChainMarketplaceContracts(chainId: ChainId): { contractName: ContractName; contract: ContractData }[] {
+  return OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<{ contractName: ContractName; contract: ContractData }[]>(
+    (contracts, contractName) => {
+      try {
+        contracts.push({ contractName, contract: getContract(contractName, chainId) })
+      } catch (e) {
+        // Not every version exists on every chain — V3 is testnet-only for now, so getContract throws
+        // for it on mainnet. A version that is not deployed is simply not a candidate.
+      }
+      return contracts
+    },
+    []
+  )
 }
 
 function getTradeTypedData(trade: TradeCreation, contract: ContractData): { domain: TypedDataDomain; values: Record<string, unknown> } {
@@ -190,12 +202,14 @@ export type TradeSignatureMatch = {
   /** The marketplace version the signature verified against. */
   contract: ContractData
   /**
-   * The trade's EIP-712 digest under that contract's domain.
+   * The identifier the matched marketplace keys cancellations on, or null when it keys them on
+   * keccak256(signature bytes) — which the trade already stores as `hashed_signature`.
    *
-   * This is the identifier V3 keys cancellations and use counts on, so it has to be stored to be able
-   * to correlate a V3 SignatureCancelled event back to the trade it cancels.
+   * Deliberately null rather than "the digest of whichever version matched": the indexer only records a
+   * digest for the versions that use one, so storing a digest for a V2 trade would leave the two columns
+   * meaning different things on each side of the join.
    */
-  digest: string
+  cancellationDigest: string | null
 }
 
 /**
@@ -212,10 +226,15 @@ export function resolveTradeSignature(trade: TradeCreation, signer: string): Tra
     throw new MarketplaceContractNotFound(trade.chainId, trade.network)
   }
 
-  for (const contract of contracts) {
+  for (const { contractName, contract } of contracts) {
     const { domain, values } = getTradeTypedData(trade, contract)
     if (verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer) {
-      return { contract, digest: TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values) }
+      return {
+        contract,
+        cancellationDigest: DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES.includes(contractName)
+          ? TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values)
+          : null
+      }
     }
   }
 

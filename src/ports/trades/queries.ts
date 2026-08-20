@@ -21,7 +21,7 @@ export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
     LEFT JOIN marketplace.trade_assets_item as item ON ta.id = item.asset_id`.append(customWhere ? SQL` WHERE `.append(customWhere) : SQL``)
 }
 
-export function getInsertTradeQuery(trade: TradeCreation & { contract: string; tradeDigest: string }, signer: string) {
+export function getInsertTradeQuery(trade: TradeCreation & { contract: string; tradeDigest: string | null }, signer: string) {
   return SQL`INSERT INTO marketplace.trades (
     chain_id,
     checks,
@@ -179,9 +179,10 @@ export function getTradesForTypeQuery(type: TradeType) {
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
-    -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
-    -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
+    -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
+    -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both sides
+    -- ONLY for the versions that key on it, so the two columns mean the same thing and NULL never equals
+    -- NULL — a V1/V2 trade can only ever match through hashed_signature, a V3 one through the digest.
     LEFT JOIN squid_trades.trade as trade_status
       ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
@@ -314,9 +315,10 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
             .append(
               SQL`
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    -- Also matched on the EIP-712 digest: the V3 marketplace identifies a trade by that digest, so a V3
-    -- cancellation carries it rather than keccak256(signature bytes) and matches hashed_signature nowhere.
-    -- NULL never equals NULL, so pre-V3 rows (digest NULL) keep matching on hashed_signature alone.
+    -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
+    -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both sides
+    -- ONLY for the versions that key on it, so the two columns mean the same thing and NULL never equals
+    -- NULL — a V1/V2 trade can only ever match through hashed_signature, a V3 one through the digest.
     LEFT JOIN squid_trades.trade as trade_status
       ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
