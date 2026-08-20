@@ -46,6 +46,8 @@ import {
   TOP_CREATORS_MAX_LIMIT,
   TOP_CREATORS_MIN_ITEMS,
   TOP_CREATORS_MIN_DAYS,
+  TOP_CREATORS_MIN_SALES_PER_WINDOW,
+  TOP_CREATORS_MIN_WINDOW_SALES_FLOOR,
   TopCreator,
   TopCreatorRow,
   TopCreatorsFilters
@@ -1181,10 +1183,11 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
   }
 
   /**
-   * Creators ranked by how many of THEIR items sold in the window.
+   * Creators ranked by how much MANA THEIR items took in the window.
    *
    * Attribution is by `item.creator`, not by who executed the sale — see TopCreator on why the account
-   * day data the marketplace's own ranking reads cannot answer this for a primary-sales shop.
+   * day data the marketplace's own ranking reads cannot answer this for a primary-sales shop, and on why
+   * the ranking is revenue rather than the unit count this used to order by.
    *
    * Ranked here, filtered by the caller: who is presentable (a claimed name, no duplicates) needs the
    * Catalyst, which this service does not talk to. So the rail asks for more rows than it shows and
@@ -1196,16 +1199,26 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     // `sale.timestamp` is stored in SECONDS. Same window helper the trending rail uses, so the two rows
     // are computed over the same slice of history rather than over two similar-looking ones.
     const fromSeconds = Math.floor(getDateXDaysAgo(days).getTime() / 1000)
+    // The sales floor is a RATE, so a caller who narrows the window gets a proportionally easier bar
+    // rather than an empty row — see the constant. Rounded, then held above the absolute floor.
+    const minSales = Math.max(
+      TOP_CREATORS_MIN_WINDOW_SALES_FLOOR,
+      Math.round((days / TOP_CREATORS_DEFAULT_DAYS) * TOP_CREATORS_MIN_SALES_PER_WINDOW)
+    )
 
-    // Two aggregates over the same creators, joined once. `ranked` counts SALES — windowed for the order
-    // and unwindowed for the figure the row shows — and `catalogue` counts what they have PUBLISHED, which
-    // lives in `item` and so cannot come from the same GROUP BY without multiplying rows by their sales.
+    // Two aggregates over the same creators, joined once. `ranked` sums the windowed REVENUE that orders
+    // the row and counts the sales behind it, plus the unwindowed count the row displays; `catalogue`
+    // counts what they have PUBLISHED, which lives in `item` and so cannot come from the same GROUP BY
+    // without multiplying rows by their sales.
     //
-    // The window is a FILTER rather than a WHERE so both counts come out of one pass: putting it in the
+    // The window is a FILTER rather than a WHERE so all three come out of one pass: putting it in the
     // WHERE would make the all-time total a count of the last 30 days too.
     const query = SQL`
       WITH ranked AS (
         SELECT item.creator AS creator,
+               -- Kept NUMERIC here and cast only on the way out: ordering the text would sort 900 above
+               -- 1000. Prices are raw MANA wei, so the sum overflows anything narrower.
+               COALESCE(SUM(sale.price::numeric) FILTER (WHERE sale.timestamp > ${fromSeconds}), 0) AS volume,
                COUNT(*) FILTER (WHERE sale.timestamp > ${fromSeconds})::int AS sales,
                COUNT(*)::int AS total_sales
         FROM `
@@ -1231,15 +1244,16 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         WHERE search_is_collection_approved = true
         GROUP BY creator
       )
-      SELECT r.creator, r.sales, r.total_sales,
+      SELECT r.creator, r.volume::text AS volume, r.sales, r.total_sales,
              COALESCE(c.collections, 0) AS collections, COALESCE(c.items, 0) AS items
       FROM ranked r
       LEFT JOIN catalogue c ON c.creator = r.creator
-      -- A creator with no sale in the window is not "top" anything, however much they have published; one
-      -- with almost nothing published is not worth browsing, however well the month went.
-      WHERE r.sales > 0
+      -- A creator who traded barely at all in the window is not "top" anything, however much they have
+      -- published; one with almost nothing published is not worth browsing, however well the month went.
+      -- The sales floor is what stops a single expensive sale from winning a revenue ranking outright.
+      WHERE r.sales >= ${minSales}
         AND COALESCE(c.items, 0) >= ${TOP_CREATORS_MIN_ITEMS}
-      ORDER BY r.sales DESC, r.creator ASC
+      ORDER BY r.volume DESC, r.creator ASC
       LIMIT ${first}`
       )
 
@@ -1247,6 +1261,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     return {
       data: result.rows.map(row => ({
         id: row.creator,
+        // Already text off the query — kept as a string all the way out, never widened to `number`.
+        volumeWei: String(row.volume),
         sales: Number(row.sales),
         totalSales: Number(row.total_sales),
         collections: Number(row.collections),

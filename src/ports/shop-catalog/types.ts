@@ -260,6 +260,31 @@ export type TrendingItem = UnifiedItem & {
  */
 export const TOP_CREATORS_MIN_ITEMS = 10
 
+/**
+ * The smallest number of sales a "top creator" can be ranked on, expressed as a RATE — this many per
+ * default-length window, scaled to whatever window was actually asked for.
+ *
+ * Ordering by REVENUE is what makes a floor necessary at all. A count cannot be won by a single event,
+ * but a sum can: one expensive sale outranks a month of ordinary ones, and a creator who sold once is
+ * not somebody the row should be introducing. The floor keeps the ranking about a period of trading
+ * rather than about its single best moment.
+ *
+ * A RATE rather than a fixed number because the window is a caller-supplied 1–365 and a fixed floor
+ * falls off a cliff at the short end: five sales is an ordinary month but an exceptional week, so a
+ * flat five emptied a 7-day ranking completely on production data — 42 creators qualified, none cleared
+ * the floor. Scaling asks the same trading RATE of every window.
+ *
+ * Five per thirty days rather than something rounder because that is where the production distribution
+ * stops being noise: below it the candidates are creators whose whole month is one sale.
+ */
+export const TOP_CREATORS_MIN_SALES_PER_WINDOW = 5
+
+/**
+ * Floor beneath the scaled rate. Whatever the window, ranking a creator on ONE sale is ranking them on
+ * the price of that sale, which is the thing the floor exists to prevent.
+ */
+export const TOP_CREATORS_MIN_WINDOW_SALES_FLOOR = 2
+
 export const TOP_CREATORS_DEFAULT_LIMIT = 30
 export const TOP_CREATORS_MAX_LIMIT = 60
 export const TOP_CREATORS_DEFAULT_DAYS = 30
@@ -272,7 +297,7 @@ export type TopCreatorsFilters = {
 }
 
 /**
- * A creator ranked by how much of THEIR catalogue sold in the window.
+ * A creator ranked by how much of THEIR catalogue EARNED in the window.
  *
  * Deliberately not `/v1/rankings/creators`, which reads the squid's per-account day data and so counts
  * only sales where the creator's own address was the seller. A primary mint is executed by the buyer
@@ -280,11 +305,25 @@ export type TopCreatorsFilters = {
  * undercounts them severalfold (measured: 14 vs 35 over the same 30 days for the same creator). This
  * attributes a sale to whoever CREATED the item, which is the question the rail is actually asking.
  *
- * `sales` counts mints and resales alike: both are that creator's work changing hands.
+ * Ranked on REVENUE rather than on units, because the two disagree sharply and only one of them is the
+ * question the row is asking. Measured on production: the second-highest earning creator of the month
+ * (4,847 MANA) placed TWELFTH on unit count, because their items sell at ~400 MANA against a ~100 MANA
+ * field — a row ordered by units puts a month of cheap sales above four times the trade. "Top creator"
+ * is a claim about standing in the shop, and revenue is the version of that claim a creator, a shopper
+ * and the business all read the same way.
+ *
+ * Both figures count mints and resales alike: either way it is that creator's work changing hands.
  */
 export type TopCreator = {
   id: string // creator wallet address
-  /** Sales in the requested window. What the ranking is ORDERED by. */
+  /**
+   * MANA taken in the window, in wei. What the ranking is ORDERED by.
+   *
+   * A string because it is a sum of raw on-chain prices and overflows `number` — same reason and same
+   * shape as `manaWei` on a listing. Exposed so the ordering is verifiable from outside the server.
+   */
+  volumeWei: string
+  /** Sales in the requested window. Not the sort key — the floor the sort key has to clear. */
   sales: number
   /** Sales over all time. What the row DISPLAYS — a creator's standing, not their last month. */
   totalSales: number
@@ -296,6 +335,7 @@ export type TopCreator = {
 
 export type TopCreatorRow = {
   creator: string
+  volume: string
   sales: number
   total_sales: number
   collections: number

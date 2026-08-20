@@ -1,5 +1,10 @@
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
-import { IShopCatalogComponent, TOP_CREATORS_MIN_ITEMS } from '../../src/ports/shop-catalog/types'
+import {
+  IShopCatalogComponent,
+  TOP_CREATORS_MIN_ITEMS,
+  TOP_CREATORS_MIN_SALES_PER_WINDOW,
+  TOP_CREATORS_MIN_WINDOW_SALES_FLOOR
+} from '../../src/ports/shop-catalog/types'
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
 // same way rather than restated as a literal that would need editing whenever the window changes.
 import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
@@ -1364,12 +1369,29 @@ describe('Shop Catalog Component', () => {
 
     it('should return the ranked creators with their counts', async () => {
       query.mockResolvedValue({
-        rows: [{ creator: '0xa', sales: 62, total_sales: 3514, collections: 30, items: 166 }]
+        rows: [{ creator: '0xa', volume: '4847000000000000000000', sales: 62, total_sales: 3514, collections: 30, items: 166 }]
       })
 
       await expect(shopCatalog.getTopCreators({})).resolves.toEqual({
-        data: [{ id: '0xa', sales: 62, totalSales: 3514, collections: 30, items: 166 }]
+        data: [{ id: '0xa', volumeWei: '4847000000000000000000', sales: 62, totalSales: 3514, collections: 30, items: 166 }]
       })
+    })
+
+    /**
+     * A sum of raw MANA wei is far past `Number.MAX_SAFE_INTEGER` — a single 4,847 MANA month is already
+     * 4.8e21 — so widening it loses the low digits and two creators an ordinary distance apart can come
+     * back equal. It leaves the query as text and has to stay text.
+     */
+    it('should carry the window revenue out as a string, never as a number', async () => {
+      const volume = '4847123456789012345678'
+      query.mockResolvedValue({
+        rows: [{ creator: '0xa', volume, sales: 12, total_sales: 2178, collections: 43, items: 63 }]
+      })
+
+      const { data } = await shopCatalog.getTopCreators({})
+
+      expect(data[0].volumeWei).toBe(volume)
+      expect(Number(data[0].volumeWei).toString()).not.toBe(data[0].volumeWei)
     })
 
     /**
@@ -1404,11 +1426,77 @@ describe('Shop Catalog Component', () => {
       expect(text).toContain('COALESCE(c.collections, 0)')
     })
 
-    // Published-but-dormant is not "top" anything; without this the LEFT JOIN would let a zero through.
-    it('should leave out a creator who sold nothing in the window', async () => {
+    /**
+     * The ranking is REVENUE, not units, and the two disagree sharply: production's second-highest earner
+     * of the month placed twelfth on unit count, because their items sell at roughly four times the field.
+     * Ordering by the count is what put them on the row's second page.
+     */
+    it('should order by the money taken in the window rather than by the number of sales', async () => {
       await shopCatalog.getTopCreators({})
 
-      expect(query.mock.calls[0][0].text as string).toContain('WHERE r.sales > 0')
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('ORDER BY r.volume DESC')
+      expect(text).not.toContain('ORDER BY r.sales')
+    })
+
+    /**
+     * Sorting the wei as TEXT is the trap: '900…' sorts above '1000…', so a creator would be ranked by the
+     * first digit of their revenue. The sum stays numeric through the ORDER BY and is cast only on output.
+     */
+    it('should sort the revenue as a number and expose it as text', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('r.volume::text AS volume')
+      expect(text).not.toContain('ORDER BY r.volume::text')
+    })
+
+    /**
+     * Published-but-dormant is not "top" anything; without this the LEFT JOIN would let a zero through.
+     *
+     * A FLOOR rather than the old `> 0` because the ranking is now a sum: a count cannot be won by a single
+     * event but a sum can, and one expensive sale must not outrank a month of trading.
+     */
+    it('should leave out a creator whose window is too thin to rank on', async () => {
+      await shopCatalog.getTopCreators({})
+
+      const { text, values } = query.mock.calls[0][0]
+      expect(text).toContain('WHERE r.sales >=')
+      expect(values).toContain(TOP_CREATORS_MIN_SALES_PER_WINDOW)
+    })
+
+    /**
+     * The floor is a RATE, and this is the case that forced it: five sales is an ordinary month but an
+     * exceptional week, so a FLAT five emptied a 7-day ranking outright on production data — 42 creators
+     * qualified and not one cleared it. A caller narrowing the window must get a shorter row, not no row.
+     */
+    it('should ask a narrower window for proportionally fewer sales', async () => {
+      // 18 of the default 30 days, so three of the five sales — deliberately a window whose scaled floor
+      // lands between the rate and the absolute floor, where neither of them could produce the number.
+      await shopCatalog.getTopCreators({ days: 18 })
+
+      expect(query.mock.calls[0][0].values).toContain(3)
+      expect(query.mock.calls[0][0].values).not.toContain(TOP_CREATORS_MIN_SALES_PER_WINDOW)
+    })
+
+    // The reverse: a caller asking for a year is asking to be ranked on a year of trading, not on a month's
+    // worth of it spread thin.
+    it('should ask a wider window for proportionally more sales', async () => {
+      await shopCatalog.getTopCreators({ days: 90 })
+
+      expect(query.mock.calls[0][0].values).toContain(15)
+    })
+
+    /**
+     * Scaling has to bottom out: at a one-day window the rate rounds to zero, and a floor of zero ranks a
+     * creator on the price of their single sale, which is exactly what the floor exists to prevent.
+     */
+    it('should never let the scaled floor fall to where one sale can win', async () => {
+      await shopCatalog.getTopCreators({ days: 1 })
+
+      const { values } = query.mock.calls[0][0]
+      expect(values).toContain(TOP_CREATORS_MIN_WINDOW_SALES_FLOOR)
+      expect(values).not.toContain(0)
     })
 
     /**
