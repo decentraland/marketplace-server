@@ -22,7 +22,13 @@ const MANA_MAINNET_ADDRESS = getContract(ContractName.MANAToken, ChainId.ETHEREU
 
 test('trades controller', function ({ components }) {
   beforeEach(() => {
-    jest.spyOn(tradeUtils, 'validateTradeSignature').mockImplementation(() => true)
+    // Resolving the signature reports which marketplace version signed it and that version's EIP-712
+    // digest, both of which the trade records. The fixtures carry a placeholder signature, so this stands
+    // in for real verification the way the old validateTradeSignature mock did.
+    jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      digest: '0x71dc7036c75ab7570a8b79d4a452c5a4d3ac4fdf0b2cc58d518d979f0ec557ff'
+    }))
     jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
     jest.spyOn(chainIdUtils, 'getPolygonChainId').mockReturnValue(ChainId.MATIC_AMOY)
   })
