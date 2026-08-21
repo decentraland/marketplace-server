@@ -80,6 +80,16 @@ test('trades materialized view controller', function ({ components }) {
         expect(definition.match(/THEN 'POLYGON'::text/g)).toHaveLength(2)
       })
 
+      // signerSignatureIndex is storage on each deployment, so the same signer holds an independent
+      // counter per marketplace version and the join has to say which one it means.
+      it('should scope the signer index join to the trade marketplace', () => {
+        expect(definition).toMatch(/si_signer\.contract = lower\(t\.contract\)/)
+      })
+
+      it('should key the contract index join on the trade marketplace', () => {
+        expect(definition).toMatch(/si_contract\.address = lower\(t\.contract\)/)
+      })
+
       it('should be queryable', async () => {
         const { dappsDatabase } = components
 

@@ -177,6 +177,8 @@ export function getTradesForTypeQuery(type: TradeType) {
       ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
     LEFT JOIN squid_trades.signature_index as signer_signature_index
       ON signer_signature_index.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
+      AND signer_signature_index.contract = LOWER(t.contract)
       AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
@@ -313,6 +315,8 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
       ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
     LEFT JOIN squid_trades.signature_index as signer_signature_index
       ON signer_signature_index.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
+      AND signer_signature_index.contract = LOWER(t.contract)
       AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.

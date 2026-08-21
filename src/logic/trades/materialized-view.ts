@@ -141,6 +141,10 @@ export const TRADES_MV_CREATE_SQL = `
       -- the unique index the CONCURRENTLY refresh needs — and let an Ethereum bump cancel Polygon trades.
       LEFT JOIN squid_trades.signature_index AS si_signer
       ON si_signer.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment,
+      -- so the same signer holds an independent counter on V2 and V3, and the trade signed the one it
+      -- read from the version it targets.
+      AND si_signer.contract = LOWER(t.contract)
       AND si_signer.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
 
       -- Keyed by the trade's OWN marketplace, not just by network. Each version keeps an independent
