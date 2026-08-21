@@ -258,12 +258,13 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       ) AS av
       ON t.id = av.trade_id
 
-      -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
-      -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both
-      -- sides ONLY for the versions that key on it, so the two columns mean the same thing and NULL never
-      -- equals NULL — a V1/V2 trade can only match through hashed_signature, a V3 one through the digest.
+      -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+      -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+      -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+      -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+      -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
       LEFT JOIN squid_trades.trade AS st
-      ON (st.signature = t.hashed_signature OR st.trade_digest = t.trade_digest)
+      ON st.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
 
       LEFT JOIN squid_trades.signature_index AS si_signer
       ON LOWER(si_signer.address) = LOWER(t.signer)
@@ -274,8 +275,11 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       -- It also means exactly one row matches per trade, where an address-list match over per-version
       -- rows would multiply rows through this LEFT JOIN.
       LEFT JOIN squid_trades.signature_index AS si_contract
-      ON LOWER(si_contract.address) = LOWER(t.contract)
-      AND si_contract.network = t.network
+      ON si_contract.address = LOWER(t.contract)
+      -- The indexer's Network enum spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC,
+      -- so a raw equality never matches a Polygon trade and the whole per-version scoping is a no-op on
+      -- the network carrying most of the volume. Same translation as ports/catalog/queries.ts.
+      AND si_contract.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
 
       WHERE t.type IN ('public_item_order', 'public_nft_order')
       GROUP BY

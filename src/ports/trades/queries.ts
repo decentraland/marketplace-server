@@ -168,17 +168,21 @@ export function getTradesForTypeQuery(type: TradeType) {
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
-    -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both sides
-    -- ONLY for the versions that key on it, so the two columns mean the same thing and NULL never equals
-    -- NULL — a V1/V2 trade can only ever match through hashed_signature, a V3 one through the digest.
+    -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+    -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+    -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+    -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+    -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
     LEFT JOIN squid_trades.trade as trade_status
-      ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
+      ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
-      ON LOWER(contract_signature_index.address) = LOWER(t.contract) AND contract_signature_index.network = t.network
+      ON contract_signature_index.address = LOWER(t.contract)
+      -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
+      -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
+      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     WHERE t.type = '${type}'
     /**
      * NOT grouped by trade_status.caller.
@@ -298,17 +302,21 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
             .append(
               SQL`
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    -- Two identifiers because the marketplace versions key cancellations differently: V1/V2 by
-    -- keccak256(signature bytes), V3 by the trade's EIP-712 digest. trade_digest is written on both sides
-    -- ONLY for the versions that key on it, so the two columns mean the same thing and NULL never equals
-    -- NULL — a V1/V2 trade can only ever match through hashed_signature, a V3 one through the digest.
+    -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+    -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+    -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+    -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+    -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
     LEFT JOIN squid_trades.trade as trade_status
-      ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
+      ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
-      ON LOWER(contract_signature_index.address) = LOWER(t.contract) AND contract_signature_index.network = t.network
+      ON contract_signature_index.address = LOWER(t.contract)
+      -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
+      -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
+      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     WHERE t.type = '`
                 .append(type)
                 .append(
