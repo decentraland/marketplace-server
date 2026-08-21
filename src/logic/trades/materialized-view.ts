@@ -1,7 +1,5 @@
 import { IPgComponent } from '@dcl/pg-component'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../chainIds'
-import { getOffChainMarketplaceAddresses } from './utils'
 
 export const TRADES_MV_NAME = 'mv_trades'
 // Minimum time between materialized view refreshes. Writes on the source tables
@@ -101,15 +99,6 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   // back (see ensureTradesRefreshGate).
   await ensureTradesRefreshGate(db)
 
-  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
-  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
-  // would make getContract throw here and abort the whole view recreation.
-  const marketplaceAddresses = [
-    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
-    ...getOffChainMarketplaceAddresses(getPolygonChainId())
-  ]
-    .map(address => `'${address}'`)
-    .join(',\n              ')
   // Start transaction
   const client = await db.getPool().connect()
   try {
@@ -279,14 +268,14 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       LEFT JOIN squid_trades.signature_index AS si_signer
       ON LOWER(si_signer.address) = LOWER(t.signer)
 
-      LEFT JOIN (
-          SELECT *
-          FROM squid_trades.signature_index idx
-          WHERE LOWER(idx.address) IN (
-              ${marketplaceAddresses}
-          )
-      ) AS si_contract
-      ON t.network = si_contract.network
+      -- Keyed by the trade's OWN marketplace, not just by network. Each version keeps an independent
+      -- contractSignatureIndex, and a trade signed the value it read from the version it targets, so
+      -- matching by network alone let a bump on one version invalidate trades signed against another.
+      -- It also means exactly one row matches per trade, where an address-list match over per-version
+      -- rows would multiply rows through this LEFT JOIN.
+      LEFT JOIN squid_trades.signature_index AS si_contract
+      ON LOWER(si_contract.address) = LOWER(t.contract)
+      AND si_contract.network = t.network
 
       WHERE t.type IN ('public_item_order', 'public_nft_order')
       GROUP BY

@@ -6,7 +6,6 @@ import { fromMillisecondsToSeconds } from '../../src/logic/date'
 import {
   MARKETPLACE_TRADE_TYPES,
   getValueFromTradeAsset,
-  getOffChainMarketplaceAddresses,
   isEstateFingerprintValid,
   resolveTradeSignature,
   validateTradeSignature
@@ -397,27 +396,6 @@ describe('when resolving which marketplace version a trade signature belongs to'
 
     it('should throw a contract not found error', () => {
       expect(() => resolveTradeSignature(trade, signerAddress)).toThrow(new MarketplaceContractNotFound(trade.chainId, trade.network))
-    })
-  })
-})
-
-describe('when listing the off-chain marketplace addresses of a chain', () => {
-  describe('and the chain has a V3 deployment', () => {
-    it('should include the V3 address alongside the older versions', () => {
-      expect(getOffChainMarketplaceAddresses(ChainId.MATIC_AMOY)).toContain(
-        getContract(ContractName.OffChainMarketplaceV3, ChainId.MATIC_AMOY).address.toLowerCase()
-      )
-    })
-  })
-
-  describe('and the chain has no V3 deployment', () => {
-    // V3 is testnet-only, and this list feeds SQL that runs on mainnet, so an absent version has to be
-    // skipped rather than throw.
-    it('should return the deployed versions without throwing', () => {
-      expect(getOffChainMarketplaceAddresses(ChainId.MATIC_MAINNET)).toEqual([
-        getContract(ContractName.OffChainMarketplace, ChainId.MATIC_MAINNET).address.toLowerCase(),
-        getContract(ContractName.OffChainMarketplaceV2, ChainId.MATIC_MAINNET).address.toLowerCase()
-      ])
     })
   })
 })

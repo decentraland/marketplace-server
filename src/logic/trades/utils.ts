@@ -107,35 +107,6 @@ export const OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [ContractName.OffChainMarket
  */
 const DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES: ContractName[] = [ContractName.OffChainMarketplaceV3]
 
-/**
- * Every off-chain marketplace version, oldest first, for enumerating addresses the indexer may hold rows
- * for. Distinct from OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES, which lists only the versions a NEW trade may
- * be signed against.
- */
-const ALL_OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [
-  ContractName.OffChainMarketplace,
-  ContractName.OffChainMarketplaceV2,
-  ContractName.OffChainMarketplaceV3
-]
-
-/**
- * Addresses of every off-chain marketplace version deployed on a chain, lowercased.
- *
- * Lowercased because every SQL comparison against these is written as `LOWER(address) IN (...)`, and some
- * entries in the contract registry are checksummed — a checksummed literal on the right-hand side of that
- * comparison can never match.
- */
-export function getOffChainMarketplaceAddresses(chainId: ChainId): string[] {
-  return ALL_OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<string[]>((addresses, contractName) => {
-    try {
-      addresses.push(getContract(contractName, chainId).address.toLowerCase())
-    } catch (e) {
-      // Version not deployed on this chain.
-    }
-    return addresses
-  }, [])
-}
-
 /** The marketplace versions deployed on a chain, newest first. Empty if none are. */
 export function getOffChainMarketplaceContracts(chainId: ChainId): { contractName: ContractName; contract: ContractData }[] {
   return OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<{ contractName: ContractName; contract: ContractData }[]>(

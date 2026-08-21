@@ -2,9 +2,7 @@ import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
-import { getOffChainMarketplaceAddresses } from '../../logic/trades/utils'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
@@ -107,12 +105,6 @@ export function getTradesForTypeQuery(type: TradeType) {
   // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
   // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
   // would make getContract throw there.
-  const marketplaceAddresses = [
-    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
-    ...getOffChainMarketplaceAddresses(getPolygonChainId())
-  ]
-    .map(address => `'${address}'`)
-    .join(',')
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -186,7 +178,10 @@ export function getTradesForTypeQuery(type: TradeType) {
     LEFT JOIN squid_trades.trade as trade_status
       ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (${marketplaceAddresses})) as contract_signature_index ON t.network = contract_signature_index.network
+    -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
+    -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
+    LEFT JOIN squid_trades.signature_index as contract_signature_index
+      ON LOWER(contract_signature_index.address) = LOWER(t.contract) AND contract_signature_index.network = t.network
     WHERE t.type = '${type}'
     /**
      * NOT grouped by trade_status.caller.
@@ -237,12 +232,6 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
   // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
   // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
   // would make getContract throw there.
-  const marketplaceAddresses = [
-    ...getOffChainMarketplaceAddresses(getEthereumChainId()),
-    ...getOffChainMarketplaceAddresses(getPolygonChainId())
-  ]
-    .map(address => `'${address}'`)
-    .join(',')
   return SQL`
     SELECT
       t.id,
@@ -322,17 +311,16 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
     LEFT JOIN squid_trades.trade as trade_status
       ON (trade_status.signature = t.hashed_signature OR trade_status.trade_digest = t.trade_digest)
     LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN (`
-                .append(marketplaceAddresses)
-                .append(
-                  SQL`)) as contract_signature_index ON t.network = contract_signature_index.network
+    -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
+    -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
+    LEFT JOIN squid_trades.signature_index as contract_signature_index
+      ON LOWER(contract_signature_index.address) = LOWER(t.contract) AND contract_signature_index.network = t.network
     WHERE t.type = '`
-                    .append(type)
-                    .append(
-                      SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
+                .append(type)
+                .append(
+                  SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `)
-                    )
                 )
             )
         )
