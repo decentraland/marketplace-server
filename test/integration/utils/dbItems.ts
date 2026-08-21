@@ -1,3 +1,4 @@
+import SQL from 'sql-template-strings'
 import { Network, NFTCategory, Rarity, WearableCategory } from '@dcl/schemas'
 import { BaseComponents } from '../../../src/types'
 
@@ -1159,4 +1160,47 @@ export async function deleteSquidDBSale(
   await dappsDatabase.query(
     `DELETE FROM squid_marketplace."sale" WHERE search_contract_address = '${contractAddress}' AND search_item_id = ${itemId}`
   )
+}
+
+/**
+ * Rows in the indexer's tables, which nothing in the suite wrote before.
+ *
+ * Trade status is computed entirely in SQL from these, so without them every LEFT JOIN yields NULL, the
+ * status CASE always falls through to open, and a broken join is indistinguishable from a correct one.
+ */
+export async function createSquidTradeActionRow(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: { signature: string; action: 'cancelled' | 'executed'; caller: string; network: string }
+): Promise<void> {
+  const { signature, action, caller, network } = options
+  await dbComponent.dappsDatabase.query(SQL`
+    INSERT INTO squid_trades.trade (id, signature, network, action, caller, timestamp)
+    VALUES (${`${signature}-${action}-${caller}`}, ${signature}, ${network}, ${action}, ${caller.toLowerCase()}, ${Date.now()})
+  `)
+}
+
+export async function createSquidSignatureIndexRow(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: { address: string; contract: string; network: string; index: number }
+): Promise<void> {
+  const { address, contract, network, index } = options
+  await dbComponent.dappsDatabase.query(SQL`
+    INSERT INTO squid_trades.signature_index (id, address, contract, network, index)
+    VALUES (${`${address}-${contract}-${network}`}, ${address.toLowerCase()}, ${contract.toLowerCase()}, ${network}, ${index})
+  `)
+}
+
+/** Records the digest a V3 trade is identified by, which the server stores at creation time. */
+export async function setTradeDigest(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: { hashedSignature: string; tradeDigest: string }
+): Promise<void> {
+  await dbComponent.dappsDatabase.query(SQL`
+    UPDATE marketplace.trades SET trade_digest = ${options.tradeDigest} WHERE hashed_signature = ${options.hashedSignature}
+  `)
+}
+
+export async function clearSquidTradesRows(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
+  await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.trade`)
+  await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.signature_index`)
 }
