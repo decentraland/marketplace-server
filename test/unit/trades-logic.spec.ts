@@ -410,10 +410,12 @@ describe('when resolving which marketplace version a trade signature belongs to'
  * construction and the digest formula. If any of them drifts, the digest stops matching the value the
  * marketplace contract keys cancellations on, and this fails.
  */
+const FIXED_EXPIRATION = 1677542400000 // 2023-02-28T00:00:00Z
+const FIXED_EFFECTIVE = 1677542400000
 const FIXED_SIGNER = '0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a'
 const FIXED_V3_SEPOLIA_SIGNATURE =
-  '0x2c1a7d8bde8ae3922ce3b4aea5086c78b5bfd77766acb4f98961c8219ce78dd76d5aad966ad515e8d5d40517f17013a903d4cd4ae74e46b3dcb91b0c5f9d17c91c'
-const FIXED_V3_SEPOLIA_DIGEST = '0x491822dfcfd83072053748ee442b3c7d9f16b7827bad93773faf23e71fd82fcb'
+  '0xd1952f706d1ac2c3128e7cee95ed31c3e621b860c2132cba870ccd07192b599478de78992f22f41b46e6760dfe99293e59134466f88274247bbaffe1fdeb57c31c'
+const FIXED_V3_SEPOLIA_DIGEST = '0x540e09a0efdfaa3f24471cd8b91258b8a269ce60cf29aad889e162553e607891'
 
 describe('when resolving a known-good V3 signature against fixed expectations', () => {
   let trade: TradeCreation
@@ -427,8 +429,11 @@ describe('when resolving a known-good V3 signature against fixed expectations', 
       type: TradeType.BID,
       checks: {
         uses: 1,
-        expiration: new Date('2023-02-28 00:00:00').getTime(),
-        effective: new Date('2023-02-28 00:00:00').getTime(),
+        // Explicit epoch millis, not new Date('2023-02-28 00:00:00'), which parses as LOCAL time: the
+        // digest below is hardcoded, so anything timezone-dependent in the signed values makes it pass on
+        // one machine and fail on another.
+        expiration: FIXED_EXPIRATION,
+        effective: FIXED_EFFECTIVE,
         salt: '0x07',
         allowedRoot: '0x',
         contractSignatureIndex: 0,
