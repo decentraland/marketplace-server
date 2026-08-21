@@ -480,7 +480,17 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     );
     CREATE INDEX "IDX_f011ccea27833b0628a7532834" ON squid_marketplace."wearable" ("owner_id");
 
+    -- The squid management server owns these two; recreateTradesMaterializedView reads them unqualified
+    -- to grant the view to whichever squid users are live. They have to live in the marketplace schema:
+    -- that connection runs with search_path=marketplace, so a copy in public is invisible to it. Empty
+    -- here, so the grant loop is a no-op.
+    CREATE TABLE marketplace.squids ("schema" text);
+    CREATE TABLE marketplace.indexers ("schema" text, db_user text);
+
     CREATE ROLE mv_trades_owner NOLOGIN;
+    -- recreateTradesMaterializedView grants to this role at the end, so it has to exist or the
+    -- whole recreate transaction rolls back.
+    CREATE ROLE dappsdata NOLOGIN;
     GRANT USAGE ON SCHEMA marketplace TO mv_trades_owner;
     GRANT CREATE ON SCHEMA marketplace TO mv_trades_owner;
     GRANT SELECT ON ALL TABLES IN SCHEMA marketplace TO mv_trades_owner;

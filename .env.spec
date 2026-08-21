@@ -44,3 +44,6 @@ MARKETPLACE_BASE_URL=https://decentraland.org/marketplace
 
 ETHEREUM_CHAIN_ID=1
 POLYGON_CHAIN_ID=137
+
+# Token for POST /v1/trades/materialized-view/recreate, exercised by the integration tests.
+MARKETPLACE_SERVER_TRADES_API_TOKEN=integration-test-token
