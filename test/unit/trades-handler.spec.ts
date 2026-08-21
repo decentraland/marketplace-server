@@ -11,6 +11,7 @@ import {
   DuplicateItemOrderError,
   EstateContractNotFoundForChainId,
   InvalidEstateTrade,
+  InvalidOwnerError,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
   InvalidTradeStructureError,
@@ -103,6 +104,7 @@ describe('when handling the creation of a new trade', () => {
         error: new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET),
         code: StatusCode.BAD_REQUEST
       },
+      { errorName: 'InvalidOwnerError', error: new InvalidOwnerError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT },
       { errorName: 'DuplicateNFTOrderError', error: new DuplicateNFTOrderError(), code: StatusCode.CONFLICT },
       { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT }

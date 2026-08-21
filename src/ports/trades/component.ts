@@ -10,6 +10,7 @@ import {
 } from '../../logic/trades/materialized-view'
 import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
+import { IPgComponent } from '../db/types'
 import {
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
@@ -61,9 +62,14 @@ type TradeWithAssetRow = {
 }
 
 export function createTradesComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier'>
+  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier'> & {
+    dappsReadDatabase?: IPgComponent
+  }
 ): ITradesComponent {
-  const { dappsDatabase: pg, eventPublisher, logs, shopNotifier } = components
+  const { dappsDatabase: pg, dappsReadDatabase, eventPublisher, logs, shopNotifier } = components
+  // Route read-only validation + notification queries to the read replica when one is wired, keeping
+  // the write primary for the insert transaction. Falls back to the write DB if no replica is given.
+  const readPg = dappsReadDatabase ?? pg
   const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
@@ -164,28 +170,46 @@ export function createTradesComponent(
       throw new InvalidTradeSignerError()
     }
 
-    // validate trade type
-    if (!(await validateTradeByType(trade, pg))) {
-      throw new InvalidTradeStructureError(trade.type)
-    }
-    // Validate if estate trade is correct
-    if (isEstateChain(trade.chainId) && !(await isValidEstateTrade(trade))) {
-      throw new InvalidEstateTrade()
-    }
-
     // validate signature length (0x + 130 hex chars for a standard ECDSA signature)
     if (trade.signature.length !== 132) {
       throw new InvalidTradeSignatureError()
     }
 
-    // validate signature
+    // Validate the signature BEFORE any I/O: it is cheap (CPU only) and short-circuiting here avoids
+    // running DB queries / on-chain RPC calls on behalf of forged or unsigned requests.
     if (!validateTradeSignature(trade, signer)) {
       throw new InvalidTradeSignatureError()
     }
 
-    // validate right ownership
-    if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.chainId))) {
-      throw new InvalidOwnerError()
+    // The remaining validations are independent and I/O-bound (DB query + on-chain RPC calls). Run
+    // them concurrently instead of serially so the validation latency is the max of the checks
+    // rather than their sum. We then surface the first failure in a FIXED precedence
+    // (structure → estate → ownership) so the error returned to the client is deterministic and does
+    // not depend on which check happens to settle first.
+    const validations = await Promise.allSettled([
+      (async () => {
+        // validate trade type / structure (read-only duplicate check → read replica)
+        if (!(await validateTradeByType(trade, readPg))) {
+          throw new InvalidTradeStructureError(trade.type)
+        }
+      })(),
+      (async () => {
+        // validate the estate fingerprint (estate chains only)
+        if (isEstateChain(trade.chainId) && !(await isValidEstateTrade(trade))) {
+          throw new InvalidEstateTrade()
+        }
+      })(),
+      (async () => {
+        // validate ownership of the sent asset (ERC721 sent assets only)
+        if (isERC721TradeAsset(trade.sent[0]) && !(await validateAssetOwnership(trade.sent[0], signer, trade.chainId))) {
+          throw new InvalidOwnerError()
+        }
+      })()
+    ])
+
+    const failedValidation = validations.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failedValidation) {
+      throw failedValidation.reason
     }
 
     const tradeContract = getContract(ContractName.OffChainMarketplaceV2, trade.chainId)
@@ -215,21 +239,15 @@ export function createTradesComponent(
       }
     )
 
-    // trigger notification for trade creation
-    try {
-      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED, signer)
-      if (event) {
-        const messageId = await eventPublisher.publishMessage(event)
-        logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
-      }
-    } catch (e) {
-      logger.error(`Could not trigger trade creation event for trade type ${trade.type}`, isErrorWithMessage(e) ? e.message : (e as any))
-    }
+    // Fire-and-forget the creation notification. It is best-effort (failures are swallowed) and must
+    // not add the asset lookups + SNS publish round-trip to the user-perceived latency: the trade is
+    // already durably persisted, so return it immediately.
+    void notifyTradeCreated(insertedTrade, signer)
 
-    // Best-effort, fire-and-forget: tell the Shop waitlist when this listing makes the item go on sale.
-    // The trade is already persisted, so we deliberately do NOT await — the ping (a couple of queries +
-    // up to a 2s HTTP timeout) must not delay the trade response. Errors are swallowed here and inside
-    // the notifier, so it can never affect trade creation.
+    // Same deal for the Shop waitlist ping (a couple of queries plus up to a 2s HTTP timeout): tell the
+    // waitlist when this listing makes the item go on sale, but never on the caller's clock. It sits here
+    // rather than at the end of notifyTradeCreated so it does not queue behind the SNS publish — the two
+    // are independent, and neither can affect trade creation.
     void notifyShopIfItemGoesOnSale(insertedTrade).catch((e: unknown) =>
       logger.error(`Could not notify shop waitlist for trade ${insertedTrade.id}`, isErrorWithMessage(e) ? e.message : (e as any))
     )
@@ -259,6 +277,22 @@ export function createTradesComponent(
     }
 
     return insertedTrade
+  }
+
+  async function notifyTradeCreated(insertedTrade: Trade, signer: string) {
+    try {
+      // read-only asset lookups for the notification → read replica
+      const event = await getNotificationEventForTrade(insertedTrade, readPg, TradeEvent.CREATED, signer)
+      if (event) {
+        const messageId = await eventPublisher.publishMessage(event)
+        logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
+      }
+    } catch (e) {
+      logger.error(
+        `Could not trigger trade creation event for trade type ${insertedTrade.type}`,
+        isErrorWithMessage(e) ? e.message : (e as any)
+      )
+    }
   }
 
   // Notifies the Shop that an item transitioned from not-for-sale to on-sale, so it can email its

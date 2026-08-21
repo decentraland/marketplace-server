@@ -18,6 +18,7 @@ import {
   DuplicateNFTOrderError,
   DuplicateItemOrderError,
   InvalidEstateTrade,
+  InvalidOwnerError,
   EstateContractNotFoundForChainId
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
@@ -86,6 +87,7 @@ export async function addTradeHandler(
       e instanceof InvalidTradeSignerError ||
       e instanceof InvalidECDSASignatureError ||
       e instanceof InvalidEstateTrade ||
+      e instanceof InvalidOwnerError ||
       e instanceof EstateContractNotFoundForChainId
     ) {
       return {
