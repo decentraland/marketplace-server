@@ -7,9 +7,9 @@
  * including per-version contract signature index scoping, network-scoped signer index and the V3
  * cancellation digest. The joins below are therefore stale.
  *
- * Consequence to know about: a freshly migrated database gets THIS view, not the current one, so its
- * trade statuses are computed with the old rules until someone calls
- * POST /v1/trades/materialized-view/recreate. Any deploy that changes the view needs that call.
+ * Migration 1787300000000 replaces the view with that current definition, so a freshly migrated database
+ * no longer ends up on the stale rules below. Later changes to the view still need either a new migration
+ * or a POST /v1/trades/materialized-view/recreate call.
  */
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
