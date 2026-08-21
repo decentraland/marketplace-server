@@ -90,6 +90,11 @@ test('trades materialized view controller', function ({ components }) {
         expect(definition).toMatch(/si_contract\.address = lower\(t\.contract\)/)
       })
 
+      // A row's identity is address + contract + network, so address alone no longer matches at most one.
+      it('should match the contract index row on its holder as well', () => {
+        expect(definition).toMatch(/si_contract\.contract = lower\(t\.contract\)/)
+      })
+
       it('should be queryable', async () => {
         const { dappsDatabase } = components
 

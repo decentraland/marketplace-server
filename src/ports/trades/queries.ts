@@ -184,6 +184,8 @@ export function getTradesForTypeQuery(type: TradeType) {
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
       ON contract_signature_index.address = LOWER(t.contract)
+      -- Exact on the row's whole identity (address + contract + network); see the materialized view.
+      AND contract_signature_index.contract = LOWER(t.contract)
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
       AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
@@ -322,6 +324,8 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
       ON contract_signature_index.address = LOWER(t.contract)
+      -- Exact on the row's whole identity (address + contract + network); see the materialized view.
+      AND contract_signature_index.contract = LOWER(t.contract)
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
       AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END

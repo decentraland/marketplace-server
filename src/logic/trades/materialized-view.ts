@@ -154,6 +154,11 @@ export const TRADES_MV_CREATE_SQL = `
       -- rows would multiply rows through this LEFT JOIN.
       LEFT JOIN squid_trades.signature_index AS si_contract
       ON si_contract.address = LOWER(t.contract)
+      -- Exact on the row's whole identity, which is address + contract + network. For the marketplace's
+      -- own counter the subject and the holder are the same contract, so both columns carry it; matching
+      -- address alone would also reach a signer row that happens to be keyed to this address under a
+      -- different holder, and match more than one row where the join must match at most one.
+      AND si_contract.contract = LOWER(t.contract)
       -- The indexer's Network enum spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC,
       -- so a raw equality never matches a Polygon trade and the whole per-version scoping is a no-op on
       -- the network carrying most of the volume. Same translation as ports/catalog/queries.ts.

@@ -112,6 +112,39 @@ test('trade status computed from indexer rows', function ({ components }) {
     })
   })
 
+  describe('and a contract signature index row is keyed to this marketplace but held by another', () => {
+    beforeEach(async () => {
+      // address matches the trade's marketplace, contract does not. Only reachable because a row's
+      // identity is address + contract + network, so address alone is no longer unique.
+      await createSquidSignatureIndexRow(components, {
+        address: TRADE_CONTRACT,
+        contract: OTHER_MARKETPLACE,
+        network: 'POLYGON',
+        index: 1
+      })
+    })
+
+    it('should still report the bid as open', async () => {
+      expect(await fetchStatus()).toBe('open')
+    })
+  })
+
+  describe('and the marketplace the trade targets bumped its own contract signature index', () => {
+    beforeEach(async () => {
+      await createSquidSignatureIndexRow(components, {
+        address: TRADE_CONTRACT,
+        contract: TRADE_CONTRACT,
+        network: 'POLYGON',
+        index: 1
+      })
+    })
+
+    // The trade signed contractSignatureIndex 0.
+    it('should report the bid as cancelled', async () => {
+      expect(await fetchStatus()).toBe('cancelled')
+    })
+  })
+
   describe('and the signer bumped their signature index on a different marketplace version', () => {
     beforeEach(async () => {
       await createSquidSignatureIndexRow(components, {
