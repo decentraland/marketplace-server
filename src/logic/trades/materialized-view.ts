@@ -199,7 +199,11 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
           t.expires_at,
           MAX(t.contract) AS trade_contract,
           CASE
-              WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
+              -- Only the SIGNER's cancellation counts. cancelSignature takes no signer check, and the
+              -- contract scopes the flag to keccak256(caller, digest) while settlement reads
+              -- keccak256(signer, digest) — so a stranger cancelling is a no-op on chain. Counting it
+              -- here let anyone grief a listing into reading cancelled while it stayed settleable.
+              WHEN COUNT(CASE WHEN st.action = 'cancelled' AND LOWER(st.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN 'cancelled'
               WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
               WHEN (
                   (si_signer.index IS NOT NULL
@@ -266,8 +270,12 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
       LEFT JOIN squid_trades.trade AS st
       ON st.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
 
+      -- Scoped by network like si_contract. Without it a signer with rows on both networks matched
+      -- twice, duplicating the trade into two GROUP BY groups with contradictory statuses, which breaks
+      -- the unique index the CONCURRENTLY refresh needs — and let an Ethereum bump cancel Polygon trades.
       LEFT JOIN squid_trades.signature_index AS si_signer
-      ON LOWER(si_signer.address) = LOWER(t.signer)
+      ON si_signer.address = LOWER(t.signer)
+      AND si_signer.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
 
       -- Keyed by the trade's OWN marketplace, not just by network. Each version keeps an independent
       -- contractSignatureIndex, and a trade signed the value it read from the version it targets, so

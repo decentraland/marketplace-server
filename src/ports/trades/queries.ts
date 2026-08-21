@@ -131,7 +131,7 @@ export function getTradesForTypeQuery(type: TradeType) {
         'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
-        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -141,7 +141,7 @@ export function getTradesForTypeQuery(type: TradeType) {
           (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
           OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
         ) THEN '${ListingStatus.CANCELLED}'
-        WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
+        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
       ELSE '${ListingStatus.OPEN}'
       END AS status
     FROM marketplace.trades as t
@@ -175,7 +175,9 @@ export function getTradesForTypeQuery(type: TradeType) {
     -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
     LEFT JOIN squid_trades.trade as trade_status
       ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
-    LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+    LEFT JOIN squid_trades.signature_index as signer_signature_index
+      ON signer_signature_index.address = LOWER(t.signer)
+      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
@@ -256,7 +258,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
         'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
-        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN 'cancelled'
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -266,7 +268,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
           (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
           OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
         ) THEN 'cancelled'
-        WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then 'sold'
+        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then 'sold'
       ELSE 'open'
       END AS status
     FROM marketplace.trades as t
@@ -309,7 +311,9 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
     -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
     LEFT JOIN squid_trades.trade as trade_status
       ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
-    LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
+    LEFT JOIN squid_trades.signature_index as signer_signature_index
+      ON signer_signature_index.address = LOWER(t.signer)
+      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
