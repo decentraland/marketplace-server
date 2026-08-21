@@ -102,9 +102,6 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 }
 
 export function getTradesForTypeQuery(type: TradeType) {
-  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
-  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
-  // would make getContract throw there.
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -229,9 +226,6 @@ export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, n
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
-  // Every deployed marketplace version, so a signature-index bump on any of them is seen. Built from the
-  // registry rather than one constant per version: V3 has no mainnet deployment, so naming it directly
-  // would make getContract throw there.
   return SQL`
     SELECT
       t.id,

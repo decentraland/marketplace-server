@@ -52,12 +52,16 @@ let publishMessageMock: jest.Mock
 let notifyItemOnSaleMock: jest.Mock
 let signatureMatch: TradeSignatureMatch
 
+const MOCK_CANCELLATION_DIGEST = '0x491822dfcfd83072053748ee442b3c7d9f16b7827bad93773faf23e71fd82fcb'
+
 describe('when adding a new trade', () => {
   beforeEach(() => {
     mockSigner = '0x1234567890'
+    // A non-null digest on purpose: it is what a V3 trade carries, and asserting it as a literal below
+    // means the trade recording a hardcoded null instead of what was resolved fails this test.
     signatureMatch = {
       contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
-      cancellationDigest: null
+      cancellationDigest: MOCK_CANCELLATION_DIGEST
     }
     mockTrade = {
       signer: mockSigner,
@@ -303,10 +307,7 @@ describe('when adding a new trade', () => {
 
     it('should add the trade to the database', async () => {
       expect(mockPgQuery).toHaveBeenCalledWith(
-        getInsertTradeQuery(
-          { ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.cancellationDigest },
-          mockSigner
-        )
+        getInsertTradeQuery({ ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: MOCK_CANCELLATION_DIGEST }, mockSigner)
       )
     })
 

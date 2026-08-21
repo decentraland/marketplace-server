@@ -199,7 +199,19 @@ export function resolveTradeSignature(trade: TradeCreation, signer: string): Tra
 
   for (const { contractName, contract } of contracts) {
     const { domain, values } = getTradeTypedData(trade, contract)
-    if (verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature).toLowerCase() === signer) {
+    // verifyTypedData THROWS on a structurally invalid signature rather than returning a non-matching
+    // address — r outside the curve order, or a non-canonical (high) s. Both pass the v-byte check above,
+    // so without this guard they escape as an unhandled error and the caller answers 500 instead of
+    // rejecting the trade. A high-s signature is exactly the malleability case V3 exists to fix, so it
+    // has to read as an invalid signature, not as a server fault.
+    let recovered: string
+    try {
+      recovered = verifyTypedData(domain, MARKETPLACE_TRADE_TYPES, values, trade.signature)
+    } catch (error) {
+      return null
+    }
+
+    if (recovered.toLowerCase() === signer.toLowerCase()) {
       return {
         contract,
         cancellationDigest: DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES.includes(contractName)
