@@ -28,7 +28,12 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     { ifNotExists: true }
   )
 
-  pgm.createIndex({ schema: SCHEMA, name: TRADES_TABLE }, 'trade_digest', { ifNotExists: true })
+  // Partial: only V3-signed trades carry a digest, so indexing the NULLs would roughly double the index
+  // for rows that can never match a lookup.
+  pgm.createIndex({ schema: SCHEMA, name: TRADES_TABLE }, 'trade_digest', {
+    ifNotExists: true,
+    where: 'trade_digest IS NOT NULL'
+  })
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
