@@ -21,6 +21,9 @@ let analyticsTrackMock: jest.Mock
 
 beforeEach(async () => {
   analyticsTrackMock = jest.fn()
+  // The component builds its Analytics client once, on creation, so the mock has to be in place before
+  // createCatalogComponent runs rather than inside the individual test setups.
+  ;(Analytics as jest.Mock).mockImplementation(() => ({ track: analyticsTrackMock }))
   dbClientQueryMock = jest.fn()
   dbClientReleaseMock = jest.fn().mockResolvedValue(undefined)
   dappsDatabase = createTestPgComponent({
@@ -95,11 +98,6 @@ describe('Catalog Component', () => {
         dbClientQueryMock.mockResolvedValueOnce({
           rows: [{ total: items.length }]
         })
-        ;(Analytics as jest.Mock).mockImplementation(() => {
-          return {
-            track: analyticsTrackMock
-          }
-        })
         ;(picks.getPicksStats as jest.Mock).mockResolvedValue([])
       })
 
@@ -158,6 +156,22 @@ describe('Catalog Component', () => {
             strings: expect.arrayContaining([expect.stringContaining('REFRESH MATERIALIZED VIEW')])
           })
         )
+      })
+
+      it('should rebuild the search words table on its own connection, so a timed out statement cannot leak into the refresh', async () => {
+        dbClientQueryMock.mockImplementation((sql: unknown) =>
+          typeof sql === 'string' && sql.includes('pg_try_advisory_xact_lock')
+            ? Promise.resolve({ rows: [{ acquired: true }] })
+            : Promise.resolve({ rows: [] })
+        )
+
+        await catalogComponent.updateBuilderServerItemsView()
+        const statements = dbClientQueryMock.mock.calls.map(([sql]) => sql).filter((sql): sql is string => typeof sql === 'string')
+
+        expect(statements).toContain('COMMIT')
+        expect(statements.some(sql => sql.includes('item_search_words_staging'))).toBe(true)
+        // one connection for the refresh, a separate one for the rebuild
+        expect(dbClientReleaseMock).toHaveBeenCalledTimes(2)
       })
     })
 
