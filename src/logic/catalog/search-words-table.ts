@@ -3,10 +3,12 @@ import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../con
 export const SEARCH_WORDS_TABLE_NAME = 'item_search_words'
 export const SEARCH_WORDS_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${SEARCH_WORDS_TABLE_NAME}`
 export const SEARCH_WORDS_WORD_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_word_trgm`
+export const SEARCH_WORDS_ITEM_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_item_id`
 
 const STAGING_TABLE_NAME = `${SEARCH_WORDS_TABLE_NAME}_staging`
 const STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_TABLE_NAME}`
 const STAGING_WORD_INDEX = `${SEARCH_WORDS_WORD_INDEX}_staging`
+const STAGING_ITEM_INDEX = `${SEARCH_WORDS_ITEM_INDEX}_staging`
 
 // Any positive constant works; it only has to be the same in every instance of this service.
 const REBUILD_ADVISORY_LOCK_KEY = 8_421_207
@@ -45,6 +47,9 @@ const SELECT_SEARCH_WORDS = `SELECT DISTINCT
 
 export const CREATE_SEARCH_WORDS_TABLE = `CREATE TABLE IF NOT EXISTS ${SEARCH_WORDS_TABLE} AS ${SELECT_SEARCH_WORDS}`
 export const CREATE_SEARCH_WORDS_WORD_INDEX = `CREATE INDEX IF NOT EXISTS ${SEARCH_WORDS_WORD_INDEX} ON ${SEARCH_WORDS_TABLE} USING gin (word ${TRIGRAM_OPS})`
+// The shop feeds ask "does THIS item match?" once per row, so they need to reach an item's handful of
+// words directly. The trigram index answers the opposite question and cannot serve that lookup.
+export const CREATE_SEARCH_WORDS_ITEM_INDEX = `CREATE INDEX IF NOT EXISTS ${SEARCH_WORDS_ITEM_INDEX} ON ${SEARCH_WORDS_TABLE} (item_id)`
 export const DROP_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${SEARCH_WORDS_TABLE}`
 
 export type RebuildOutcome = 'rebuilt' | 'skipped'
@@ -76,11 +81,13 @@ export async function rebuildItemSearchWords(client: QueryableClient): Promise<R
     await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`)
     await client.query(`CREATE TABLE ${STAGING_TABLE} AS ${SELECT_SEARCH_WORDS}`)
     await client.query(`CREATE INDEX ${STAGING_WORD_INDEX} ON ${STAGING_TABLE} USING gin (word ${TRIGRAM_OPS})`)
+    await client.query(`CREATE INDEX ${STAGING_ITEM_INDEX} ON ${STAGING_TABLE} (item_id)`)
     await client.query(`ANALYZE ${STAGING_TABLE}`)
 
     await client.query(DROP_SEARCH_WORDS_TABLE)
     await client.query(`ALTER TABLE ${STAGING_TABLE} RENAME TO ${SEARCH_WORDS_TABLE_NAME}`)
     await client.query(`ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_WORD_INDEX} RENAME TO ${SEARCH_WORDS_WORD_INDEX}`)
+    await client.query(`ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_ITEM_INDEX} RENAME TO ${SEARCH_WORDS_ITEM_INDEX}`)
 
     await client.query('COMMIT')
     return 'rebuilt'

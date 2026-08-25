@@ -1,6 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getSearchMatchWhere } from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
@@ -252,12 +253,9 @@ function creditsToWei(credits: number): bigint | null {
   return BigInt(Math.max(0, Math.floor(credits))) * USD_WEI_PER_CREDIT
 }
 
-// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
-// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
-// search into an unbounded wildcard scan.
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&')
-}
+// The item behind a row, whichever side of the trade it came from: primary listings resolve through
+// item_p, secondary ones through the nft to item_s. Both aliases come from metadataJoinsOn.
+const SHOP_ITEM_ID_EXPRESSION = 'COALESCE(item_p.id, item_s.id)::text'
 
 // Clamp a caller-supplied count to [min, max], flooring and falling back to `fallback` for
 // missing/non-finite input.
@@ -322,7 +320,7 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
     }
   }
   if (filters.search) {
-    query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+    query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
   }
   // Social emotes are INCLUDED by default and excluded only on an explicit `includeSocialEmotes=false`,
   // matching /v1/items, /v2/catalog and /v1/trendings so one convention covers every feed. COALESCE over
@@ -692,7 +690,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       if (maxWei != null) query.append(SQL` AND mv.amount_received <= ${maxWei.toString()}`)
     }
     if (filters.search) {
-      query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+      query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
@@ -862,7 +860,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       )
     }
     if (filters.search) {
-      query.append(SQL` AND COALESCE(w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+      query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).

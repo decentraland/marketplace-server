@@ -16,21 +16,34 @@ describe('when building the items queries', () => {
   })
 
   describe('and filtering by search text', () => {
-    it('should match a case-insensitive substring of the item name, not the trigram-diluted search_text', () => {
+    it('should match the item name word by word, so a term is found wherever it sits in the name', () => {
       const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
-      expect(query.text).toMatch(NAME_ILIKE)
+      expect(query.text).toContain('marketplace.item_search_words')
+      expect(query.text).toContain('search_words.word % lower(')
       expect(query.text).not.toContain('search_text')
-      expect(query.values).toContain('%chapeau%')
+      expect(query.values).toContain('chapeau')
     })
 
-    it('should escape LIKE metacharacters so the term is matched literally', () => {
+    it('should also match the item tags, which is where brand and collab names live', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      expect(query.text).toContain('lower(search_tags.tag) = lower(')
+    })
+
+    it('should not match a literal substring of the whole name: that returned nothing for multi-word terms', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'hat pirate' })
+      expect(query.text).not.toMatch(NAME_ILIKE)
+      expect(query.values).not.toContain('%hat pirate%')
+    })
+
+    it('should carry LIKE metacharacters as plain data now that nothing builds a LIKE pattern', () => {
       const query = getCatalogItemsQuery({ ...filters, search: '50%_off\\' })
-      expect(query.values).toContain('%50\\%\\_off\\\\%')
+      expect(query.values).toContain('50%_off\\')
     })
 
     it('should apply the same rule to the /v1/items feed', () => {
       const query = getItemsQuery({ ...filters, search: 'chapeau' })
-      expect(query.text).toMatch(NAME_ILIKE)
+      expect(query.text).toContain('marketplace.item_search_words')
+      expect(query.text).not.toMatch(NAME_ILIKE)
       expect(query.text).not.toContain('search_text')
     })
   })

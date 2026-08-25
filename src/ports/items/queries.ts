@@ -2,6 +2,7 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeAssetType, TradeType, WearableGender } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { getSearchMatchWhere } from '../../logic/catalog/search-match'
 import { getTradesCTE } from '../catalog/queries'
 import { ShopSortBy } from '../shop-catalog/types'
 import { getWhereStatementFromFilters } from '../utils'
@@ -60,13 +61,6 @@ function getEmotePlayModeWhereStatement(emotePlayMode: EmotePlayMode | EmotePlay
   return SQL` item.search_emote_loop = false `
 }
 
-// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
-// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
-// search into an unbounded wildcard scan.
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&')
-}
-
 // "Buyable right now": primary liquidity only -- an open v3 item order or the classic store minter,
 // with stock left. Built fresh per call because a SQLStatement carries its own bound parameters and
 // cannot be reused across the positive and negated branches.
@@ -101,12 +95,10 @@ function getItemsWhereStatement(filters: ItemQueryFilters, rateNumericString = '
   // minter flags are NOT NULL, so the negation is two-valued and needs no NULL guard.
   const FILTER_BY_IS_ON_SALE =
     filters.isOnSale === undefined ? null : filters.isOnSale ? getIsOnSalePredicate() : SQL` NOT `.append(getIsOnSalePredicate())
-  // Case-insensitive substring over the item NAME -- the same rule /v3/catalog/unified and
-  // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. The previous
-  // `search_text % q` was whole-string trigram similarity against name+description+tags: because
-  // similarity is normalized over the trigram union, a short query against a long text scores below
-  // the 0.3 threshold, which made items with rich descriptions unsearchable by their own name.
-  const FILTER_BY_TEXT = filters.search ? getItemNameExpression().append(SQL` ILIKE ${'%' + escapeLike(filters.search) + '%'} `) : null
+  // Word-level match over the item's name plus its tags -- the same rule /v3/catalog/unified and
+  // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. See
+  // getSearchMatchWhere for why the previous `name ILIKE '%q%'` had to go.
+  const FILTER_BY_TEXT = filters.search ? getSearchMatchWhere('item.id::text', filters.search) : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
   const FILTER_BY_WEARABLE_ACCESSORY = filters.isWearableAccessory ? SQL` item.search_is_wearable_accessory = true ` : null
   const FILTER_BY_WEARABLE_SMART = filters.isWearableSmart ? SQL` item.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
