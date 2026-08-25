@@ -79,11 +79,21 @@ function getItemNameExpression(): SQLStatement {
 // /v1/items (getItemsQuery) still emits no ORDER BY, which is a real paging hazard there — LIMIT/OFFSET
 // over an unordered plan can repeat or drop a row between pages — but the fix belongs in that query, not
 // in the WHERE clause both feeds share.
-function getItemsWhereStatement(filters: ItemQueryFilters, rateNumericString = '0'): SQLStatement {
+function getItemsWhereStatement(
+  filters: ItemQueryFilters,
+  rateNumericString = '0',
+  { onlyApprovedCollections = false }: { onlyApprovedCollections?: boolean } = {}
+): SQLStatement {
   if (!filters) {
     return SQL``
   }
 
+  // The browse feed mirrors the base WHERE /v2/catalog applies: an item whose collection curation did
+  // not approve does not belong in a storefront. Scoped to browse on purpose -- /v1/items is also how a
+  // single item is fetched by id, and making those 404 is a different decision from not listing them.
+  // NOTE `= true` rather than `IS NOT FALSE`: the flag is NULL for most unapproved items (a squid
+  // denormalization quirk), and every one of those belongs to a collection with is_approved = false.
+  const FILTER_BY_APPROVED_COLLECTION = onlyApprovedCollections ? SQL` item.search_is_collection_approved = true ` : null
   const FILTER_BY_CATEGORY = filters.category ? SQL` LOWER(item.item_type) = ANY (${getItemTypesFromNFTCategory(filters.category)}) ` : null
   const creators = filters.creator && (Array.isArray(filters.creator) ? filters.creator : [filters.creator])
   const FILTER_BY_CREATOR =
@@ -139,6 +149,7 @@ function getItemsWhereStatement(filters: ItemQueryFilters, rateNumericString = '
   // Note: passing emoteOutcomeType together with includeSocialEmotes=false is contradictory and returns no emotes.
   const EXCLUDE_SOCIAL_EMOTES = filters.includeSocialEmotes === false ? SQL` emote.outcome_type IS NULL ` : null
   return getWhereStatementFromFilters([
+    FILTER_BY_APPROVED_COLLECTION,
     FILTER_BY_CATEGORY,
     FILTER_BY_CREATOR,
     FITLER_BY_RARITY,
@@ -385,7 +396,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
                         .append(
                           ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
                         )
-                        .append(getItemsWhereStatement(filters, rateNumericString))
+                        .append(getItemsWhereStatement(filters, rateNumericString, { onlyApprovedCollections: true }))
                         .append(getCatalogItemsOrderByStatement(rateNumericString, filters.sortBy))
                         .append(getItemsLimitAndOffsetStatement(filters))
                     )

@@ -19,9 +19,14 @@ const REBUILD_ADVISORY_LOCK_KEY = 8_421_207
 const TRIGRAM_OPS = 'public.gin_trgm_ops'
 
 /**
- * One row per (item, word of its name). `word` is lowercased and carries the trigram index used for
- * matching; `original_word` keeps the name's own casing, because it is reported back as the matched
+ * One row per (item, searchable word). `word` is lowercased and carries the trigram index used for
+ * matching; `original_word` keeps the source's own casing, because it is reported back as the matched
  * term in search analytics.
+ *
+ * Two sources feed it. The item's own name, obviously — and the name of the collection it belongs to,
+ * because that is where brand and collaboration names live. Searching "balenciaga" used to return
+ * nothing at all: no item is named that, and no tag carries it, but three collections are. Same for
+ * "mvfw", which names a Metaverse Fashion Week collection rather than any garment in it.
  *
  * This is a plain table rather than a materialized view on purpose. A materialized view resolves its
  * source tables once and holds them by oid, and squid deployments are promoted by renaming a
@@ -29,7 +34,7 @@ const TRIGRAM_OPS = 'public.gin_trgm_ops'
  * serving the retired deployment's names with nothing to signal it, and it would also make the
  * retired schema undroppable. Rebuilding a table from a plain query has neither problem.
  */
-const SELECT_SEARCH_WORDS = `SELECT DISTINCT
+const SELECT_SEARCH_WORDS = `SELECT
       items.id::text AS item_id,
       lower(w.text) AS word,
       w.text AS original_word
@@ -43,6 +48,16 @@ const SELECT_SEARCH_WORDS = `SELECT DISTINCT
       ON em.id = md.emote_id
      AND md.item_type = 'emote_v1'
     CROSS JOIN LATERAL unnest(string_to_array(COALESCE(wb.name, em.name), ' ')) AS w(text)
+    WHERE w.text <> ''
+    UNION
+    SELECT
+      items.id::text AS item_id,
+      lower(w.text) AS word,
+      w.text AS original_word
+    FROM ${MARKETPLACE_SQUID_SCHEMA}.item AS items
+    JOIN ${MARKETPLACE_SQUID_SCHEMA}.collection AS collections
+      ON collections.id = items.collection_id
+    CROSS JOIN LATERAL unnest(string_to_array(collections.name, ' ')) AS w(text)
     WHERE w.text <> ''`
 
 export const CREATE_SEARCH_WORDS_TABLE = `CREATE TABLE IF NOT EXISTS ${SEARCH_WORDS_TABLE} AS ${SELECT_SEARCH_WORDS}`

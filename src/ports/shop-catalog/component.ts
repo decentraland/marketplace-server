@@ -257,6 +257,15 @@ function creditsToWei(credits: number): bigint | null {
 // item_p, secondary ones through the nft to item_s. Both aliases come from metadataJoinsOn.
 const SHOP_ITEM_ID_EXPRESSION = 'COALESCE(item_p.id, item_s.id)::text'
 
+// A trade whose item belongs to a collection curation did not approve is not something to list, mirroring
+// the base WHERE /v2/catalog applies. Rows whose sent asset is not a collection item at all -- LAND,
+// estates, names -- have no collection to judge, so they stay: COALESCE cannot tell "no item" from "item
+// with a NULL flag", which is why the two cases are spelled out rather than defaulted.
+const APPROVED_COLLECTION_PREDICATE = `(
+    COALESCE(item_p.id, item_s.id) IS NULL
+    OR COALESCE(item_p.search_is_collection_approved, item_s.search_is_collection_approved) = true
+  )`
+
 // Clamp a caller-supplied count to [min, max], flooring and falling back to `fallback` for
 // missing/non-finite input.
 function clampCount(value: number | undefined, fallback: number, min: number, max: number): number {
@@ -275,6 +284,7 @@ function rateToNumericString(rate: number): string {
 // The shared browse filters (category, contract/item, rarity, category, search) applied identically to
 // each branch of the unified feed. Mirrors the expressions used by getShopListings.
 function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilters): void {
+  query.append(SQL` AND `).append(APPROVED_COLLECTION_PREDICATE)
   if (filters.contractAddress) {
     query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
   }
@@ -642,13 +652,18 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(SQL`, `)
       .append(genderExpr())
       .append(SQL` `)
-      .append(metadataJoins()).append(SQL`
+      .append(metadataJoins())
+      .append(
+        SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)
         AND EXISTS (
           SELECT 1 FROM marketplace.trade_assets ta
           WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${USD_PEGGED_ASSET_TYPE}
-        )`)
+        )
+        AND `
+      )
+      .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.contractAddress) {
       query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
@@ -835,14 +850,19 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(SQL`, `)
       .append(genderExpr())
       .append(SQL` `)
-      .append(metadataJoins()).append(SQL`
+      .append(metadataJoins())
+      .append(
+        SQL`
       WHERE mv.status = 'open'
         AND mv.type = 'public_item_order'
         AND (mv.available IS NULL OR mv.available > 0)
         AND EXISTS (
           SELECT 1 FROM marketplace.trade_assets ta
           WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${ERC20_ASSET_TYPE}
-        )`)
+        )
+        AND `
+      )
+      .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.category === 'emote') {
       query.append(SQL` AND item_p.item_type ILIKE 'emote%'`)

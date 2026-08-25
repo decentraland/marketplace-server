@@ -191,6 +191,21 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain(2)
     })
 
+    it('should exclude items whose collection curation did not approve', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('COALESCE(item_p.search_is_collection_approved, item_s.search_is_collection_approved) = true')
+    })
+
+    it('should keep rows that are not collection items at all, so LAND, estates and names survive', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      // COALESCE cannot tell "no item" from "item with a NULL flag", so the no-item case is explicit
+      expect(sql.text).toContain('COALESCE(item_p.id, item_s.id) IS NULL')
+    })
+
     it('should match the search term against the item words and tags, not a substring of the name', async () => {
       await shopCatalog.getShopListings({ search: 'hat pirate' })
 
