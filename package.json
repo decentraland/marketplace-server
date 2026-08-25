@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.12",
-    "@dcl/test-helpers": "^0.2.0",
+    "@dcl/test-helpers": "^0.3.2",
     "@types/jest": "^29",
     "@types/node": "^20.2.5",
     "@types/pg": "^8.10.2",

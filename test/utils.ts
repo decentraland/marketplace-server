@@ -1,51 +1,19 @@
-import { Authenticator } from '@dcl/crypto'
-import { createUnsafeIdentity } from '@dcl/crypto/dist/crypto'
-import { AUTH_CHAIN_HEADER_PREFIX, AUTH_METADATA_HEADER, AUTH_TIMESTAMP_HEADER } from '@dcl/crypto-middleware'
-import { AuthChain } from '@dcl/schemas'
+import { getIdentity, getSignedAuthHeaders, type Identity } from '@dcl/test-helpers'
 
-export async function getIdentity() {
-  const ephemeralIdentity = createUnsafeIdentity()
-  const realAccount = createUnsafeIdentity()
-
-  const authChain = await Authenticator.initializeAuthChain(realAccount.address, ephemeralIdentity, 10, async message => {
-    return Authenticator.createSignature(realAccount, message)
-  })
-
-  return { authChain, realAccount, ephemeralIdentity }
-}
-
-export function getAuthHeaders(method: string, path: string, metadata: Record<string, any>, chainProvider: (payload: string) => AuthChain) {
-  const headers: Record<string, string> = {}
-  const timestamp = Date.now()
-  const metadataJSON = JSON.stringify(metadata)
-  // Matches `createPayload` from @dcl/crypto-middleware 6: the method and path are lowercased, then the
-  // metadata is joined verbatim, so its casing is covered by the signature instead of folded away.
-  const payloadParts = [method.toLowerCase(), path.toLowerCase(), timestamp.toString(), metadataJSON]
-  const payloadToSign = payloadParts.join(':')
-
-  const chain = chainProvider(payloadToSign)
-
-  chain.forEach((link, index) => {
-    headers[`${AUTH_CHAIN_HEADER_PREFIX}${index}`] = JSON.stringify(link)
-  })
-
-  headers[AUTH_TIMESTAMP_HEADER] = timestamp.toString()
-  headers[AUTH_METADATA_HEADER] = metadataJSON
-
-  return headers
-}
+export { getAuthHeaders, getIdentity } from '@dcl/test-helpers'
+export type { Identity } from '@dcl/test-helpers'
 
 export async function getSignedFetchRequest(
   method: string,
   path: string,
   customMetadata: { intent: string; signer: string } = { intent: 'test', signer: 'integration:test' }
-): Promise<{ method: string; headers: any; identity: Awaited<ReturnType<typeof getIdentity>> }> {
+): Promise<{ method: string; headers: any; identity: Identity }> {
   const identity = await getIdentity()
   return {
     identity,
     method: method,
     headers: {
-      ...getAuthHeaders(
+      ...getSignedAuthHeaders(
         'POST',
         path,
         {
@@ -54,16 +22,7 @@ export async function getSignedFetchRequest(
           signer: customMetadata.signer,
           isGuest: 'false'
         },
-        payload => {
-          return Authenticator.signPayload(
-            {
-              ephemeralIdentity: identity.ephemeralIdentity,
-              expiration: new Date(),
-              authChain: identity.authChain.authChain
-            },
-            payload
-          )
-        }
+        identity
       )
     }
   }
