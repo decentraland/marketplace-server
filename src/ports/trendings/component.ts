@@ -10,11 +10,30 @@ const DEFAULT_SIZE = 20
 export const SALES_CUT = 0.6
 export const VOLUME_CUT = 0.4
 
+/**
+ * The look-back window, in days, over which sales are counted.
+ *
+ * A WEEK, not the day this used to hardcode. Distinct items sold across the WHOLE marketplace, measured on
+ * the production squid:
+ *
+ *   1 day → 4      3 days → 24      7 days → 96      30 days → 354
+ *
+ * Four sales is not a trend, it is four data points — and only the ones still on sale survive the filter
+ * below, so the row was rendering two items on a good day and none on a quiet one. An empty row here reads
+ * as broken rather than as quiet, because the homepage shows its "we are having troubles fetching" copy for
+ * a row with nothing in it.
+ *
+ * The Shop's own rail hit exactly this and was widened to a week for the same reason (shop-catalog
+ * TRENDING_DEFAULT_DAYS). The two rails now agree on the window, which is what the day was reaching for in
+ * the first place.
+ */
+export const TRENDING_WINDOW_DAYS = 7
+
 export function createTrendingsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'items' | 'picks'>): ITrendingsComponent {
   const { dappsDatabase: database, items: itemsComponent } = components
 
   async function fetchTrendingSales(skip: number) {
-    const query = getTrendingSalesQuery({ from: getDateXDaysAgo(1).getTime(), first: 1000, skip })
+    const query = getTrendingSalesQuery({ from: getDateXDaysAgo(TRENDING_WINDOW_DAYS).getTime(), first: 1000, skip })
     const dbSales = await database.query<TrendingSaleDB>(query)
 
     const sales = dbSales.rows.map(row => fromTrendingSaleFragment(row))
