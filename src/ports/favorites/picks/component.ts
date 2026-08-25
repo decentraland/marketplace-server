@@ -1,6 +1,9 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { isErrorWithMessage } from '../../../logic/errors'
+import { DEFAULT_LIST_USER_ADDRESS } from '../../../migrations/favorites/1678303321034_default-list'
 import { AppComponents } from '../../../types'
+import { Permission } from '../access'
+import { GRANTED_TO_ALL } from '../lists/constants'
 import { insertVPQuery } from '../vp/queries'
 import { DEFAULT_VOTING_POWER } from './constants'
 import { DBGetFilteredPicksWithCount, DBPickStats, GetPicksByItemIdParameters, IPicksComponent, PickUnpickInBulkBody } from './types'
@@ -93,9 +96,22 @@ export function createPicksComponent(
     }
 
     await pg.withTransaction(async client => {
+      // Defence in depth: checkNonEditableLists already rejected the request when any target list
+      // is not editable by the caller, but scope the write itself to lists the caller owns, the
+      // shared default list, or lists they hold an EDIT grant on — so a single guard is never the
+      // only thing between a caller and another user's list.
       const pickForListsQuery =
         pickedFor.length &&
-        SQL`INSERT INTO favorites.picks (item_id, user_address, list_id) SELECT ${itemId}, ${userAddress}, id AS list_id FROM favorites.lists WHERE id = ANY(${pickedFor})`
+        SQL`INSERT INTO favorites.picks (item_id, user_address, list_id) SELECT ${itemId}, ${userAddress}, id AS list_id FROM favorites.lists WHERE id = ANY(${pickedFor}) AND (
+          favorites.lists.user_address = ${userAddress}
+          OR favorites.lists.user_address = ${DEFAULT_LIST_USER_ADDRESS}
+          OR EXISTS (
+            SELECT 1 FROM favorites.acl
+            WHERE favorites.acl.list_id = favorites.lists.id
+            AND favorites.acl.permission = ${Permission.EDIT}
+            AND favorites.acl.grantee IN (${userAddress}, ${GRANTED_TO_ALL})
+          )
+        )`
 
       const unpickFromListsQuery =
         unpickedFrom.length &&
