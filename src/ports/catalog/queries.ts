@@ -15,10 +15,6 @@ import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../con
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
-const getBuilderServerTagsJoin = () => {
-  return SQL`LEFT JOIN builder_server_items ON builder_server_items.item_id = items.id::text `
-}
-
 const wrapQuery = (statement: SQLStatement, start: SQLStatement, end: SQLStatement) => start.append(statement).append(end)
 
 const getItemIdsByUtilityQuery = (filters: CatalogQueryFilters) => {
@@ -53,106 +49,52 @@ const getItemIdsByUtilityQuery = (filters: CatalogQueryFilters) => {
   return query
 }
 
+// Names are pre-split into words in item_search_words, which carries a GIN trigram index, so the
+// similarity filter is an index lookup instead of a scan that explodes every name in the catalog. Tags
+// only ever match exactly, so they are looked up separately and joined back against the item table to
+// keep the result restricted to indexed items. `original_word` is what gets reported as the matched
+// term, so the word keeps the casing it has in the item's name.
 const getItemIdsByTagOrNameQuery = (filters: CatalogQueryFilters) => {
   const { search } = filters
-  const query = getSearchCTEs(filters).append(
-    SQL`SELECT
-        items.id AS id,
-        CASE WHEN builder_server_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
-        word.text AS word,
-        similarity(lower(word.text), lower(${search})) AS word_similarity
-      `
-      .append(' FROM ')
-      .append(MARKETPLACE_SQUID_SCHEMA)
-      .append(
-        `.item AS items
-        `
+
+  const query = SQL`WITH tag_hits AS (
+        SELECT DISTINCT item_id, tag
+        FROM `
+  query.append(BUILDER_SERVER_TABLE_SCHEMA)
+  query.append(SQL`.mv_builder_server_items
+        WHERE lower(tag) = lower(${search})
+      ),
+      tagged_items AS (
+        SELECT DISTINCT item_id FROM tag_hits
+      ),
+      matched AS (
+        SELECT
+          search_words.item_id AS id,
+          search_words.original_word AS word,
+          similarity(search_words.word, lower(${search})) AS word_similarity
+        FROM `)
+  query.append(BUILDER_SERVER_TABLE_SCHEMA)
+  query.append(SQL`.item_search_words AS search_words
+        WHERE search_words.word % lower(${search})
+        UNION
+        SELECT
+          items.id::text,
+          tag_hits.tag,
+          similarity(lower(tag_hits.tag), lower(${search}))
+        FROM tag_hits
+        JOIN `)
+  query.append(MARKETPLACE_SQUID_SCHEMA)
+  query.append(SQL`.item AS items ON items.id::text = tag_hits.item_id
       )
-      .append(getLatestMetadataJoin(filters))
-      .append(
-        SQL`
-          LEFT JOIN (
-            SELECT
-                metadata.id,
-                COALESCE(wearable.name, emote.name) AS name
-            FROM
-                `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(
-            SQL`.metadata AS metadata
-                LEFT JOIN `
-              .append(MARKETPLACE_SQUID_SCHEMA)
-              .append(
-                SQL`.wearable AS wearable ON metadata.wearable_id = wearable.id AND metadata.item_type IN ('wearable_v1', 'wearable_v2', 'smart_wearable_v1')
-                LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA)
-                  .append(SQL`.emote AS emote ON metadata.emote_id = emote.id AND metadata.item_type = 'emote_v1'
-        ) AS metadata ON metadata.id = latest_metadata.latest_metadata_id
-      `)
-              )
-          )
-      )
-      .append(getWhereWordsJoin())
-      .append(getBuilderServerTagsJoin())
-      .append('WHERE ')
-      .append(getSearchWhere(filters))
-      .append(' ORDER BY word_similarity DESC')
-  )
+      SELECT
+        matched.id AS id,
+        CASE WHEN tagged_items.item_id IS NULL THEN 'name' ELSE 'tag' END AS match_type,
+        matched.word AS word,
+        matched.word_similarity AS word_similarity
+      FROM matched
+      LEFT JOIN tagged_items ON tagged_items.item_id = matched.id`)
 
   return query
-}
-
-const getLatestMetadataJoin = (filters: CatalogQueryFilters) => {
-  return filters.network === Network.ETHEREUM
-    ? SQL`
-        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.metadata ` // TODO: This will be fix during next indexation, is a workaround for the current one
-    : SQL`
-        LEFT JOIN latest_metadata ON latest_metadata.item_id = items.id `
-}
-
-const getLatestMetadataCTE = () => {
-  return SQL`latest_metadata AS (
-        SELECT DISTINCT ON (COALESCE(m.wearable_id::text, m.emote_id::text))
-          CASE 
-            WHEN m.network = 'ETHEREUM' 
-                 THEN (COALESCE(w.collection, e.collection)) || '-' || m.id -- Use collection + '-' + metadata.id for L1 items
-            ELSE COALESCE(m.wearable_id::text, m.emote_id::text) 
-            END AS item_id,
-        m.id AS latest_metadata_id,
-          m.item_type,
-          m.wearable_id,
-          m.emote_id
-        FROM
-          `
-    .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(
-      SQL`.metadata as m
-          LEFT JOIN `
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.wearable AS w
-          ON w.id = m.wearable_id
-          LEFT JOIN `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.emote AS e
-        ON e.id = m.emote_id
-        ORDER BY COALESCE(m.wearable_id::text, m.emote_id::text) DESC
-      )
-    `)
-        )
-    )
-}
-
-const getSearchCTEs = (filters: CatalogQueryFilters) => {
-  return SQL`WITH `.append(getLatestMetadataCTE()).append(
-    SQL`, builder_server_items AS (
-      SELECT
-      item_id,
-      tag
-    FROM
-      `.append(BUILDER_SERVER_TABLE_SCHEMA).append(SQL`.mv_builder_server_items
-    WHERE
-      LOWER(tag) = LOWER(${filters.search})
-    )
-  `)
-  )
 }
 
 const WEARABLE_ITEM_TYPES = [FragmentItemType.WEARABLE_V1, FragmentItemType.WEARABLE_V2, FragmentItemType.SMART_WEARABLE_V1]
@@ -262,10 +204,6 @@ export const getEmotePlayModeWhere = (filters: CatalogFilters) => {
       ? SQL`metadata_emote.loop = ${filters.emotePlayMode[0] === EmotePlayMode.LOOP}`
       : undefined
     : SQL`metadata_emote.loop = ${filters.emotePlayMode === EmotePlayMode.LOOP}`
-}
-
-export const getSearchWhere = (filters: CatalogFilters) => {
-  return SQL`lower(word::text) % lower(${filters.search})`
 }
 
 export const getIsSoldOutWhere = () => {
@@ -587,17 +525,6 @@ const getMaxPriceCaseWithTrades = (filters: CatalogQueryFilters) => {
           `)
 }
 
-const getWhereWordsJoin = () => {
-  return SQL`
-      JOIN LATERAL
-      (
-        SELECT unnest(string_to_array(metadata.name, ' ')) AS text
-      UNION
-        SELECT tag AS text FROM builder_server_items WHERE builder_server_items.item_id = items.id::text
-      ) AS word ON TRUE
-  `
-}
-
 const getMetadataJoins = () => {
   return SQL` LEFT JOIN (
     SELECT 
@@ -684,24 +611,45 @@ export const getTradesCTE = ({
   category,
   sortBy,
   first,
-  skip
+  skip,
+  itemIds
 }: {
   cteName?: string
   category?: NFTCategory | EmoteCategory
   sortBy?: CatalogSortBy | NFTSortBy
   first?: number
   skip?: number
+  itemIds?: string[]
 } = {}) => {
-  return SQL`
-      WITH `
-    .append(cteName ?? 'unified_trades')
-    .append(
-      SQL` AS (
-        SELECT * from marketplace.mv_trades
-        `
-        .append(category ? SQL`WHERE sent_nft_category = ${category} ` : SQL``)
-        .append(sortBy === NFTSortBy.RECENTLY_LISTED ? SQL` ORDER BY created_at DESC LIMIT ${first} OFFSET ${skip}` : SQL``)
+  const conditions: SQLStatement[] = []
+  if (category) {
+    conditions.push(SQL`sent_nft_category = ${category}`)
+  }
+  // When the caller already knows which items it cares about, restricting the trades up front avoids
+  // materializing every open trade just to throw almost all of them away in the join below.
+  if (itemIds?.length) {
+    conditions.push(
+      SQL`EXISTS (
+          SELECT 1
+          FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.item AS trade_items
+          WHERE trade_items.id = ANY(${itemIds})
+            AND trade_items.collection_id = mv_trades.contract_address_sent
+            AND trade_items.blockchain_id = mv_trades.sent_item_id::numeric
+        )`)
     )
+  }
+
+  const cte = SQL`
+      WITH `.append(cteName ?? 'unified_trades').append(SQL` AS (
+        SELECT * from marketplace.mv_trades
+        `)
+
+  conditions.forEach((condition, index) => {
+    cte.append(index === 0 ? SQL`WHERE ` : SQL` AND `).append(condition)
+  })
+
+  return cte
+    .append(sortBy === NFTSortBy.RECENTLY_LISTED ? SQL` ORDER BY created_at DESC LIMIT ${first} OFFSET ${skip}` : SQL``)
     .append(SQL`)`)
 }
 
@@ -749,10 +697,13 @@ const getNFTsWithOrdersCTE = (filters: CatalogQueryFilters) => {
       .append(MARKETPLACE_SQUID_SCHEMA)
       .append(
         SQL`.order AS orders
-        WHERE 
-            orders.status = 'open' 
+        WHERE
+            orders.status = 'open'
             AND orders.expires_at_normalized > NOW()`
       )
+      // Aggregating every open order in the table only to keep the handful belonging to the requested
+      // items is the single most expensive part of a filtered catalog page.
+      .append(filters.ids?.length ? SQL` AND orders.item_id = ANY(${filters.ids})` : SQL``)
       // When filtering by NEWEST, we need to join the top_n_items CTE because we just want the N newest ones
       .append(
         filters.isOnSale === false && (filters.sortBy === CatalogSortBy.NEWEST || filters.sortBy === CatalogSortBy.RECENTLY_SOLD)
@@ -814,9 +765,38 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   // Add metadata joins only when needed for category/playMode filters
   const needsMetadataJoins = filters.wearableCategory || filters.emoteCategory || filters.emotePlayMode?.length
 
-  const query = SQL`
+  // Each on-sale check below probes the order table once per candidate item. When the caller already
+  // narrowed the items down (a search, for instance), collecting the open orders for exactly those
+  // items once up front is far cheaper than repeating a correlated lookup per row. Only worth declaring
+  // when one of those checks is actually part of the query, otherwise it is dead SQL carrying a copy of
+  // the id array on the most common request there is.
+  const readsOpenOrders = Boolean(
+    filters.isOnSale !== undefined || filters.onlyMinting || filters.onlyListing || filters.minPrice || filters.maxPrice
+  )
+  const restrictOrdersToIds = Boolean(filters.ids?.length) && readsOpenOrders
+  const openOrdersSource = restrictOrdersToIds ? 'open_orders' : `${MARKETPLACE_SQUID_SCHEMA}.order`
+
+  const query = SQL``
+  if (restrictOrdersToIds) {
+    query
+      .append(
+        SQL`WITH open_orders AS MATERIALIZED (
+      SELECT o.item_id, o.status, o.expires_at_normalized, o.price
+      FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+      WHERE o.status = 'open'
+        AND o.expires_at_normalized > NOW()
+        AND o.item_id = ANY(${filters.ids})
+    ) `)
+  }
+
+  query
+    .append(
+      SQL`
     SELECT COUNT(*) as total
     FROM `
+    )
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(SQL`.item AS items `)
 
@@ -839,7 +819,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
       SELECT 1
       FROM `
       )
-      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+      .append(openOrdersSource).append(SQL` AS o
       WHERE o.status = 'open'
         AND o.expires_at_normalized > NOW()
         AND o.item_id = items.id
@@ -852,7 +832,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
       WHERE t.status = 'open'
         AND (t.available IS NULL OR t.available > 0)
         AND t.contract_address_sent = items.collection_id
-        AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+        AND t.sent_item_id::numeric = items.blockchain_id
     )`)
   } else if (filters.isOnSale === true) {
     // On sale: minting OR has listings
@@ -864,7 +844,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
         SELECT 1
         FROM `
       )
-      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+      .append(openOrdersSource).append(SQL` AS o
         WHERE o.status = 'open'
           AND o.expires_at_normalized > NOW()
           AND o.item_id = items.id
@@ -875,7 +855,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
         WHERE t.status = 'open'
           AND (t.available IS NULL OR t.available > 0)
           AND t.contract_address_sent = items.collection_id
-          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+          AND t.sent_item_id::numeric = items.blockchain_id
       )
     )`)
   }
@@ -891,7 +871,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           AND t.type = 'public_item_order'
           AND (t.available IS NULL OR t.available > 0)
           AND t.contract_address_sent = items.collection_id
-          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id`)
+          AND t.sent_item_id::numeric = items.blockchain_id`)
     if (filters.minPrice) {
       query.append(SQL`
           AND t.amount_received >= ${filters.minPrice}`)
@@ -921,7 +901,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           AND t.type = 'public_item_order'
           AND (t.available IS NULL OR t.available > 0)
           AND t.contract_address_sent = items.collection_id
-          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+          AND t.sent_item_id::numeric = items.blockchain_id
       ))
     )`)
     query
@@ -931,7 +911,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
         SELECT 1
         FROM `
       )
-      .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.order AS o
+      .append(openOrdersSource).append(SQL` AS o
         WHERE o.status = 'open'
           AND o.expires_at_normalized > NOW()
           AND o.item_id = items.id
@@ -943,7 +923,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           AND t.type = 'public_nft_order'
           AND (t.available IS NULL OR t.available > 0)
           AND t.contract_address_sent = items.collection_id
-          AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+          AND t.sent_item_id::numeric = items.blockchain_id
       )
     )`)
   }
@@ -960,9 +940,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           SELECT 1
           FROM `
         )
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.order AS o
+        .append(openOrdersSource).append(SQL` AS o
           WHERE o.status = 'open'
             AND o.expires_at_normalized > NOW()
             AND o.item_id = items.id
@@ -975,11 +953,10 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
             AND t.type = 'public_nft_order'
             AND (t.available IS NULL OR t.available > 0)
             AND t.contract_address_sent = items.collection_id
-            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.sent_item_id::numeric = items.blockchain_id
             AND t.amount_received >= ${filters.minPrice}
         )
-      )`
-        )
+      )`)
     } else {
       query
         .append(
@@ -989,9 +966,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           SELECT 1
           FROM `
         )
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.order AS o
+        .append(openOrdersSource).append(SQL` AS o
           WHERE o.status = 'open'
             AND o.expires_at_normalized > NOW()
             AND o.item_id = items.id
@@ -1003,11 +978,10 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           WHERE t.status = 'open'
             AND (t.available IS NULL OR t.available > 0)
             AND t.contract_address_sent = items.collection_id
-            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.sent_item_id::numeric = items.blockchain_id
             AND t.amount_received >= ${filters.minPrice}
         )
-      )`
-        )
+      )`)
     }
   }
 
@@ -1023,9 +997,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           SELECT 1
           FROM `
         )
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.order AS o
+        .append(openOrdersSource).append(SQL` AS o
           WHERE o.status = 'open'
             AND o.expires_at_normalized > NOW()
             AND o.item_id = items.id
@@ -1038,11 +1010,10 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
             AND t.type = 'public_nft_order'
             AND (t.available IS NULL OR t.available > 0)
             AND t.contract_address_sent = items.collection_id
-            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.sent_item_id::numeric = items.blockchain_id
             AND t.amount_received <= ${filters.maxPrice}
         )
-      )`
-        )
+      )`)
     } else {
       query
         .append(
@@ -1052,9 +1023,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           SELECT 1
           FROM `
         )
-        .append(MARKETPLACE_SQUID_SCHEMA)
-        .append(
-          SQL`.order AS o
+        .append(openOrdersSource).append(SQL` AS o
           WHERE o.status = 'open'
             AND o.expires_at_normalized > NOW()
             AND o.item_id = items.id
@@ -1066,11 +1035,10 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
           WHERE t.status = 'open'
             AND (t.available IS NULL OR t.available > 0)
             AND t.contract_address_sent = items.collection_id
-            AND (t.assets->'sent'->>'item_id')::numeric = items.blockchain_id
+            AND t.sent_item_id::numeric = items.blockchain_id
             AND t.amount_received <= ${filters.maxPrice}
         )
-      )`
-        )
+      )`)
     }
   }
 
@@ -1079,7 +1047,7 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
 
 export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
   const query = SQL``
-    .append(getTradesCTE())
+    .append(getTradesCTE({ itemIds: filters.ids }))
     .append(getTopNItemsCTE(filters))
     .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
@@ -1203,7 +1171,7 @@ export const getItemIdsBySearchTextQuery = (filters: CatalogQueryFilters) => {
     .append(utilityQuery)
     .append(SQL`) UNION (`)
     .append(tagOrNameQuery).append(SQL`)) AS items_found
-        ORDER BY word_similarity DESC`)
+        ORDER BY word_similarity DESC, id`)
 
   return query
 }

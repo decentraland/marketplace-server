@@ -3,6 +3,7 @@ import SQL from 'sql-template-strings'
 import { Item } from '@dcl/schemas'
 import { fromDBPickStatsToPickStats } from '../../adapters/picks'
 import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
+import { rebuildItemSearchWords, SEARCH_WORDS_TABLE } from '../../logic/catalog/search-words-table'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
@@ -23,6 +24,9 @@ export async function createCatalogComponent(
   segmentWriteKey: string
 ): Promise<ICatalogComponent> {
   const { dappsDatabase: dataReadbase, dappsWriteDatabase, picks } = components
+  // A single client for the whole component: instantiating one per request leaks its internal queue and
+  // flush timer, and every search went through this path.
+  const analytics = new Analytics({ writeKey: segmentWriteKey })
 
   async function fetch(
     filters: CatalogOptions,
@@ -35,7 +39,6 @@ export async function createCatalogComponent(
     let query
     try {
       if (filters.search) {
-        const analytics = new Analytics({ writeKey: segmentWriteKey })
         const searchQuery = getItemIdsBySearchTextQuery(filters)
         const filteredItemsById = await client.query<{
           id: string
@@ -59,7 +62,11 @@ export async function createCatalogComponent(
         }
         analytics.track(trackingData)
         filteredItemsById.rows.sort(sortByWordSimilarity)
-        filters.ids = [...(filters.ids ?? []), ...filteredItemsById.rows.map(({ id }) => id)]
+        // The search returns one row per matching word, so an item matching on several words repeats.
+        // Rows are already best-similarity-first, which is the position array_position looks for, so
+        // keeping each id's first occurrence preserves the ranking and shrinks the array that now gets
+        // bound into the candidate filter, the order aggregation and the trades lookups alike.
+        filters.ids = [...new Set([...(filters.ids ?? []), ...filteredItemsById.rows.map(({ id }) => id)])]
 
         if (filters.ids?.length === 0) {
           // if no items matched the search text, return empty result
@@ -119,6 +126,17 @@ export async function createCatalogComponent(
       console.error(e)
     } finally {
       client.release()
+    }
+
+    // Its own connection: a statement that trips the pool's timeout leaves the client with an
+    // unfinished statement on it, so the two must not share one.
+    const searchWordsClient = await dappsWriteDatabase.getPool().connect()
+    try {
+      await rebuildItemSearchWords(searchWordsClient)
+    } catch (e) {
+      console.error(`Failed to rebuild ${SEARCH_WORDS_TABLE}`, e)
+    } finally {
+      searchWordsClient.release()
     }
   }
 
