@@ -5,6 +5,7 @@ import {
   createShopTrendingHandler,
   createShopUnifiedHandler
 } from '../../src/controllers/handlers/shop-catalog-handler'
+import { TRENDING_DEFAULT_DAYS, TRENDING_DEFAULT_LIMIT } from '../../src/ports/shop-catalog/types'
 
 // The unified handler is a factory: createShopUnifiedHandler(components) -> (context) => response. These
 // tests drive the `groupBy` dispatch (per-listing default vs item-unified) and confirm the parsed filters
@@ -163,7 +164,10 @@ describe('when handling the trending items endpoint', () => {
   it('should default the size and the window to the rail defaults', async () => {
     await invoke('http://localhost/v3/catalog/trending')
 
-    expect(getTrendingItems.mock.calls[0][0]).toMatchObject({ first: 12, days: 1 })
+    expect(getTrendingItems.mock.calls[0][0]).toMatchObject({
+      first: TRENDING_DEFAULT_LIMIT,
+      days: TRENDING_DEFAULT_DAYS
+    })
   })
 
   it('should pass an explicit size and window through for the component to clamp', async () => {
