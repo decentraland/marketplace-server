@@ -11,6 +11,11 @@ const STAGING_WORD_INDEX = `${SEARCH_WORDS_WORD_INDEX}_staging`
 // Any positive constant works; it only has to be the same in every instance of this service.
 const REBUILD_ADVISORY_LOCK_KEY = 8_421_207
 
+// pg_trgm is installed in `public`, but migrations run with search_path set to the marketplace schema
+// alone, so an unqualified operator class does not resolve there. Naming the schema keeps this index
+// buildable from both the migration and the rebuild job, whatever their search_path happens to be.
+const TRIGRAM_OPS = 'public.gin_trgm_ops'
+
 /**
  * One row per (item, word of its name). `word` is lowercased and carries the trigram index used for
  * matching; `original_word` keeps the name's own casing, because it is reported back as the matched
@@ -39,7 +44,7 @@ const SELECT_SEARCH_WORDS = `SELECT DISTINCT
     WHERE w.text <> ''`
 
 export const CREATE_SEARCH_WORDS_TABLE = `CREATE TABLE IF NOT EXISTS ${SEARCH_WORDS_TABLE} AS ${SELECT_SEARCH_WORDS}`
-export const CREATE_SEARCH_WORDS_WORD_INDEX = `CREATE INDEX IF NOT EXISTS ${SEARCH_WORDS_WORD_INDEX} ON ${SEARCH_WORDS_TABLE} USING gin (word gin_trgm_ops)`
+export const CREATE_SEARCH_WORDS_WORD_INDEX = `CREATE INDEX IF NOT EXISTS ${SEARCH_WORDS_WORD_INDEX} ON ${SEARCH_WORDS_TABLE} USING gin (word ${TRIGRAM_OPS})`
 export const DROP_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${SEARCH_WORDS_TABLE}`
 
 export type RebuildOutcome = 'rebuilt' | 'skipped'
@@ -70,7 +75,7 @@ export async function rebuildItemSearchWords(client: QueryableClient): Promise<R
 
     await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`)
     await client.query(`CREATE TABLE ${STAGING_TABLE} AS ${SELECT_SEARCH_WORDS}`)
-    await client.query(`CREATE INDEX ${STAGING_WORD_INDEX} ON ${STAGING_TABLE} USING gin (word gin_trgm_ops)`)
+    await client.query(`CREATE INDEX ${STAGING_WORD_INDEX} ON ${STAGING_TABLE} USING gin (word ${TRIGRAM_OPS})`)
     await client.query(`ANALYZE ${STAGING_TABLE}`)
 
     await client.query(DROP_SEARCH_WORDS_TABLE)

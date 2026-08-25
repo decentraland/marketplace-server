@@ -56,6 +56,13 @@ describe('when rebuilding the item search words table', () => {
       expect(indexOfLiveDrop()).toBeGreaterThan(indexOf('CREATE TABLE marketplace.item_search_words_staging'))
     })
 
+    it('should name the operator class schema, since migrations run without public on the search path', async () => {
+      await rebuildItemSearchWords(client)
+
+      const index = statements().find(sql => sql.includes('USING gin'))
+      expect(index).toContain('public.gin_trgm_ops')
+    })
+
     it('should rename the staging index so the next rebuild finds the expected name free', async () => {
       await rebuildItemSearchWords(client)
 

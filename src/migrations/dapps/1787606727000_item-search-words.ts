@@ -16,7 +16,9 @@ import {
 // job recreates the table on its next cycle. Rolling this back means deploying code that no longer
 // rebuilds it.
 export async function up(pgm: MigrationBuilder): Promise<void> {
-  pgm.sql('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
+  // Pinned to `public` so the operator class the index below names is where it is expected to be. This
+  // is a no-op wherever the extension already exists, which is every environment we deploy to.
+  pgm.sql('CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;')
   pgm.sql(`${CREATE_SEARCH_WORDS_TABLE};`)
   pgm.sql(`${CREATE_SEARCH_WORDS_WORD_INDEX};`)
 
