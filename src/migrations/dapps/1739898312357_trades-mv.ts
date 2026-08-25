@@ -1,3 +1,16 @@
+/*
+ * NOT the authoritative definition of mv_trades any more.
+ *
+ * This migration created the view originally and is kept as history; node-pg-migrate tracks it by
+ * filename, so it never re-runs. The live definition is recreateTradesMaterializedView() in
+ * src/logic/trades/materialized-view.ts, which is what every later change to the view has gone into --
+ * including per-version contract signature index scoping, network-scoped signer index and the V3
+ * cancellation digest. The joins below are therefore stale.
+ *
+ * Migration 1787300000000 replaces the view with that current definition, so a freshly migrated database
+ * no longer ends up on the stale rules below. Later changes to the view still need either a new migration
+ * or a POST /v1/trades/materialized-view/recreate call.
+ */
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder, ColumnDefinitions } from 'node-pg-migrate'
 import { ContractName, getContract } from 'decentraland-transactions'

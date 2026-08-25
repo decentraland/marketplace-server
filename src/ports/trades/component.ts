@@ -1,6 +1,5 @@
 import SQL from 'sql-template-strings'
 import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import {
@@ -8,7 +7,7 @@ import {
   forceFlushTradesMaterializedView,
   recreateTradesMaterializedView
 } from '../../logic/trades/materialized-view'
-import { validateAssetOwnership, validateTradeSignature } from '../../logic/trades/utils'
+import { resolveTradeSignature, validateAssetOwnership } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
   InvalidTradeSignatureError,
@@ -178,8 +177,11 @@ export function createTradesComponent(
       throw new InvalidTradeSignatureError()
     }
 
-    // validate signature
-    if (!validateTradeSignature(trade, signer)) {
+    // Validate the signature. Resolving it also reports WHICH marketplace version signed it, which is
+    // what the trade's contract and EIP-712 digest have to be recorded from — a trade signed against V3
+    // has a different digest than the same trade signed against V2.
+    const signatureMatch = resolveTradeSignature(trade, signer)
+    if (!signatureMatch) {
       throw new InvalidTradeSignatureError()
     }
 
@@ -188,11 +190,12 @@ export function createTradesComponent(
       throw new InvalidOwnerError()
     }
 
-    const tradeContract = getContract(ContractName.OffChainMarketplaceV2, trade.chainId)
-
     const insertedTrade = await pg.withTransaction(
       async client => {
-        const query = getInsertTradeQuery({ ...trade, contract: tradeContract.address }, signer)
+        const query = getInsertTradeQuery(
+          { ...trade, contract: signatureMatch.contract.address, tradeDigest: signatureMatch.cancellationDigest },
+          signer
+        )
         const insertedTrade = await client.query<DBTrade>(query)
         const assets = await Promise.all(
           [

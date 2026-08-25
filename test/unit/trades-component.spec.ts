@@ -17,6 +17,7 @@ import {
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
 import * as signatureUtils from '../../src/logic/trades/utils'
+import { TradeSignatureMatch } from '../../src/logic/trades/utils'
 import { IPgComponent } from '../../src/ports/db/types'
 import { IEventPublisherComponent } from '../../src/ports/events/types'
 import { IShopNotifierComponent } from '../../src/ports/shop-notifier/types'
@@ -49,10 +50,19 @@ let tradesComponent: ITradesComponent
 let logs: ILoggerComponent
 let publishMessageMock: jest.Mock
 let notifyItemOnSaleMock: jest.Mock
+let signatureMatch: TradeSignatureMatch
+
+const MOCK_CANCELLATION_DIGEST = '0x491822dfcfd83072053748ee442b3c7d9f16b7827bad93773faf23e71fd82fcb'
 
 describe('when adding a new trade', () => {
   beforeEach(() => {
     mockSigner = '0x1234567890'
+    // A non-null digest on purpose: it is what a V3 trade carries, and asserting it as a literal below
+    // means the trade recording a hardcoded null instead of what was resolved fails this test.
+    signatureMatch = {
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      cancellationDigest: MOCK_CANCELLATION_DIGEST
+    }
     mockTrade = {
       signer: mockSigner,
       signature:
@@ -180,7 +190,7 @@ describe('when adding a new trade', () => {
 
   describe('when the trade signature is invalid', () => {
     beforeEach(() => {
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(false)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(null)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
     })
@@ -193,7 +203,7 @@ describe('when adding a new trade', () => {
   describe('when a estate trade is not valid in the available estate chain ids', () => {
     beforeEach(() => {
       mockTrade.chainId = ChainId.ETHEREUM_SEPOLIA
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(false)
     })
@@ -214,7 +224,7 @@ describe('when adding a new trade', () => {
     let event: Event
 
     beforeEach(async () => {
-      jest.spyOn(signatureUtils, 'validateTradeSignature').mockReturnValue(true)
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
       mockPgQuery = jest.fn()
@@ -297,10 +307,7 @@ describe('when adding a new trade', () => {
 
     it('should add the trade to the database', async () => {
       expect(mockPgQuery).toHaveBeenCalledWith(
-        getInsertTradeQuery(
-          { ...mockTrade, contract: getContract(ContractName.OffChainMarketplaceV2, mockTrade.chainId).address },
-          mockSigner
-        )
+        getInsertTradeQuery({ ...mockTrade, contract: signatureMatch.contract.address, tradeDigest: MOCK_CANCELLATION_DIGEST }, mockSigner)
       )
     })
 

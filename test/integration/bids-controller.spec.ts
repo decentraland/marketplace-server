@@ -1,4 +1,5 @@
 import { ChainId, ListingStatus, Network } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import * as chainIdUtils from '../../src/logic/chainIds'
 import * as tradeUtils from '../../src/logic/trades/utils'
 import { test } from '../components'
@@ -14,7 +15,13 @@ import {
 
 test('bids controller', function ({ components }) {
   beforeEach(() => {
-    jest.spyOn(tradeUtils, 'validateTradeSignature').mockImplementation(() => true)
+    // Resolving the signature reports which marketplace version signed it and that version's EIP-712
+    // digest, both of which the trade records. The fixtures carry a placeholder signature, so this stands
+    // in for real verification the way the old validateTradeSignature mock did.
+    jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({
+      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      cancellationDigest: null
+    }))
     jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
     jest.spyOn(chainIdUtils, 'getPolygonChainId').mockReturnValue(ChainId.MATIC_AMOY)
   })

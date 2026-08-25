@@ -1,7 +1,5 @@
 import { IPgComponent } from '@dcl/pg-component'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../chainIds'
 
 export const TRADES_MV_NAME = 'mv_trades'
 // Minimum time between materialized view refreshes. Writes on the source tables
@@ -9,6 +7,187 @@ export const TRADES_MV_NAME = 'mv_trades'
 // starved the squid indexers (each nft/item statement paid a full CONCURRENTLY
 // refresh, ~2s of temp-file I/O).
 export const TRADES_MV_REFRESH_INTERVAL_SECONDS = 30
+
+/**
+ * The view definition and its indexes, shared with the migration that brings an existing database up to
+ * this definition. Kept as constants so those two paths cannot drift: for years the only definition lived
+ * inside this function while a migration created a different one, and a freshly migrated database quietly
+ * computed trade status with stale rules.
+ */
+export const TRADES_MV_CREATE_SQL = `
+      CREATE MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} AS
+      WITH trades_owner_ok AS (
+          SELECT t.id
+          FROM marketplace.trades t
+          JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
+          LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft
+          ON  ta.contract_address = nft.contract_address
+          AND ta.direction = 'sent'
+          AND nft.token_id = erc721_asset.token_id::numeric
+          WHERE t.type IN ('public_item_order', 'public_nft_order')
+          GROUP BY t.id
+          HAVING bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
+      )
+      SELECT
+          t.id,
+          t.created_at,
+          t.type,
+          t.signer,
+          MAX(CASE WHEN av.direction = 'sent'     THEN av.contract_address END) AS contract_address_sent,
+          MAX(CASE WHEN av.direction = 'received' THEN av.amount END)          AS amount_received,
+          MAX(CASE WHEN av.direction = 'sent'     THEN av.available END)       AS available,
+          json_object_agg(
+              av.direction,
+              json_build_object(
+                  'contract_address', av.contract_address,
+                  'direction',        av.direction,
+                  'beneficiary',      av.beneficiary,
+                  'extra',            av.extra,
+                  'token_id',         av.token_id,
+                  'item_id',          av.item_id,
+                  'amount',           av.amount,
+                  'creator',          av.creator,
+                  'owner',            av.nft_owner,
+                  'category',         av.category,
+                  'nft_id',           av.nft_id,
+                  'issued_id',        av.issued_id,
+                  'nft_name',         av.nft_name
+              )
+          ) AS assets,
+
+          MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
+          MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
+          MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
+          MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
+          MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
+          t.network,
+          t.expires_at,
+          MAX(t.contract) AS trade_contract,
+          CASE
+              -- Only the SIGNER's cancellation counts. cancelSignature takes no signer check, and the
+              -- contract scopes the flag to keccak256(caller, digest) while settlement reads
+              -- keccak256(signer, digest) — so a stranger cancelling is a no-op on chain. Counting it
+              -- here let anyone grief a listing into reading cancelled while it stayed settleable.
+              WHEN COUNT(CASE WHEN st.action = 'cancelled' AND LOWER(st.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN 'cancelled'
+              WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
+              WHEN (
+                  (si_signer.index IS NOT NULL
+                      AND si_signer.index != (t.checks ->> 'signerSignatureIndex')::int)
+                  OR (si_signer.index IS NULL
+                      AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+                  )
+                                                                                      THEN 'cancelled'
+              WHEN (
+                  (si_contract.index IS NOT NULL
+                      AND si_contract.index != (t.checks ->> 'contractSignatureIndex')::int)
+                  OR (si_contract.index IS NULL
+                      AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+                  )
+                                                                                      THEN 'cancelled'
+              WHEN COUNT(DISTINCT st.id) FILTER (WHERE st.action = 'executed') >= (t.checks ->> 'uses')::int 
+                                                                                      THEN 'sold'
+              ELSE 'open'
+          END AS status
+
+      FROM marketplace.trades      AS t
+      JOIN trades_owner_ok         AS ok
+      ON t.id = ok.id
+
+      JOIN (
+          SELECT
+              ta.id,
+              ta.trade_id,
+              ta.contract_address,
+              ta.direction,
+              ta.beneficiary,
+              ta.extra,
+              erc721_asset.token_id,
+              erc20_asset.amount,
+              item.creator,
+              item.available,
+              nft.owner_address      AS nft_owner,
+              nft.category,
+              nft.id                AS nft_id,
+              nft.issued_id         AS issued_id,
+              nft.name             AS nft_name,
+              coalesce(nft.item_blockchain_id::text, item_asset.item_id) AS item_id
+          FROM marketplace.trade_assets AS ta
+          LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset
+              ON ta.id = erc721_asset.asset_id
+          LEFT JOIN marketplace.trade_assets_erc20 AS erc20_asset
+              ON ta.id = erc20_asset.asset_id
+          LEFT JOIN marketplace.trade_assets_item AS item_asset
+              ON ta.id = item_asset.asset_id
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item AS item
+              ON ta.contract_address = item.collection_id
+              AND item_asset.item_id::numeric = item.blockchain_id
+          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft
+              ON ta.contract_address = nft.contract_address
+              AND erc721_asset.token_id::numeric = nft.token_id
+      ) AS av
+      ON t.id = av.trade_id
+
+      -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+      -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+      -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+      -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+      -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
+      LEFT JOIN squid_trades.trade AS st
+      ON st.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
+
+      -- Scoped by network like si_contract. Without it a signer with rows on both networks matched
+      -- twice, duplicating the trade into two GROUP BY groups with contradictory statuses, which breaks
+      -- the unique index the CONCURRENTLY refresh needs — and let an Ethereum bump cancel Polygon trades.
+      LEFT JOIN squid_trades.signature_index AS si_signer
+      ON si_signer.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment,
+      -- so the same signer holds an independent counter on V2 and V3, and the trade signed the one it
+      -- read from the version it targets.
+      AND si_signer.contract = LOWER(t.contract)
+      AND si_signer.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+
+      -- Keyed by the trade's OWN marketplace, not just by network. Each version keeps an independent
+      -- contractSignatureIndex, and a trade signed the value it read from the version it targets, so
+      -- matching by network alone let a bump on one version invalidate trades signed against another.
+      -- It also means exactly one row matches per trade, where an address-list match over per-version
+      -- rows would multiply rows through this LEFT JOIN.
+      LEFT JOIN squid_trades.signature_index AS si_contract
+      ON si_contract.address = LOWER(t.contract)
+      -- Exact on the row's whole identity, which is address + contract + network. For the marketplace's
+      -- own counter the subject and the holder are the same contract, so both columns carry it; matching
+      -- address alone would also reach a signer row that happens to be keyed to this address under a
+      -- different holder, and match more than one row where the join must match at most one.
+      AND si_contract.contract = LOWER(t.contract)
+      -- The indexer's Network enum spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC,
+      -- so a raw equality never matches a Polygon trade and the whole per-version scoping is a no-op on
+      -- the network carrying most of the volume. Same translation as ports/catalog/queries.ts.
+      AND si_contract.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+
+      WHERE t.type IN ('public_item_order', 'public_nft_order')
+      GROUP BY
+          t.id,
+          t.type,
+          t.created_at,
+          t.network,
+          t.chain_id,
+          t.signer,
+          t.checks,
+          si_contract.index,
+          si_signer.index;
+    `
+
+export const TRADES_MV_INDEX_SQLS: string[] = [
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_trades_id ON marketplace.${TRADES_MV_NAME} (id)`,
+  // Status and type - improves queries filtering by open trades and specific trade types
+  `CREATE INDEX IF NOT EXISTS idx_mv_trades_status_type ON marketplace.${TRADES_MV_NAME} (status, type)`,
+  // Creation date - optimizes queries sorting by recently listed
+  `CREATE INDEX IF NOT EXISTS idx_mv_trades_created_at ON marketplace.${TRADES_MV_NAME} (created_at DESC)`,
+  // Category - improves queries filtering by NFT category
+  `CREATE INDEX IF NOT EXISTS idx_mv_trades_category ON marketplace.${TRADES_MV_NAME} (sent_nft_category)`,
+  // Contract and token - optimizes joins with NFT tables
+  `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
+]
 
 // --- App-owned refresh "gate" objects (state row + `dirty` column + refresh function) ------------
 // These are the only pieces of the materialized-view setup the runtime code depends on at request
@@ -101,10 +280,6 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   // back (see ensureTradesRefreshGate).
   await ensureTradesRefreshGate(db)
 
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   // Start transaction
   const client = await db.getPool().connect()
   try {
@@ -154,161 +329,11 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
     await client.query('DROP FUNCTION IF EXISTS refresh_trades_mv() CASCADE')
 
     // Create materialized view
-    await client.query(`
-      CREATE MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} AS
-      WITH trades_owner_ok AS (
-          SELECT t.id
-          FROM marketplace.trades t
-          JOIN marketplace.trade_assets ta ON t.id = ta.trade_id
-          LEFT JOIN marketplace.trade_assets_erc721 erc721_asset ON ta.id = erc721_asset.asset_id
-          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft nft
-          ON  ta.contract_address = nft.contract_address
-          AND ta.direction = 'sent'
-          AND nft.token_id = erc721_asset.token_id::numeric
-          WHERE t.type IN ('public_item_order', 'public_nft_order')
-          GROUP BY t.id
-          HAVING bool_and(ta.direction != 'sent' OR nft.owner_address = t.signer)
-      )
-      SELECT
-          t.id,
-          t.created_at,
-          t.type,
-          t.signer,
-          MAX(CASE WHEN av.direction = 'sent'     THEN av.contract_address END) AS contract_address_sent,
-          MAX(CASE WHEN av.direction = 'received' THEN av.amount END)          AS amount_received,
-          MAX(CASE WHEN av.direction = 'sent'     THEN av.available END)       AS available,
-          json_object_agg(
-              av.direction,
-              json_build_object(
-                  'contract_address', av.contract_address,
-                  'direction',        av.direction,
-                  'beneficiary',      av.beneficiary,
-                  'extra',            av.extra,
-                  'token_id',         av.token_id,
-                  'item_id',          av.item_id,
-                  'amount',           av.amount,
-                  'creator',          av.creator,
-                  'owner',            av.nft_owner,
-                  'category',         av.category,
-                  'nft_id',           av.nft_id,
-                  'issued_id',        av.issued_id,
-                  'nft_name',         av.nft_name
-              )
-          ) AS assets,
+    await client.query(TRADES_MV_CREATE_SQL)
 
-          MAX(av.contract_address) FILTER (WHERE av.direction = 'sent') AS sent_contract_address,
-          MAX(av.token_id)         FILTER (WHERE av.direction = 'sent') AS sent_token_id,
-          MAX(av.category)         FILTER (WHERE av.direction = 'sent') AS sent_nft_category,
-          MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
-          MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
-          t.network,
-          t.expires_at,
-          MAX(t.contract) AS trade_contract,
-          CASE
-              WHEN COUNT(CASE WHEN st.action = 'cancelled' THEN 1 END) > 0             THEN 'cancelled'
-              WHEN t.expires_at < now()::timestamptz(3)                                THEN 'cancelled'
-              WHEN (
-                  (si_signer.index IS NOT NULL
-                      AND si_signer.index != (t.checks ->> 'signerSignatureIndex')::int)
-                  OR (si_signer.index IS NULL
-                      AND (t.checks ->> 'signerSignatureIndex')::int != 0)
-                  )
-                                                                                      THEN 'cancelled'
-              WHEN (
-                  (si_contract.index IS NOT NULL
-                      AND si_contract.index != (t.checks ->> 'contractSignatureIndex')::int)
-                  OR (si_contract.index IS NULL
-                      AND (t.checks ->> 'contractSignatureIndex')::int != 0)
-                  )
-                                                                                      THEN 'cancelled'
-              WHEN COUNT(DISTINCT st.id) FILTER (WHERE st.action = 'executed') >= (t.checks ->> 'uses')::int 
-                                                                                      THEN 'sold'
-              ELSE 'open'
-          END AS status
-
-      FROM marketplace.trades      AS t
-      JOIN trades_owner_ok         AS ok
-      ON t.id = ok.id
-
-      JOIN (
-          SELECT
-              ta.id,
-              ta.trade_id,
-              ta.contract_address,
-              ta.direction,
-              ta.beneficiary,
-              ta.extra,
-              erc721_asset.token_id,
-              erc20_asset.amount,
-              item.creator,
-              item.available,
-              nft.owner_address      AS nft_owner,
-              nft.category,
-              nft.id                AS nft_id,
-              nft.issued_id         AS issued_id,
-              nft.name             AS nft_name,
-              coalesce(nft.item_blockchain_id::text, item_asset.item_id) AS item_id
-          FROM marketplace.trade_assets AS ta
-          LEFT JOIN marketplace.trade_assets_erc721 AS erc721_asset
-              ON ta.id = erc721_asset.asset_id
-          LEFT JOIN marketplace.trade_assets_erc20 AS erc20_asset
-              ON ta.id = erc20_asset.asset_id
-          LEFT JOIN marketplace.trade_assets_item AS item_asset
-              ON ta.id = item_asset.asset_id
-          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item AS item
-              ON ta.contract_address = item.collection_id
-              AND item_asset.item_id::numeric = item.blockchain_id
-          LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft
-              ON ta.contract_address = nft.contract_address
-              AND erc721_asset.token_id::numeric = nft.token_id
-      ) AS av
-      ON t.id = av.trade_id
-
-      LEFT JOIN squid_trades.trade AS st
-      ON st.signature = t.hashed_signature
-
-      LEFT JOIN squid_trades.signature_index AS si_signer
-      ON LOWER(si_signer.address) = LOWER(t.signer)
-
-      LEFT JOIN (
-          SELECT *
-          FROM squid_trades.signature_index idx
-          WHERE LOWER(idx.address) IN (
-              '${marketplacePolygon.address}',
-              '${marketplaceEthereum.address}',
-              '${marketplacePolygonV2.address}',
-              '${marketplaceEthereumV2.address}'
-          )
-      ) AS si_contract
-      ON t.network = si_contract.network
-
-      WHERE t.type IN ('public_item_order', 'public_nft_order')
-      GROUP BY
-          t.id,
-          t.type,
-          t.created_at,
-          t.network,
-          t.chain_id,
-          t.signer,
-          t.checks,
-          si_contract.index,
-          si_signer.index;
-    `)
-
-    // Create primary index
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_trades_id ON marketplace.${TRADES_MV_NAME} (id)`)
-
-    // Create additional indexes for performance optimization
-    // Status and type - improves queries filtering by open trades and specific trade types
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_status_type ON marketplace.${TRADES_MV_NAME} (status, type)`)
-    // Creation date - optimizes queries sorting by recently listed
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_created_at ON marketplace.${TRADES_MV_NAME} (created_at DESC)`)
-    // Category - improves queries filtering by NFT category
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_mv_trades_category ON marketplace.${TRADES_MV_NAME} (sent_nft_category)`)
-    // Contract and token - optimizes joins with NFT tables
-    await client.query(
-      `CREATE INDEX IF NOT EXISTS idx_mv_trades_contract_token ON marketplace.${TRADES_MV_NAME} (contract_address_sent, sent_token_id)`
-    )
+    for (const indexSql of TRADES_MV_INDEX_SQLS) {
+      await client.query(indexSql)
+    }
 
     // Single-row gate + dirty-aware refresh function (see the shared constants + ensureTradesRefreshGate,
     // which already applied these in its own committed transaction; re-run here so a fully-privileged

@@ -1,9 +1,7 @@
 import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
@@ -21,7 +19,7 @@ export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
     LEFT JOIN marketplace.trade_assets_item as item ON ta.id = item.asset_id`.append(customWhere ? SQL` WHERE `.append(customWhere) : SQL``)
 }
 
-export function getInsertTradeQuery(trade: TradeCreation & { contract: string }, signer: string) {
+export function getInsertTradeQuery(trade: TradeCreation & { contract: string; tradeDigest: string | null }, signer: string) {
   return SQL`INSERT INTO marketplace.trades (
     chain_id,
     checks,
@@ -30,6 +28,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string },
     network,
     signature,
     hashed_signature,
+    trade_digest,
     signer,
     type,
     contract
@@ -41,6 +40,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string },
    ${trade.network},
    ${trade.signature},
    ${keccak256(trade.signature)},
+   ${trade.tradeDigest},
    ${signer.toLowerCase()},
    ${trade.type},
    ${trade.contract}
@@ -102,10 +102,6 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 }
 
 export function getTradesForTypeQuery(type: TradeType) {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
   return `
@@ -135,7 +131,7 @@ export function getTradesForTypeQuery(type: TradeType) {
         'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
-        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -145,7 +141,7 @@ export function getTradesForTypeQuery(type: TradeType) {
           (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
           OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
         ) THEN '${ListingStatus.CANCELLED}'
-        WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
+        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
       ELSE '${ListingStatus.OPEN}'
       END AS status
     FROM marketplace.trades as t
@@ -172,9 +168,27 @@ export function getTradesForTypeQuery(type: TradeType) {
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.item as item ON (ta.contract_address = item.collection_id AND item_asset.item_id::numeric = item.blockchain_id)
       LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft as nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
-    LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}','${marketplacePolygon.address.toLowerCase()}','${marketplaceEthereumV2.address.toLowerCase()}','${marketplacePolygonV2.address.toLowerCase()}')) as contract_signature_index ON t.network = contract_signature_index.network
+    -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+    -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+    -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+    -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+    -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
+    LEFT JOIN squid_trades.trade as trade_status
+      ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
+    LEFT JOIN squid_trades.signature_index as signer_signature_index
+      ON signer_signature_index.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
+      AND signer_signature_index.contract = LOWER(t.contract)
+      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+    -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
+    -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
+    LEFT JOIN squid_trades.signature_index as contract_signature_index
+      ON contract_signature_index.address = LOWER(t.contract)
+      -- Exact on the row's whole identity (address + contract + network); see the materialized view.
+      AND contract_signature_index.contract = LOWER(t.contract)
+      -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
+      -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
+      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     WHERE t.type = '${type}'
     /**
      * NOT grouped by trade_status.caller.
@@ -222,10 +236,6 @@ export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, n
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
-  const marketplacePolygon = getContract(ContractName.OffChainMarketplace, getPolygonChainId())
-  const marketplaceEthereum = getContract(ContractName.OffChainMarketplace, getEthereumChainId())
-  const marketplacePolygonV2 = getContract(ContractName.OffChainMarketplaceV2, getPolygonChainId())
-  const marketplaceEthereumV2 = getContract(ContractName.OffChainMarketplaceV2, getEthereumChainId())
   return SQL`
     SELECT
       t.id,
@@ -252,7 +262,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
         'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
-        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN 'cancelled'
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -262,7 +272,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
           (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
           OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
         ) THEN 'cancelled'
-        WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then 'sold'
+        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then 'sold'
       ELSE 'open'
       END AS status
     FROM marketplace.trades as t
@@ -298,28 +308,33 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
             .append(
               SQL`
     ) as assets_with_values ON t.id = assets_with_values.trade_id
-    LEFT JOIN squid_trades.trade as trade_status ON trade_status.signature = t.hashed_signature
-    LEFT JOIN squid_trades.signature_index as signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-    LEFT JOIN (select * from squid_trades.signature_index signature_index where LOWER(signature_index.address) IN ('`
-                .append(marketplaceEthereum.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplaceEthereumV2.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplacePolygon.address.toLowerCase())
-                .append(SQL`','`)
-                .append(marketplacePolygonV2.address.toLowerCase())
-                .append(SQL`')`)
-                .append(
-                  SQL`,'`.append(marketplacePolygon.address.toLowerCase()).append(
-                    SQL`')) as contract_signature_index ON t.network = contract_signature_index.network
+    -- Matched on either identifier the marketplace versions use: V1/V2 key a cancellation on
+    -- keccak256(signature bytes), V3 on the trade's EIP-712 digest, and the indexer writes whichever one
+    -- applies into the signature column. ANY(ARRAY[...]) rather than an OR so the planner can still drive this off
+    -- the indexer's signature index; an OR degrades it to a bitmap scan, and COALESCE on both sides
+    -- defeats every index (measured: 163ms / 271ms / 702ms on 30k trades).
+    LEFT JOIN squid_trades.trade as trade_status
+      ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
+    LEFT JOIN squid_trades.signature_index as signer_signature_index
+      ON signer_signature_index.address = LOWER(t.signer)
+      -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
+      AND signer_signature_index.contract = LOWER(t.contract)
+      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+    -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
+    -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
+    LEFT JOIN squid_trades.signature_index as contract_signature_index
+      ON contract_signature_index.address = LOWER(t.contract)
+      -- Exact on the row's whole identity (address + contract + network); see the materialized view.
+      AND contract_signature_index.contract = LOWER(t.contract)
+      -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
+      -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
+      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
     WHERE t.type = '`
-                      .append(type)
-                      .append(
-                        SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
+                .append(type)
+                .append(
+                  SQL`'`.append(filters.owner ? SQL` AND t.signer = ${filters.owner.toLowerCase()}` : SQL``).append(SQL`
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `)
-                      )
-                  )
                 )
             )
         )
