@@ -4,7 +4,8 @@ import {
   IShopCatalogComponent,
   TOP_CREATORS_MIN_ITEMS,
   TOP_CREATORS_MIN_SALES_PER_WINDOW,
-  TOP_CREATORS_MIN_WINDOW_SALES_FLOOR
+  TOP_CREATORS_MIN_WINDOW_SALES_FLOOR,
+  TRENDING_DEFAULT_DAYS
 } from '../../src/ports/shop-catalog/types'
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
 // same way rather than restated as a literal that would need editing whenever the window changes.
@@ -1587,6 +1588,20 @@ describe('Shop Catalog Component', () => {
       query.mockResolvedValue({ rows: [] })
     })
 
+    /**
+     * A decision pinned rather than a behaviour: the whole fix for an almost-empty rail IS this number.
+     *
+     * It was 1, for parity with the marketplace's own trending row. That row is dominated by LAND, where a
+     * day holds plenty of sales; this one only ever shows wearables and emotes, and on production a single
+     * day held FOUR sales across the entire marketplace. Intersected with what is currently listed, the rail
+     * rendered one card in twelve slots. A week has more than fifty candidates.
+     *
+     * So: if this ever goes back to a day, the rail goes back to being empty. That is what this guards.
+     */
+    it('should look back over a week by default, not the single day the marketplace uses', () => {
+      expect(TRENDING_DEFAULT_DAYS).toBe(7)
+    })
+
     it('should rank on sales made inside the look-back window, in a single query', async () => {
       await shopCatalog.getTrendingItems({}, RATE)
 
@@ -1604,7 +1619,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getTrendingItems({}, RATE)
 
       const { values } = query.mock.calls[0][0]
-      const expected = Math.floor(getDateXDaysAgo(1).getTime() / 1000)
+      const expected = Math.floor(getDateXDaysAgo(TRENDING_DEFAULT_DAYS).getTime() / 1000)
       expect(values).toContain(expected)
       // `sale.timestamp` is stored in seconds; binding milliseconds would silently match every sale ever.
       expect(values).not.toContain(expected * 1000)

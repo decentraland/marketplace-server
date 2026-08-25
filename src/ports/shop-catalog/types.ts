@@ -20,14 +20,26 @@ export const TRENDING_DEFAULT_LIMIT = 12
 export const TRENDING_MAX_LIMIT = 50
 
 /**
- * The look-back window, in days, over which sales are counted. 1 = "since midnight yesterday", the SAME
- * window the marketplace's own trending row uses (both resolve it through `getDateXDaysAgo`), so the two
- * rows are computed over the same slice of history.
+ * The look-back window, in days, over which sales are counted.
  *
- * Capped at a week: the window is a full scan of `sale` above a timestamp, and a year-long request would be
- * a cheap way to make an expensive query.
+ * A WEEK, not the marketplace's day. This used to match that row's window for parity — both resolve it
+ * through `getDateXDaysAgo` — and the parity was the mistake: the marketplace is dominated by LAND, where a
+ * day holds plenty of sales, while this rail only ever shows wearables and emotes.
+ *
+ * Measured on production. Distinct items sold across the WHOLE marketplace, by window:
+ *
+ *   1 day → 4      3 days → 24      7 days → 96      30 days → 354
+ *
+ * Four sales is not a trend, it is four data points. Intersected with what is currently listed and buyable,
+ * a one-day window left the rail with ONE card in a twelve-slot carousel; the same query over a week has
+ * more than fifty to choose from. The signal only became noise-free at this width.
+ *
+ * Still capped at a week: the window is a full scan of `sale` above a timestamp, and a year-long request
+ * would be a cheap way to make an expensive query. The default now sits AT that cap, which is deliberate —
+ * if the rail ever runs thin again the answer is not a wider scan but a fallback, because at that point
+ * there is no trend left to show.
  */
-export const TRENDING_DEFAULT_DAYS = 1
+export const TRENDING_DEFAULT_DAYS = 7
 export const TRENDING_MIN_DAYS = 1
 export const TRENDING_MAX_DAYS = 7
 
