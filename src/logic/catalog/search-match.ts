@@ -2,6 +2,12 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { SEARCH_WORDS_TABLE } from './search-words-table'
 
+// Escape LIKE metacharacters so the term is matched literally. The value is bound as a parameter (no
+// injection); this only stops a `%` or `_` in a search from turning it into an unbounded wildcard.
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
 /**
  * Does this item match a search term?
  *
@@ -33,9 +39,19 @@ import { SEARCH_WORDS_TABLE } from './search-words-table'
  *
  * `itemIdExpression` is raw SQL naming the item id in the caller's query, e.g. `item.id::text` or
  * `COALESCE(item_p.id, item_s.id)`. It is a caller-controlled constant, never user input.
+ *
+ * `nonItemNameExpression` covers the rows that are not collection items at all — LAND, estates, names.
+ * They have no id to look up (both sides of that COALESCE are NULL, and `NULL = anything` is never true),
+ * so without a fallback a search would silently exclude every one of them: 298 open name trades, 111
+ * parcels and 82 estates today. There is no word table for them either, so the fallback keeps the
+ * substring match on the asset's own name, which is what these rows matched on before.
  */
-export function getSearchMatchWhere(itemIdExpression: string, search: string): SQLStatement {
-  return SQL`(EXISTS (
+export function getSearchMatchWhere(
+  itemIdExpression: string,
+  search: string,
+  { nonItemNameExpression }: { nonItemNameExpression?: string } = {}
+): SQLStatement {
+  const query = SQL`(EXISTS (
       SELECT 1
       FROM `
     .append(SEARCH_WORDS_TABLE)
@@ -58,5 +74,16 @@ export function getSearchMatchWhere(itemIdExpression: string, search: string): S
     )
     .append(itemIdExpression).append(SQL`
         AND lower(search_tags.tag) = lower(${search})
-    ))`)
+    )`)
+
+  if (nonItemNameExpression) {
+    query
+      .append(SQL` OR (`)
+      .append(itemIdExpression)
+      .append(SQL` IS NULL AND `)
+      .append(nonItemNameExpression)
+      .append(SQL` ILIKE ${`%${escapeLike(search)}%`})`)
+  }
+
+  return query.append(SQL`)`)
 }

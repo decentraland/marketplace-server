@@ -53,3 +53,41 @@ describe('when building the search match predicate', () => {
     })
   })
 })
+
+describe('when the row is not a collection item at all', () => {
+  /**
+   * LAND, estates and names live in the nft table, not the item table, so both sides of the caller's
+   * COALESCE are NULL — and `NULL = anything` is never true. Without a fallback a search silently
+   * excludes every one of them, which is what the word-table match on its own did.
+   */
+  it('should fall back to the asset name so those rows can still match', () => {
+    const { text, values } = getSearchMatchWhere('COALESCE(item_p.id, item_s.id)::text', 'genesis', {
+      nonItemNameExpression: 'nft.name'
+    })
+
+    expect(text).toContain('COALESCE(item_p.id, item_s.id)::text IS NULL AND nft.name ILIKE')
+    expect(values).toContain('%genesis%')
+  })
+
+  it('should only reach the fallback when there is no item, leaving the indexed path in charge otherwise', () => {
+    const { text } = getSearchMatchWhere('COALESCE(item_p.id, item_s.id)::text', 'genesis', {
+      nonItemNameExpression: 'nft.name'
+    })
+
+    // the fallback is guarded by IS NULL, so an item row is never matched by a loose substring
+    expect(text).toMatch(/OR \(COALESCE\(item_p\.id, item_s\.id\)::text IS NULL AND/)
+  })
+
+  it('should escape LIKE metacharacters in the fallback, so a term cannot become a wildcard', () => {
+    const { values } = getSearchMatchWhere('x', '50%_off', { nonItemNameExpression: 'nft.name' })
+
+    expect(values).toContain('%50\\%\\_off%')
+  })
+
+  it('should omit the fallback entirely for callers whose item id is never null', () => {
+    const { text } = getSearchMatchWhere('item.id::text', 'genesis')
+
+    expect(text).not.toContain('ILIKE')
+    expect(text).not.toContain('IS NULL')
+  })
+})

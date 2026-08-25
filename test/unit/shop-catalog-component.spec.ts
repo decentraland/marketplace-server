@@ -213,8 +213,10 @@ describe('Shop Catalog Component', () => {
       expect(sql.text).toContain('marketplace.item_search_words')
       expect(sql.text).toContain('search_words.word % lower(')
       expect(sql.text).toContain('lower(search_tags.tag) = lower(')
-      // the multi-word term that the old substring form could never match
-      expect(sql.text).not.toContain('ILIKE $')
+      // The old form matched the item NAME by substring, which is what missed multi-word terms. The only
+      // ILIKE left is the fallback for rows that are not collection items, and it is guarded by IS NULL.
+      expect(sql.text).not.toMatch(/COALESCE\(nft\.name, w_p\.name, e_p\.name\) ILIKE/)
+      expect(sql.text).toMatch(/IS NULL AND nft\.name ILIKE/)
       expect(sql.values).toContain('hat pirate')
     })
 

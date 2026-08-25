@@ -257,6 +257,10 @@ function creditsToWei(credits: number): bigint | null {
 // item_p, secondary ones through the nft to item_s. Both aliases come from metadataJoinsOn.
 const SHOP_ITEM_ID_EXPRESSION = 'COALESCE(item_p.id, item_s.id)::text'
 
+// The name to fall back on for rows that are not collection items — LAND, estates, names. They have no
+// entry in the word table, so without this a search would exclude every one of them.
+const SHOP_NON_ITEM_NAME_EXPRESSION = 'nft.name'
+
 // A trade whose item belongs to a collection curation did not approve is not something to list, mirroring
 // the base WHERE /v2/catalog applies. Rows whose sent asset is not a collection item at all -- LAND,
 // estates, names -- have no collection to judge, so they stay: COALESCE cannot tell "no item" from "item
@@ -330,7 +334,9 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
     }
   }
   if (filters.search) {
-    query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
+    query
+      .append(SQL` AND `)
+      .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
   }
   // Social emotes are INCLUDED by default and excluded only on an explicit `includeSocialEmotes=false`,
   // matching /v1/items, /v2/catalog and /v1/trendings so one convention covers every feed. COALESCE over
@@ -705,7 +711,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       if (maxWei != null) query.append(SQL` AND mv.amount_received <= ${maxWei.toString()}`)
     }
     if (filters.search) {
-      query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
+      query
+        .append(SQL` AND `)
+        .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
@@ -880,7 +888,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       )
     }
     if (filters.search) {
-      query.append(SQL` AND `).append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search))
+      query
+        .append(SQL` AND `)
+        .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
