@@ -191,6 +191,42 @@ describe('Shop Catalog Component', () => {
       expect(sql.values).toContain(2)
     })
 
+    it('should exclude items whose collection curation did not approve', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('COALESCE(item_p.search_is_collection_approved, item_s.search_is_collection_approved) = true')
+    })
+
+    it('should keep rows that are not collection items at all, so LAND, estates and names survive', async () => {
+      await shopCatalog.getShopListings({})
+
+      const sql = query.mock.calls[0][0]
+      // COALESCE cannot tell "no item" from "item with a NULL flag", so the no-item case is explicit
+      expect(sql.text).toContain('COALESCE(item_p.id, item_s.id) IS NULL')
+    })
+
+    it('should match the search term against the item words and tags, not a substring of the name', async () => {
+      await shopCatalog.getShopListings({ search: 'hat pirate' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('marketplace.item_search_words')
+      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.text).toContain('lower(search_tags.tag) = lower(')
+      // The old form matched the item NAME by substring, which is what missed multi-word terms. The only
+      // ILIKE left is the fallback for rows that are not collection items, and it is guarded by IS NULL.
+      expect(sql.text).not.toMatch(/COALESCE\(nft\.name, w_p\.name, e_p\.name\) ILIKE/)
+      expect(sql.text).toMatch(/IS NULL AND nft\.name ILIKE/)
+      expect(sql.values).toContain('hat pirate')
+    })
+
+    it('should resolve the item from whichever side of the trade the row came from', async () => {
+      await shopCatalog.getShopListings({ search: 'hat' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('search_words.item_id = COALESCE(item_p.id, item_s.id)::text')
+    })
+
     it('should select the seller and issued id from the sent asset JSON (no extra join)', async () => {
       await shopCatalog.getShopListings({})
 
@@ -224,12 +260,12 @@ describe('Shop Catalog Component', () => {
       expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.created_at DESC')
     })
 
-    it('should bind a name search as a parameterized ILIKE', async () => {
+    it('should bind a name search as a parameterized word match', async () => {
       await shopCatalog.getShopListings({ search: 'Cool' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('ILIKE')
-      expect(sql.values).toContain('%Cool%')
+      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.values).toContain('Cool')
     })
 
     it('should lowercase rarities and bind them as an array', async () => {
@@ -278,12 +314,11 @@ describe('Shop Catalog Component', () => {
       expect(sql.text).not.toContain('mv.amount_received <=')
     })
 
-    it('should escape ILIKE wildcards in the search term', async () => {
+    it('should carry LIKE metacharacters as plain data, since no LIKE pattern is built any more', async () => {
       await shopCatalog.getShopListings({ search: '50%_off' })
 
       const sql = query.mock.calls[0][0]
-      // % and _ are escaped so they match literally instead of acting as wildcards.
-      expect(sql.values).toContain('%50\\%\\_off%')
+      expect(sql.values).toContain('50%_off')
     })
 
     it('should filter by a lowercased creator address bound as a parameter', async () => {
@@ -390,12 +425,12 @@ describe('Shop Catalog Component', () => {
       expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.created_at DESC')
     })
 
-    it('should bind a name search as a parameterized ILIKE with escaped wildcards', async () => {
+    it('should bind a name search as a parameterized word match', async () => {
       await shopCatalog.getLegacyListings({ search: '50%_off' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('ILIKE')
-      expect(sql.values).toContain('%50\\%\\_off%')
+      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.values).toContain('50%_off')
     })
 
     it('should lowercase rarities and bind them as an array param', async () => {
@@ -947,7 +982,8 @@ describe('Shop Catalog Component', () => {
       // One occurrence per branch — the point of reusing the join chain is that this holds by construction.
       expect(text.match(/ILIKE 'emote%'/g)).toHaveLength(3)
       expect(values.filter((v: unknown) => v === '0xabc')).toHaveLength(3)
-      expect(values.filter((v: unknown) => v === '%hat%')).toHaveLength(3)
+      // two bindings per branch now: one for the word match, one for the tag match
+      expect(values.filter((v: unknown) => v === 'hat')).toHaveLength(6)
     })
 
     it('should not apply trade-only predicates to the store branch', async () => {

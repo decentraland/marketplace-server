@@ -121,9 +121,26 @@ function getOrdersAndTradesFilters(filters: OrderFilters & { nftIds?: string[] }
   const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress ? SQL` LOWER(nft_address) = LOWER(${filters.contractAddress}) ` : null
   const FILTER_BY_STATUS = filters.status ? SQL` status = ${filters.status} ` : null
   const FILTER_BY_NETWORK = filters.network ? SQL` network = ANY(${getDBNetworks(filters.network)}) ` : null
-  // L1 item_ids are in the format of 0x32b7495895264ac9d0b12d32afd435453458b1c6-cw_casinovisor_hat
-  const itemId = filters.itemId ? (filters.itemId.includes('-') ? filters.itemId : `${filters.contractAddress}-${filters.itemId}`) : null
-  const FILTER_ORDER_BY_ITEM_ID = itemId ? SQL` ord.item_id = ${itemId} ` : null
+  // An L1 item id is `<collection>-<name_key>` (0x32b74958...-cw_casinovisor_hat), not
+  // `<collection>-<blockchain_id>`, so composing it from the request only ever matched L2 items: asking
+  // for an L1 item's orders returned nothing even when open orders existed. Resolving the id through the
+  // item table works on both networks. A caller that already holds a full id keeps its direct match.
+  const FILTER_ORDER_BY_ITEM_ID = !filters.itemId
+    ? null
+    : filters.itemId.includes('-')
+    ? SQL` ord.item_id = ${filters.itemId} `
+    : SQL` EXISTS (
+        SELECT 1
+        FROM `
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.item resolved_item
+        WHERE resolved_item.id = ord.item_id
+          AND resolved_item.blockchain_id::text = ${filters.itemId}`
+        )
+        .append(filters.contractAddress ? SQL` AND LOWER(resolved_item.collection_id) = LOWER(${filters.contractAddress})` : SQL``)
+        .append(SQL`
+      ) `)
   const FILTER_TRADE_BY_ITEM_ID = filters.itemId ? SQL` item_id = ${filters.itemId} ` : null
   const FILTER_BY_NFT_ID = filters.nftIds ? SQL` nft_id = ANY(${filters.nftIds}) ` : null
   const FILTER_ORDER_NOT_EXPIRED = SQL` expires_at_normalized > NOW() `

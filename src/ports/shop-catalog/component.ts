@@ -1,6 +1,7 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getSearchMatchWhere } from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
@@ -252,12 +253,22 @@ function creditsToWei(credits: number): bigint | null {
   return BigInt(Math.max(0, Math.floor(credits))) * USD_WEI_PER_CREDIT
 }
 
-// Escape LIKE/ILIKE metacharacters so user input is matched literally (Postgres default escape is `\`).
-// The value is already bound as a parameter (no injection); this only stops `%`/`_` from turning a
-// search into an unbounded wildcard scan.
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&')
-}
+// The item behind a row, whichever side of the trade it came from: primary listings resolve through
+// item_p, secondary ones through the nft to item_s. Both aliases come from metadataJoinsOn.
+const SHOP_ITEM_ID_EXPRESSION = 'COALESCE(item_p.id, item_s.id)::text'
+
+// The name to fall back on for rows that are not collection items — LAND, estates, names. They have no
+// entry in the word table, so without this a search would exclude every one of them.
+const SHOP_NON_ITEM_NAME_EXPRESSION = 'nft.name'
+
+// A trade whose item belongs to a collection curation did not approve is not something to list, mirroring
+// the base WHERE /v2/catalog applies. Rows whose sent asset is not a collection item at all -- LAND,
+// estates, names -- have no collection to judge, so they stay: COALESCE cannot tell "no item" from "item
+// with a NULL flag", which is why the two cases are spelled out rather than defaulted.
+const APPROVED_COLLECTION_PREDICATE = `(
+    COALESCE(item_p.id, item_s.id) IS NULL
+    OR COALESCE(item_p.search_is_collection_approved, item_s.search_is_collection_approved) = true
+  )`
 
 // Clamp a caller-supplied count to [min, max], flooring and falling back to `fallback` for
 // missing/non-finite input.
@@ -277,6 +288,7 @@ function rateToNumericString(rate: number): string {
 // The shared browse filters (category, contract/item, rarity, category, search) applied identically to
 // each branch of the unified feed. Mirrors the expressions used by getShopListings.
 function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilters): void {
+  query.append(SQL` AND `).append(APPROVED_COLLECTION_PREDICATE)
   if (filters.contractAddress) {
     query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
   }
@@ -322,7 +334,9 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
     }
   }
   if (filters.search) {
-    query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+    query
+      .append(SQL` AND `)
+      .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
   }
   // Social emotes are INCLUDED by default and excluded only on an explicit `includeSocialEmotes=false`,
   // matching /v1/items, /v2/catalog and /v1/trendings so one convention covers every feed. COALESCE over
@@ -644,13 +658,18 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(SQL`, `)
       .append(genderExpr())
       .append(SQL` `)
-      .append(metadataJoins()).append(SQL`
+      .append(metadataJoins())
+      .append(
+        SQL`
       WHERE mv.status = 'open'
         AND (mv.available IS NULL OR mv.available > 0)
         AND EXISTS (
           SELECT 1 FROM marketplace.trade_assets ta
           WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${USD_PEGGED_ASSET_TYPE}
-        )`)
+        )
+        AND `
+      )
+      .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.contractAddress) {
       query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
@@ -692,7 +711,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       if (maxWei != null) query.append(SQL` AND mv.amount_received <= ${maxWei.toString()}`)
     }
     if (filters.search) {
-      query.append(SQL` AND COALESCE(nft.name, w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+      query
+        .append(SQL` AND `)
+        .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
@@ -837,14 +858,19 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(SQL`, `)
       .append(genderExpr())
       .append(SQL` `)
-      .append(metadataJoins()).append(SQL`
+      .append(metadataJoins())
+      .append(
+        SQL`
       WHERE mv.status = 'open'
         AND mv.type = 'public_item_order'
         AND (mv.available IS NULL OR mv.available > 0)
         AND EXISTS (
           SELECT 1 FROM marketplace.trade_assets ta
           WHERE ta.trade_id = mv.id AND ta.direction = 'received' AND ta.asset_type = ${ERC20_ASSET_TYPE}
-        )`)
+        )
+        AND `
+      )
+      .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.category === 'emote') {
       query.append(SQL` AND item_p.item_type ILIKE 'emote%'`)
@@ -862,7 +888,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       )
     }
     if (filters.search) {
-      query.append(SQL` AND COALESCE(w_p.name, e_p.name) ILIKE ${'%' + escapeLike(filters.search) + '%'}`)
+      query
+        .append(SQL` AND `)
+        .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
