@@ -19,7 +19,6 @@ import { createCatalogComponent } from './ports/catalog/component'
 import { createCollectionsComponent } from './ports/collections/component'
 import { createContractsComponent } from './ports/contracts/component'
 import { createPgComponent } from './ports/db/component'
-import { createENS } from './ports/ens/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
@@ -122,7 +121,6 @@ export async function initComponents(): Promise<AppComponents> {
 
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
-  const ens = createENS()
 
   // rentals
   const rentalsSubgraph = await createSubgraphComponent({ logs, config, fetch, metrics }, RENTALS_SUBGRAPH_URL)
@@ -222,7 +220,6 @@ export async function initComponents(): Promise<AppComponents> {
     manaUsdRate,
     wertSigner,
     wertApi,
-    ens,
     updateBuilderServerItemsViewJob,
     flushTradesMaterializedViewJob,
     schemaValidator,

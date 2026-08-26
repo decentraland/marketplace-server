@@ -56,7 +56,6 @@
     "@wert-io/widget-sc-signer": "^2.0.0",
     "ajv": "^8.13.0",
     "ajv-formats": "^3.0.1",
-    "canvas": "^3.2.3",
     "decentraland-transactions": "^3.1.1",
     "etag": "^1.8.1",
     "ethers": "^6.6.2",
