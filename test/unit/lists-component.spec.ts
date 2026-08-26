@@ -1654,11 +1654,13 @@ describe('when checking if a user is allowed to edit some lists', () => {
         expect.objectContaining({
           strings: expect.arrayContaining([
             expect.stringContaining('WHERE favorites.lists.id = ANY'),
-            expect.stringContaining('favorites.lists.user_address !='),
-            expect.stringContaining('favorites.acl.permission !='),
-            expect.stringContaining('OR favorites.acl.grantee NOT IN')
+            expect.stringContaining('AND favorites.lists.user_address !='),
+            expect.stringContaining('AND NOT EXISTS'),
+            expect.stringContaining('SELECT 1 FROM favorites.acl'),
+            expect.stringContaining('AND favorites.acl.permission ='),
+            expect.stringContaining('AND favorites.acl.grantee IN')
           ]),
-          values: expect.arrayContaining([listIds, userAddress, Permission.EDIT, userAddress, '*'])
+          values: expect.arrayContaining([listIds, userAddress, DEFAULT_LIST_USER_ADDRESS, Permission.EDIT, '*'])
         })
       )
     })

@@ -220,10 +220,22 @@ export function createListsComponent(
   }
 
   async function checkNonEditableLists(listIds: string[], userAddress: string): Promise<void> {
+    // A caller may edit a list when they own it, when it is the shared default list, or when an
+    // explicit EDIT grant exists for them (or for everyone). The absence of such a grant has to be
+    // tested with NOT EXISTS: a LEFT JOIN plus a negative comparison against the ACL columns
+    // evaluates to UNKNOWN for a list with no ACL rows (the normal state of a private list), and
+    // UNKNOWN is dropped by WHERE — so a non-owner would silently pass and gain write access to
+    // another user's private list.
     const { rows, rowCount } = await pg.query<Pick<DBList, 'id'>>(SQL`SELECT favorites.lists.id FROM favorites.lists
-      LEFT JOIN favorites.acl ON favorites.lists.id = favorites.acl.list_id
-      WHERE favorites.lists.id = ANY(${listIds}) AND favorites.lists.user_address != ${userAddress}
-      AND (favorites.acl.permission != ${Permission.EDIT} OR favorites.acl.grantee NOT IN (${userAddress}, ${GRANTED_TO_ALL}))`)
+      WHERE favorites.lists.id = ANY(${listIds})
+      AND favorites.lists.user_address != ${userAddress}
+      AND favorites.lists.user_address != ${DEFAULT_LIST_USER_ADDRESS}
+      AND NOT EXISTS (
+        SELECT 1 FROM favorites.acl
+        WHERE favorites.acl.list_id = favorites.lists.id
+        AND favorites.acl.permission = ${Permission.EDIT}
+        AND favorites.acl.grantee IN (${userAddress}, ${GRANTED_TO_ALL})
+      )`)
     if (rowCount > 0) {
       throw new ListsNotFoundError(rows.map(({ id }) => id))
     }
