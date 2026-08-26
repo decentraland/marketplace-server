@@ -11,7 +11,6 @@ import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
 import { getContractsHandler } from './handlers/contracts-handler'
-import { createENSImageGeratorHandler } from './handlers/ens'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
@@ -104,7 +103,6 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     createTransakWidgetHandler
   )
   router.put('/v1/transak/access-token', bearerTokenMiddleware(transakAccessTokenAuth), refreshTransakAccessTokenHandler)
-  router.get('/v1/ens/generate', createENSImageGeratorHandler)
 
   router.get('/v3/catalog/shop', createShopCatalogHandler(components))
   router.get('/v3/catalog/legacy', createShopLegacyHandler(components))

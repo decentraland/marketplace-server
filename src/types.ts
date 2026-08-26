@@ -11,7 +11,6 @@ import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { IPgComponent } from './ports/db/types'
-import { IENSComponent } from './ports/ens/types'
 import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
 import { IListsComponents } from './ports/favorites/lists'
@@ -61,7 +60,6 @@ export type BaseComponents = {
   wertSigner: IWertSignerComponent
   wertApi: IWertApiComponent
   transak: ITransakComponent
-  ens: IENSComponent
   updateBuilderServerItemsViewJob: IJobComponent
   flushTradesMaterializedViewJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>

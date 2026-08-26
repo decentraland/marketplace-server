@@ -21,7 +21,6 @@ import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
-import { createENS } from '../src/ports/ens/component'
 import { IEventPublisherComponent } from '../src/ports/events'
 import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/access'
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
@@ -102,7 +101,6 @@ async function initComponents(): Promise<TestComponents> {
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
-  const ens = createENS()
 
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
@@ -185,7 +183,6 @@ async function initComponents(): Promise<TestComponents> {
     manaUsdRate,
     wertSigner,
     wertApi,
-    ens,
     updateBuilderServerItemsViewJob,
     flushTradesMaterializedViewJob,
     access,
