@@ -189,12 +189,58 @@ test('when browsing LAND', function ({ components }) {
     it('should agree with the database about which LAND matches', async () => {
       const { rows } = await components.dappsDatabase.query<{ count: string }>(
         `SELECT count(*) AS count FROM squid_marketplace.nft
-          WHERE search_is_land AND contract_address = '${CONTRACT}' AND search_text % 'Cobalt Hollow'`
+          WHERE search_is_land AND contract_address = '${CONTRACT}'
+            AND (search_text % 'Cobalt Hollow' OR 'Cobalt Hollow' <% search_text)`
       )
 
       const { total } = await browse('isOnSale=true&search=Cobalt Hollow')
 
       expect(total).toBe(Number(rows[0].count))
+    })
+  })
+
+  describe('and the term appears inside a longer description', () => {
+    const buriedToken = '910006'
+
+    /**
+     * The reason the search felt broken even once it reached both rails: `search_text` carries the
+     * coordinates, the name and the description, and `similarity()` over that whole string is dominated by
+     * everything the reader did not type. On production this parcel's real-world equivalents scored 0.154
+     * against a 0.3 threshold — "road" matched 0 of the 15 LAND on sale whose text contains it.
+     */
+    beforeEach(async () => {
+      await createParcelNFT(components, CONTRACT, buriedToken, {
+        name: 'Buy your land right next to the Genesis plaza, roads on two sides'
+      })
+      tradeIds.push(await createNFTOnSaleTrade(components, CONTRACT, buriedToken))
+    })
+
+    afterEach(async () => {
+      await deleteSquidDBNFT(components, buriedToken, CONTRACT)
+    })
+
+    it('should find it by a word buried in the middle of its text', async () => {
+      const { data } = await browse('isOnSale=true&search=Genesis')
+
+      expect(data.map(r => r.nft.tokenId)).toContain(buriedToken)
+    })
+
+    it('should find it by another word from the same text, to show it is not one lucky token', async () => {
+      const { data } = await browse('isOnSale=true&search=roads')
+
+      expect(data.map(r => r.nft.tokenId)).toContain(buriedToken)
+    })
+
+    it('should still find a short name, which the whole-string measure always could', async () => {
+      const { data } = await browse('isOnSale=true&search=Cobalt Hollow')
+
+      expect(data.map(r => r.nft.name)).toContain('Cobalt Hollow')
+    })
+
+    it('should still return nothing for a term that is in no text at all', async () => {
+      const { total } = await browse('isOnSale=true&search=zzzznomatch')
+
+      expect(total).toBe(0)
     })
   })
 })

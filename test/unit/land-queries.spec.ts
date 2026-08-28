@@ -1,5 +1,11 @@
 import { NFTCategory, NFTSortBy } from '@dcl/schemas'
-import { getAllLANDsQuery, getLandsOnSaleQuery, getNFTsSortBy, getNFTsSortByOverNFTTable } from '../../src/ports/nfts/landQueries'
+import {
+  getAllLANDsQuery,
+  getLandSearchWhere,
+  getLandsOnSaleQuery,
+  getNFTsSortBy,
+  getNFTsSortByOverNFTTable
+} from '../../src/ports/nfts/landQueries'
 import { GetNFTsFilters } from '../../src/ports/nfts/types'
 
 const onSale = (over: Partial<GetNFTsFilters> = {}): GetNFTsFilters =>
@@ -124,5 +130,54 @@ describe('when mapping a sort onto the nft table alone', () => {
     for (const sortBy of [NFTSortBy.NAME, NFTSortBy.NEWEST, NFTSortBy.CHEAPEST, NFTSortBy.RECENTLY_SOLD, undefined]) {
       expect(getNFTsSortByOverNFTTable(sortBy).text).toEqual(getNFTsSortBy(sortBy).text)
     }
+  })
+})
+
+/**
+ * `search_text` holds the coordinates, the name AND the description, so `similarity()` over the whole
+ * string is dominated by everything the reader did not type: on the LAND on sale on production, "road"
+ * matched 0 of the 15 whose text contains it and "dragon" 5 of 10. `word_similarity` scores the best run
+ * of words inside the text, which is what typing one word means — but it is stricter on multi-word input,
+ * where the whole-string measure is the forgiving one. Both, OR-ed, so no term loses what it already had.
+ */
+describe('when matching a LAND search term', () => {
+  it('should accept a match on the whole text or on a run of words inside it', () => {
+    const { text } = getLandSearchWhere('nft.search_text', 'genesis')
+
+    expect(text).toContain('nft.search_text %')
+    expect(text).toContain('<% nft.search_text')
+  })
+
+  it('should keep the two alternatives inside one group, so an outer AND cannot swallow the first', () => {
+    const { text } = getLandSearchWhere('nft.search_text', 'genesis')
+
+    expect(text.trim().startsWith('(')).toBe(true)
+    expect(text.trim().endsWith(')')).toBe(true)
+  })
+
+  it('should bind the term on both sides rather than inline it', () => {
+    const { text, values } = getLandSearchWhere('nft.search_text', "o'brien")
+
+    expect(text).not.toContain("o'brien")
+    expect(values).toEqual(["o'brien", "o'brien"])
+  })
+
+  it('should qualify whichever column the caller is matching', () => {
+    expect(getLandSearchWhere('search_text', 'x').text).toContain('search_text %')
+    expect(getLandSearchWhere('nft.search_text', 'x').text).toContain('nft.search_text %')
+  })
+})
+
+describe('when a LAND browse carries a search term', () => {
+  it('should use the word-aware match on the on-sale feed', () => {
+    const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }))
+
+    expect(text).toContain('<% nft.search_text')
+  })
+
+  it('should use it on the full-catalogue feed too, so the two do not disagree', () => {
+    const { text } = getAllLANDsQuery({ search: 'genesis', first: 24, skip: 0 } as GetNFTsFilters)
+
+    expect(text).toContain('<% search_text')
   })
 })
