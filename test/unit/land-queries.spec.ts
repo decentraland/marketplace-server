@@ -56,13 +56,16 @@ describe('when browsing LAND that is on sale', () => {
       expect(values).toContain('genesis')
     })
 
-    it('should apply it after the union, where both the orders and the trades are in scope', () => {
+    it('should apply it exactly once, after the union, where both rails are in scope', () => {
       const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }))
       const union = text.indexOf('combined AS (')
-      const searchOverUnion = text.indexOf('nft.search_text %')
+      const occurrences = [...text.matchAll(/search_text\s*%/g)].map(m => m.index)
 
+      // Once, not once per rail: matching inside the order CTE as well is the same trigram scan run
+      // twice over a 5.4M-row table for a result the predicate over the union already decides.
+      expect(occurrences).toHaveLength(1)
       expect(union).toBeGreaterThan(-1)
-      expect(searchOverUnion).toBeGreaterThan(union)
+      expect(occurrences[0]).toBeGreaterThan(union)
     })
 
     it('should bind the term rather than inline it', () => {

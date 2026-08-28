@@ -103,7 +103,6 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
 
   const {
     FILTER_BY_MAX_PLAZA_DISTANCE,
-    FILTER_BY_SEARCH,
     FILTER_MAX_ESTATE_SIZE,
     FILTER_MIN_ESTATE_SIZE,
     FILTER_BY_MIN_ORDER_PRICE,
@@ -117,7 +116,10 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
     FILTER_MIN_ESTATE_SIZE,
     FILTER_MAX_ESTATE_SIZE,
     FILTER_BY_MAX_PLAZA_DISTANCE,
-    FILTER_BY_SEARCH,
+    // No search here: this CTE is one RAIL of the union, and the term is matched once over the union
+    // below, where both rails are joined back to the nft. Filtering here as well is the same trigram
+    // scan run twice for the order rail, over a 5.4M-row table, for a result the outer predicate already
+    // decides — and it left the query saying two different things about where search belongs.
     FILTER_BY_MIN_ORDER_PRICE,
     FILTER_BY_MAX_ORDER_PRICE
   ])
