@@ -6,6 +6,19 @@ import { getWhereStatementFromFilters } from '../utils'
 import { getNFTLimitAndOffsetStatement } from './queries'
 import { GetNFTsFilters } from './types'
 
+/**
+ * ORDER BY for a context where the only table in scope is `nft`.
+ *
+ * `order_created_at` is COMPUTED — a GREATEST() over the nft's cached listing date and the live
+ * order/trade the query joins in further down. The pre-selection CTEs read the nft table alone, so naming
+ * it there is a hard SQL error rather than a wrong order: `/v1/nfts?category=parcel&sortBy=recently_listed`
+ * (no isOnSale) answered HTTP 400, `column "order_created_at" does not exist`, for every LAND browse that
+ * was not filtered to on-sale. The nft table's own cached column is what that context can sort on.
+ */
+export function getNFTsSortByOverNFTTable(sortBy?: NFTSortBy) {
+  return sortBy === NFTSortBy.RECENTLY_LISTED ? SQL` ORDER BY search_order_created_at DESC NULLS LAST ` : getNFTsSortBy(sortBy)
+}
+
 export function getNFTsSortBy(sortBy?: NFTSortBy) {
   switch (sortBy) {
     case NFTSortBy.NAME:
@@ -90,7 +103,6 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
 
   const {
     FILTER_BY_MAX_PLAZA_DISTANCE,
-    FILTER_BY_SEARCH,
     FILTER_MAX_ESTATE_SIZE,
     FILTER_MIN_ESTATE_SIZE,
     FILTER_BY_MIN_ORDER_PRICE,
@@ -104,7 +116,10 @@ function getOpenOrderNFTsCTE(filters: GetNFTsFilters): SQLStatement {
     FILTER_MIN_ESTATE_SIZE,
     FILTER_MAX_ESTATE_SIZE,
     FILTER_BY_MAX_PLAZA_DISTANCE,
-    FILTER_BY_SEARCH,
+    // No search here: this CTE is one RAIL of the union, and the term is matched once over the union
+    // below, where both rails are joined back to the nft. Filtering here as well is the same trigram
+    // scan run twice for the order rail, over a 5.4M-row table, for a result the outer predicate already
+    // decides — and it left the query saying two different things about where search belongs.
     FILTER_BY_MIN_ORDER_PRICE,
     FILTER_BY_MAX_ORDER_PRICE
   ])
@@ -161,7 +176,13 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
 }
 
 export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
-  return getTradesCTE(filters)
+  // Only the category narrowing — deliberately NOT the whole filter set. `getTradesCTE` limits itself to
+  // one page when the sort is Recently Listed, which suits a caller that reads the trades directly, and is
+  // wrong here: this query UNIONs the trades with the on-chain orders and counts the union. Truncating one
+  // side left the other whole, so the total became "every order + one page of trades" and grew with the
+  // page size — measured on production, parcels on sale reported 72 at first=1, 81 at first=10 and 97 at
+  // first=48, against a real 194. Everything past the first page of trade-backed LAND was unreachable.
+  return getTradesCTE({ category: filters.category })
     .append(SQL`,`)
     .append(getOpenOrderNFTsCTE(filters))
     .append(getOpenTradesCTE(filters))
@@ -208,6 +229,13 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
         .append(filters.minDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza >= ${filters.minDistanceToPlaza}` : SQL``)
         .append(filters.maxDistanceToPlaza ? SQL` AND nft.search_distance_to_plaza <= ${filters.maxDistanceToPlaza}` : SQL``)
         .append(filters.adjacentToRoad ? SQL` AND nft.search_adjacent_to_road = true` : SQL``)
+        // The text search belongs HERE and nowhere else on this path. It was applied inside the
+        // on-chain-order CTE only, and the trades CTE has no nft to match against — so every trade-backed
+        // LAND sailed past any search term. Measured on production: 299 LAND on sale, of which 103 are
+        // order-backed and 196 trade-backed, and searching a string that matches nothing at all
+        // ("xyzzy") still returned exactly those 196. Applied over the union instead, where nft is joined,
+        // so both rails answer the same question.
+        .append(filters.search ? SQL` AND nft.search_text % ${filters.search}` : SQL``)
         .append(
           SQL`
           `
@@ -328,7 +356,9 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
     FILTER_BY_IDS
   ]
 
-  return getTradesCTE(filters).append(
+  // Category only, for the reason spelled out in getLandsOnSaleQuery: a page-limited trades CTE would
+  // silently strip the listing off any LAND whose trade fell outside the first page.
+  return getTradesCTE({ category: filters.category }).append(
     SQL`
     , land_count AS (
       SELECT count(*) AS total_count
@@ -351,7 +381,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
         `
           )
           .append(getWhereStatementFromFilters(topNFTsWhere))
-          .append(getNFTsSortBy(sortBy))
+          .append(getNFTsSortByOverNFTTable(sortBy))
           .append(filters.ids?.length ? SQL`` : getNFTLimitAndOffsetStatement(filters))
           .append(
             SQL`
