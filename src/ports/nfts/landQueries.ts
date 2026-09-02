@@ -15,6 +15,30 @@ import { GetNFTsFilters } from './types'
  * (no isOnSale) answered HTTP 400, `column "order_created_at" does not exist`, for every LAND browse that
  * was not filtered to on-sale. The nft table's own cached column is what that context can sort on.
  */
+/**
+ * WHAT A LAND SEARCH HAS TO MATCH.
+ *
+ * `search_text` is not a name: it holds the coordinates, the name and the description, so `similarity()`
+ * over the whole string is dominated by everything the reader did not type. A parcel described as "next to
+ * the genesis plaza" scores 0.154 against a 0.3 threshold and does not match, while the short "mom @
+ * genesis" scores 0.667 and does. Measured on the LAND on sale on production: of 6 whose text contains
+ * "genesis", 2 matched; "road" matched 0 of 15, "dragon" 5 of 10, "museum" 0 of 1.
+ *
+ * `<%` (word_similarity) scores the BEST matching run of words inside the text instead of the text as a
+ * whole, which is what a reader typing one word means. It is not a replacement though — it is stricter on
+ * multi-word input, where the whole-string measure is the forgiving one: "vegas city" finds 4 through `%`
+ * and 1 through `<%`. So both, OR-ed: every term keeps everything it already found and gains what the
+ * other operator sees. Measured over the same set — road 0→15, dragon 5→10, corner 1→4, genesis 2→6,
+ * museum 0→1, "vegas city" 4→4 (unchanged), and nothing anywhere went down.
+ */
+export function getLandSearchWhere(column: string, search: string): SQLStatement {
+  return SQL`(`
+    .append(column)
+    .append(SQL` % ${search} OR ${search} <% `)
+    .append(column)
+    .append(SQL`)`)
+}
+
 export function getNFTsSortByOverNFTTable(sortBy?: NFTSortBy) {
   return sortBy === NFTSortBy.RECENTLY_LISTED ? SQL` ORDER BY search_order_created_at DESC NULLS LAST ` : getNFTsSortBy(sortBy)
 }
@@ -74,7 +98,7 @@ function getAllLANDWheres(filters: GetNFTsFilters & { rentalAssetsIds?: string[]
   const FILTER_MIN_ESTATE_SIZE = minEstateSize ? SQL` search_estate_size >= ${minEstateSize} ` : SQL` search_estate_size > 0 `
   const FILTER_MAX_ESTATE_SIZE = maxEstateSize ? SQL` search_estate_size <= ${maxEstateSize} ` : null
   const FILTER_BY_IDS = ids?.length ? SQL` id = ANY (${ids}) ` : null
-  const FILTER_BY_SEARCH = search ? SQL` search_text % ${search} ` : null
+  const FILTER_BY_SEARCH = search ? getLandSearchWhere('search_text', search) : null
   const FILTER_CATEGORY = filters.category ? SQL`category = ${filters.category}` : null
 
   return {
@@ -235,7 +259,7 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
         // order-backed and 196 trade-backed, and searching a string that matches nothing at all
         // ("xyzzy") still returned exactly those 196. Applied over the union instead, where nft is joined,
         // so both rails answer the same question.
-        .append(filters.search ? SQL` AND nft.search_text % ${filters.search}` : SQL``)
+        .append(filters.search ? SQL` AND `.append(getLandSearchWhere('nft.search_text', filters.search)) : SQL``)
         .append(
           SQL`
           `
