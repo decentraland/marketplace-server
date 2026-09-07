@@ -197,6 +197,13 @@ export type UnifiedAcquisition = 'trade' | 'store'
 // their raw MANA price with the live rate and rounded UP to whole credits (same "Model B" as native).
 export type UnifiedListing = Omit<ShopListing, 'tradeId'> & {
   /**
+   * Whether an EMOTE loops, or null when the row is not an emote.
+   *
+   * Nullable rather than defaulted to false: `false` is a real answer meaning the emote plays once, so a
+   * default would tell every wearable it plays once and leave the client unable to tell the two apart.
+   */
+  emoteLoop: boolean | null
+  /**
    * `null` for a CollectionStore mint, which has no trade — there is no order and nothing signed.
    *
    * Deliberately nullable rather than a synthetic id: this value is threaded into
@@ -458,6 +465,7 @@ export type UnifiedListingRow = {
   rarity: string | null
   item_type: string | null
   wearable_category: string | null
+  emote_loop: boolean | null
   gender: ShopGender
   creator: string | null
   seller: string | null // secondary: sent NFT owner (from mv.assets->'sent'->>'owner'); null for primary
