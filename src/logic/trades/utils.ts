@@ -9,7 +9,7 @@ import {
   zeroPadValue,
   JsonRpcProvider
 } from 'ethers'
-import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeChecks, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
@@ -250,6 +250,45 @@ export async function isEstateFingerprintValid(
   const contract = new Contract(contractAddress, abi, provider)
   const estateFingerprint = await contract.getFingerprintV2(tokenId)
   return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
+}
+
+/** The pieces of a stored trade the marketplace contract needs to say whether it can still be executed. */
+export type OnChainTradeRef = {
+  hashed_signature: string
+  signer: string
+  checks: TradeChecks
+  chain_id: number
+  trade_contract_address: string
+}
+
+const TRADE_LIVENESS_ABI = [
+  'function cancelledSignatures(bytes32 signature) view returns (bool)',
+  'function signatureUses(bytes32 signature) view returns (uint256)',
+  'function signerSignatureIndex(address signer) view returns (uint256)'
+]
+
+/**
+ * Asks the marketplace contract whether a trade can still be executed. The DB's status comes from the squid
+ * indexer, which trails the chain by minutes, so a just-cancelled listing still reads as open there.
+ * Fails closed: an unreachable RPC keeps the DB's answer.
+ */
+export async function isTradeLiveOnChain(trade: OnChainTradeRef): Promise<boolean> {
+  try {
+    const provider = new JsonRpcProvider(getRPCUrlByChainId(trade.chain_id))
+    const contract = new Contract(trade.trade_contract_address, TRADE_LIVENESS_ABI, provider)
+    const [cancelled, uses, signerIndex] = await Promise.all([
+      contract.cancelledSignatures(trade.hashed_signature) as Promise<boolean>,
+      contract.signatureUses(trade.hashed_signature) as Promise<bigint>,
+      contract.signerSignatureIndex(trade.signer) as Promise<bigint>
+    ])
+    if (cancelled) return false
+    if (BigInt(trade.checks.uses) > 0 && uses >= BigInt(trade.checks.uses)) return false
+    if (signerIndex !== BigInt(trade.checks.signerSignatureIndex)) return false
+    return true
+  } catch (error) {
+    console.error(`Could not verify trade liveness on chain for signature ${trade.hashed_signature}`, error)
+    return true
+  }
 }
 
 export async function validateAssetOwnership(asset: ERC721TradeAsset, signer: string, chainId: ChainId): Promise<boolean> {

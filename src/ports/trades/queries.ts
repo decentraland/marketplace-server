@@ -108,6 +108,7 @@ export function getTradesForTypeQuery(type: TradeType) {
     SELECT
       t.id,
       t.contract as trade_contract_address,
+      t.hashed_signature,
       t.created_at,
       t.signer,
       t.expires_at,
@@ -201,7 +202,7 @@ export function getTradesForTypeQuery(type: TradeType) {
      * to open.
      *
      * That produced two contradictory rows for the same trade, and getOpenItemOrderQuery does
-     * WHERE status = 'open' LIMIT 1 — so any item whose order had been BOTH executed at least once and
+     * WHERE status = 'open' — so any item whose order had been BOTH executed at least once and
      * then cancelled became permanently unlistable, rejected with "There is already an open order for this
      * Item". Both the Shop catalogue and the Builder correctly showed the item as not for sale, because
      * getTradesForTypeQueryWithFilters (below) never grouped by caller, so nothing surfaced the phantom
@@ -211,28 +212,34 @@ export function getTradesForTypeQuery(type: TradeType) {
      * what allows this to group by the trade, which is the unit a status describes. It now matches the
      * filtered query verbatim.
      */
-    GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+    GROUP BY t.id, t.hashed_signature, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
 }
 
+// The columns the on-chain re-check needs (see isTradeLiveOnChain). Every row is returned, not LIMIT 1:
+// each one the indexer still calls open has to be re-checked before the new listing can be refused.
+const OPEN_ORDER_COLUMNS = 'id, hashed_signature, signer, checks, chain_id, trade_contract_address'
+
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
+  return SQL`SELECT `
+    .append(OPEN_ORDER_COLUMNS)
+    .append(SQL` FROM (`)
     .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
     .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
     .append(SQL` AND item_order_trades.network = ${network}`)
     .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
     .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
-    .append(SQL` LIMIT 1`)
 }
 
 export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
+  return SQL`SELECT `
+    .append(OPEN_ORDER_COLUMNS)
+    .append(SQL` FROM (`)
     .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
     .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
     .append(SQL` AND nft_order_trades.network = ${network}`)
     .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
     .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
-    .append(SQL` LIMIT 1`)
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
