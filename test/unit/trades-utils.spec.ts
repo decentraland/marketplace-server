@@ -791,6 +791,7 @@ describe('when validating trade by type', () => {
 
         openOrder = {
           hashed_signature: '0xhashedsignature',
+          trade_digest: null,
           signer: trade.signer,
           checks: trade.checks,
           chain_id: trade.chainId,
@@ -821,6 +822,49 @@ describe('when validating trade by type', () => {
 
         it('should return true', () => {
           return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        })
+      })
+
+      describe('and several orders are open in the database', () => {
+        let secondOrder: tradeLogicUtils.OnChainTradeRef
+
+        beforeEach(() => {
+          secondOrder = { ...openOrder, hashed_signature: '0xanotherhashedsignature' }
+          queryMock.mockReset().mockResolvedValue({ rowCount: 2, rows: [openOrder, secondOrder] })
+        })
+
+        describe('and only the second one is still live on chain', () => {
+          beforeEach(() => {
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+          })
+
+          it('should throw DuplicateNFTOrder error', () => {
+            return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+          })
+        })
+
+        describe('and the first one is still live on chain', () => {
+          beforeEach(() => {
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(true)
+          })
+
+          it('should stop asking the chain at the first live order', async () => {
+            await expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+            expect(tradeLogicUtils.isTradeLiveOnChain).toHaveBeenCalledTimes(1)
+          })
+        })
+
+        describe('and there are more open orders than the chain check is willing to verify', () => {
+          beforeEach(() => {
+            const rows = Array.from({ length: 6 }, (_, i) => ({ ...openOrder, hashed_signature: `0xhashedsignature${i}` }))
+            queryMock.mockReset().mockResolvedValue({ rowCount: rows.length, rows })
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(false)
+          })
+
+          it('should keep the database answer without asking the chain', async () => {
+            await expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+            expect(tradeLogicUtils.isTradeLiveOnChain).not.toHaveBeenCalled()
+          })
         })
       })
     })
@@ -1147,6 +1191,7 @@ describe('when validating trade by type', () => {
 
         openOrder = {
           hashed_signature: '0xhashedsignature',
+          trade_digest: null,
           signer: trade.signer,
           checks: trade.checks,
           chain_id: trade.chainId,

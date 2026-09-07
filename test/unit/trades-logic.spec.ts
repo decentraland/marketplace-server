@@ -529,6 +529,7 @@ describe('when asking the chain whether a stored trade can still be executed', (
   beforeEach(() => {
     trade = {
       hashed_signature: '0xhashedsignature',
+      trade_digest: null,
       signer: '0x9d32aac179153a991e832550d9f96441ea27763b',
       checks: {
         effective: 0,
@@ -562,6 +563,29 @@ describe('when asking the chain whether a stored trade can still be executed', (
       expect(contractMock.cancelledSignatures).toHaveBeenCalledWith(trade.hashed_signature)
       expect(contractMock.signatureUses).toHaveBeenCalledWith(trade.hashed_signature)
       expect(contractMock.signerSignatureIndex).toHaveBeenCalledWith(trade.signer)
+      expect(contractMock.contractSignatureIndex).toHaveBeenCalledWith()
+    })
+  })
+
+  describe('and the trade belongs to a marketplace version that keys trades by their digest', () => {
+    beforeEach(() => {
+      trade.trade_digest = '0xtradedigest'
+    })
+
+    it('should key the signature reads by the digest instead of the hashed signature', async () => {
+      await isTradeLiveOnChain(trade)
+      expect(contractMock.cancelledSignatures).toHaveBeenCalledWith(trade.trade_digest)
+      expect(contractMock.signatureUses).toHaveBeenCalledWith(trade.trade_digest)
+    })
+
+    describe('and that digest was cancelled on chain', () => {
+      beforeEach(() => {
+        contractMock.cancelledSignatures.mockResolvedValue(true)
+      })
+
+      it('should report it dead', () => {
+        return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+      })
     })
   })
 

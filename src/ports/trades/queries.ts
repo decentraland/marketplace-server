@@ -109,6 +109,7 @@ export function getTradesForTypeQuery(type: TradeType) {
       t.id,
       t.contract as trade_contract_address,
       t.hashed_signature,
+      t.trade_digest,
       t.created_at,
       t.signer,
       t.expires_at,
@@ -212,13 +213,13 @@ export function getTradesForTypeQuery(type: TradeType) {
      * what allows this to group by the trade, which is the unit a status describes. It now matches the
      * filtered query verbatim.
      */
-    GROUP BY t.id, t.hashed_signature, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
+    GROUP BY t.id, t.hashed_signature, t.trade_digest, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
 }
 
 // The columns the on-chain re-check needs (see isTradeLiveOnChain). Every row is returned, not LIMIT 1:
 // each one the indexer still calls open has to be re-checked before the new listing can be refused.
-const OPEN_ORDER_COLUMNS = 'hashed_signature, signer, checks, chain_id, trade_contract_address'
+const OPEN_ORDER_COLUMNS = 'hashed_signature, trade_digest, signer, checks, chain_id, trade_contract_address'
 
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
   return SQL`SELECT `
