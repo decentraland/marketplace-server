@@ -499,6 +499,31 @@ describe('Shop Catalog Component', () => {
       expect(text).toContain('mv.amount_received::text AS mana_wei ,')
     })
 
+    /**
+     * An emote's play mode is on the Marketplace's card and on the Shop's detail page, but the Shop's own
+     * card could not show it: this feed flattens its rows and carried nothing about emotes, so the client
+     * had no field to read. The column already sits on the item table next to `search_emote_outcome_type`,
+     * which this query reads today -- only the SELECT was missing it.
+     */
+    it('should select the emote play mode from either side of the join', async () => {
+      await shopCatalog.getUnifiedListings({}, RATE)
+
+      const text = query.mock.calls[0][0].text as string
+      expect(text).toContain('COALESCE(item_p.search_emote_loop, item_s.search_emote_loop) AS emote_loop')
+    })
+
+    it.each([
+      ['a looping emote', true, true],
+      ['one that plays once, which must not collapse into "not an emote"', false, false],
+      ['a wearable, which has no play mode at all', null, null]
+    ])('should report %s', async (_label, column, expected) => {
+      query.mockResolvedValueOnce({ rows: [unifiedRow({ emote_loop: column, total: '1' })] })
+
+      const { data } = await shopCatalog.getUnifiedListings({}, RATE)
+
+      expect(data[0].emoteLoop).toBe(expected)
+    })
+
     it('should merge native and legacy sources with UNION ALL by default', async () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 

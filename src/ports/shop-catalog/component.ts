@@ -393,6 +393,9 @@ function unifiedBranch(opts: {
           item_p.search_wearable_category, item_p.search_emote_category,
           item_s.search_wearable_category, item_s.search_emote_category
         ) AS wearable_category,
+        -- Whether an EMOTE loops. Null for a wearable, and null is NOT "plays once": false is the real
+        -- answer for a one-shot emote, so absent and false have to stay distinguishable downstream.
+        COALESCE(item_p.search_emote_loop, item_s.search_emote_loop) AS emote_loop,
         COALESCE(item_p.creator, item_s.creator, '') AS creator,
         mv.assets->'sent'->>'owner' AS seller,
         mv.assets->'sent'->>'issued_id' AS issued_id,
@@ -573,6 +576,7 @@ function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: numb
     rarity: (r.rarity ?? 'common').toLowerCase(),
     category: topLevelCategory(r.item_type),
     wearableCategory: r.wearable_category,
+    emoteLoop: r.emote_loop ?? null,
     gender: r.gender ?? null,
     creator: r.creator ?? '',
     // Seller + issued id come from `mv.assets`, which the store relation supplies as NULL::jsonb — Postgres
