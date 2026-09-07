@@ -9,7 +9,9 @@ import {
   getOffChainMarketplaceContracts,
   isEstateFingerprintValid,
   resolveTradeSignature,
-  validateTradeSignature
+  validateTradeSignature,
+  isTradeLiveOnChain,
+  OnChainTradeRef
 } from '../../src/logic/trades/utils'
 import { MarketplaceContractNotFound } from '../../src/ports/trades/errors'
 
@@ -511,6 +513,141 @@ describe('when listing the marketplace versions deployed on a chain', () => {
       expect(getOffChainMarketplaceContracts(ChainId.MATIC_MAINNET).map(({ contractName }) => contractName)).toEqual([
         ContractName.OffChainMarketplaceV2
       ])
+    })
+  })
+})
+
+describe('when asking the chain whether a stored trade can still be executed', () => {
+  let trade: OnChainTradeRef
+  let contractMock: {
+    cancelledSignatures: jest.Mock
+    signatureUses: jest.Mock
+    signerSignatureIndex: jest.Mock
+    contractSignatureIndex: jest.Mock
+  }
+
+  beforeEach(() => {
+    trade = {
+      hashed_signature: '0xhashedsignature',
+      trade_digest: null,
+      signer: '0x9d32aac179153a991e832550d9f96441ea27763b',
+      checks: {
+        effective: 0,
+        expiration: 0,
+        allowedRoot: '0x',
+        contractSignatureIndex: 0,
+        signerSignatureIndex: 2,
+        externalChecks: [],
+        salt: '0x',
+        uses: 1
+      },
+      chain_id: ChainId.MATIC_MAINNET,
+      trade_contract_address: '0x000000000000000000000000000000000000dead'
+    }
+    contractMock = {
+      cancelledSignatures: jest.fn().mockResolvedValue(false),
+      signatureUses: jest.fn().mockResolvedValue(0n),
+      signerSignatureIndex: jest.fn().mockResolvedValue(2n),
+      contractSignatureIndex: jest.fn().mockResolvedValue(0n)
+    }
+    ;(Contract as jest.Mock).mockImplementationOnce(() => contractMock)
+  })
+
+  describe('and nothing on chain has touched the trade', () => {
+    it('should report it live', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(true)
+    })
+
+    it('should key the contract reads by the hashed signature and the signer', async () => {
+      await isTradeLiveOnChain(trade)
+      expect(contractMock.cancelledSignatures).toHaveBeenCalledWith(trade.hashed_signature)
+      expect(contractMock.signatureUses).toHaveBeenCalledWith(trade.hashed_signature)
+      expect(contractMock.signerSignatureIndex).toHaveBeenCalledWith(trade.signer)
+      expect(contractMock.contractSignatureIndex).toHaveBeenCalledWith()
+    })
+  })
+
+  describe('and the trade belongs to a marketplace version that keys trades by their digest', () => {
+    beforeEach(() => {
+      trade.trade_digest = '0xtradedigest'
+    })
+
+    it('should key the signature reads by the digest instead of the hashed signature', async () => {
+      await isTradeLiveOnChain(trade)
+      expect(contractMock.cancelledSignatures).toHaveBeenCalledWith(trade.trade_digest)
+      expect(contractMock.signatureUses).toHaveBeenCalledWith(trade.trade_digest)
+    })
+
+    describe('and that digest was cancelled on chain', () => {
+      beforeEach(() => {
+        contractMock.cancelledSignatures.mockResolvedValue(true)
+      })
+
+      it('should report it dead', () => {
+        return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+      })
+    })
+  })
+
+  describe('and the signature was cancelled on chain', () => {
+    beforeEach(() => {
+      contractMock.cancelledSignatures.mockResolvedValue(true)
+    })
+
+    it('should report it dead', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+    })
+  })
+
+  describe('and every use of the signature has been spent', () => {
+    beforeEach(() => {
+      contractMock.signatureUses.mockResolvedValue(1n)
+    })
+
+    it('should report it dead', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+    })
+  })
+
+  describe('and the trade allows unlimited uses', () => {
+    beforeEach(() => {
+      trade.checks.uses = 0
+      contractMock.signatureUses.mockResolvedValue(50n)
+    })
+
+    it('should report it live', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(true)
+    })
+  })
+
+  describe('and the signer has since bumped their signature index', () => {
+    beforeEach(() => {
+      contractMock.signerSignatureIndex.mockResolvedValue(3n)
+    })
+
+    it('should report it dead', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+    })
+  })
+
+  describe('and the marketplace has bumped its contract-wide signature index', () => {
+    beforeEach(() => {
+      contractMock.contractSignatureIndex.mockResolvedValue(1n)
+    })
+
+    it('should report it dead', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+    })
+  })
+
+  describe('and the chain cannot be reached', () => {
+    beforeEach(() => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      contractMock.cancelledSignatures.mockRejectedValue(new Error('rpc down'))
+    })
+
+    it('should report it live, keeping the database answer', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(true)
     })
   })
 })

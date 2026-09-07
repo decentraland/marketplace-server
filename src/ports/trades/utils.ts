@@ -16,7 +16,7 @@ import {
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/trades'
 import { getMarketplaceContracts } from '../../logic/contracts'
-import { isEstateFingerprintValid } from '../../logic/trades/utils'
+import { isEstateFingerprintValid, isTradeLiveOnChain, OnChainTradeRef } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
 import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
@@ -109,6 +109,20 @@ export async function isValidEstateTrade(trade: TradeCreation): Promise<boolean>
   return true
 }
 
+// An item has at most one live order by construction, so more rows than this means the indexer view is
+// badly behind or something is off. Rather than fan out that many RPC reads, keep the DB's answer.
+const MAX_OPEN_ORDERS_VERIFIED_ON_CHAIN = 5
+
+// The DB calls an order open until the indexer sees its cancellation; the chain is asked before refusing a
+// relist on that basis, so a seller who just cancelled is not made to wait out the indexer's lag.
+async function hasLiveOrder(openOrders: OnChainTradeRef[]): Promise<boolean> {
+  if (openOrders.length > MAX_OPEN_ORDERS_VERIFIED_ON_CHAIN) return true
+  for (const order of openOrders) {
+    if (await isTradeLiveOnChain(order)) return true
+  }
+  return false
+}
+
 export async function validateTradeByType(trade: TradeCreation, client: IPgComponent): Promise<boolean> {
   const { sent, received, type } = trade
 
@@ -156,11 +170,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidTradePriceAssetError()
       }
 
-      const duplicateOrder = await client.query(
+      const duplicateOrder = await client.query<OnChainTradeRef>(
         getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId, trade.network)
       )
 
-      if (duplicateOrder.rowCount > 0) {
+      if (await hasLiveOrder(duplicateOrder.rows)) {
         throw new DuplicateNFTOrderError()
       }
     }
@@ -193,11 +207,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
         throw new InvalidCollectionItemCreatorError()
       }
 
-      const duplicateOrder = await client.query(
+      const duplicateOrder = await client.query<OnChainTradeRef>(
         getOpenItemOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as CollectionItemTradeAsset).itemId, trade.network)
       )
 
-      if (duplicateOrder.rowCount > 0) {
+      if (await hasLiveOrder(duplicateOrder.rows)) {
         throw new DuplicateItemOrderError()
       }
     }

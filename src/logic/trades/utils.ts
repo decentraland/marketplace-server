@@ -7,9 +7,10 @@ import {
   verifyTypedData,
   toBeArray,
   zeroPadValue,
-  JsonRpcProvider
+  JsonRpcProvider,
+  FetchRequest
 } from 'ethers'
-import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeCreation } from '@dcl/schemas'
+import { ChainId, ERC721TradeAsset, TradeAsset, TradeAssetType, TradeChecks, TradeCreation } from '@dcl/schemas'
 import { ContractData, ContractName, getContract } from 'decentraland-transactions'
 import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../ports/trades/errors'
 import { fromMillisecondsToSeconds } from '../date'
@@ -250,6 +251,60 @@ export async function isEstateFingerprintValid(
   const contract = new Contract(contractAddress, abi, provider)
   const estateFingerprint = await contract.getFingerprintV2(tokenId)
   return estateFingerprint.toLowerCase() === fingerprint.toLowerCase()
+}
+
+/** The pieces of a stored trade the marketplace contract needs to say whether it can still be executed. */
+export type OnChainTradeRef = {
+  hashed_signature: string
+  /** Set for versions in DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES, whose contract keys the trade by it. */
+  trade_digest: string | null
+  signer: string
+  checks: TradeChecks
+  chain_id: ChainId
+  trade_contract_address: string
+}
+
+// Bounds how long a listing request can hang on a slow RPC now that this read sits in its path.
+const TRADE_LIVENESS_RPC_TIMEOUT_MS = 5_000
+
+const TRADE_LIVENESS_ABI = [
+  'function cancelledSignatures(bytes32 signature) view returns (bool)',
+  'function signatureUses(bytes32 signature) view returns (uint256)',
+  'function signerSignatureIndex(address signer) view returns (uint256)',
+  'function contractSignatureIndex() view returns (uint256)'
+]
+
+/**
+ * Asks the marketplace contract whether a trade can still be executed. The DB's status comes from the squid
+ * indexer, which trails the chain by minutes, so a just-cancelled listing still reads as open there.
+ * Fails safe: an unreachable RPC preserves the existing reject-relist behavior.
+ */
+export async function isTradeLiveOnChain(trade: OnChainTradeRef): Promise<boolean> {
+  try {
+    const request = new FetchRequest(getRPCUrlByChainId(trade.chain_id))
+    request.timeout = TRADE_LIVENESS_RPC_TIMEOUT_MS
+    const provider = new JsonRpcProvider(request)
+    const contract = new Contract(trade.trade_contract_address, TRADE_LIVENESS_ABI, provider)
+    const tradeKey = trade.trade_digest ?? trade.hashed_signature
+    const [cancelled, uses, signerIndex, contractIndex] = await Promise.all([
+      contract.cancelledSignatures(tradeKey) as Promise<boolean>,
+      contract.signatureUses(tradeKey) as Promise<bigint>,
+      contract.signerSignatureIndex(trade.signer) as Promise<bigint>,
+      contract.contractSignatureIndex() as Promise<bigint>
+    ])
+    if (cancelled) return false
+    if (BigInt(trade.checks.uses) > 0 && uses >= BigInt(trade.checks.uses)) return false
+    if (signerIndex !== BigInt(trade.checks.signerSignatureIndex)) return false
+    if (contractIndex !== BigInt(trade.checks.contractSignatureIndex)) return false
+    return true
+  } catch (error) {
+    // Message only: the full ethers error carries the request, and with it the RPC URL.
+    console.error(
+      `Could not verify trade liveness on chain for signature ${trade.hashed_signature}`,
+      error instanceof Error ? error.message : String(error)
+    )
+    return true
+  }
 }
 
 export async function validateAssetOwnership(asset: ERC721TradeAsset, signer: string, chainId: ChainId): Promise<boolean> {

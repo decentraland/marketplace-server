@@ -25,6 +25,8 @@ import { getNftByTokenIdQuery } from '../../src/ports/nfts/queries'
 import { DBNFT } from '../../src/ports/nfts/types'
 import { TradeEvent } from '../../src/ports/trades'
 import {
+  DuplicateItemOrderError,
+  DuplicateNFTOrderError,
   EstateContractNotFoundForChainId,
   InvalidCollectionItemCreatorError,
   InvalidTradePriceAssetError,
@@ -763,6 +765,109 @@ describe('when validating trade by type', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
       })
     })
+
+    describe('and the database holds an open order for the same nft', () => {
+      let openOrder: tradeLogicUtils.OnChainTradeRef
+
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            tokenId: '100',
+            extra: '0x'
+          }
+        ]
+
+        openOrder = {
+          hashed_signature: '0xhashedsignature',
+          trade_digest: null,
+          signer: trade.signer,
+          checks: trade.checks,
+          chain_id: trade.chainId,
+          trade_contract_address: trade.contract
+        }
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [openOrder] })
+      })
+
+      describe('and the chain still considers that order executable', () => {
+        beforeEach(() => {
+          jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(true)
+        })
+
+        it('should throw DuplicateNFTOrder error', () => {
+          return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+        })
+
+        it('should have asked the chain about the blocking order', async () => {
+          await expect(validateTradeByType(trade, pgClient)).rejects.toThrow()
+          expect(tradeLogicUtils.isTradeLiveOnChain).toHaveBeenCalledWith(openOrder)
+        })
+      })
+
+      describe('and the chain says that order was already cancelled or used up', () => {
+        beforeEach(() => {
+          jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(false)
+        })
+
+        it('should return true', () => {
+          return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        })
+      })
+
+      describe('and several orders are open in the database', () => {
+        let secondOrder: tradeLogicUtils.OnChainTradeRef
+
+        beforeEach(() => {
+          secondOrder = { ...openOrder, hashed_signature: '0xanotherhashedsignature' }
+          queryMock.mockReset().mockResolvedValue({ rowCount: 2, rows: [openOrder, secondOrder] })
+        })
+
+        describe('and only the second one is still live on chain', () => {
+          beforeEach(() => {
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+          })
+
+          it('should throw DuplicateNFTOrder error', () => {
+            return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+          })
+        })
+
+        describe('and the first one is still live on chain', () => {
+          beforeEach(() => {
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(true)
+          })
+
+          it('should stop asking the chain at the first live order', async () => {
+            await expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+            expect(tradeLogicUtils.isTradeLiveOnChain).toHaveBeenCalledTimes(1)
+          })
+        })
+
+        describe('and there are more open orders than the chain check is willing to verify', () => {
+          beforeEach(() => {
+            const rows = Array.from({ length: 6 }, (_, i) => ({ ...openOrder, hashed_signature: `0xhashedsignature${i}` }))
+            queryMock.mockReset().mockResolvedValue({ rowCount: rows.length, rows })
+            jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(false)
+          })
+
+          it('should keep the database answer without asking the chain', async () => {
+            await expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateNFTOrderError())
+            expect(tradeLogicUtils.isTradeLiveOnChain).not.toHaveBeenCalled()
+          })
+        })
+      })
+    })
   })
 
   describe('when trade is a public item order', () => {
@@ -1058,6 +1163,63 @@ describe('when validating trade by type', () => {
 
       it('should return true', () => {
         return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+      })
+    })
+
+    describe('and the database holds an open order for the same item', () => {
+      let openOrder: tradeLogicUtils.OnChainTradeRef
+
+      beforeEach(() => {
+        trade.received = [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: manaAddress,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x123'
+          }
+        ]
+
+        trade.sent = [
+          {
+            assetType: TradeAssetType.COLLECTION_ITEM,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763a',
+            itemId: '1',
+            extra: '0x'
+          }
+        ]
+
+        openOrder = {
+          hashed_signature: '0xhashedsignature',
+          trade_digest: null,
+          signer: trade.signer,
+          checks: trade.checks,
+          chain_id: trade.chainId,
+          trade_contract_address: trade.contract
+        }
+        // First the creator lookup, then the duplicate-order guard.
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ creator: trade.signer }] })
+        queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [openOrder] })
+      })
+
+      describe('and the chain still considers that order executable', () => {
+        beforeEach(() => {
+          jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(true)
+        })
+
+        it('should throw DuplicateItemOrder error', () => {
+          return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new DuplicateItemOrderError())
+        })
+      })
+
+      describe('and the chain says that order was already cancelled or used up', () => {
+        beforeEach(() => {
+          jest.spyOn(tradeLogicUtils, 'isTradeLiveOnChain').mockResolvedValue(false)
+        })
+
+        it('should return true', () => {
+          return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        })
       })
     })
   })
