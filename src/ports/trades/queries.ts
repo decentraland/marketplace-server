@@ -218,7 +218,7 @@ export function getTradesForTypeQuery(type: TradeType) {
 
 // The columns the on-chain re-check needs (see isTradeLiveOnChain). Every row is returned, not LIMIT 1:
 // each one the indexer still calls open has to be re-checked before the new listing can be refused.
-const OPEN_ORDER_COLUMNS = 'id, hashed_signature, signer, checks, chain_id, trade_contract_address'
+const OPEN_ORDER_COLUMNS = 'hashed_signature, signer, checks, chain_id, trade_contract_address'
 
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
   return SQL`SELECT `

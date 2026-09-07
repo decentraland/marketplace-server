@@ -810,7 +810,7 @@ describe('when validating trade by type', () => {
 
         it('should have asked the chain about the blocking order', async () => {
           await expect(validateTradeByType(trade, pgClient)).rejects.toThrow()
-          expect(tradeLogicUtils.isTradeLiveOnChain).toHaveBeenCalledWith(openOrder, 0, [openOrder])
+          expect(tradeLogicUtils.isTradeLiveOnChain).toHaveBeenCalledWith(openOrder)
         })
       })
 

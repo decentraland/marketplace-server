@@ -257,33 +257,36 @@ export type OnChainTradeRef = {
   hashed_signature: string
   signer: string
   checks: TradeChecks
-  chain_id: number
+  chain_id: ChainId
   trade_contract_address: string
 }
 
 const TRADE_LIVENESS_ABI = [
   'function cancelledSignatures(bytes32 signature) view returns (bool)',
   'function signatureUses(bytes32 signature) view returns (uint256)',
-  'function signerSignatureIndex(address signer) view returns (uint256)'
+  'function signerSignatureIndex(address signer) view returns (uint256)',
+  'function contractSignatureIndex() view returns (uint256)'
 ]
 
 /**
  * Asks the marketplace contract whether a trade can still be executed. The DB's status comes from the squid
  * indexer, which trails the chain by minutes, so a just-cancelled listing still reads as open there.
- * Fails closed: an unreachable RPC keeps the DB's answer.
+ * Fails safe: an unreachable RPC preserves the existing reject-relist behavior.
  */
 export async function isTradeLiveOnChain(trade: OnChainTradeRef): Promise<boolean> {
   try {
     const provider = new JsonRpcProvider(getRPCUrlByChainId(trade.chain_id))
     const contract = new Contract(trade.trade_contract_address, TRADE_LIVENESS_ABI, provider)
-    const [cancelled, uses, signerIndex] = await Promise.all([
+    const [cancelled, uses, signerIndex, contractIndex] = await Promise.all([
       contract.cancelledSignatures(trade.hashed_signature) as Promise<boolean>,
       contract.signatureUses(trade.hashed_signature) as Promise<bigint>,
-      contract.signerSignatureIndex(trade.signer) as Promise<bigint>
+      contract.signerSignatureIndex(trade.signer) as Promise<bigint>,
+      contract.contractSignatureIndex() as Promise<bigint>
     ])
     if (cancelled) return false
     if (BigInt(trade.checks.uses) > 0 && uses >= BigInt(trade.checks.uses)) return false
     if (signerIndex !== BigInt(trade.checks.signerSignatureIndex)) return false
+    if (contractIndex !== BigInt(trade.checks.contractSignatureIndex)) return false
     return true
   } catch (error) {
     console.error(`Could not verify trade liveness on chain for signature ${trade.hashed_signature}`, error)

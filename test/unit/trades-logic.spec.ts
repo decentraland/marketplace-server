@@ -519,7 +519,12 @@ describe('when listing the marketplace versions deployed on a chain', () => {
 
 describe('when asking the chain whether a stored trade can still be executed', () => {
   let trade: OnChainTradeRef
-  let contractMock: { cancelledSignatures: jest.Mock; signatureUses: jest.Mock; signerSignatureIndex: jest.Mock }
+  let contractMock: {
+    cancelledSignatures: jest.Mock
+    signatureUses: jest.Mock
+    signerSignatureIndex: jest.Mock
+    contractSignatureIndex: jest.Mock
+  }
 
   beforeEach(() => {
     trade = {
@@ -541,7 +546,8 @@ describe('when asking the chain whether a stored trade can still be executed', (
     contractMock = {
       cancelledSignatures: jest.fn().mockResolvedValue(false),
       signatureUses: jest.fn().mockResolvedValue(0n),
-      signerSignatureIndex: jest.fn().mockResolvedValue(2n)
+      signerSignatureIndex: jest.fn().mockResolvedValue(2n),
+      contractSignatureIndex: jest.fn().mockResolvedValue(0n)
     }
     ;(Contract as jest.Mock).mockImplementationOnce(() => contractMock)
   })
@@ -593,6 +599,16 @@ describe('when asking the chain whether a stored trade can still be executed', (
   describe('and the signer has since bumped their signature index', () => {
     beforeEach(() => {
       contractMock.signerSignatureIndex.mockResolvedValue(3n)
+    })
+
+    it('should report it dead', () => {
+      return expect(isTradeLiveOnChain(trade)).resolves.toBe(false)
+    })
+  })
+
+  describe('and the marketplace has bumped its contract-wide signature index', () => {
+    beforeEach(() => {
+      contractMock.contractSignatureIndex.mockResolvedValue(1n)
     })
 
     it('should report it dead', () => {

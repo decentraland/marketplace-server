@@ -112,7 +112,7 @@ export async function isValidEstateTrade(trade: TradeCreation): Promise<boolean>
 // The DB calls an order open until the indexer sees its cancellation; the chain is asked before refusing a
 // relist on that basis, so a seller who just cancelled is not made to wait out the indexer's lag.
 async function hasLiveOrder(openOrders: OnChainTradeRef[]): Promise<boolean> {
-  const live = await Promise.all(openOrders.map(isTradeLiveOnChain))
+  const live = await Promise.all(openOrders.map(order => isTradeLiveOnChain(order)))
   return live.some(Boolean)
 }
 
