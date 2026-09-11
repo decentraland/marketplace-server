@@ -199,11 +199,11 @@ function toShopCoupon(coupon: ShopCouponRow | null, contractAddress: string, war
   }
 }
 
-function appendOnSaleFilter(query: SQLStatement, filters: { onSale?: boolean }, withCoupons: boolean): void {
-  if (filters.onSale === true) {
+function appendDiscountedFilter(query: SQLStatement, filters: { discounted?: boolean }, withCoupons: boolean): void {
+  if (filters.discounted === true) {
     // A branch that cannot carry a coupon has nothing on sale.
     query.append(withCoupons ? SQL` AND cp.id IS NOT NULL` : SQL` AND FALSE`)
-  } else if (filters.onSale === false && withCoupons) {
+  } else if (filters.discounted === false && withCoupons) {
     query.append(SQL` AND cp.id IS NULL`)
   }
 }
@@ -523,7 +523,7 @@ function unifiedBranch(opts: {
     // which is the worst failure shape — it works until someone picks a rarity.
     query.append(SQL` WHERE TRUE`)
     appendUnifiedFilters(query, filters)
-    appendOnSaleFilter(query, filters, withCoupons)
+    appendDiscountedFilter(query, filters, withCoupons)
     return query
   }
 
@@ -541,7 +541,7 @@ function unifiedBranch(opts: {
         )`)
 
   appendUnifiedFilters(query, filters)
-  appendOnSaleFilter(query, filters, withCoupons)
+  appendDiscountedFilter(query, filters, withCoupons)
   return query
 }
 
@@ -835,7 +835,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     if (filters.isSmart) {
       query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
     }
-    appendOnSaleFilter(query, filters, true)
+    appendDiscountedFilter(query, filters, true)
     // Price bounds apply to what the buyer would PAY, so a discounted listing lands in the slider range of its sale price.
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)

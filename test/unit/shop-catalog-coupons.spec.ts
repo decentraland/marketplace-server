@@ -122,10 +122,10 @@ describe('when the shop feed carries creator coupons', () => {
       expect(sql.text).toContain('AS coupon')
     })
 
-    it('should keep only discounted listings on onSale=true and only the rest on onSale=false', async () => {
-      await component.getShopListings({ onSale: true })
+    it('should keep only discounted listings on discounted=true and only the rest on discounted=false', async () => {
+      await component.getShopListings({ discounted: true })
       expect(query.mock.calls[0][0].text).toContain('AND cp.id IS NOT NULL')
-      await component.getShopListings({ onSale: false })
+      await component.getShopListings({ discounted: false })
       expect(query.mock.calls[1][0].text).toContain('AND cp.id IS NULL')
       await component.getShopListings({})
       expect(query.mock.calls[2][0].text).not.toContain('cp.id IS NULL')
@@ -232,8 +232,8 @@ describe('when the unified feed carries creator coupons', () => {
     expect(text).toContain('AS compare_at_credits')
   })
 
-  it('should turn onSale=true into a coupon requirement on the native branch and an empty legacy branch', async () => {
-    await component.getUnifiedListings({ onSale: true }, 0.25)
+  it('should turn discounted=true into a coupon requirement on the native branch and an empty legacy branch', async () => {
+    await component.getUnifiedListings({ discounted: true }, 0.25)
     const text = query.mock.calls[0][0].text
     expect(text).toContain('AND cp.id IS NOT NULL')
     expect(text).toContain('AND FALSE')

@@ -27,10 +27,11 @@ const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
   discount: 'discount'
 }
 
-// `onSale=true` keeps only listings a creator coupon discounts right now, `onSale=false` only the rest.
+// `discounted=true` keeps only listings a creator coupon discounts right now, `discounted=false` only the rest.
 // Anything else leaves the feed unfiltered; read as a string because a presence check would read `false` as true.
-function onSaleParam(params: Params): boolean | undefined {
-  const value = params.getString('onSale')
+// NOT `onSale`: the Shop already sends that to mean "listed", and the server has to keep ignoring it.
+function discountedParam(params: Params): boolean | undefined {
+  const value = params.getString('discounted')
   return value === 'true' ? true : value === 'false' ? false : undefined
 }
 
@@ -96,7 +97,7 @@ export function createShopCatalogHandler(
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
-    const onSale = onSaleParam(params)
+    const discounted = discountedParam(params)
 
     return asJSON(async () => {
       const { data, total } = await shopCatalog.getShopListings({
@@ -113,7 +114,7 @@ export function createShopCatalogHandler(
         maxPriceCredits,
         search,
         sortBy,
-        onSale
+        discounted
       })
       return { data, total }
     })
@@ -193,7 +194,7 @@ export function createShopUnifiedHandler(
     // is byte-for-byte the pre-existing response. Read as a string rather than through the presence-based
     // `getBoolean`, which would read `includeSocialEmotes=false` as `true`.
     const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
-    const onSale = onSaleParam(params)
+    const discounted = discountedParam(params)
 
     const filters = {
       first,
@@ -213,7 +214,7 @@ export function createShopUnifiedHandler(
       source,
       listingType,
       includeSocialEmotes,
-      onSale
+      discounted
     }
 
     return asJSON(async () => {

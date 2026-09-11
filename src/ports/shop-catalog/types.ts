@@ -137,8 +137,13 @@ export type ShopCatalogFilters = {
   maxPriceCredits?: number
   search?: string
   sortBy?: ShopSortBy
-  // true = only listings a creator coupon currently discounts, false = only the rest, undefined = all.
-  onSale?: boolean
+  /**
+   * true = only listings a creator coupon currently discounts, false = only the rest, undefined = all.
+   *
+   * Named `discounted`, not `onSale`: the Shop already sends `onSale=true` to mean "listed" (its default browse
+   * status), so reusing that name would have turned the whole grid into the deals rail.
+   */
+  discounted?: boolean
 }
 
 // A seller's OLD classic (ERC20-MANA) listing that can be re-listed into the Shop as credit-buyable.
