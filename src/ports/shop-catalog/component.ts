@@ -137,7 +137,7 @@ function couponJoin(): SQLStatement {
   return SQL`
       LEFT JOIN LATERAL (
         SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
-               c.collections, c.signature, c.expires_at
+               c.collections, c.signature, c.expires_at, COALESCE(cs.uses, 0) AS used
         FROM marketplace.coupons c
         LEFT JOIN marketplace.coupon_state cs ON cs.coupon_id = c.id
         WHERE mv.type = 'public_item_order'
@@ -172,7 +172,7 @@ function couponColumns(): SQLStatement {
         CASE WHEN cp.id IS NOT NULL THEN jsonb_build_object(
           'id', cp.id, 'signer', cp.signer, 'couponManager', cp.coupon_manager, 'couponAddress', cp.coupon_address,
           'checks', cp.checks, 'discountType', cp.discount_type, 'discount', cp.discount_ppm, 'root', cp.root,
-          'collections', to_jsonb(cp.collections), 'signature', cp.signature
+          'collections', to_jsonb(cp.collections), 'signature', cp.signature, 'used', cp.used
         ) END AS coupon`
 }
 

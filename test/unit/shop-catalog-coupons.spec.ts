@@ -32,7 +32,8 @@ function couponRow(collections: string[] = [COLLECTION]) {
     discount: 300000,
     root: '0xroot',
     collections,
-    signature: '0xsig'
+    signature: '0xsig',
+    used: 3
   }
 }
 
@@ -117,6 +118,9 @@ describe('when the shop feed carries creator coupons', () => {
       expect(sql.text).toContain('COALESCE(cs.cancelled, false) = false')
       expect(sql.text).toContain('COALESCE(cs.revoked, false) = false')
       expect(sql.text).toContain("COALESCE(cs.uses, 0) < (c.checks->>'uses')::numeric")
+      // The consumed count rides along so the Shop can say how many units are left at the sale price.
+      expect(sql.text).toContain('COALESCE(cs.uses, 0) AS used')
+      expect(sql.text).toContain("'used', cp.used")
       expect(sql.text).toContain('ORDER BY c.discount_ppm DESC, c.expires_at ASC')
       expect(sql.text).toContain('AS sale_price')
       expect(sql.text).toContain('AS coupon')
@@ -164,7 +168,7 @@ describe('when the shop feed carries creator coupons', () => {
       })
       const { data } = await component.getShopListings({})
       expect(data[0]).toMatchObject({ priceCredits: 7, compareAtCredits: 10, saleEndsAt: 1800000000 })
-      expect(data[0].coupon).toMatchObject({ id: 'coupon-1', discount: 300000, proof: [] })
+      expect(data[0].coupon).toMatchObject({ id: 'coupon-1', discount: 300000, proof: [], used: 3 })
     })
 
     it('should build a non-empty proof when the coupon covers several collections', async () => {
