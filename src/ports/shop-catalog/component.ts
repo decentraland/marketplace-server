@@ -667,9 +667,10 @@ function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString:
  * to whole credits, or the card would advertise "−X%" for a discount the buyer cannot see.
  */
 function unifiedSaleFields(
-  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'sale_ends_at' | 'coupon' | 'contract_address'>
+  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'sale_ends_at' | 'coupon' | 'contract_address'>,
+  warn: (message: string) => void
 ): Pick<UnifiedListing, 'compareAtCredits' | 'saleEndsAt' | 'coupon'> {
-  const coupon = toShopCoupon(r.coupon ?? null, r.contract_address, () => undefined)
+  const coupon = toShopCoupon(r.coupon ?? null, r.contract_address, warn)
   const compareAt = r.compare_at_credits != null ? Number(r.compare_at_credits) : null
   const onSale = coupon !== null && compareAt !== null && compareAt > Number(r.price_credits)
   return {
@@ -679,7 +680,12 @@ function unifiedSaleFields(
   }
 }
 
-function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: number, ethereumChainId: number): UnifiedListing {
+function mapUnifiedRow(
+  r: Omit<UnifiedListingRow, 'total'>,
+  polygonChainId: number,
+  ethereumChainId: number,
+  warn: (message: string) => void
+): UnifiedListing {
   const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
   return {
     source: r.source,
@@ -705,7 +711,7 @@ function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: numb
     seller: r.seller ?? null,
     issuedId: r.issued_id ?? null,
     priceCredits: Number(r.price_credits),
-    ...unifiedSaleFields(r),
+    ...unifiedSaleFields(r, warn),
     manaWei: r.mana_wei ?? null,
     available: r.available ? Number(r.available) : 1,
     network: isPolygon ? Network.MATIC : Network.ETHEREUM,
@@ -717,9 +723,14 @@ function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: numb
 // Row -> model for the item-GROUPED feeds (the browse grid and the related-items rail). Extends the shared
 // per-listing mapper with the one field grouping adds. Shared for the same reason mapUnifiedRow is: the rail
 // is meant to be indistinguishable from the grid, so the two must not map a row differently.
-function mapUnifiedItemRow(r: RelatedItemRow, polygonChainId: number, ethereumChainId: number): UnifiedItem {
+function mapUnifiedItemRow(
+  r: RelatedItemRow,
+  polygonChainId: number,
+  ethereumChainId: number,
+  warn: (message: string) => void
+): UnifiedItem {
   return {
-    ...mapUnifiedRow(r, polygonChainId, ethereumChainId),
+    ...mapUnifiedRow(r, polygonChainId, ethereumChainId, warn),
     // The only field the grouped feed adds: how many rows the union produced for this item. NOTE it counts
     // store mints alongside trades, so it is "credit-buyable offers" rather than strictly "listings" — a
     // resale-only drill-down can legitimately come back empty for an item badged with a count.
@@ -751,6 +762,8 @@ function rarityDistanceExpr(referenceRarity: string | null): SQLStatement {
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
   const { dappsDatabase: pg } = components
   const logger = components.logs.getLogger('shop-catalog-component')
+  // A dropped coupon is a sale the buyer will not see; every feed logs it the same way.
+  const warn = (message: string) => logger.warn(message)
 
   async function getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }> {
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
@@ -1148,7 +1161,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data: UnifiedListing[] = result.rows.map(r => mapUnifiedRow(r, polygonChainId, ethereumChainId))
+    const data: UnifiedListing[] = result.rows.map(r => mapUnifiedRow(r, polygonChainId, ethereumChainId, warn))
 
     return { data, total }
   }
@@ -1204,7 +1217,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data = result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId))
+    const data = result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn))
 
     return { data, total }
   }
@@ -1289,7 +1302,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const polygonChainId = getPolygonChainId()
     const ethereumChainId = getEthereumChainId()
 
-    return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId)) }
+    return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn)) }
   }
 
   /**
@@ -1394,7 +1407,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
 
     return {
-      data: result.rows.map(r => ({ ...mapUnifiedItemRow(r, polygonChainId, ethereumChainId), trendingSales: Number(r.sales) }))
+      data: result.rows.map(r => ({ ...mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn), trendingSales: Number(r.sales) }))
     }
   }
 
