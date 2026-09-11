@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder } from 'node-pg-migrate'
-import { TRADES_MV_NAME, TRADES_MV_READER_GRANT_SQL } from '../../logic/trades/materialized-view'
+import { TRADES_MV_READER_GRANT_SQL } from '../../logic/trades/materialized-view'
 
 /**
  * Restores the direct SELECT grants on mv_trades.
