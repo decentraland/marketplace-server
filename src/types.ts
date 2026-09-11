@@ -10,6 +10,7 @@ import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
+import { ICouponsComponent } from './ports/coupons/types'
 import { IPgComponent } from './ports/db/types'
 import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
@@ -62,6 +63,7 @@ export type BaseComponents = {
   transak: ITransakComponent
   updateBuilderServerItemsViewJob: IJobComponent
   flushTradesMaterializedViewJob: IJobComponent
+  refreshCouponStateJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent
@@ -69,6 +71,7 @@ export type BaseComponents = {
   access: IAccessComponent
   items: IItemsComponent
   trades: ITradesComponent
+  coupons: ICouponsComponent
   bids: IBidsComponent
   eventPublisher: IEventPublisherComponent
   nfts: INFTsComponent

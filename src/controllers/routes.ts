@@ -2,6 +2,7 @@ import { wellKnownComponents } from '@dcl/crypto-middleware'
 import { bearerTokenMiddleware } from '@dcl/http-commons'
 import { Router } from '@dcl/http-server'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
+import { CouponCreationSchema } from '../ports/coupons/schemas'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
@@ -11,6 +12,7 @@ import { getBidsHandler } from './handlers/bids-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
 import { getContractsHandler } from './handlers/contracts-handler'
+import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handlers/coupons-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
@@ -124,6 +126,17 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/trades/:id', getTradeHandler)
+
+  router.get('/v1/coupons', getCouponsHandler)
+  router.post(
+    '/v1/coupons',
+    wellKnownComponents({
+      metadataValidator: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], 'dcl:create-coupon')
+    }),
+    components.schemaValidator.withSchemaValidatorMiddleware(CouponCreationSchema),
+    addCouponHandler
+  )
+  router.get('/v1/coupons/:id', getCouponHandler)
 
   router.get('/v1/bids', getBidsHandler)
   router.get('/v1/trades/:hashedSignature/accept', getTradeAcceptedEventHandler)
