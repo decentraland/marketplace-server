@@ -1,4 +1,4 @@
-import { GenderFilterOption } from '@dcl/schemas'
+import { GenderFilterOption, TradeChecks } from '@dcl/schemas'
 
 // The Shop's curated read model: only credit-buyable (USD-pegged) offchain listings, unified across
 // primary (public_item_order) and secondary (public_nft_order), with the tradeId included so the
@@ -55,6 +55,32 @@ export const TRENDING_SALES_CUT = 0.6
 
 export type ShopListingType = 'primary' | 'secondary'
 
+/**
+ * The creator coupon that discounts a listing, as the buy side needs it: everything the CouponManager hashes
+ * plus the Merkle proof for THIS listing's collection, so the client can pass it straight into
+ * `acceptWithCoupon` without a second lookup.
+ */
+export type ShopCouponRow = {
+  id: string
+  signer: string
+  couponManager: string
+  couponAddress: string
+  checks: TradeChecks
+  discountType: number
+  discount: number // parts per million: 300_000 is 30% off
+  root: string
+  collections: string[]
+  signature: string
+  // Purchases already settled with this coupon, from the on-chain state the poller mirrors. With `checks.uses`
+  // (the cap) it gives how many more units can sell at the sale price; the Shop never sees a coupon whose
+  // cap is exhausted, the join filters it out.
+  used: number
+}
+
+export type ShopCoupon = ShopCouponRow & {
+  proof: string[]
+}
+
 // Display gender, derived from a wearable's supported body shapes (BaseMale/BaseFemale). `null` for
 // emotes or items with no body-shape metadata.
 export type ShopGender = 'male' | 'female' | 'unisex' | null
@@ -74,14 +100,20 @@ export type ShopListing = {
   creator: string
   seller: string | null // secondary (resale): the reseller = current owner of the sent NFT; null for primary
   issuedId: string | null // secondary (resale): the NFT mint index (issued id); null for primary
-  priceCredits: number // USD -> fixed credits (1 credit = $0.10)
+  priceCredits: number // USD -> fixed credits (1 credit = $0.10); the SALE price while a creator coupon applies
+  compareAtCredits: number | null // the list price while a creator coupon applies, else null
+  saleEndsAt: number | null // unix SECONDS the coupon expires, else null
+  // Units still buyable at the sale price: the coupon's remaining uses capped by the listing's supply. An
+  // uncapped coupon therefore reports the supply itself. Null when not on sale.
+  saleUnitsLeft: number | null
+  coupon: ShopCoupon | null // the coupon the buy side must apply to pay priceCredits, else null
   available: number
   network: string
   chainId: number
   createdAt: number
 }
 
-export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name'
+export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name' | 'discount'
 
 export type ShopCatalogFilters = {
   first?: number
@@ -112,6 +144,13 @@ export type ShopCatalogFilters = {
   maxPriceCredits?: number
   search?: string
   sortBy?: ShopSortBy
+  /**
+   * true = only listings a creator coupon currently discounts, false = only the rest, undefined = all.
+   *
+   * Named `discounted`, not `onSale`: the Shop already sends `onSale=true` to mean "listed" (its default browse
+   * status), so reusing that name would have turned the whole grid into the deals rail.
+   */
+  discounted?: boolean
 }
 
 // A seller's OLD classic (ERC20-MANA) listing that can be re-listed into the Shop as credit-buyable.
@@ -442,6 +481,11 @@ export type ShopListingRow = {
   seller: string | null // secondary: sent NFT owner (from mv.assets->'sent'->>'owner'); null for primary
   issued_id: string | null // secondary: sent NFT issued id (from mv.assets->'sent'->>'issued_id'); null for primary
   price: string
+  sale_price: string | null // the discounted USD wei while a coupon applies
+  sale_ends_at: string | null // unix seconds
+  sale_units_left: string | null // min(coupon uses left, available) while a coupon applies
+  coupon: ShopCouponRow | null
+  coupon_discount_ppm: string | null
   available: string | null
   network: string | null
   created_at: string
@@ -471,6 +515,11 @@ export type UnifiedListingRow = {
   seller: string | null // secondary: sent NFT owner (from mv.assets->'sent'->>'owner'); null for primary
   issued_id: string | null // secondary: sent NFT issued id (from mv.assets->'sent'->>'issued_id'); null for primary
   price_credits: string
+  compare_at_credits: string | null // the list price in credits while a coupon applies
+  sale_ends_at: string | null // unix seconds
+  sale_units_left: string | null // min(coupon uses left, available) while a coupon applies
+  coupon: ShopCouponRow | null
+  coupon_discount_ppm: string | null
   mana_wei: string | null
   available: string | null
   network: string | null

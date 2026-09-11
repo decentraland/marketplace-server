@@ -3,6 +3,7 @@ import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schema
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getSearchMatchWhere } from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { collectionProof } from '../../logic/coupons/merkle'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
 // two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
@@ -20,6 +21,8 @@ import {
   RelatedItemRow,
   RelatedItemsFilters,
   ShopCatalogFilters,
+  ShopCoupon,
+  ShopCouponRow,
   ShopListing,
   ShopListingRow,
   TrendingItem,
@@ -122,6 +125,92 @@ function metadataJoinsOn() {
 function metadataJoins() {
   return SQL`FROM marketplace.mv_trades mv
       `.append(metadataJoinsOn())
+}
+
+/**
+ * The best live creator coupon for the listing aliased `mv`, exposed as `cp`: the creator's own coupon covering
+ * the listed collection, inside its window, neither cancelled nor revoked and with uses left as of the last
+ * on-chain read. Biggest discount wins; ties go to the one ending soonest. Primaries only: the coupon contract
+ * refuses anything but collection items, so a resale never carries one.
+ */
+function couponJoin(): SQLStatement {
+  return SQL`
+      LEFT JOIN LATERAL (
+        SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
+               c.collections, c.signature, c.expires_at, COALESCE(cs.uses, 0) AS used
+        FROM marketplace.coupons c
+        LEFT JOIN marketplace.coupon_state cs ON cs.coupon_id = c.id
+        WHERE mv.type = 'public_item_order'
+          AND c.signer = LOWER(mv.signer)
+          AND c.network = mv.network
+          AND c.effective_since <= now() AND c.expires_at > now()
+          AND LOWER(mv.sent_contract_address) = ANY(c.collections)
+          AND COALESCE(cs.cancelled, false) = false
+          AND COALESCE(cs.revoked, false) = false
+          AND COALESCE(cs.uses, 0) < (c.checks->>'uses')::numeric
+        ORDER BY c.discount_ppm DESC, c.expires_at ASC
+        LIMIT 1
+      ) cp ON true`
+}
+
+// What the buyer pays once `cp` applies: the coupon contract subtracts floor(price * ppm / 1e6) from the price.
+function saleWeiExpr(): SQLStatement {
+  return SQL`(mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000))`
+}
+
+// The price a listing is filtered and sorted by: the sale price while a coupon applies, else the list price.
+function effectiveWeiExpr(): SQLStatement {
+  return SQL`COALESCE(`.append(saleWeiExpr()).append(SQL`, mv.amount_received::numeric)`)
+}
+
+// The coupon, as one jsonb the row mapper turns into the buy-side payload. Same columns as nullCouponColumns.
+function couponColumns(): SQLStatement {
+  return SQL`
+        cp.id::text AS coupon_id,
+        cp.discount_ppm AS coupon_discount_ppm,
+        EXTRACT(EPOCH FROM cp.expires_at)::bigint AS sale_ends_at,
+        CASE WHEN cp.id IS NOT NULL THEN LEAST(
+          (cp.checks->>'uses')::numeric - cp.used,
+          COALESCE(mv.available::numeric, (cp.checks->>'uses')::numeric - cp.used)
+        )::bigint END AS sale_units_left,
+        CASE WHEN cp.id IS NOT NULL THEN jsonb_build_object(
+          'id', cp.id, 'signer', cp.signer, 'couponManager', cp.coupon_manager, 'couponAddress', cp.coupon_address,
+          'checks', cp.checks, 'discountType', cp.discount_type, 'discount', cp.discount_ppm, 'root', cp.root,
+          'collections', to_jsonb(cp.collections), 'signature', cp.signature, 'used', cp.used
+        ) END AS coupon`
+}
+
+// The same columns for a branch that never carries a coupon, typed so the UNION lines up.
+function nullCouponColumns(): SQLStatement {
+  return SQL`
+        NULL::text AS coupon_id,
+        NULL::integer AS coupon_discount_ppm,
+        NULL::bigint AS sale_ends_at,
+        NULL::bigint AS sale_units_left,
+        NULL::jsonb AS coupon`
+}
+
+/**
+ * The coupon payload with the proof for this listing's collection. A coupon whose proof cannot be built is
+ * dropped (and logged) rather than shown: a sale the checkout cannot settle is worse than no sale.
+ */
+function toShopCoupon(coupon: ShopCouponRow | null, contractAddress: string, warn: (message: string) => void): ShopCoupon | null {
+  if (!coupon) return null
+  try {
+    return { ...coupon, proof: collectionProof(coupon.collections, contractAddress) }
+  } catch (error) {
+    warn(`Dropping coupon ${coupon.id} on ${contractAddress}: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+function appendDiscountedFilter(query: SQLStatement, filters: { discounted?: boolean }, withCoupons: boolean): void {
+  if (filters.discounted === true) {
+    // A branch that cannot carry a coupon has nothing on sale.
+    query.append(withCoupons ? SQL` AND cp.id IS NOT NULL` : SQL` AND FALSE`)
+  } else if (filters.discounted === false && withCoupons) {
+    query.append(SQL` AND cp.id IS NULL`)
+  }
 }
 
 /**
@@ -367,10 +456,16 @@ function unifiedBranch(opts: {
   applyRate: boolean
   rateNumericString: string
   filters: UnifiedCatalogFilters
+  /** Whether creator coupons can discount this branch. Only native primaries: the coupon contract mints collection items. */
+  withCoupons: boolean
 }): SQLStatement {
-  const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters } = opts
+  const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters, withCoupons } = opts
   const isStore = acquisition === 'store'
-  const usdWei = applyRate ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)` : SQL`mv.amount_received::numeric`
+  const usdWei = applyRate
+    ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)`
+    : withCoupons
+    ? effectiveWeiExpr()
+    : SQL`mv.amount_received::numeric`
 
   const query = SQL`
       SELECT
@@ -401,8 +496,11 @@ function unifiedBranch(opts: {
         mv.assets->'sent'->>'issued_id' AS issued_id,
         `
     .append(usdWei)
+    .append(SQL` AS usd_wei, `)
+    // The list price while a coupon applies, so the outer layers can expose it as compareAtCredits.
+    .append(withCoupons ? SQL`CASE WHEN cp.id IS NOT NULL THEN mv.amount_received::numeric END` : SQL`NULL::numeric`)
     .append(
-      SQL` AS usd_wei,
+      SQL` AS compare_at_usd_wei,
         mv.available::text AS available,
         mv.network::text AS network,
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
@@ -412,10 +510,13 @@ function unifiedBranch(opts: {
     // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price.
     .append(applyRate ? SQL`mv.amount_received::text AS mana_wei ` : SQL`NULL::text AS mana_wei `)
     .append(SQL`, `)
+    .append(withCoupons ? couponColumns() : nullCouponColumns())
+    .append(SQL`, `)
     .append(genderExpr())
     .append(SQL` `)
     // The store branch brings its own base relation; both then share the identical join chain and filters.
     .append(isStore ? storeBaseRelation() : metadataJoins())
+    .append(withCoupons ? couponJoin() : SQL``)
 
   if (isStore) {
     // The store relation has already filtered itself (minter / approved / available / price) and has no
@@ -427,6 +528,7 @@ function unifiedBranch(opts: {
     // which is the worst failure shape — it works until someone picks a rarity.
     query.append(SQL` WHERE TRUE`)
     appendUnifiedFilters(query, filters)
+    appendDiscountedFilter(query, filters, withCoupons)
     return query
   }
 
@@ -444,6 +546,7 @@ function unifiedBranch(opts: {
         )`)
 
   appendUnifiedFilters(query, filters)
+  appendDiscountedFilter(query, filters, withCoupons)
   return query
 }
 
@@ -463,7 +566,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         primaryOnly: false,
         applyRate: false,
         rateNumericString,
-        filters
+        filters,
+        withCoupons: true
       })
     )
   }
@@ -476,7 +580,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         primaryOnly: true,
         applyRate: true,
         rateNumericString,
-        filters
+        filters,
+        withCoupons: false
       })
     )
     // CollectionStore mints. `source: 'legacy'` because they are MANA-priced and must inherit the legacy
@@ -492,7 +597,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         primaryOnly: true,
         applyRate: true,
         rateNumericString,
-        filters
+        filters,
+        withCoupons: false
       })
     )
   }
@@ -527,7 +633,9 @@ function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString:
 
   return SQL`SELECT DISTINCT ON (f.contract_address, f.item_id)
           f.*,
-          CEIL(f.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits
+          CEIL(f.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits,
+          CASE WHEN f.compare_at_usd_wei IS NOT NULL
+               THEN CEIL(f.compare_at_usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint END AS compare_at_credits
         FROM (
           SELECT
             u.*,
@@ -559,7 +667,34 @@ function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString:
  */
 // `total` is omitted from the parameter (not read here) so the unpaginated related-items rail, whose rows
 // carry no COUNT(*) OVER(), can be mapped by this very function instead of a near-copy of it.
-function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: number, ethereumChainId: number): UnifiedListing {
+/**
+ * The sale half of a unified row. The compare-at has to strictly beat the sale price once both are rounded up
+ * to whole credits, or the card would advertise "−X%" for a discount the buyer cannot see.
+ */
+function unifiedSaleFields(
+  r: Pick<
+    Omit<UnifiedListingRow, 'total'>,
+    'price_credits' | 'compare_at_credits' | 'sale_ends_at' | 'sale_units_left' | 'coupon' | 'contract_address'
+  >,
+  warn: (message: string) => void
+): Pick<UnifiedListing, 'compareAtCredits' | 'saleEndsAt' | 'saleUnitsLeft' | 'coupon'> {
+  const coupon = toShopCoupon(r.coupon ?? null, r.contract_address, warn)
+  const compareAt = r.compare_at_credits != null ? Number(r.compare_at_credits) : null
+  const onSale = coupon !== null && compareAt !== null && compareAt > Number(r.price_credits)
+  return {
+    compareAtCredits: onSale ? compareAt : null,
+    saleEndsAt: onSale && r.sale_ends_at != null ? Number(r.sale_ends_at) : null,
+    saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
+    coupon: onSale ? coupon : null
+  }
+}
+
+function mapUnifiedRow(
+  r: Omit<UnifiedListingRow, 'total'>,
+  polygonChainId: number,
+  ethereumChainId: number,
+  warn: (message: string) => void
+): UnifiedListing {
   const isPolygon = (r.network ?? Network.MATIC).toUpperCase() !== 'ETHEREUM'
   return {
     source: r.source,
@@ -585,6 +720,7 @@ function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: numb
     seller: r.seller ?? null,
     issuedId: r.issued_id ?? null,
     priceCredits: Number(r.price_credits),
+    ...unifiedSaleFields(r, warn),
     manaWei: r.mana_wei ?? null,
     available: r.available ? Number(r.available) : 1,
     network: isPolygon ? Network.MATIC : Network.ETHEREUM,
@@ -596,9 +732,14 @@ function mapUnifiedRow(r: Omit<UnifiedListingRow, 'total'>, polygonChainId: numb
 // Row -> model for the item-GROUPED feeds (the browse grid and the related-items rail). Extends the shared
 // per-listing mapper with the one field grouping adds. Shared for the same reason mapUnifiedRow is: the rail
 // is meant to be indistinguishable from the grid, so the two must not map a row differently.
-function mapUnifiedItemRow(r: RelatedItemRow, polygonChainId: number, ethereumChainId: number): UnifiedItem {
+function mapUnifiedItemRow(
+  r: RelatedItemRow,
+  polygonChainId: number,
+  ethereumChainId: number,
+  warn: (message: string) => void
+): UnifiedItem {
   return {
-    ...mapUnifiedRow(r, polygonChainId, ethereumChainId),
+    ...mapUnifiedRow(r, polygonChainId, ethereumChainId, warn),
     // The only field the grouped feed adds: how many rows the union produced for this item. NOTE it counts
     // store mints alongside trades, so it is "credit-buyable offers" rather than strictly "listings" — a
     // resale-only drill-down can legitimately come back empty for an item badged with a count.
@@ -630,6 +771,8 @@ function rarityDistanceExpr(referenceRarity: string | null): SQLStatement {
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
   const { dappsDatabase: pg } = components
   const logger = components.logs.getLogger('shop-catalog-component')
+  // A dropped coupon is a sale the buyer will not see; every feed logs it the same way.
+  const warn = (message: string) => logger.warn(message)
 
   async function getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }> {
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
@@ -654,15 +797,23 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         mv.assets->'sent'->>'owner' AS seller,
         mv.assets->'sent'->>'issued_id' AS issued_id,
         mv.amount_received::text AS price,
+        CASE WHEN cp.id IS NOT NULL THEN `
+      .append(saleWeiExpr())
+      .append(
+        SQL`::text END AS sale_price,
         mv.available::text AS available,
         mv.network AS network,
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
         COUNT(*) OVER() AS total
       `
+      )
       .append(SQL`, `)
       .append(genderExpr())
+      .append(SQL`, `)
+      .append(couponColumns())
       .append(SQL` `)
       .append(metadataJoins())
+      .append(couponJoin())
       .append(
         SQL`
       WHERE mv.status = 'open'
@@ -706,13 +857,23 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     if (filters.isSmart) {
       query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
     }
+    appendDiscountedFilter(query, filters, true)
+    // Price bounds apply to what the buyer would PAY, so a discounted listing lands in the slider range of its sale price.
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
-      if (minWei != null) query.append(SQL` AND mv.amount_received >= ${minWei.toString()}`)
+      if (minWei != null)
+        query
+          .append(SQL` AND `)
+          .append(effectiveWeiExpr())
+          .append(SQL` >= ${minWei.toString()}`)
     }
     if (filters.maxPriceCredits != null) {
       const maxWei = creditsToWei(filters.maxPriceCredits)
-      if (maxWei != null) query.append(SQL` AND mv.amount_received <= ${maxWei.toString()}`)
+      if (maxWei != null)
+        query
+          .append(SQL` AND `)
+          .append(effectiveWeiExpr())
+          .append(SQL` <= ${maxWei.toString()}`)
     }
     if (filters.search) {
       query
@@ -723,11 +884,13 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
     const order =
       filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY mv.amount_received ASC`
+        ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` ASC`)
         : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY mv.amount_received DESC`
+        ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` DESC`)
         : filters.sortBy === 'name'
         ? SQL` ORDER BY COALESCE(nft.name, w_p.name, e_p.name) ASC`
+        : filters.sortBy === 'discount'
+        ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC`
         : SQL` ORDER BY mv.created_at DESC`
     query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
@@ -738,7 +901,12 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
 
     const data: ShopListing[] = []
     for (const r of result.rows) {
-      const priceCredits = toCredits(r.price)
+      const listPriceCredits = toCredits(r.price)
+      const salePriceCredits = r.sale_price != null ? toCredits(r.sale_price) : null
+      const coupon = toShopCoupon(r.coupon ?? null, r.contract_address, message => logger.warn(message))
+      // A sale only counts once both prices are rounded up to whole credits and still differ.
+      const onSale = coupon !== null && salePriceCredits !== null && listPriceCredits !== null && salePriceCredits < listPriceCredits
+      const priceCredits = onSale ? salePriceCredits : listPriceCredits
       if (priceCredits === null) {
         logger.warn('Dropping shop listing with non-positive or unparseable price', { tradeId: r.trade_id, price: r.price })
         continue
@@ -760,6 +928,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         seller: r.seller ?? null,
         issuedId: r.issued_id ?? null,
         priceCredits,
+        compareAtCredits: onSale ? listPriceCredits : null,
+        saleEndsAt: onSale && r.sale_ends_at != null ? Number(r.sale_ends_at) : null,
+        saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
+        coupon: onSale ? coupon : null,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,
@@ -958,6 +1130,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       SELECT
         sub.*,
         CEIL(sub.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits,
+        CASE WHEN sub.compare_at_usd_wei IS NOT NULL
+             THEN CEIL(sub.compare_at_usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint END AS compare_at_credits,
         COUNT(*) OVER() AS total
       FROM (`.append(inner).append(SQL`) sub
       WHERE sub.usd_wei > 0 AND sub.usd_wei <= ${MAX_USD_WEI}::numeric`)
@@ -987,6 +1161,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ? SQL` ORDER BY sub.usd_wei DESC, sub.trade_id`
         : filters.sortBy === 'name'
         ? SQL` ORDER BY sub.name ASC, sub.trade_id`
+        : filters.sortBy === 'discount'
+        ? SQL` ORDER BY sub.coupon_discount_ppm DESC NULLS LAST, sub.sale_ends_at ASC NULLS LAST, sub.trade_id`
         : SQL` ORDER BY sub.created_at DESC, sub.trade_id`
     query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
@@ -995,7 +1171,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data: UnifiedListing[] = result.rows.map(r => mapUnifiedRow(r, polygonChainId, ethereumChainId))
+    const data: UnifiedListing[] = result.rows.map(r => mapUnifiedRow(r, polygonChainId, ethereumChainId, warn))
 
     return { data, total }
   }
@@ -1041,6 +1217,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ? SQL` ORDER BY d.usd_wei DESC, d.trade_id`
         : filters.sortBy === 'name'
         ? SQL` ORDER BY d.name ASC, d.trade_id`
+        : filters.sortBy === 'discount'
+        ? SQL` ORDER BY d.coupon_discount_ppm DESC NULLS LAST, d.sale_ends_at ASC NULLS LAST, d.trade_id`
         : SQL` ORDER BY d.created_at DESC, d.trade_id`
     query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
@@ -1049,7 +1227,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
     const total = result.rows[0] ? Number(result.rows[0].total) : 0
 
-    const data = result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId))
+    const data = result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn))
 
     return { data, total }
   }
@@ -1134,7 +1312,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const polygonChainId = getPolygonChainId()
     const ethereumChainId = getEthereumChainId()
 
-    return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId)) }
+    return { data: result.rows.map(r => mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn)) }
   }
 
   /**
@@ -1239,7 +1417,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const ethereumChainId = getEthereumChainId()
 
     return {
-      data: result.rows.map(r => ({ ...mapUnifiedItemRow(r, polygonChainId, ethereumChainId), trendingSales: Number(r.sales) }))
+      data: result.rows.map(r => ({ ...mapUnifiedItemRow(r, polygonChainId, ethereumChainId, warn), trendingSales: Number(r.sales) }))
     }
   }
 

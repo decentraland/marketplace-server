@@ -253,7 +253,10 @@ describe('Shop Catalog Component', () => {
 
     it('should never place a user-supplied sort value into the SQL text', async () => {
       await shopCatalog.getShopListings({ sortBy: 'cheapest' })
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.amount_received ASC')
+      // Cheapest sorts by what the buyer would PAY: the coupon sale price when one applies, else the list price.
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY COALESCE((mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000)), mv.amount_received::numeric) ASC'
+      )
 
       query.mockClear()
       await shopCatalog.getShopListings({})
