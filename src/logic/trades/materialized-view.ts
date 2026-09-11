@@ -177,6 +177,40 @@ export const TRADES_MV_CREATE_SQL = `
           si_signer.index;
     `
 
+/**
+ * Readers that must keep SELECT on the view across a recreate.
+ *
+ * `DROP MATERIALIZED VIEW` discards the object's entire ACL, and setting the owner back afterwards does
+ * not restore it. The loss is invisible from inside the app: everything that reads mv_trades through
+ * membership of `mv_trades_owner` keeps working, so only consumers holding a direct grant break, and they
+ * break silently. That is how the warehouse replication of this view stopped on 2026-08-26 and stayed
+ * broken for two weeks.
+ *
+ * Kept as a constant applied by BOTH the runtime recreate and the migration, for the same reason
+ * TRADES_MV_CREATE_SQL is: those two paths have already drifted once.
+ */
+export const TRADES_MV_READER_ROLES = ['meltano_dapps_ro']
+
+/**
+ * Skips a role that does not exist rather than failing. Role names differ between environments, and a
+ * recreate must not be blocked by a reader that is absent locally or in staging.
+ */
+export const TRADES_MV_READER_GRANT_SQL = `
+      DO $$
+      DECLARE
+        reader text;
+      BEGIN
+        FOREACH reader IN ARRAY ARRAY[${TRADES_MV_READER_ROLES.map(role => `'${role}'`).join(', ')}]
+        LOOP
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = reader) THEN
+            EXECUTE format('GRANT SELECT ON marketplace.${TRADES_MV_NAME} TO %I', reader);
+          ELSE
+            RAISE NOTICE 'Reader role % does not exist; skipping its grant on ${TRADES_MV_NAME}', reader;
+          END IF;
+        END LOOP;
+      END $$;
+    `
+
 export const TRADES_MV_INDEX_SQLS: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_trades_id ON marketplace.${TRADES_MV_NAME} (id)`,
   // Status and type - improves queries filtering by open trades and specific trade types
@@ -397,6 +431,9 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
 
     // Set the owner of the materialized view
     await client.query(`ALTER MATERIALIZED VIEW marketplace.${TRADES_MV_NAME} OWNER TO mv_trades_owner;`)
+
+    // The DROP above took the view's ACL with it; restore the direct reader grants.
+    await client.query(TRADES_MV_READER_GRANT_SQL)
 
     // MANDATORY: grant permissions for SELECT on all required tables
     // First grant permissions to mv_trades_owner on marketplace schema tables
