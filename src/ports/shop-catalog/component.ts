@@ -169,6 +169,10 @@ function couponColumns(): SQLStatement {
         cp.id::text AS coupon_id,
         cp.discount_ppm AS coupon_discount_ppm,
         EXTRACT(EPOCH FROM cp.expires_at)::bigint AS sale_ends_at,
+        CASE WHEN cp.id IS NOT NULL THEN LEAST(
+          (cp.checks->>'uses')::numeric - cp.used,
+          COALESCE(mv.available::numeric, (cp.checks->>'uses')::numeric - cp.used)
+        )::bigint END AS sale_units_left,
         CASE WHEN cp.id IS NOT NULL THEN jsonb_build_object(
           'id', cp.id, 'signer', cp.signer, 'couponManager', cp.coupon_manager, 'couponAddress', cp.coupon_address,
           'checks', cp.checks, 'discountType', cp.discount_type, 'discount', cp.discount_ppm, 'root', cp.root,
@@ -182,6 +186,7 @@ function nullCouponColumns(): SQLStatement {
         NULL::text AS coupon_id,
         NULL::integer AS coupon_discount_ppm,
         NULL::bigint AS sale_ends_at,
+        NULL::bigint AS sale_units_left,
         NULL::jsonb AS coupon`
 }
 
@@ -667,15 +672,19 @@ function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString:
  * to whole credits, or the card would advertise "−X%" for a discount the buyer cannot see.
  */
 function unifiedSaleFields(
-  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'sale_ends_at' | 'coupon' | 'contract_address'>,
+  r: Pick<
+    Omit<UnifiedListingRow, 'total'>,
+    'price_credits' | 'compare_at_credits' | 'sale_ends_at' | 'sale_units_left' | 'coupon' | 'contract_address'
+  >,
   warn: (message: string) => void
-): Pick<UnifiedListing, 'compareAtCredits' | 'saleEndsAt' | 'coupon'> {
+): Pick<UnifiedListing, 'compareAtCredits' | 'saleEndsAt' | 'saleUnitsLeft' | 'coupon'> {
   const coupon = toShopCoupon(r.coupon ?? null, r.contract_address, warn)
   const compareAt = r.compare_at_credits != null ? Number(r.compare_at_credits) : null
   const onSale = coupon !== null && compareAt !== null && compareAt > Number(r.price_credits)
   return {
     compareAtCredits: onSale ? compareAt : null,
     saleEndsAt: onSale && r.sale_ends_at != null ? Number(r.sale_ends_at) : null,
+    saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
     coupon: onSale ? coupon : null
   }
 }
@@ -921,6 +930,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         priceCredits,
         compareAtCredits: onSale ? listPriceCredits : null,
         saleEndsAt: onSale && r.sale_ends_at != null ? Number(r.sale_ends_at) : null,
+        saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
         coupon: onSale ? coupon : null,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
