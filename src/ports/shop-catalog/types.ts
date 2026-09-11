@@ -71,6 +71,10 @@ export type ShopCouponRow = {
   root: string
   collections: string[]
   signature: string
+  // Purchases already settled with this coupon, from the on-chain state the poller mirrors. With `checks.uses`
+  // (the cap) it gives how many more units can sell at the sale price; the Shop never sees a coupon whose
+  // cap is exhausted, the join filters it out.
+  used: number
 }
 
 export type ShopCoupon = ShopCouponRow & {
