@@ -56,6 +56,7 @@ function shopRow(overrides: Record<string, unknown> = {}) {
     price: (10n * WEI_PER_CREDIT).toString(),
     sale_price: null,
     sale_ends_at: null,
+    sale_units_left: null,
     coupon: null,
     coupon_discount_ppm: null,
     available: '99894',
@@ -88,6 +89,7 @@ function unifiedRow(overrides: Record<string, unknown> = {}) {
     price_credits: '10',
     compare_at_credits: null,
     sale_ends_at: null,
+    sale_units_left: null,
     coupon: null,
     coupon_discount_ppm: null,
     mana_wei: null,
@@ -121,6 +123,9 @@ describe('when the shop feed carries creator coupons', () => {
       // The consumed count rides along so the Shop can say how many units are left at the sale price.
       expect(sql.text).toContain('COALESCE(cs.uses, 0) AS used')
       expect(sql.text).toContain("'used', cp.used")
+      // Units left at the sale price: the coupon's remaining uses, capped by the listing's supply.
+      expect(sql.text).toContain("LEAST(\n          (cp.checks->>'uses')::numeric - cp.used,")
+      expect(sql.text).toContain('AS sale_units_left')
       expect(sql.text).toContain('ORDER BY c.discount_ppm DESC, c.expires_at ASC')
       expect(sql.text).toContain('AS sale_price')
       expect(sql.text).toContain('AS coupon')
@@ -161,13 +166,14 @@ describe('when the shop feed carries creator coupons', () => {
           shopRow({
             sale_price: (7n * WEI_PER_CREDIT).toString(),
             sale_ends_at: '1800000000',
+            sale_units_left: '3',
             coupon: couponRow(),
             coupon_discount_ppm: '300000'
           })
         ]
       })
       const { data } = await component.getShopListings({})
-      expect(data[0]).toMatchObject({ priceCredits: 7, compareAtCredits: 10, saleEndsAt: 1800000000 })
+      expect(data[0]).toMatchObject({ priceCredits: 7, compareAtCredits: 10, saleEndsAt: 1800000000, saleUnitsLeft: 3 })
       expect(data[0].coupon).toMatchObject({ id: 'coupon-1', discount: 300000, proof: [], used: 3 })
     })
 
@@ -198,7 +204,13 @@ describe('when the shop feed carries creator coupons', () => {
         ]
       })
       const { data } = await component.getShopListings({})
-      expect(data[0]).toMatchObject({ priceCredits: 1, compareAtCredits: null, saleEndsAt: null, coupon: null })
+      expect(data[0]).toMatchObject({
+        priceCredits: 1,
+        compareAtCredits: null,
+        saleEndsAt: null,
+        saleUnitsLeft: null,
+        coupon: null
+      })
     })
 
     it('should drop a coupon whose proof cannot be built and show the list price', async () => {
@@ -233,6 +245,7 @@ describe('when the unified feed carries creator coupons', () => {
     expect(text).toContain('CASE WHEN cp.id IS NOT NULL THEN mv.amount_received::numeric END AS compare_at_usd_wei')
     expect(text).toContain('NULL::numeric AS compare_at_usd_wei')
     expect(text).toContain('NULL::jsonb AS coupon')
+    expect(text).toContain('NULL::bigint AS sale_units_left')
     expect(text).toContain('AS compare_at_credits')
   })
 
@@ -257,11 +270,18 @@ describe('when the unified feed carries creator coupons', () => {
   it('should map a discounted item with its compare-at, end and coupon', async () => {
     query.mockResolvedValueOnce({
       rows: [
-        unifiedRow({ price_credits: '7', compare_at_credits: '10', sale_ends_at: '1800000000', coupon: couponRow(), listing_count: '1' })
+        unifiedRow({
+          price_credits: '7',
+          compare_at_credits: '10',
+          sale_ends_at: '1800000000',
+          sale_units_left: '3',
+          coupon: couponRow(),
+          listing_count: '1'
+        })
       ]
     })
     const { data } = await component.getShopItems({}, 0.25)
-    expect(data[0]).toMatchObject({ priceCredits: 7, compareAtCredits: 10, saleEndsAt: 1800000000 })
+    expect(data[0]).toMatchObject({ priceCredits: 7, compareAtCredits: 10, saleEndsAt: 1800000000, saleUnitsLeft: 3 })
     expect(data[0].coupon).toMatchObject({ id: 'coupon-1', proof: [] })
   })
 

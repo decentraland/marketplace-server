@@ -103,6 +103,9 @@ export type ShopListing = {
   priceCredits: number // USD -> fixed credits (1 credit = $0.10); the SALE price while a creator coupon applies
   compareAtCredits: number | null // the list price while a creator coupon applies, else null
   saleEndsAt: number | null // unix SECONDS the coupon expires, else null
+  // Units still buyable at the sale price: the coupon's remaining uses capped by the listing's supply. An
+  // uncapped coupon therefore reports the supply itself. Null when not on sale.
+  saleUnitsLeft: number | null
   coupon: ShopCoupon | null // the coupon the buy side must apply to pay priceCredits, else null
   available: number
   network: string
@@ -480,6 +483,7 @@ export type ShopListingRow = {
   price: string
   sale_price: string | null // the discounted USD wei while a coupon applies
   sale_ends_at: string | null // unix seconds
+  sale_units_left: string | null // min(coupon uses left, available) while a coupon applies
   coupon: ShopCouponRow | null
   coupon_discount_ppm: string | null
   available: string | null
@@ -513,6 +517,7 @@ export type UnifiedListingRow = {
   price_credits: string
   compare_at_credits: string | null // the list price in credits while a coupon applies
   sale_ends_at: string | null // unix seconds
+  sale_units_left: string | null // min(coupon uses left, available) while a coupon applies
   coupon: ShopCouponRow | null
   coupon_discount_ppm: string | null
   mana_wei: string | null
