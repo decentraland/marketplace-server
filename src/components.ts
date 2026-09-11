@@ -18,6 +18,8 @@ import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createCollectionsComponent } from './ports/collections/component'
 import { createContractsComponent } from './ports/contracts/component'
+import { createCouponsComponent } from './ports/coupons'
+import { COUPON_STATE_REFRESH_INTERVAL_MS } from './ports/coupons/types'
 import { createPgComponent } from './ports/db/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
@@ -163,6 +165,15 @@ export async function initComponents(): Promise<AppComponents> {
         `Failed to flush the trades materialized view: ${error instanceof Error ? error.message : String(error)}`
       )
   })
+  const coupons = createCouponsComponent({ dappsDatabase: dappsWriteDatabase, logs })
+  // Mirrors what the CouponManager knows about each live coupon (uses consumed, cancelled) so the catalogue
+  // never advertises a sale the chain would refuse. The chain is the truth; this is a cache of it.
+  const refreshCouponStateLogger = logs.getLogger('refresh-coupon-state-job')
+  const refreshCouponStateJob = createJobComponent({ logs }, () => coupons.refreshState(), COUPON_STATE_REFRESH_INTERVAL_MS, {
+    startupDelay: thirtySeconds,
+    onError: error =>
+      refreshCouponStateLogger.error(`Failed to refresh coupon state: ${error instanceof Error ? error.message : String(error)}`)
+  })
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -222,6 +233,8 @@ export async function initComponents(): Promise<AppComponents> {
     wertApi,
     updateBuilderServerItemsViewJob,
     flushTradesMaterializedViewJob,
+    coupons,
+    refreshCouponStateJob,
     schemaValidator,
     snapshot,
     items,

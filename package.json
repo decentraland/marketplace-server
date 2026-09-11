@@ -48,6 +48,7 @@
     "@dcl/thegraph-component": "^0.1.2",
     "@dcl/traced-fetch-component": "^1.0.8",
     "@dcl/tracer-component": "^1.0.0",
+    "@openzeppelin/merkle-tree": "^1.0.8",
     "@segment/analytics-node": "^2.1.0",
     "@types/etag": "^1.8.3",
     "@well-known-components/env-config-provider": "^1.1.1",
