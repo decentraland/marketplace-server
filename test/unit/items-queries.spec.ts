@@ -1,3 +1,4 @@
+import { NFTCategory } from '@dcl/schemas'
 import { getItemsParams } from '../../src/controllers/handlers/utils'
 import { Params } from '../../src/logic/http/params'
 import { getCatalogItemsQuery, getItemsQuery } from '../../src/ports/items/queries'
@@ -91,5 +92,59 @@ describe('when parsing the items query params', () => {
 
   it('should leave isOnSale unset when the param is missing', () => {
     expect(parse('').isOnSale).toBeUndefined()
+  })
+})
+
+/**
+ * A primary listing is a `public_item_order`, and in `mv_trades` those carry `sent_nft_category = NULL`
+ * — the column is populated from the NFT join, which an item order does not have. Narrowing the trades
+ * CTE by category therefore matched none of them, and every item on sale came back with no trade, no
+ * price and isOnSale false the moment a caller passed `category`. Measured against production before the
+ * fix: 41 of 60 rows on sale became 0.
+ */
+describe('when the caller filters an item feed by category', () => {
+  const withCategory = { first: 20, skip: 0, category: NFTCategory.WEARABLE }
+
+  describe.each([
+    ['the catalog items feed', getCatalogItemsQuery],
+    ['the v1 items feed', getItemsQuery]
+  ])('and building %s', (_name, buildQuery) => {
+    it('should not narrow the trades CTE by category, which would drop every primary listing', () => {
+      expect(buildQuery(withCategory).text).not.toContain('sent_nft_category')
+    })
+
+    it('should still restrict the items themselves to that category', () => {
+      expect(buildQuery(withCategory).text).toContain('LOWER(item.item_type) = ANY')
+    })
+  })
+})
+
+/**
+ * An item can have more than one OPEN `public_item_order` — five do in production. A plain join emitted
+ * the item once per trade: duplicate tiles, a `COUNT(*) OVER()` total inflated by the extras, and a price
+ * read from whichever row came back first. Only visible once the category filter above stopped removing
+ * every trade, which is why it is pinned here.
+ */
+describe('when an item has more than one open primary listing', () => {
+  describe.each([
+    ['the catalog items feed', getCatalogItemsQuery],
+    ['the v1 items feed', getItemsQuery]
+  ])('and building %s', (_name, buildQuery) => {
+    const { text } = buildQuery({ first: 20, skip: 0 })
+
+    it('should join at most one trade per item, so the item cannot be emitted twice', () => {
+      expect(text).toContain('LEFT JOIN LATERAL')
+      expect(text).toMatch(/ORDER BY\s+id::text DESC\s+LIMIT 1/)
+    })
+
+    it('should pick the same trade /v2/catalog does, so the two feeds cannot quote different prices', () => {
+      // That feed collapses with MAX(id::text); ordering by the same expression picks the same row.
+      expect(text).toMatch(/ORDER BY\s+id::text DESC/)
+    })
+
+    it('should still restrict the join to an open primary listing', () => {
+      expect(text).toContain("type = 'public_item_order'")
+      expect(text).toContain("status = 'open'")
+    })
   })
 })
