@@ -25,7 +25,12 @@ export type ProfileInput = {
   seeds: string[]
   /** Unix seconds; injectable so the decay is testable. */
   now: number
+  /** Most entries to keep. Omitted = no cap. */
+  limit?: number
 }
+
+/** Signals the user expressed deliberately, as opposed to everything their wallet happens to hold. */
+const EXPLICIT_SOURCES: ReadonlySet<ProfileSource> = new Set<ProfileSource>(['equipped', 'favorite', 'seed'])
 
 /**
  * The wallet's taste profile: every signal we have about it, as one weighted set of item ids.
@@ -56,7 +61,19 @@ export function buildTasteProfile(input: ProfileInput): ProfileEntry[] {
   for (const itemId of input.equipped) offer(itemId, PROFILE_WEIGHTS.equipped, 'equipped')
   for (const itemId of input.seeds) offer(itemId, PROFILE_WEIGHTS.seed, 'seed')
 
-  return [...best.values()].sort((a, b) => b.weight - a.weight || (a.itemId < b.itemId ? -1 : 1))
+  const byWeight = (a: ProfileEntry, b: ProfileEntry): number => b.weight - a.weight || (a.itemId < b.itemId ? -1 : 1)
+  const entries = [...best.values()].sort(byWeight)
+  if (input.limit === undefined || entries.length <= input.limit) return entries
+
+  // The cap exists because a whale's holdings would overflow Postgres' bind-parameter limit, but
+  // trimming by weight alone would spend the whole budget on purchases: a wallet with 900 recent paid
+  // items has 900 entries at ~1.0, above the 0.8 a seed carries. Seeds, favourites and what the avatar
+  // is wearing are the deliberate, current signals -- the ones most worth keeping -- so they are
+  // reserved first and the remaining slots go to holdings by weight.
+  const explicit = entries.filter(entry => EXPLICIT_SOURCES.has(entry.source))
+  const owned = entries.filter(entry => !EXPLICIT_SOURCES.has(entry.source))
+  const kept = explicit.slice(0, input.limit)
+  return [...kept, ...owned.slice(0, input.limit - kept.length)].sort(byWeight)
 }
 
 export type ProfileAggregates = {

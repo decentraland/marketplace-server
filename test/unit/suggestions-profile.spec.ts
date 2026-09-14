@@ -97,6 +97,61 @@ describe('when building a taste profile', () => {
     })
   })
 
+  describe('and the profile is capped below what the wallet holds', () => {
+    let profile: ReturnType<typeof buildTasteProfile>
+
+    beforeEach(() => {
+      profile = buildTasteProfile({
+        // 300 recent purchases, each weighing about 1.0 -- more than the 0.8 a seed carries.
+        owned: Array.from({ length: 300 }, (_, i) => ({ itemId: `paid-${i}`, paid: true, acquiredAt: NOW })),
+        favorites: ['fav-1'],
+        equipped: ['worn-1'],
+        seeds: ['seed-1', 'seed-2'],
+        now: NOW,
+        limit: 10
+      })
+    })
+
+    it('should keep exactly the cap', () => {
+      expect(profile).toHaveLength(10)
+    })
+
+    it('should keep what the avatar is wearing', () => {
+      expect(profile.map(entry => entry.itemId)).toContain('worn-1')
+    })
+
+    it('should keep the favorite', () => {
+      expect(profile.map(entry => entry.itemId)).toContain('fav-1')
+    })
+
+    it('should keep the seeds, which weigh less than a purchase and would otherwise be trimmed first', () => {
+      expect(profile.map(entry => entry.itemId)).toEqual(expect.arrayContaining(['seed-1', 'seed-2']))
+    })
+
+    it('should spend the remaining slots on holdings', () => {
+      expect(profile.filter(entry => entry.source === 'owned')).toHaveLength(6)
+    })
+  })
+
+  describe('and the explicit signals alone exceed the cap', () => {
+    let profile: ReturnType<typeof buildTasteProfile>
+
+    beforeEach(() => {
+      profile = buildTasteProfile({
+        owned: [{ itemId: 'paid-1', paid: true, acquiredAt: NOW }],
+        favorites: ['fav-1', 'fav-2'],
+        equipped: ['worn-1', 'worn-2'],
+        seeds: [],
+        now: NOW,
+        limit: 2
+      })
+    })
+
+    it('should keep the strongest of them and drop the holding', () => {
+      expect(profile.map(entry => entry.itemId)).toEqual(['worn-1', 'worn-2'])
+    })
+  })
+
   describe('and there is no signal at all', () => {
     it('should return an empty profile so the caller can fall back to trending', () => {
       expect(buildTasteProfile({ owned: [], favorites: [], equipped: [], seeds: [], now: NOW })).toEqual([])
