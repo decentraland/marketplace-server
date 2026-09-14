@@ -23,6 +23,12 @@ export function createCouponChainReader(): ICouponChainReader {
     return new Contract(address, COUPON_MANAGER_ABI, provider)
   }
 
+  /**
+   * The manager returns uint256, and these are narrowed to `number` to be compared against the numbers the
+   * coupon was signed with. Safe for what they are — monotonic counters bumped one at a time by a wallet,
+   * which would need 2^53 cancellations to reach the precision limit — and the same narrowing the trades
+   * module does with its own indexes. A value that big would mean something else has already gone wrong.
+   */
   async function readIndexes(chainId: ChainId, managerAddress: string, signer: string): Promise<CouponChainIndexes> {
     const manager = couponManager(chainId, managerAddress)
     const [contractSignatureIndex, signerSignatureIndex] = await Promise.all([

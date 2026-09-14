@@ -97,9 +97,12 @@ export type ICouponChainReader = {
   readState(chainId: ChainId, couponManager: string, stateKey: string): Promise<CouponChainState>
 }
 
+/** How much of a creator's coupon list to return. Bounded so a prolific creator cannot ask for all of it. */
+export type CouponPagination = { limit?: number; offset?: number }
+
 export type ICouponsComponent = {
   addCoupon(body: CouponCreation, signer: string): Promise<Coupon>
-  getCouponsBySigner(signer: string): Promise<Coupon[]>
+  getCouponsBySigner(signer: string, pagination?: CouponPagination): Promise<Coupon[]>
   getCoupon(id: string): Promise<Coupon>
   /** Re-reads the on-chain state of every live or upcoming coupon. Returns how many were refreshed. */
   refreshState(): Promise<number>

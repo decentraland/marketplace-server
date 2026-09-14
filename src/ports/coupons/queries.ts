@@ -47,7 +47,13 @@ export function getInsertCouponQuery(coupon: CouponInsert): SQLStatement {
   ) RETURNING *;`
 }
 
-const SELECT_WITH_STATE = SQL`SELECT
+/**
+ * A function rather than a shared constant: `SQLStatement.append` mutates its receiver, so one caller
+ * appending onto a module-level statement would corrupt every query built from it afterwards, for the
+ * life of the process. Building a fresh one per call makes that impossible to write by accident.
+ */
+function selectWithState(): SQLStatement {
+  return SQL`SELECT
     c.*,
     cs.uses AS state_uses,
     cs.cancelled AS state_cancelled,
@@ -55,23 +61,30 @@ const SELECT_WITH_STATE = SQL`SELECT
     cs.checked_at AS state_checked_at
   FROM marketplace.coupons c
   LEFT JOIN marketplace.coupon_state cs ON cs.coupon_id = c.id`
+}
 
-export function getCouponsBySignerQuery(signer: string): SQLStatement {
-  return SQL``.append(SELECT_WITH_STATE).append(SQL` WHERE c.signer = ${signer.toLowerCase()} ORDER BY c.created_at DESC`)
+export function getCouponsBySignerQuery(signer: string, limit: number, offset: number): SQLStatement {
+  return selectWithState().append(SQL` WHERE c.signer = ${signer.toLowerCase()} ORDER BY c.created_at DESC LIMIT ${limit} OFFSET ${offset}`)
 }
 
 export function getCouponByIdQuery(id: string): SQLStatement {
-  return SQL``.append(SELECT_WITH_STATE).append(SQL` WHERE c.id = ${id}`)
+  return selectWithState().append(SQL` WHERE c.id = ${id}`)
 }
 
 /**
  * The coupons whose on-chain state is worth re-reading: live ones, and ones starting within a day so the
  * first read lands before the first buyer. Least recently checked first, bounded so one tick stays cheap.
+ *
+ * Cancelled and revoked ones are left out: neither can revert on chain, so re-reading them would spend a
+ * slot of the batch — and an RPC round trip — on an answer that cannot change. Without this they pile up
+ * forever and slowly starve the coupons whose state still moves.
  */
 export function getCouponsToRefreshQuery(limit: number): SQLStatement {
-  return SQL``.append(SELECT_WITH_STATE).append(SQL`
+  return selectWithState().append(SQL`
     WHERE c.expires_at > now()
       AND c.effective_since <= now() + interval '1 day'
+      AND cs.cancelled IS NOT TRUE
+      AND cs.revoked IS NOT TRUE
     ORDER BY cs.checked_at ASC NULLS FIRST
     LIMIT ${limit}`)
 }

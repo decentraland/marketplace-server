@@ -1,4 +1,4 @@
-import { Wallet } from 'ethers'
+import { concat, Signature, toBeHex, Wallet } from 'ethers'
 import { ChainId, Network, TradeChecks } from '@dcl/schemas'
 import { collectionsRoot } from '../../src/logic/coupons/merkle'
 import {
@@ -25,7 +25,7 @@ import {
   NotCollectionCreatorError,
   UnsupportedCouponChainError
 } from '../../src/ports/coupons/errors'
-import { CouponCreation, DBCoupon, ICouponChainReader, ICouponsComponent } from '../../src/ports/coupons/types'
+import { CouponCreation, DBCoupon, DBCouponWithState, ICouponChainReader, ICouponsComponent } from '../../src/ports/coupons/types'
 import { IPgComponent } from '../../src/ports/db/types'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
 
@@ -408,5 +408,129 @@ describe('when refreshing the on-chain state of the live coupons', () => {
       readStateMock.mockRejectedValueOnce(new Error('RPC timeout')).mockResolvedValueOnce({ uses: 1, cancelled: false })
       expect(await coupons.refreshState()).toEqual(1)
     })
+  })
+
+  describe('and the batch is large enough to outlast its own interval read one at a time', () => {
+    it('should overlap the reads instead of waiting for each one in turn', async () => {
+      const many = Array.from({ length: 40 }, (_, i) => ({ ...rows[0], id: `row-${i}`, state_key: `0x${i}` }))
+      dbQueryMock.mockReset()
+      dbQueryMock.mockResolvedValueOnce({ rows: many, rowCount: many.length }).mockResolvedValue({ rows: [], rowCount: 0 })
+      let inFlight = 0
+      let peak = 0
+      readStateMock.mockImplementation(async () => {
+        peak = Math.max(peak, ++inFlight)
+        await new Promise(resolve => setTimeout(resolve, 5))
+        inFlight--
+        return { uses: 0, cancelled: false }
+      })
+
+      expect(await coupons.refreshState()).toEqual(many.length)
+      // Bounded, not unbounded: several at a time so a tick stays short, never the whole batch at once.
+      expect(peak).toBeGreaterThan(1)
+      expect(peak).toBeLessThanOrEqual(10)
+    })
+  })
+})
+
+/**
+ * The status a coupon reports is derived, not stored: it folds the row's window, its uses and its on-chain
+ * flags into one word, and every creator-facing surface keys off that word. The order matters as much as
+ * the cases — a cancelled coupon that has also expired is cancelled, not ended.
+ */
+describe('when reporting the status of a stored coupon', () => {
+  const HOUR = 60 * 60 * 1000
+
+  async function statusOf(state: Partial<DBCouponWithState>, checks: Partial<TradeChecks> = {}): Promise<string> {
+    const coupon = await buildCoupon({ checks: buildChecks(checks) })
+    const row: DBCouponWithState = {
+      ...buildRow(coupon),
+      state_uses: 0,
+      state_cancelled: false,
+      state_revoked: false,
+      state_checked_at: new Date(),
+      ...state
+    }
+    dbQueryMock.mockResolvedValueOnce({ rows: [row], rowCount: 1 })
+    const stored = await coupons.getCoupon(row.id)
+    return stored.status
+  }
+
+  describe('and its window is open and it has uses left', () => {
+    it('should report it as active', async () => {
+      expect(await statusOf({})).toEqual('active')
+    })
+  })
+
+  describe('and the chain has not been read yet', () => {
+    it('should report it as active rather than inventing a state it has never seen', async () => {
+      expect(await statusOf({ state_uses: null, state_cancelled: null, state_checked_at: null })).toEqual('active')
+    })
+  })
+
+  describe('and it has not started yet', () => {
+    it('should report it as scheduled', async () => {
+      expect(await statusOf({}, { effective: Date.now() + HOUR, expiration: Date.now() + 3 * HOUR })).toEqual('scheduled')
+    })
+  })
+
+  describe('and its window has closed', () => {
+    it('should report it as ended', async () => {
+      expect(await statusOf({}, { effective: Date.now() - 3 * HOUR, expiration: Date.now() - HOUR })).toEqual('ended')
+    })
+  })
+
+  describe('and every use has been spent', () => {
+    it('should report it as exhausted', async () => {
+      expect(await statusOf({ state_uses: 10 }, { uses: 10 })).toEqual('exhausted')
+    })
+  })
+
+  describe('and the creator cancelled it on chain', () => {
+    it('should report it as cancelled', async () => {
+      expect(await statusOf({ state_cancelled: true })).toEqual('cancelled')
+    })
+  })
+
+  describe('and the creator bumped their signature index past it', () => {
+    it('should report it as revoked', async () => {
+      expect(await statusOf({ state_revoked: true })).toEqual('revoked')
+    })
+  })
+
+  describe('and several of those are true at once', () => {
+    it('should report the one that ended it first, cancellation before anything else', async () => {
+      const status = await statusOf(
+        { state_cancelled: true, state_revoked: true, state_uses: 10 },
+        { uses: 10, effective: Date.now() - 3 * HOUR, expiration: Date.now() - HOUR }
+      )
+      expect(status).toEqual('cancelled')
+    })
+
+    it('should prefer a revocation to a spent or expired window', async () => {
+      const status = await statusOf(
+        { state_revoked: true, state_uses: 10 },
+        { uses: 10, effective: Date.now() - 3 * HOUR, expiration: Date.now() - HOUR }
+      )
+      expect(status).toEqual('revoked')
+    })
+
+    it('should prefer being sold out to having run out of time', async () => {
+      const status = await statusOf({ state_uses: 10 }, { uses: 10, effective: Date.now() - 3 * HOUR, expiration: Date.now() - HOUR })
+      expect(status).toEqual('exhausted')
+    })
+  })
+})
+
+describe('when the same signature arrives in its other valid encoding', () => {
+  it('should refuse it, rather than storing a second coupon with a state of its own', async () => {
+    const coupon = await buildCoupon()
+    // ECDSA's other form of the same signature: `s` reflected across the curve order, `v` flipped to match.
+    // It recovers the same signer, so nothing downstream would notice — but it hashes differently, which is
+    // precisely what the unique constraint on the stored hash cannot catch.
+    const parsed = Signature.from(coupon.signature)
+    const CURVE_N = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141')
+    const flipped = concat([parsed.r, toBeHex(CURVE_N - BigInt(parsed.s), 32), parsed.v === 27 ? '0x1c' : '0x1b'])
+
+    await expect(coupons.addCoupon({ ...coupon, signature: flipped }, creator.address)).rejects.toThrow(InvalidCouponSignatureError)
   })
 })

@@ -1,3 +1,4 @@
+import { Signature } from 'ethers'
 import { ChainId, Network } from '@dcl/schemas'
 import { getNetworkChainId } from '../../logic/chainIds'
 import { collectionsRoot } from '../../logic/coupons/merkle'
@@ -42,6 +43,7 @@ import {
   DBCoupon,
   DBCouponWithState,
   CouponChainIndexes,
+  CouponPagination,
   CouponStoredState,
   ICouponChainReader,
   ICouponsComponent,
@@ -54,6 +56,11 @@ import {
 
 const ZERO_BYTES32 = '0x' + '00'.repeat(32)
 const REFRESH_BATCH = 200
+/** How many coupons of a batch are read from chain at once — enough to keep a tick short of its interval,
+ * small enough not to hand the RPC the whole batch in one burst. */
+const REFRESH_CONCURRENCY = 10
+/** Page size when a caller does not ask for one — a creator's sales list, newest first. */
+const DEFAULT_PAGE_LIMIT = 100
 const PG_UNIQUE_VIOLATION = '23505'
 
 /** Postgres reports the code in every locale; the message text does not. */
@@ -198,9 +205,26 @@ export function createCouponsComponent(
       throw new InvalidCouponSignatureError()
     }
 
+    /**
+     * ECDSA lets the same signature be re-encoded with a flipped `s` and `v`. Both recover the same signer,
+     * but they hash differently — so `hashed_signature` and the `state_key` derived from it would see two
+     * coupons where there is one, each tracking its own on-chain state behind a unique constraint that
+     * cannot tell them apart.
+     *
+     * `Signature.from` refuses the non-canonical form rather than folding it, which is the behaviour we
+     * want here: wallets and libraries only ever produce the canonical one, so the other form arrives only
+     * when someone has gone out of their way to build it.
+     */
+    let signature: string
+    try {
+      signature = Signature.from(coupon.signature).serialized
+    } catch {
+      throw new InvalidCouponSignatureError()
+    }
+
     const root = collectionsRoot(collections)
     const data = encodeCouponData(coupon.discountType, coupon.discount, root)
-    if (!verifyCouponSignature(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data, coupon.signature, signer)) {
+    if (!verifyCouponSignature(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data, signature, signer)) {
       throw new InvalidCouponSignatureError()
     }
 
@@ -216,7 +240,7 @@ export function createCouponsComponent(
       throw new InvalidCouponSignatureIndexError()
     }
 
-    const stateKey = couponStateKey(signer, coupon.signature)
+    const stateKey = couponStateKey(signer, signature)
     const chainState = await chain.readState(coupon.chainId, contracts.couponManager.address, stateKey)
     if (chainState.cancelled) {
       throw new CouponAlreadyUnusableError('This coupon was already cancelled on chain')
@@ -230,7 +254,14 @@ export function createCouponsComponent(
     const inserted = await pg.withTransaction(
       async client => {
         const result = await client.query<DBCoupon>(
-          getInsertCouponQuery({ ...coupon, collections, root, stateKey, couponManager: contracts.couponManager.address })
+          getInsertCouponQuery({
+            ...coupon,
+            signature,
+            collections,
+            root,
+            stateKey,
+            couponManager: contracts.couponManager.address
+          })
         )
         const row = result.rows[0]
         await client.query(getUpsertCouponStateQuery(row.id, state))
@@ -258,8 +289,9 @@ export function createCouponsComponent(
     )
   }
 
-  async function getCouponsBySigner(signer: string): Promise<Coupon[]> {
-    const result = await pg.query<DBCouponWithState>(getCouponsBySignerQuery(signer))
+  async function getCouponsBySigner(signer: string, pagination: CouponPagination = {}): Promise<Coupon[]> {
+    const { limit = DEFAULT_PAGE_LIMIT, offset = 0 } = pagination
+    const result = await pg.query<DBCouponWithState>(getCouponsBySignerQuery(signer, limit, offset))
     const now = Date.now()
     return result.rows.map(row => toCoupon(row, now))
   }
@@ -275,31 +307,56 @@ export function createCouponsComponent(
   async function refreshState(): Promise<number> {
     const result = await pg.query<DBCouponWithState>(getCouponsToRefreshQuery(REFRESH_BATCH))
     // Every coupon of one creator shares a signer, so the indexes cost roughly one read per creator per
-    // tick rather than one per coupon.
-    const indexesBySigner = new Map<string, CouponChainIndexes>()
+    // tick rather than one per coupon. The READ is what is cached, not its result: coupons of the same
+    // signer are refreshed side by side, and caching the value alone let every one of them miss the map
+    // and fire its own request before the first had answered.
+    const indexesBySigner = new Map<string, Promise<CouponChainIndexes>>()
     let refreshed = 0
-    for (const row of result.rows) {
-      try {
-        const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, row.state_key)
-        const indexKey = `${row.chain_id}:${row.coupon_manager}:${row.signer}`
-        let indexes = indexesBySigner.get(indexKey)
-        if (!indexes) {
-          indexes = await chain.readIndexes(row.chain_id as ChainId, row.coupon_manager, row.signer)
-          indexesBySigner.set(indexKey, indexes)
+
+    function readIndexesOnce(row: DBCouponWithState): Promise<CouponChainIndexes> {
+      const indexKey = `${row.chain_id}:${row.coupon_manager}:${row.signer}`
+      let pending = indexesBySigner.get(indexKey)
+      if (!pending) {
+        pending = chain.readIndexes(row.chain_id as ChainId, row.coupon_manager, row.signer).catch(e => {
+          // Drop the failed read so the next chunk can try again, instead of every later coupon of this
+          // signer inheriting one unlucky timeout for the rest of the tick.
+          indexesBySigner.delete(indexKey)
+          throw e
+        })
+        indexesBySigner.set(indexKey, pending)
+      }
+      return pending
+    }
+
+    async function refreshOne(row: DBCouponWithState): Promise<void> {
+      const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, row.state_key)
+      const indexes = await readIndexesOnce(row)
+      // `cancelSignature` takes a coupon's whole calldata, so a creator ending every sale at once reaches
+      // for `increaseSignerSignatureIndex()` instead. That leaves `cancelled` false while the contract
+      // refuses the coupon, which is why the indexes have to be re-read and not just checked at signing.
+      const revoked =
+        indexes.contractSignatureIndex !== row.checks.contractSignatureIndex ||
+        indexes.signerSignatureIndex !== row.checks.signerSignatureIndex
+      await pg.query(getUpsertCouponStateQuery(row.id, { ...chainState, revoked }))
+    }
+
+    // In chunks, not one at a time: a full batch is up to REFRESH_BATCH coupons and each costs an RPC round
+    // trip, so sequentially a tick could outlast the interval that schedules it and the catalogue would
+    // serve state older than it claims. Chunked rather than all at once so a big batch doesn't arrive at the
+    // RPC as one burst.
+    for (let i = 0; i < result.rows.length; i += REFRESH_CONCURRENCY) {
+      const chunk = result.rows.slice(i, i + REFRESH_CONCURRENCY)
+      const settled = await Promise.allSettled(chunk.map(row => refreshOne(row)))
+      settled.forEach((outcome, index) => {
+        if (outcome.status === 'fulfilled') {
+          refreshed++
+          return
         }
-        // `cancelSignature` takes a coupon's whole calldata, so a creator ending every sale at once reaches
-        // for `increaseSignerSignatureIndex()` instead. That leaves `cancelled` false while the contract
-        // refuses the coupon, which is why the indexes have to be re-read and not just checked at signing.
-        const revoked =
-          indexes.contractSignatureIndex !== row.checks.contractSignatureIndex ||
-          indexes.signerSignatureIndex !== row.checks.signerSignatureIndex
-        await pg.query(getUpsertCouponStateQuery(row.id, { ...chainState, revoked }))
-        refreshed++
-      } catch (e) {
         // One unreachable RPC read must not stop the rest of the batch; the row keeps its last known state
         // and is first in line next tick.
-        logger.warn(`Could not refresh the state of coupon ${row.id}: ${isErrorWithMessage(e) ? e.message : String(e)}`)
-      }
+        const e = outcome.reason
+        logger.warn(`Could not refresh the state of coupon ${chunk[index].id}: ${isErrorWithMessage(e) ? e.message : String(e)}`)
+      })
     }
     return refreshed
   }

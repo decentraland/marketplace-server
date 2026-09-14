@@ -39,7 +39,10 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
   pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, 'signer')
   pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, 'expires_at')
-  pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, 'collections', { method: 'gin' })
+  // No index on `collections`: nothing queries it. The coupons this table serves are always looked up by
+  // signer or by id, and the only array work is `ANY(...)` against the squid's own collection table. A GIN
+  // index here would cost a write on every insert to answer a question no one asks yet — add it with the
+  // query that needs it.
 
   pgm.createTable(
     { schema: SCHEMA, name: 'coupon_state' },

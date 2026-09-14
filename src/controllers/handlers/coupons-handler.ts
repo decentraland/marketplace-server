@@ -1,6 +1,6 @@
 import { isErrorWithMessage } from '../../logic/errors'
 import { isEthereumAddressValid } from '../../logic/ethereum/validations'
-import { getParameter } from '../../logic/http'
+import { getPaginationParams, getParameter } from '../../logic/http'
 import { Coupon, CouponCreation } from '../../ports/coupons'
 import {
   CouponAlreadyUnusableError,
@@ -79,7 +79,7 @@ export async function getCouponsHandler(
   }
 
   try {
-    const data = await coupons.getCouponsBySigner(signer)
+    const data = await coupons.getCouponsBySigner(signer, getPaginationParams(url.searchParams))
     return { status: StatusCode.OK, body: { ok: true, data } }
   } catch (e) {
     logger.error(`Could not fetch the coupons: ${isErrorWithMessage(e) ? e.message : String(e)}`)
