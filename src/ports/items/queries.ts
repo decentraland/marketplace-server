@@ -180,12 +180,28 @@ function getItemsWhereStatement(
   ])
 }
 
+// The trades CTE is named apart from its join alias: the LATERAL below emits `unified_trades` (the name
+// all the SELECT expressions and shared helpers already use), so the CTE it reads from needs its own.
+const ITEM_TRADES_CTE = 'item_trades'
+
 export function getItemsQuery(filters: ItemQueryFilters = {}) {
-  return getTradesCTE({
-    category: filters.category,
-    first: filters.first,
-    skip: filters.skip
-  }).append(
+  /**
+   * The trades CTE is deliberately NOT narrowed by `category`, and the join below picks exactly one trade.
+   *
+   * CATEGORY: this feed joins only `public_item_order` trades, and in `mv_trades` an item order carries
+   * `sent_nft_category = NULL` — that column is populated from the NFT join, which an item order does not
+   * have. `sent_nft_category = 'wearable'` is therefore never true for the rows this query needs, so
+   * passing the filter through dropped EVERY primary listing: an item on sale came back with no trade, no
+   * price and isOnSale false whenever the caller asked for a category. Category is already applied to the
+   * items themselves by FILTER_BY_CATEGORY (item.item_type), which is the authoritative filter here.
+   *
+   * ONE TRADE: an item can have more than one OPEN item order (5 items do in production), and a plain join
+   * would then emit that item twice — duplicate tiles, an inflated `COUNT(*) OVER()` total, and a price
+   * taken from whichever row the planner happened to return. The LATERAL below picks the same one
+   * `/v2/catalog` does (its `MAX(id::text)`, see getTradesJoin in ports/catalog/queries), so the two feeds
+   * cannot quote different prices for the same item.
+   */
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE }).append(
     SQL`
     SELECT
       COUNT(*) OVER() as count,
@@ -246,7 +262,15 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
       metadata.emote_id = emote.id
   `
                       .append(
-                        ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
+                        ` LEFT JOIN LATERAL (
+            SELECT * FROM ${ITEM_TRADES_CTE}
+            WHERE sent_item_id = item.blockchain_id::text
+              AND sent_contract_address = item.collection_id
+              AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
+              AND status = '${ListingStatus.OPEN}'
+            ORDER BY id::text DESC
+            LIMIT 1
+          ) unified_trades ON TRUE `
                       )
                       .append(getItemsWhereStatement(filters))
                       .append(getItemsLimitAndOffsetStatement(filters))
@@ -324,11 +348,8 @@ function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy?: Sho
 // through fromDBItemToItem unchanged, plus the one extra column. `rateNumericString` is the MANA/USD rate
 // as a fixed-precision numeric literal.
 export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumericString = '0') {
-  return getTradesCTE({
-    category: filters.category,
-    first: filters.first,
-    skip: filters.skip
-  })
+  // Same two rules as getItemsQuery above: no `category` on the trades CTE, and one trade per item.
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
     .append(
       SQL`
     SELECT
@@ -394,7 +415,15 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
       metadata.emote_id = emote.id
   `
                         .append(
-                          ` LEFT JOIN unified_trades ON sent_item_id = item.blockchain_id::text AND sent_contract_address = item.collection_id AND type = '${TradeType.PUBLIC_ITEM_ORDER}' AND status = '${ListingStatus.OPEN}' `
+                          ` LEFT JOIN LATERAL (
+            SELECT * FROM ${ITEM_TRADES_CTE}
+            WHERE sent_item_id = item.blockchain_id::text
+              AND sent_contract_address = item.collection_id
+              AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
+              AND status = '${ListingStatus.OPEN}'
+            ORDER BY id::text DESC
+            LIMIT 1
+          ) unified_trades ON TRUE `
                         )
                         .append(getItemsWhereStatement(filters, rateNumericString, { onlyApprovedCollections: true }))
                         .append(getCatalogItemsOrderByStatement(rateNumericString, filters.sortBy))
