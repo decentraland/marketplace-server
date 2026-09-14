@@ -224,6 +224,27 @@ export type UnifiedListing = Omit<ShopListing, 'tradeId'> & {
 export type UnifiedCatalogFilters = ShopCatalogFilters & {
   source?: UnifiedListingSource
   /**
+   * Restrict the feed to a SET of collections, where `contractAddress` restricts it to one. Added for the
+   * Shop's seasonal events, which select their items by tagging whole collections in the builder and so
+   * routinely name dozens of them at once.
+   *
+   * Declared here rather than on `ShopCatalogFilters` on purpose: only the unified feed honours it, and
+   * widening the base type would let a caller pass it to `getShopListings` and be silently unfiltered.
+   *
+   * THE EMPTY ARRAY IS NOT THE SAME AS OMITTING IT. Omitted means "no collection filter"; `[]` means "the
+   * caller asked for a set and it resolved to nothing", which must return an empty page. Collapsing the
+   * two would serve the ENTIRE CATALOGUE to a caller whose filter merely failed to resolve — the worst
+   * outcome this endpoint can produce, and one that looks like a working event rather than like an error.
+   *
+   * That distinction covers the all-or-nothing case only. The addresses travel in a query string several
+   * kilobytes long, and one truncated in transit arrives as a SHORTER list, not an empty one — so a
+   * partially-delivered set still renders a partially-correct event, silently. Nothing here can detect
+   * that: the server cannot know how many collections the caller meant to name. What bounds it is the
+   * caller keeping the list short enough not to be truncated (the Shop caps it and reports overflow), and
+   * a partial event is a far smaller failure than an unfiltered one.
+   */
+  contractAddresses?: string[]
+  /**
    * Restrict the feed to primary (mint) or secondary (resale) listings. Omitted = both, which is the
    * pre-existing behaviour.
    *
