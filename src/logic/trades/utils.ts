@@ -15,7 +15,7 @@ import { InvalidECDSASignatureError, MarketplaceContractNotFound } from '../../p
 import { fromMillisecondsToSeconds } from '../date'
 import { hasECDSASignatureAValidV } from '../signatures'
 
-function getRPCUrlByChainId(chainId: ChainId): string {
+export function getRPCUrlByChainId(chainId: ChainId): string {
   let rpcPath: string
   switch (chainId) {
     case ChainId.ETHEREUM_MAINNET:

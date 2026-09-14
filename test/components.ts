@@ -19,6 +19,7 @@ import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
+import { createCouponsComponent } from '../src/ports/coupons'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { IEventPublisherComponent } from '../src/ports/events'
@@ -119,6 +120,17 @@ async function initComponents(): Promise<TestComponents> {
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const schemaValidator = await createSchemaValidatorComponent()
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
+  // The shared harness must never reach the chain: jest.setup disables outbound connections, so a real
+  // reader would turn any coupon call into a network error instead of a readable assertion.
+  const coupons = createCouponsComponent(
+    { dappsDatabase: dappsWriteDatabase, logs },
+    {
+      chain: {
+        readIndexes: () => Promise.resolve({ contractSignatureIndex: 0, signerSignatureIndex: 0 }),
+        readState: () => Promise.resolve({ uses: 0, cancelled: false })
+      }
+    }
+  )
   const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
 
   const rentalsSubgraph = await createSubgraphComponent(
@@ -144,6 +156,9 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
   const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => undefined, 30 * 1000, {
+    startupDelay: 30
+  })
+  const refreshCouponStateJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
     startupDelay: 30
   })
 
@@ -185,6 +200,8 @@ async function initComponents(): Promise<TestComponents> {
     wertApi,
     updateBuilderServerItemsViewJob,
     flushTradesMaterializedViewJob,
+    coupons,
+    refreshCouponStateJob,
     access,
     lists,
     picks,
