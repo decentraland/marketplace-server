@@ -62,11 +62,11 @@ export const DROP_NEIGHBORS_META_TABLE = `DROP TABLE IF EXISTS ${NEIGHBORS_META_
  * are bots and marketplace accounts whose holdings correlate everything with everything.
  */
 export const SELECT_ACQUISITIONS = `WITH acquisitions AS (
-      SELECT lower(beneficiary) AS wallet, item_id, (COALESCE(search_primary_sale_price, 0) > 0) AS paid
+      SELECT split_part(beneficiary, '-', 1) AS wallet, item_id, (COALESCE(search_primary_sale_price, 0) > 0) AS paid
         FROM ${MARKETPLACE_SQUID_SCHEMA}.mint
        WHERE beneficiary IS NOT NULL AND item_id IS NOT NULL
       UNION ALL
-      SELECT lower(buyer) AS wallet,
+      SELECT buyer AS wallet,
              COALESCE(item_id, search_contract_address || '-' || search_item_id::text) AS item_id,
              true AS paid
         FROM ${MARKETPLACE_SQUID_SCHEMA}.sale
