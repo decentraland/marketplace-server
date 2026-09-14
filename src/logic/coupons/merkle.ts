@@ -19,7 +19,14 @@ import { AbiCoder, getBytes, keccak256 } from 'ethers'
 
 const COLLECTION_LEAF_ENCODING = ['address']
 
-function uniqueCollections(collections: string[]): string[] {
+/**
+ * Lower-cased and de-duplicated, in input order.
+ *
+ * Exported because the coupon that gets STORED and the Merkle root the contract VERIFIES have to be built
+ * from the same list. Two copies of this would let the stored collections and the root drift apart, and
+ * the disagreement would only surface at checkout, as a proof the contract refuses.
+ */
+export function uniqueCollections(collections: string[]): string[] {
   return [...new Set(collections.map(collection => collection.toLowerCase()))]
 }
 

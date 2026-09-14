@@ -29,9 +29,12 @@ export const CouponCreationSchema: JSONSchema<CouponCreation> = {
       type: 'array',
       minItems: 1,
       maxItems: MAX_COUPON_COLLECTIONS,
+      uniqueItems: true,
       items: { type: 'string', pattern: ADDRESS_PATTERN }
     },
-    signature: { type: 'string' }
+    // Shaped here as well as checked in the component: the schema is what stops an oversized body from
+    // being parsed in full before anything looks at it.
+    signature: { type: 'string', maxLength: 132, pattern: '^0x[0-9a-fA-F]{130}$' }
   },
   required: ['signer', 'chainId', 'network', 'checks', 'couponAddress', 'discountType', 'discount', 'collections', 'signature'],
   additionalProperties: false

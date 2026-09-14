@@ -1,7 +1,7 @@
 import { Signature } from 'ethers'
 import { ChainId, Network } from '@dcl/schemas'
 import { getNetworkChainId } from '../../logic/chainIds'
-import { collectionsRoot } from '../../logic/coupons/merkle'
+import { collectionsRoot, uniqueCollections } from '../../logic/coupons/merkle'
 import {
   couponStateKey,
   DISCOUNT_TYPE_RATE,
@@ -122,7 +122,7 @@ export function createCouponsComponent(
   }
 
   function normalizeCollections(collections: string[]): string[] {
-    const unique = [...new Set(collections.map(collection => collection.toLowerCase()))]
+    const unique = uniqueCollections(collections)
     if (unique.length === 0) {
       throw new InvalidCouponCollectionsError('A coupon must cover at least one collection')
     }

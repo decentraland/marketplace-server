@@ -1,5 +1,6 @@
 import { Wallet, keccak256, AbiCoder, concat } from 'ethers'
 import { ChainId } from '@dcl/schemas'
+import { ContractName, getContract } from 'decentraland-transactions'
 import { collectionLeaf, collectionProof, collectionsRoot, verifyCollectionProof } from '../../src/logic/coupons/merkle'
 import {
   COUPON_TYPES,
@@ -173,5 +174,38 @@ describe('when deriving the on-chain state key of a coupon', () => {
     // forever, so the pair also documents the mistake it guards against.
     expect(couponStateKey(signer, signature)).toEqual('0x05184e621d5f7d814b6684349ce2a8f07be24de1fa5f124f2914788c049b2ca0')
     expect(keccak256(signature)).toEqual('0x1090dbec48f7f57f241cd63982ccab202c65844d3a54ee797b1a6de433635179')
+  })
+})
+
+/**
+ * The Polygon mainnet addresses are spelled out in a fallback because the pinned transactions library
+ * predates their entry in it. This is the alarm on that arrangement: the day someone bumps the library,
+ * either the addresses agree — and the fallback is dead code to delete — or they do not, and this fails
+ * instead of the server quietly signing against a manager the chain does not have.
+ */
+describe('when the transactions library learns about the coupon deployments on polygon mainnet', () => {
+  it('should agree with the addresses this server falls back to', () => {
+    let fromLibrary: { manager: string; coupon: string } | null = null
+    try {
+      fromLibrary = {
+        manager: getContract(ContractName.CouponManager, ChainId.MATIC_MAINNET).address.toLowerCase(),
+        coupon: getContract(ContractName.CollectionDiscountCoupon, ChainId.MATIC_MAINNET).address.toLowerCase()
+      }
+    } catch {
+      // Still unknown to the installed version: the fallback is what answers, and there is nothing to compare.
+      fromLibrary = null
+    }
+
+    const resolved = getCouponContracts(ChainId.MATIC_MAINNET)
+    expect(resolved).not.toBeNull()
+
+    if (fromLibrary) {
+      expect(resolved?.couponManager.address.toLowerCase()).toEqual(fromLibrary.manager)
+      expect(resolved?.collectionDiscountCoupon.toLowerCase()).toEqual(fromLibrary.coupon)
+    } else {
+      // The registry values, as published at contracts.decentraland.org/addresses.json.
+      expect(resolved?.couponManager.address).toEqual('0x3fd3056ee72a2a85e9392fab3a450e7736536081')
+      expect(resolved?.collectionDiscountCoupon).toEqual('0xc914507fe297b2dddd1232ac3a8903f1c125e794')
+    }
   })
 })
