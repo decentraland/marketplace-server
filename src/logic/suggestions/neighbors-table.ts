@@ -12,6 +12,8 @@ import {
 const STAGING_TABLE_NAME = `${NEIGHBORS_TABLE_NAME}_staging`
 const STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_TABLE_NAME}`
 const STAGING_ITEM_INDEX = `${NEIGHBORS_ITEM_INDEX}_staging`
+const NEIGHBORS_PRIMARY_KEY = `${NEIGHBORS_TABLE_NAME}_pkey`
+const STAGING_PRIMARY_KEY = `${STAGING_TABLE_NAME}_pkey`
 
 /** Any positive constant works; it only has to be the same in every instance of this service. */
 const REBUILD_ADVISORY_LOCK_KEY = 8_421_311
@@ -145,16 +147,23 @@ export async function swapNeighborsTable(
     }
 
     await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`)
+    // `LIKE` copies columns and defaults but NOT the primary key -- that needs INCLUDING INDEXES, which
+    // would also copy the secondary index under a generated name this code could not rename afterwards.
+    // So the key is added explicitly below, after the rows are in: building it once over a full table is
+    // cheaper than maintaining it across ~950k inserts, and a duplicate row would fail the whole swap
+    // rather than being silently dropped, which is the right outcome for what would be a generator bug.
     await client.query(`CREATE TABLE ${STAGING_TABLE} (LIKE ${NEIGHBORS_TABLE} INCLUDING DEFAULTS)`)
 
     await insertInBatches(client, rows)
 
+    await client.query(`ALTER TABLE ${STAGING_TABLE} ADD CONSTRAINT ${STAGING_PRIMARY_KEY} PRIMARY KEY (item_id, source, neighbor_id)`)
     await client.query(`CREATE INDEX ${STAGING_ITEM_INDEX} ON ${STAGING_TABLE} (item_id)`)
     await client.query(`ANALYZE ${STAGING_TABLE}`)
 
     await client.query(DROP_NEIGHBORS_TABLE)
     await client.query(`ALTER TABLE ${STAGING_TABLE} RENAME TO ${NEIGHBORS_TABLE_NAME}`)
     await client.query(`ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_ITEM_INDEX} RENAME TO ${NEIGHBORS_ITEM_INDEX}`)
+    await client.query(`ALTER TABLE ${NEIGHBORS_TABLE} RENAME CONSTRAINT ${STAGING_PRIMARY_KEY} TO ${NEIGHBORS_PRIMARY_KEY}`)
 
     await client.query(
       `INSERT INTO ${NEIGHBORS_META_TABLE} (id, built_at, duration_ms, cf_rows, content_rows, items_covered, algorithm)
@@ -194,10 +203,6 @@ async function insertInBatches(
         return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
       })
       .join(',')
-    await client.query(
-      `INSERT INTO ${STAGING_TABLE} (item_id, source, neighbor_id, sim, support, rank) VALUES ${placeholders}
-       ON CONFLICT (item_id, source, neighbor_id) DO NOTHING`,
-      values
-    )
+    await client.query(`INSERT INTO ${STAGING_TABLE} (item_id, source, neighbor_id, sim, support, rank) VALUES ${placeholders}`, values)
   }
 }
