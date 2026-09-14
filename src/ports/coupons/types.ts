@@ -1,4 +1,5 @@
 import { ChainId, Network, TradeChecks } from '@dcl/schemas'
+import { ContractName } from 'decentraland-transactions'
 
 /** Percentage bounds a creator may sign, in parts per million: 5% to 70%. */
 export const MIN_DISCOUNT_PPM = 50_000
@@ -73,6 +74,8 @@ export type Coupon = {
   network: string
   checks: TradeChecks
   couponManager: string
+  /** The off-chain marketplace version whose manager the coupon was signed against, the only one that redeems it. Null if that manager left the registry. */
+  marketplace: ContractName | null
   couponAddress: string
   discountType: number
   discount: number
@@ -91,8 +94,9 @@ export type CouponChainState = { uses: number; cancelled: boolean }
 /** What gets persisted: the manager's own state plus whether the signature indexes have moved past it. */
 export type CouponStoredState = CouponChainState & { revoked: boolean }
 
-/** The two things the server asks the CouponManager on-chain: the signature indexes at signing time, and a coupon's live state. */
+/** What the server asks a CouponManager on-chain: whether it accepts a coupon contract, the signature indexes at signing time, and a coupon's live state. */
 export type ICouponChainReader = {
+  readCouponAllowed(chainId: ChainId, couponManager: string, coupon: string): Promise<boolean>
   readIndexes(chainId: ChainId, couponManager: string, signer: string): Promise<CouponChainIndexes>
   readState(chainId: ChainId, couponManager: string, stateKey: string): Promise<CouponChainState>
 }

@@ -1,15 +1,17 @@
 import { Wallet, keccak256, AbiCoder, concat } from 'ethers'
 import { ChainId } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
+import { ContractName } from 'decentraland-transactions'
 import { collectionLeaf, collectionProof, collectionsRoot, verifyCollectionProof } from '../../src/logic/coupons/merkle'
 import {
   COUPON_TYPES,
+  CouponContracts,
   couponStateKey,
   DISCOUNT_TYPE_RATE,
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
   getCouponTypedValues,
+  resolveCouponSignature,
   verifyCouponSignature
 } from '../../src/logic/coupons/signature'
 
@@ -83,29 +85,57 @@ describe('when building the collections Merkle tree', () => {
   })
 })
 
-describe('when resolving the coupon contracts', () => {
-  it('should return the Amoy pair from the transactions library', () => {
-    expect(getCouponContracts(ChainId.MATIC_AMOY)).toEqual({
-      couponManager: { address: '0x6c956587d9fe70032781edcdc626310648575382', name: 'CouponManager', version: '1.0.0' },
-      collectionDiscountCoupon: '0x4ee8f6b87f4917a3bbc7c8bb3a06db8555f83db9'
+describe('when resolving the coupon contracts of a chain', () => {
+  let contracts: CouponContracts[]
+
+  describe('and the chain is Polygon mainnet, where two marketplace versions are live', () => {
+    beforeEach(() => {
+      contracts = getCouponContracts(ChainId.MATIC_MAINNET)
+    })
+
+    it('should pair each version with its own manager, newest first, sharing the one discount coupon', () => {
+      expect(contracts).toEqual([
+        {
+          marketplace: ContractName.OffChainMarketplaceV3,
+          couponManager: { address: '0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813', name: 'CouponManager', version: '1.0.0' },
+          collectionDiscountCoupon: '0xc914507fe297b2dddd1232ac3a8903f1c125e794'
+        },
+        {
+          marketplace: ContractName.OffChainMarketplaceV2,
+          couponManager: { address: '0x3fd3056ee72a2a85e9392fab3a450e7736536081', name: 'CouponManager', version: '1.0.0' },
+          collectionDiscountCoupon: '0xc914507fe297b2dddd1232ac3a8903f1c125e794'
+        }
+      ])
     })
   })
 
-  it('should return the Polygon mainnet pair from the registry fallback', () => {
-    expect(getCouponContracts(ChainId.MATIC_MAINNET)).toEqual({
-      couponManager: { address: '0x3fd3056ee72a2a85e9392fab3a450e7736536081', name: 'CouponManager', version: '1.0.0' },
-      collectionDiscountCoupon: '0xc914507fe297b2dddd1232ac3a8903f1c125e794'
+  describe('and the chain is Amoy', () => {
+    beforeEach(() => {
+      contracts = getCouponContracts(ChainId.MATIC_AMOY)
+    })
+
+    it('should pair each version with its own manager there as well', () => {
+      expect(contracts.map(({ marketplace, couponManager }) => [marketplace, couponManager.address])).toEqual([
+        [ContractName.OffChainMarketplaceV3, '0x6c956587d9fe70032781edcdc626310648575382'],
+        [ContractName.OffChainMarketplaceV2, '0xa40b1d129b8906888720686f3a01921ddf37716f']
+      ])
     })
   })
 
-  it('should return null for a chain without collections', () => {
-    expect(getCouponContracts(ChainId.ETHEREUM_MAINNET)).toBeNull()
+  describe('and the chain has no collections', () => {
+    beforeEach(() => {
+      contracts = getCouponContracts(ChainId.ETHEREUM_MAINNET)
+    })
+
+    it('should resolve nothing', () => {
+      expect(contracts).toEqual([])
+    })
   })
 })
 
 describe('when verifying a coupon signature', () => {
   const chainId = ChainId.MATIC_MAINNET
-  const contracts = getCouponContracts(chainId)
+  const [contracts] = getCouponContracts(chainId)
   if (!contracts) {
     throw new Error('Polygon mainnet must resolve a coupon pair for these tests to mean anything')
   }
@@ -165,6 +195,83 @@ describe('when verifying a coupon signature', () => {
   })
 })
 
+describe('when resolving which manager a coupon was signed against', () => {
+  const chainId = ChainId.MATIC_MAINNET
+  const candidates = getCouponContracts(chainId)
+  const [current, previous] = candidates
+  if (!current || !previous) {
+    throw new Error('Polygon mainnet must have two live coupon managers for these tests to mean anything')
+  }
+  const checks = {
+    uses: 10,
+    expiration: 1_800_000_000_000,
+    effective: 1_700_000_000_000,
+    salt: '0x' + '11'.repeat(32),
+    contractSignatureIndex: 0,
+    signerSignatureIndex: 0,
+    allowedRoot: '0x' + '00'.repeat(32),
+    externalChecks: []
+  }
+  const data = encodeCouponData(DISCOUNT_TYPE_RATE, 300_000, collectionsRoot(COLLECTIONS))
+  let creator: Wallet
+  let signature: string
+  let resolved: CouponContracts | null
+
+  async function sign(contracts: CouponContracts): Promise<string> {
+    return creator.signTypedData(
+      getCouponManagerDomain(chainId, contracts),
+      COUPON_TYPES,
+      getCouponTypedValues(checks, contracts.collectionDiscountCoupon, data)
+    )
+  }
+
+  beforeEach(() => {
+    creator = Wallet.createRandom() as unknown as Wallet
+  })
+
+  describe('and the creator signed against the current marketplace manager', () => {
+    beforeEach(async () => {
+      signature = await sign(current)
+      resolved = resolveCouponSignature(chainId, candidates, checks, current.collectionDiscountCoupon, data, signature, creator.address)
+    })
+
+    it('should resolve the V3 pair', () => {
+      expect(resolved).toEqual(current)
+    })
+  })
+
+  describe('and the creator signed against the previous marketplace manager', () => {
+    beforeEach(async () => {
+      signature = await sign(previous)
+      resolved = resolveCouponSignature(chainId, candidates, checks, previous.collectionDiscountCoupon, data, signature, creator.address)
+    })
+
+    // The two domains differ only in verifyingContract, so a coupon can never verify against both.
+    it('should resolve the V2 pair', () => {
+      expect(resolved).toEqual(previous)
+    })
+  })
+
+  describe('and the signature belongs to somebody else', () => {
+    beforeEach(async () => {
+      signature = await sign(current)
+      resolved = resolveCouponSignature(
+        chainId,
+        candidates,
+        checks,
+        current.collectionDiscountCoupon,
+        data,
+        signature,
+        Wallet.createRandom().address
+      )
+    })
+
+    it('should resolve nothing', () => {
+      expect(resolved).toBeNull()
+    })
+  })
+})
+
 describe('when deriving the on-chain state key of a coupon', () => {
   it('should scope the signature hash by signer, the way the deployed CouponManager does', () => {
     const signer = '0x4c09495cd2d4e3d3fa2808eb655d013de426157b'
@@ -174,38 +281,5 @@ describe('when deriving the on-chain state key of a coupon', () => {
     // forever, so the pair also documents the mistake it guards against.
     expect(couponStateKey(signer, signature)).toEqual('0x05184e621d5f7d814b6684349ce2a8f07be24de1fa5f124f2914788c049b2ca0')
     expect(keccak256(signature)).toEqual('0x1090dbec48f7f57f241cd63982ccab202c65844d3a54ee797b1a6de433635179')
-  })
-})
-
-/**
- * The Polygon mainnet addresses are spelled out in a fallback because the pinned transactions library
- * predates their entry in it. This is the alarm on that arrangement: the day someone bumps the library,
- * either the addresses agree — and the fallback is dead code to delete — or they do not, and this fails
- * instead of the server quietly signing against a manager the chain does not have.
- */
-describe('when the transactions library learns about the coupon deployments on polygon mainnet', () => {
-  it('should agree with the addresses this server falls back to', () => {
-    let fromLibrary: { manager: string; coupon: string } | null = null
-    try {
-      fromLibrary = {
-        manager: getContract(ContractName.CouponManager, ChainId.MATIC_MAINNET).address.toLowerCase(),
-        coupon: getContract(ContractName.CollectionDiscountCoupon, ChainId.MATIC_MAINNET).address.toLowerCase()
-      }
-    } catch {
-      // Still unknown to the installed version: the fallback is what answers, and there is nothing to compare.
-      fromLibrary = null
-    }
-
-    const resolved = getCouponContracts(ChainId.MATIC_MAINNET)
-    expect(resolved).not.toBeNull()
-
-    if (fromLibrary) {
-      expect(resolved?.couponManager.address.toLowerCase()).toEqual(fromLibrary.manager)
-      expect(resolved?.collectionDiscountCoupon.toLowerCase()).toEqual(fromLibrary.coupon)
-    } else {
-      // The registry values, as published at contracts.decentraland.org/addresses.json.
-      expect(resolved?.couponManager.address).toEqual('0x3fd3056ee72a2a85e9392fab3a450e7736536081')
-      expect(resolved?.collectionDiscountCoupon).toEqual('0xc914507fe297b2dddd1232ac3a8903f1c125e794')
-    }
   })
 })

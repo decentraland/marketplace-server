@@ -504,13 +504,20 @@ describe('when listing the marketplace versions deployed on a chain', () => {
     })
   })
 
-  describe('and the chain has no V3 deployment', () => {
-    // The path every mainnet trade takes: getContract throws for V3 and the candidate is skipped. V3 is
-    // testnet-only, so this is production behaviour, not an edge case.
-    it('should list V2 alone rather than throwing', () => {
+  describe('and the chain is Polygon mainnet, where V3 is now deployed', () => {
+    // Both versions are live while clients move over, so a trade signed against either verifies and a new one
+    // settles on V3.
+    it('should list V3 before V2 there too', () => {
       expect(getOffChainMarketplaceContracts(ChainId.MATIC_MAINNET).map(({ contractName }) => contractName)).toEqual([
+        ContractName.OffChainMarketplaceV3,
         ContractName.OffChainMarketplaceV2
       ])
+    })
+  })
+
+  describe('and the chain has no off-chain marketplace at all', () => {
+    it('should list nothing rather than throwing', () => {
+      expect(getOffChainMarketplaceContracts(ChainId.ETHEREUM_GOERLI)).toEqual([])
     })
   })
 })

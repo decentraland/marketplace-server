@@ -126,6 +126,7 @@ async function initComponents(): Promise<TestComponents> {
     { dappsDatabase: dappsWriteDatabase, logs },
     {
       chain: {
+        readCouponAllowed: () => Promise.resolve(true),
         readIndexes: () => Promise.resolve({ contractSignatureIndex: 0, signerSignatureIndex: 0 }),
         readState: () => Promise.resolve({ uses: 0, cancelled: false })
       }
