@@ -1,5 +1,6 @@
 import { IHttpServerComponent } from '@dcl/core-commons'
 import { GenderFilterOption } from '@dcl/schemas'
+import { isAddress } from '../../logic/address'
 import { Params } from '../../logic/http/params'
 import { asJSON } from '../../logic/http/response'
 import {
@@ -65,6 +66,34 @@ function genderList(params: Params): GenderFilterOption[] | undefined {
   const requested = new Set([...(csv(params.getString('wearableGender')) ?? []), ...params.getList('wearableGender')])
   const genders = [...requested].filter((value): value is GenderFilterOption => valid.includes(value))
   return genders.length ? genders : undefined
+}
+
+/**
+ * The collections the unified feed is restricted to, or `undefined` when the caller named none.
+ *
+ * Takes either encoding a caller might reasonably reach for, the same way `genderList` above does: the
+ * comma-separated form (`contractAddress=0xa,0xb`) and the repeated form
+ * (`&contractAddress=0xa&contractAddress=0xb`, which `Params.getList` also accepts as `contractAddress[]`).
+ * The comma form is what the Shop's seasonal events need: one event selects its items by tagging whole
+ * collections in the builder and routinely names ~100 of them, and repeating the key costs 16 more
+ * characters per address in a query string already approaching the usual 8 KB ceiling.
+ *
+ * `undefined` and `[]` mean DIFFERENT things downstream -- see `UnifiedCatalogFilters.contractAddresses`.
+ * Two boundaries follow from that, both chosen to leave existing callers untouched:
+ *
+ * - A blank value (`contractAddress=`) reads as ABSENT, which is what it has always meant on this endpoint.
+ * - A value that is present but is not an address yields `[]`, i.e. an empty page -- which is also what
+ *   passing a non-address through the singular filter has always produced, since it matched no row.
+ */
+function contractAddressList(params: Params): string[] | undefined {
+  const named = params
+    .getList('contractAddress')
+    .flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(Boolean)
+
+  if (named.length === 0) return undefined
+  return named.filter(isAddress).map(address => address.toLowerCase())
 }
 
 // GET /v3/catalog/shop -- curated feed of credit-buyable (USD-pegged) listings for the Shop.
@@ -162,7 +191,11 @@ export function createShopUnifiedHandler(
     const first = Math.min(params.getNumber('first', SHOP_DEFAULT_PAGE_SIZE) ?? SHOP_DEFAULT_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = params.getNumber('skip', 0) ?? 0
     const category = params.getString('category')
-    const contractAddress = params.getString('contractAddress')
+    // One param, two shapes: a single collection reads as it always has, and several read as a set. The
+    // singular is deliberately NOT sent alongside the set — with more than one value `getString` returns
+    // only the first, and the two filters would then AND together into "the first address only".
+    const contractAddresses = contractAddressList(params)
+    const contractAddress = contractAddresses ? undefined : params.getString('contractAddress')
     const itemId = params.getString('itemId')
     const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
@@ -189,6 +222,7 @@ export function createShopUnifiedHandler(
       skip,
       category,
       contractAddress,
+      contractAddresses,
       itemId,
       creator,
       rarities,

@@ -292,6 +292,16 @@ function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilter
   if (filters.contractAddress) {
     query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
   }
+  // A SET of collections (the Shop's seasonal events). Fails CLOSED: an empty array means the caller asked
+  // for a set that resolved to nothing, and must yield an empty page — never the unfiltered catalogue. The
+  // predicate has to reach EVERY union branch for that to hold; see UnifiedCatalogFilters.contractAddresses.
+  if (filters.contractAddresses) {
+    query.append(
+      filters.contractAddresses.length > 0
+        ? SQL` AND mv.sent_contract_address = ANY(${filters.contractAddresses.map(address => address.toLowerCase())})`
+        : SQL` AND FALSE`
+    )
+  }
   if (filters.itemId != null) {
     query.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
   }

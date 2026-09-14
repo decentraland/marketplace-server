@@ -116,6 +116,93 @@ describe('when handling the unified shop catalog endpoint', () => {
     })
   })
 
+  /**
+   * A SET of collections, which is how the Shop's seasonal events select their items: an event tags whole
+   * collections in the builder and routinely names ~100 of them at once.
+   *
+   * The distinction these tests defend is `undefined` (no collection filter) vs `[]` (a set that resolved
+   * to nothing). Collapsing them serves the entire catalogue to a caller whose filter merely failed to
+   * resolve, which looks like a working event rather than like an error.
+   */
+  describe('and collections are provided', () => {
+    const A = '0xabc0000000000000000000000000000000000001'
+    const B = '0xdef0000000000000000000000000000000000002'
+    const filtersOf = () => getUnifiedListings.mock.calls[0][0]
+
+    it("should parse this feed's comma-separated form", async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A},${B}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A, B])
+    })
+
+    it('should parse the repeated form', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}&contractAddress=${B}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A, B])
+    })
+
+    it('should parse the bracketed array form', async () => {
+      // `Params.getList` accepts `key[]` as well, and this endpoint used to IGNORE it entirely — a caller
+      // spelling it that way got the whole catalogue back looking filtered.
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress[]=${A}&contractAddress[]=${B}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A, B])
+    })
+
+    it('should lowercase them, since the column is stored lowercased', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A.toUpperCase().replace('0X', '0x')}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A])
+    })
+
+    it('should not send the singular filter alongside the set', async () => {
+      // `getString` returns only the FIRST value, so sending both would AND them together into "the first
+      // address only" — a silently narrowed feed rather than a visible error.
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A},${B}`)
+
+      expect(filtersOf().contractAddress).toBeUndefined()
+    })
+
+    it('should ask for an empty page when every value is malformed', async () => {
+      // Same outcome the singular filter has always produced for a non-address: it matched no row. What
+      // must NOT happen is the filter disappearing.
+      await invoke('http://localhost/v3/catalog/unified?contractAddress=not-an-address')
+
+      expect(filtersOf().contractAddresses).toEqual([])
+    })
+
+    it('should keep the valid collections when only some are malformed', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A},nonsense,${B}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A, B])
+    })
+
+    it('should leave the filter off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+
+      expect(filtersOf().contractAddresses).toBeUndefined()
+      expect(filtersOf().contractAddress).toBeUndefined()
+    })
+
+    it('should read a blank value as absent, which is what it has always meant here', async () => {
+      await invoke('http://localhost/v3/catalog/unified?contractAddress=')
+
+      expect(filtersOf().contractAddresses).toBeUndefined()
+    })
+
+    it('should keep a single collection working through the same path', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}`)
+
+      expect(filtersOf().contractAddresses).toEqual([A])
+    })
+
+    it('should reach the item-unified feed too', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?groupBy=item&contractAddress=${A},${B}`)
+
+      expect(getShopItems.mock.calls[0][0].contractAddresses).toEqual([A, B])
+    })
+  })
+
   describe('and includeSocialEmotes is provided', () => {
     it('should exclude social emotes only on an explicit false', async () => {
       await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=false')

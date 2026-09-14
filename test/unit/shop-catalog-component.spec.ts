@@ -613,6 +613,115 @@ describe('Shop Catalog Component', () => {
       })
     })
 
+    /**
+     * A SET of collections, which is how the Shop's seasonal events select their items -- an event tags
+     * whole collections in the builder and routinely names ~100 of them at once, where the pre-existing
+     * `contractAddress` filter names exactly one.
+     *
+     * The case worth defending is the EMPTY set. `[]` means the caller asked for a set and it resolved to
+     * nothing, and it has to produce an empty page; treating it as "no filter" would serve the entire
+     * catalogue to a caller whose filter merely failed to resolve. That is not hypothetical -- the
+     * addresses travel in a query string long enough to be truncated in transit, and a truncated one
+     * arrives as a shorter list rather than as an error.
+     */
+    describe('and filtering by a set of collections', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const ANY_SET = 'mv.sent_contract_address = ANY('
+      const EMPTY_SET = 'AND FALSE'
+      const A = '0xabc0000000000000000000000000000000000001'
+      const B = '0xdef0000000000000000000000000000000000002'
+
+      /**
+       * One constraint per UNION branch, COUNTED rather than matched — the same idiom, and the same
+       * reason, as the listingType block above.
+       *
+       * Here the stakes are higher than a mis-scoped filter. `toContain` is satisfied by the constraint
+       * reaching ONE branch, and the branch that matters is whichever one it missed: an empty set that
+       * fails closed on the native-trade branch only would still serve the whole legacy-trade and
+       * CollectionStore catalogue as the event.
+       */
+      const UNION_BRANCHES = 3
+
+      async function sqlFor(filters: Record<string, unknown>) {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0]
+      }
+
+      it('should match any of them, in every union branch', async () => {
+        const sql = await sqlFor({ contractAddresses: [A, B] })
+
+        expect(occurrences(sql.text, ANY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual([A, B])
+      })
+
+      it('should lowercase them, since the column is stored lowercased', async () => {
+        const sql = await sqlFor({ contractAddresses: [A.toUpperCase().replace('0X', '0x')] })
+
+        expect(sql.values).toContainEqual([A])
+      })
+
+      it('should return nothing for an empty set rather than everything, in every union branch', async () => {
+        const sql = await sqlFor({ contractAddresses: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.text).not.toContain(ANY_SET)
+      })
+
+      it('should report a total of zero for an empty set', async () => {
+        // The SQL assertions above prove the predicate is emitted; this proves what the caller receives,
+        // which is the part a paginated feed reports to the client.
+        query.mockClear()
+        query.mockResolvedValueOnce({ rows: [] })
+
+        const { data, total } = await shopCatalog.getUnifiedListings({ contractAddresses: [] }, RATE)
+
+        expect(data).toEqual([])
+        expect(total).toBe(0)
+      })
+
+      it('should reach every branch of a source-restricted feed too', async () => {
+        // `source` collapses the UNION, so the expected count is DERIVED from the same query rather than
+        // restated: the invariant is "every branch that survives the source filter", not "three".
+        const branches = occurrences((await sqlFor({ source: 'legacy', contractAddresses: [A] })).text, ANY_SET)
+        expect(branches).toBeGreaterThan(0)
+
+        const sql = await sqlFor({ source: 'legacy', contractAddresses: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(branches)
+      })
+
+      it('should apply no collection filter when the set is absent', async () => {
+        const sql = await sqlFor({})
+
+        expect(sql.text).not.toContain(ANY_SET)
+        expect(sql.text).not.toContain(EMPTY_SET)
+      })
+
+      it('should leave the single-collection filter working as before', async () => {
+        const sql = await sqlFor({ contractAddress: A })
+
+        expect(sql.text).toContain('mv.sent_contract_address = $')
+        expect(sql.values).toContain(A)
+      })
+
+      it('should reach every branch of the item-unified query through the same shared block', async () => {
+        // getShopItems wraps buildItemUnifiedCore, which wraps the same buildUnifiedInner -- so this is
+        // what proves groupBy=item needs no filter of its own.
+        query.mockClear()
+        await shopCatalog.getShopItems({ contractAddresses: [A, B] }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, ANY_SET)).toBe(UNION_BRANCHES)
+      })
+
+      it('should return nothing for an empty set on the item-unified query too', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({ contractAddresses: [] }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, EMPTY_SET)).toBe(UNION_BRANCHES)
+      })
+    })
+
     // The body-shape filter a client needs to hide what its player cannot wear. Same reasoning as
     // listingType above: the feed is paginated and reports a total, so dropping rows client-side yields
     // short pages and an overstated count.
