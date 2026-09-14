@@ -1,6 +1,34 @@
 import SQL from 'sql-template-strings'
 import type { ProfileEntry } from '../../src/logic/suggestions/profile'
-import { buildCandidateScoresQuery } from '../../src/ports/suggestions/queries'
+import { buildCandidateContractsQuery, buildCandidateScoresQuery } from '../../src/ports/suggestions/queries'
+
+describe('when resolving which collections the candidates live in', () => {
+  let profile: ProfileEntry[]
+
+  beforeEach(() => {
+    profile = [{ itemId: '0xaaa-1', weight: 1, source: 'owned' }]
+  })
+
+  it('should look the neighbours up by the indexed column', () => {
+    expect(buildCandidateContractsQuery(profile, []).text).toContain('n.item_id = ANY($')
+  })
+
+  it('should bind the profile ids rather than interpolate them', () => {
+    expect(buildCandidateContractsQuery(profile, []).values).toContainEqual(['0xaaa-1'])
+  })
+
+  describe('and the profile leans on particular creators', () => {
+    it('should include their collections too, so narrowing the core cannot delete the creator branch', () => {
+      expect(buildCandidateContractsQuery(profile, ['0xcreator']).text).toContain('UNION')
+    })
+  })
+
+  describe('and the profile leans on no creator in particular', () => {
+    it('should ask only about the neighbours', () => {
+      expect(buildCandidateContractsQuery(profile, []).text).not.toContain('UNION')
+    })
+  })
+})
 
 describe('when building the candidate scores query', () => {
   let profile: ProfileEntry[]

@@ -96,7 +96,7 @@ describe('when asking for suggestions', () => {
   describe('and there are seeds but no address', () => {
     beforeEach(async () => {
       // profile attributes, then the candidate scores
-      queryRows = [[], Array.from({ length: 8 }, (_, i) => candidateRow(i))]
+      queryRows = [[], [{ contract: '0xc0' }], Array.from({ length: 8 }, (_, i) => candidateRow(i))]
       await suggestions.getSuggestions({ seeds: [`${ADDRESS}-1`, `${ADDRESS}-2`] }, RATE)
     })
 
@@ -134,6 +134,7 @@ describe('when asking for suggestions', () => {
       queryRows = [
         [{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }],
         [],
+        [{ contract: '0xc0' }],
         Array.from({ length: 8 }, (_, i) => candidateRow(i))
       ]
       result = await suggestions.getSuggestions({ address: ADDRESS, first: 6 }, RATE)
@@ -153,6 +154,19 @@ describe('when asking for suggestions', () => {
 
     it('should explain each row by the signal that earned it', () => {
       expect(result.data.every(item => item.reason.kind === 'co_owned')).toBe(true)
+    })
+  })
+
+  describe('and no collection can supply a candidate', () => {
+    let result: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+
+    beforeEach(async () => {
+      queryRows = [[{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }], [], []]
+      result = await suggestions.getSuggestions({ address: ADDRESS }, RATE)
+    })
+
+    it('should fall back to trending instead of running the catalogue query over everything', () => {
+      expect(result.personalized).toBe(false)
     })
   })
 
@@ -179,6 +193,7 @@ describe('when asking for suggestions', () => {
       queryRows = [
         [{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }],
         [],
+        [{ contract: '0xc0' }],
         Array.from({ length: 8 }, (_, i) => candidateRow(i))
       ]
     })
@@ -191,7 +206,7 @@ describe('when asking for suggestions', () => {
 
   describe('and a category is requested', () => {
     beforeEach(async () => {
-      queryRows = [[], Array.from({ length: 8 }, (_, i) => candidateRow(i))]
+      queryRows = [[], [{ contract: '0xc0' }], Array.from({ length: 8 }, (_, i) => candidateRow(i))]
       await suggestions.getSuggestions({ seeds: [`${ADDRESS}-1`], category: 'emote' }, RATE)
     })
 

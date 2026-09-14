@@ -74,6 +74,43 @@ export function buildProfileAttributesQuery(itemIds: string[], manaUsdRate: numb
 }
 
 /**
+ * The collections the candidates can possibly come from, resolved before the expensive part runs.
+ *
+ * The item-unified core is a union over the trades view and the store relation and costs ~1.3 s
+ * unrestricted. Handing it the contracts the candidates actually live in brings that to ~860 ms and
+ * narrows the result from 4,375 rows to 2,578, while this lookup costs 25 ms against the neighbour
+ * table's own index. Both halves of the candidate set are represented: the neighbour table, and the
+ * creators the profile leans on — otherwise narrowing the core here would silently delete the creator
+ * branch further down.
+ */
+export function buildCandidateContractsQuery(profile: ProfileEntry[], topCreators: string[]): SQLStatement {
+  const query = SQL`
+    SELECT DISTINCT split_part(n.neighbor_id, '-', 1) AS contract
+      FROM `
+    .append(NEIGHBORS_TABLE)
+    .append(SQL` n WHERE n.item_id = ANY(${profile.map(entry => entry.itemId)}::text[])`)
+
+  if (topCreators.length > 0) {
+    query
+      .append(
+        SQL`
+    UNION
+    SELECT DISTINCT split_part(i.id::text, '-', 1) AS contract
+      FROM `
+      )
+      .append(MARKETPLACE_SQUID_SCHEMA)
+      .append(
+        SQL`.item i
+     WHERE lower(i.creator) = ANY(${topCreators}::text[])
+       AND i.search_is_collection_approved = true
+       AND i.search_emote_outcome_type IS NULL`
+      )
+  }
+
+  return query
+}
+
+/**
  * Candidate scores: every sellable item reachable from the wallet's profile through the precomputed
  * neighbour table, with the co-ownership and content contributions summed separately and the single
  * profile item that pulled it hardest recorded for the explanation.
