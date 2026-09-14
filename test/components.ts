@@ -40,6 +40,7 @@ import { createSalesComponents } from '../src/ports/sales'
 import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
 import { createShopNotifierComponent } from '../src/ports/shop-notifier/component'
 import { createStatsComponent } from '../src/ports/stats/component'
+import { createSuggestionsComponent } from '../src/ports/suggestions'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
@@ -140,6 +141,7 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
+  const suggestions = createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs })
   const inMemoryCache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
@@ -194,6 +196,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    suggestions,
     shopNotifier,
     manaUsdRate,
     wertSigner,

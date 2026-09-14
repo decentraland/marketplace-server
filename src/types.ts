@@ -30,6 +30,7 @@ import { ISalesComponent } from './ports/sales'
 import { IShopCatalogComponent } from './ports/shop-catalog/types'
 import { IShopNotifierComponent } from './ports/shop-notifier/types'
 import { IStatsComponent } from './ports/stats/types'
+import { ISuggestionsComponent } from './ports/suggestions/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
 import { ITrendingsComponent } from './ports/trendings/types'
@@ -56,6 +57,7 @@ export type BaseComponents = {
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
+  suggestions: ISuggestionsComponent
   shopNotifier: IShopNotifierComponent
   manaUsdRate: IManaUsdRateComponent
   wertSigner: IWertSignerComponent

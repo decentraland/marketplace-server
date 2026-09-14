@@ -361,7 +361,7 @@ const APPROVED_COLLECTION_PREDICATE = `(
 
 // Clamp a caller-supplied count to [min, max], flooring and falling back to `fallback` for
 // missing/non-finite input.
-function clampCount(value: number | undefined, fallback: number, min: number, max: number): number {
+export function clampCount(value: number | undefined, fallback: number, min: number, max: number): number {
   const n = Number.isFinite(value) ? Math.floor(value as number) : fallback
   return Math.min(Math.max(n, min), max)
 }
@@ -369,7 +369,7 @@ function clampCount(value: number | undefined, fallback: number, min: number, ma
 // Format a MANA/USD rate (USD per MANA) as a bounded-precision decimal literal for Postgres numeric
 // math. A non-positive/non-finite rate yields '0' so the caller's `usd_wei > 0` guard drops the rows
 // rather than advertising a free item off a broken rate.
-function rateToNumericString(rate: number): string {
+export function rateToNumericString(rate: number): string {
   if (!Number.isFinite(rate) || rate <= 0) return '0'
   return rate.toFixed(18)
 }
@@ -638,7 +638,7 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
 // Shared by the browse feed and the related-items rail so the rail is drawn from exactly the same universe,
 // grouping and headline-price rules as the grid it is meant to mirror -- a divergence here would show the
 // same item at two different prices on two screens.
-function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
+export function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
   const inner = buildUnifiedInner(filters, rateNumericString)
 
   return SQL`SELECT DISTINCT ON (f.contract_address, f.item_id)
@@ -742,7 +742,7 @@ function mapUnifiedRow(
 // Row -> model for the item-GROUPED feeds (the browse grid and the related-items rail). Extends the shared
 // per-listing mapper with the one field grouping adds. Shared for the same reason mapUnifiedRow is: the rail
 // is meant to be indistinguishable from the grid, so the two must not map a row differently.
-function mapUnifiedItemRow(
+export function mapUnifiedItemRow(
   r: RelatedItemRow,
   polygonChainId: number,
   ethereumChainId: number,
