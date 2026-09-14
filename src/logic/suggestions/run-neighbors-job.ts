@@ -31,10 +31,12 @@ export type NeighborsJobOutcome = RebuildOutcome | 'failed'
  * duration of the job and closed in `finally`, so the service holds no extra connection between runs
  * and a multi-minute scan cannot occupy a request slot.
  *
- * Every replica runs this on the same schedule, so the write side takes a transaction-scoped advisory
- * lock first and the losers return without reading anything — three replicas each scanning 5M mint rows
- * would be pure waste. The lock is taken inside `swapNeighborsTable`, which is also where the swap
- * happens, so it covers exactly the window where two writers could collide.
+ * Every replica runs this on the same schedule, so the first thing the write connection does is take a
+ * SESSION-scoped advisory lock, before the read connection is even opened — the losers return having
+ * touched nothing, rather than three replicas each scanning 5M mint rows to throw two results away. It
+ * is session-scoped because the scan and the build both happen before the swap opens its transaction;
+ * `finally` is what releases it. `swapNeighborsTable` takes a transaction-scoped lock of its own, which
+ * is belt and braces for anything that reaches the swap by another route.
  *
  * A scan that overruns its deadline aborts the whole run and leaves the previous table serving. Stale
  * neighbours are a far smaller problem than a half-built table or a job that never yields its

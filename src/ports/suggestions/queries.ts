@@ -62,10 +62,10 @@ export function buildProfileAttributesQuery(itemIds: string[], manaUsdRate: numb
       CASE WHEN i.item_type LIKE 'emote%' THEN 'emote' ELSE 'wearable' END
         || ':' || COALESCE(i.search_wearable_category, i.search_emote_category, '') AS sub_category,
       lower(COALESCE(i.rarity, '')) AS rarity,
-      -- The item's MANA price converted the same way the catalogue converts it: MANA -> USD at the
-      -- live rate, USD -> credits at 10 per dollar. Dividing by a fixed 1e17 (the old form here) is
-      -- only correct when 1 MANA happens to be worth exactly 1 USD, so the price band compared a
-      -- MANA-denominated profile against USD-denominated candidates.
+      -- The item's MANA price converted the way the catalogue converts it: MANA -> USD at the live
+      -- rate, USD -> credits at 10 per dollar. A fixed divisor would only be right if one MANA were
+      -- worth exactly one dollar, which would leave the price band comparing a MANA-denominated
+      -- profile against USD-denominated candidates.
       (COALESCE(i.price, 0) / 1e18) * ${manaUsdRate} * 10 AS price_credits,
       (i.item_type NOT LIKE 'emote%') AS is_wearable
     FROM `
