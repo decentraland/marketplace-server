@@ -10,8 +10,23 @@ const ADDRESS_PATTERN = '^0x[0-9a-fA-F]{40}$'
  * over both, and a missing `allowedRoot` throws inside the EIP-712 encoding — which surfaces to the
  * creator as "invalid signature" and points at the wrong problem.
  */
+/**
+ * Hex or nothing, for the two fields the EIP-712 encoding pads to bytes32.
+ *
+ * The trade schema types them as bare strings, so `""` reached `zeroPadValue`, which throws on anything
+ * that is not BytesLike — turning a malformed body into a 500 rather than the 400 it is. `0x` on its own
+ * is legitimate (it pads to zero, which is how "no allow-list" is spelled), so the pattern allows it and
+ * only rules out odd-length and non-hex.
+ */
+const BYTES32_OR_EMPTY = { type: 'string', pattern: '^0x([0-9a-fA-F]{2})*$', maxLength: 66 }
+
 const CouponChecksSchema = {
   ...TradeCreationSchema.properties.checks,
+  properties: {
+    ...TradeCreationSchema.properties.checks.properties,
+    salt: BYTES32_OR_EMPTY,
+    allowedRoot: BYTES32_OR_EMPTY
+  },
   required: [...TradeCreationSchema.properties.checks.required, 'allowedRoot', 'externalChecks']
 }
 
