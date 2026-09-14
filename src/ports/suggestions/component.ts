@@ -6,6 +6,7 @@ import {
   MAX_EXCLUDE,
   MAX_PROFILE_ITEMS,
   MAX_SEEDS,
+  PROFILE_SQL_LIMIT,
   TASTE_CREATOR_COUNT,
   MIN_PERSONAL_ROWS,
   SUGGESTED_DEFAULT_LIMIT,
@@ -60,7 +61,7 @@ export function createSuggestionsComponent(
   const logger = logs.getLogger('suggestions')
 
   async function getOwned(address: string): Promise<OwnedRow[]> {
-    const result = await pg.query<OwnedRow>(buildOwnedQuery(address))
+    const result = await pg.query<OwnedRow>(buildOwnedQuery(address, PROFILE_SQL_LIMIT))
     return result.rows
   }
 
@@ -76,9 +77,9 @@ export function createSuggestionsComponent(
     }
   }
 
-  async function getProfileAttributes(itemIds: string[]): Promise<Map<string, ProfileItemAttributes>> {
+  async function getProfileAttributes(itemIds: string[], manaUsdRate: number): Promise<Map<string, ProfileItemAttributes>> {
     if (itemIds.length === 0) return new Map()
-    const result = await pg.query<AttributeRow>(buildProfileAttributesQuery(itemIds))
+    const result = await pg.query<AttributeRow>(buildProfileAttributesQuery(itemIds, manaUsdRate))
     return new Map(
       result.rows.map(row => [
         row.item_id,
@@ -134,18 +135,27 @@ export function createSuggestionsComponent(
       return fallback
     }
 
-    const attributes = await getProfileAttributes(profile.map(entry => entry.itemId))
+    const attributes = await getProfileAttributes(
+      profile.map(entry => entry.itemId),
+      manaUsdRate
+    )
     const aggregates = buildProfileAggregates(profile, attributes)
 
+    const topCreators = topCreatorsOf(aggregates.creatorAffinity)
+
+    // Narrowing the core by `contractAddresses` was measured and rejected: a 200-item profile's
+    // neighbours span 3,036 collections, more than the 2,490 the whole sellable catalogue has, so the
+    // filter excludes nothing while costing an extra round trip. It only pays when the candidate set
+    // is genuinely narrow, which a personalised rail's never is. See the PR for the numbers.
     const core = buildItemUnifiedCore({ category: filters.category, includeSocialEmotes: false }, rateToNumericString(manaUsdRate))
     const result = await pg.query<CandidateRow>(
       buildCandidateScoresQuery({
         profile,
         core,
-        ownedItemIds: owned.map(row => row.item_id),
+        address,
         excludeItemIds: exclude,
         bodyShape: filters.bodyShape,
-        topCreators: topCreatorsOf(aggregates.creatorAffinity),
+        topCreators,
         limit: first * CANDIDATE_MULTIPLIER
       })
     )
@@ -174,7 +184,15 @@ export function createSuggestionsComponent(
       topTriggerSource: (row.trigger_source as ScoredCandidate['topTriggerSource']) ?? undefined
     }))
 
-    const blended = blendCandidates(candidates, aggregates)
+    // How many profile items each creator accounts for, which is what lets a row claim the wallet
+    // collects that creator rather than merely matching its taste on some other axis.
+    const profileCreatorCounts = new Map<string, number>()
+    for (const entry of profile) {
+      const creator = attributes.get(entry.itemId)?.creator
+      if (creator) profileCreatorCounts.set(creator, (profileCreatorCounts.get(creator) ?? 0) + 1)
+    }
+
+    const blended = blendCandidates(candidates, aggregates, profileCreatorCounts)
     const ranked = rerankForDiversity(blended, first, aggregates.wearableRatio)
 
     const polygonChainId = getPolygonChainId()

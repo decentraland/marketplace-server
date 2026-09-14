@@ -9,7 +9,6 @@ describe('when building the candidate scores query', () => {
     return buildCandidateScoresQuery({
       profile,
       core: SQL`SELECT 1 AS usd_wei`,
-      ownedItemIds: [],
       excludeItemIds: [],
       topCreators: [],
       limit: 36,
@@ -47,10 +46,29 @@ describe('when building the candidate scores query', () => {
     })
   })
 
-  describe('and the wallet already owns items', () => {
-    it('should keep them out with a bound array rather than an interpolated list', () => {
-      const query = build({ ownedItemIds: ['0xaaa-1', '0xbbb-2'] })
-      expect(query.values).toContainEqual(['0xaaa-1', '0xbbb-2'])
+  describe('and the caller is a known wallet', () => {
+    let query: ReturnType<typeof build>
+
+    beforeEach(() => {
+      query = build({ address: '0xwallet' })
+    })
+
+    it('should exclude every holding through an anti-join rather than shipping the ids back as an array', () => {
+      expect(query.text).toContain('NOT EXISTS (SELECT 1 FROM owned o')
+    })
+
+    it('should materialise the holdings once instead of re-probing them per candidate', () => {
+      expect(query.text).toContain('owned AS MATERIALIZED')
+    })
+
+    it('should look the holdings up by the indexed column, without wrapping it', () => {
+      expect(query.text).toContain('n.owner_address = $')
+    })
+  })
+
+  describe('and the caller is anonymous', () => {
+    it('should not build an exclusion at all, because it knows of nothing they own', () => {
+      expect(build().text).not.toContain('owned AS MATERIALIZED')
     })
   })
 

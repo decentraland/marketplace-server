@@ -84,6 +84,16 @@ export const MAX_EXCLUDE = 20
 export const MAX_PROFILE_ITEMS = 200
 
 /**
+ * Holdings fetched before the profile is assembled.
+ *
+ * Generous relative to MAX_PROFILE_ITEMS so the weighting in TypeScript still has something to choose
+ * from, but bounded so the largest holder in production (143,832 items) does not ship its whole
+ * collection over the wire. The SQL orders by the same weight formula the profile uses, so what is cut
+ * is what the profile would have cut anyway.
+ */
+export const PROFILE_SQL_LIMIT = 400
+
+/**
  * Creators whose recent catalogue is pulled in alongside the neighbour-driven candidates, and how many
  * items each contributes.
  *
@@ -98,7 +108,6 @@ export const TASTE_ITEMS_PER_CREATOR = 30
 export const CANDIDATE_MULTIPLIER = 3
 
 export const SUGGESTIONS_CACHE_TTL_SECONDS = 600
-export const OWNED_SET_CACHE_TTL_SECONDS = 3600
 
 /** How often the neighbours job rebuilds the table. */
 export const NEIGHBORS_REBUILD_INTERVAL_MS = 6 * 60 * 60 * 1000
