@@ -358,6 +358,10 @@ export function createCouponsComponent(
         logger.warn(`Could not refresh the state of coupon ${chunk[index].id}: ${isErrorWithMessage(e) ? e.message : String(e)}`)
       })
     }
+    // A per-tick line, not just the per-coupon warnings: failures are settled rather than thrown, so the
+    // job's own error handler never fires and a batch quietly failing half its reads would otherwise look
+    // exactly like a batch succeeding.
+    logger.info(`Refreshed the on-chain state of ${refreshed}/${result.rows.length} coupon(s)`)
     return refreshed
   }
 

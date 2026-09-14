@@ -63,6 +63,10 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     }
   )
 
+  // The refresh poller orders the whole table by this column every tick to find the least recently checked
+  // coupons. Unlike an index on `collections`, this one has the query that justifies it from day one.
+  pgm.createIndex({ schema: SCHEMA, name: 'coupon_state' }, 'checked_at')
+
   // The catalogue reads these through the reader role the trades view already grants to; a table created
   // after that grant is not covered by it.
   pgm.sql(`
