@@ -37,7 +37,9 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     check: 'effective_since < expires_at'
   })
 
-  pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, 'signer')
+  // Composite, in the order the creator's own list is served: filter by signer, then newest first. A plain
+  // index on `signer` leaves Postgres sorting the matches by hand on every page.
+  pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, [{ name: 'signer' }, { name: 'created_at', sort: 'DESC' }])
   pgm.createIndex({ schema: SCHEMA, name: 'coupons' }, 'expires_at')
   // No index on `collections`: nothing queries it. The coupons this table serves are always looked up by
   // signer or by id, and the only array work is `ANY(...)` against the squid's own collection table. A GIN

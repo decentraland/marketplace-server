@@ -211,6 +211,14 @@ describe('when adding a coupon', () => {
       const coupon = await buildCoupon({ checks: buildChecks({ uses: 0 }) })
       await expect(coupons.addCoupon(coupon, creator.address)).rejects.toThrow(InvalidCouponChecksError)
     })
+
+    it('should reject a window of no length here, where the table would have rejected it as a failure', async () => {
+      // The coupons table checks `effective_since < expires_at`. Letting an equal pair through meant the
+      // insert raised instead, and the creator was told the server broke rather than that the sale never runs.
+      const at = Date.now() + DAY
+      const coupon = await buildCoupon({ checks: buildChecks({ effective: at, expiration: at }) })
+      await expect(coupons.addCoupon(coupon, creator.address)).rejects.toThrow(InvalidCouponChecksError)
+    })
   })
 
   describe('and the coupon restricts who may use it', () => {

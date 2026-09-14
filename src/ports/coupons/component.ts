@@ -140,7 +140,10 @@ export function createCouponsComponent(
     if (checks.expiration <= now) {
       throw new InvalidCouponChecksError('Coupon expiration date must be in the future')
     }
-    if (checks.effective > checks.expiration) {
+    // `>=`, matching the table's own CHECK (`effective_since < expires_at`) exactly. With `>` a window of
+    // zero length passed here and failed in Postgres instead, which reaches the creator as a 500 rather
+    // than the plain "that sale never runs" this says.
+    if (checks.effective >= checks.expiration) {
       throw new InvalidCouponChecksError('Coupon should be effective before it expires')
     }
     if (checks.effective > now + MAX_COUPON_SCHEDULE_AHEAD_MS) {
