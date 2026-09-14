@@ -66,6 +66,7 @@ export type BaseComponents = {
   updateBuilderServerItemsViewJob: IJobComponent
   flushTradesMaterializedViewJob: IJobComponent
   refreshCouponStateJob: IJobComponent
+  rebuildItemNeighborsJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent

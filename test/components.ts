@@ -160,6 +160,12 @@ async function initComponents(): Promise<TestComponents> {
   const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => undefined, 30 * 1000, {
     startupDelay: 30
   })
+  // The neighbours rebuild opens its own connections and scans millions of rows; integration tests get
+  // an inert job and drive swapNeighborsTable directly instead.
+  const rebuildItemNeighborsJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
+    repeat: false,
+    startupDelay: 60 * 60 * 1000
+  })
   const refreshCouponStateJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
     startupDelay: 30
   })
@@ -205,6 +211,7 @@ async function initComponents(): Promise<TestComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
+    rebuildItemNeighborsJob,
     access,
     lists,
     picks,

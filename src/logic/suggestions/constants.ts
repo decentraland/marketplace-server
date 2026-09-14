@@ -88,3 +88,14 @@ export const CANDIDATE_MULTIPLIER = 3
 
 export const SUGGESTIONS_CACHE_TTL_SECONDS = 600
 export const OWNED_SET_CACHE_TTL_SECONDS = 3600
+
+/** How often the neighbours job rebuilds the table. */
+export const NEIGHBORS_REBUILD_INTERVAL_MS = 6 * 60 * 60 * 1000
+/** Let a freshly deployed replica finish warming up before a multi-minute scan starts. */
+export const NEIGHBORS_REBUILD_STARTUP_DELAY_MS = 5 * 60 * 1000
+/** The dedicated job connections need far longer than the pool's 40s, but not unbounded. */
+export const NEIGHBORS_JOB_STATEMENT_TIMEOUT_MS = 300_000
+/** Past this the acquisition scan is abandoned and the previous table keeps serving. */
+export const ACQUISITION_SCAN_DEADLINE_MS = 240_000
+/** Rows per INSERT into the staging table. */
+export const NEIGHBORS_INSERT_BATCH_SIZE = 5000

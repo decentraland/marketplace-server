@@ -1,5 +1,6 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
+import { Client as PgClient } from 'pg'
 import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'
@@ -10,6 +11,8 @@ import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
+import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './logic/suggestions/constants'
+import { runNeighborsJob } from './logic/suggestions/run-neighbors-job'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
 import { createActivityComponent } from './ports/activity'
@@ -20,7 +23,7 @@ import { createCollectionsComponent } from './ports/collections/component'
 import { createContractsComponent } from './ports/contracts/component'
 import { createCouponsComponent } from './ports/coupons'
 import { COUPON_STATE_REFRESH_INTERVAL_MS } from './ports/coupons/types'
-import { createPgComponent } from './ports/db/component'
+import { createPgComponent, resolveConnectionString } from './ports/db/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
@@ -176,6 +179,44 @@ export async function initComponents(): Promise<AppComponents> {
     onError: error =>
       refreshCouponStateLogger.error(`Failed to refresh coupon state: ${error instanceof Error ? error.message : String(error)}`)
   })
+
+  // Rebuilds the item-neighbours table behind /v3/catalog/suggested. It runs in this process but on its
+  // own short-lived connections: the pooled clients cap every statement at 40 seconds and the acquisition
+  // scan alone runs past 80. All three replicas fire on the same schedule; the advisory lock inside the
+  // job is what stops them duplicating the work.
+  const rebuildNeighborsLogger = logs.getLogger('rebuild-item-neighbors-job')
+  const neighborsConnectionStrings = {
+    read: await resolveConnectionString(config, 'DAPPS_READ'),
+    write: await resolveConnectionString(config, 'DAPPS')
+  }
+  const rebuildItemNeighborsJob = createJobComponent(
+    { logs },
+    () =>
+      runNeighborsJob({
+        connect: async role => {
+          const client = new PgClient({
+            connectionString: neighborsConnectionStrings[role],
+            application_name: `marketplace-server-neighbors-${role}`
+          })
+          await client.connect()
+          return client
+        },
+        logger: rebuildNeighborsLogger,
+        metrics: {
+          observe: ({ durationMs, rows, peakRssBytes }) => {
+            metrics.observe('suggestions_neighbors_build_duration_seconds', {}, durationMs / 1000)
+            metrics.observe('suggestions_neighbors_rows', {}, rows)
+            metrics.observe('suggestions_neighbors_peak_rss_bytes', {}, peakRssBytes)
+          }
+        }
+      }),
+    NEIGHBORS_REBUILD_INTERVAL_MS,
+    {
+      startupDelay: NEIGHBORS_REBUILD_STARTUP_DELAY_MS,
+      onError: error =>
+        rebuildNeighborsLogger.error(`Failed to rebuild item neighbours: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  )
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -238,6 +279,7 @@ export async function initComponents(): Promise<AppComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
+    rebuildItemNeighborsJob,
     schemaValidator,
     snapshot,
     items,
