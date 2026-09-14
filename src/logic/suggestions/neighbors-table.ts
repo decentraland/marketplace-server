@@ -5,6 +5,7 @@ import {
   MIN_WALLET_ITEMS,
   NEIGHBORS_ITEM_INDEX,
   NEIGHBORS_META_TABLE,
+  NEIGHBORS_INSERT_BATCH_SIZE,
   NEIGHBORS_TABLE,
   NEIGHBORS_TABLE_NAME
 } from './constants'
@@ -133,11 +134,38 @@ export type QueryableClient = {
  * replicas recomputing 700k rows simultaneously is both wasted work and three writers racing for the
  * same table name.
  */
-export async function swapNeighborsTable(
-  client: QueryableClient,
-  rows: Array<{ itemId: string; source: string; neighborId: string; sim: number; support: number; rank: number }>,
-  meta: NeighborsMeta
-): Promise<RebuildOutcome> {
+export type NeighborInsertRow = {
+  itemId: string
+  source: string
+  neighborId: string
+  sim: number
+  support: number
+  rank: number
+}
+
+/**
+ * Produces the rows to write, handing each chunk to `insert` as it is generated and returning what to
+ * record in the metadata row.
+ *
+ * A callback rather than an array because the two generators together produce ~940k rows: materialising
+ * them all, then materialising the insert form of them all, was the single largest thing in the job's
+ * memory profile. Feeding them through in chunks lets each generator's output be released before the
+ * next one runs.
+ */
+export type NeighborProducer = (insert: (rows: NeighborInsertRow[]) => Promise<void>) => Promise<NeighborsMeta>
+
+/**
+ * Swaps a freshly computed neighbour set in.
+ *
+ * Mirrors rebuildItemSearchWords: one transaction, the live table untouched until the drop-and-rename
+ * at the end, so a failure (including a statement timeout) rolls back and leaves the previous
+ * neighbours serving. Readers block only for the rename.
+ *
+ * The advisory lock is not optional — every ECS replica runs the job on the same schedule, and three
+ * replicas recomputing 940k rows simultaneously is both wasted work and three writers racing for the
+ * same table name.
+ */
+export async function swapNeighborsTable(client: QueryableClient, produce: NeighborProducer): Promise<RebuildOutcome> {
   await client.query('BEGIN')
   try {
     const { rows: lockRows } = await client.query(`SELECT pg_try_advisory_xact_lock(${REBUILD_ADVISORY_LOCK_KEY}) AS acquired`)
@@ -150,11 +178,11 @@ export async function swapNeighborsTable(
     // `LIKE` copies columns and defaults but NOT the primary key -- that needs INCLUDING INDEXES, which
     // would also copy the secondary index under a generated name this code could not rename afterwards.
     // So the key is added explicitly below, after the rows are in: building it once over a full table is
-    // cheaper than maintaining it across ~950k inserts, and a duplicate row would fail the whole swap
+    // cheaper than maintaining it across ~940k inserts, and a duplicate row would fail the whole swap
     // rather than being silently dropped, which is the right outcome for what would be a generator bug.
     await client.query(`CREATE TABLE ${STAGING_TABLE} (LIKE ${NEIGHBORS_TABLE} INCLUDING DEFAULTS)`)
 
-    await insertInBatches(client, rows)
+    const meta = await produce(rows => insertInBatches(client, rows))
 
     await client.query(`ALTER TABLE ${STAGING_TABLE} ADD CONSTRAINT ${STAGING_PRIMARY_KEY} PRIMARY KEY (item_id, source, neighbor_id)`)
     await client.query(`CREATE INDEX ${STAGING_ITEM_INDEX} ON ${STAGING_TABLE} (item_id)`)
@@ -186,15 +214,9 @@ export async function swapNeighborsTable(
   }
 }
 
-/** Rows per multi-value INSERT. Six parameters each, so this stays well inside Postgres' 65535 limit. */
-const INSERT_BATCH_SIZE = 2000
-
-async function insertInBatches(
-  client: QueryableClient,
-  rows: Array<{ itemId: string; source: string; neighborId: string; sim: number; support: number; rank: number }>
-): Promise<void> {
-  for (let start = 0; start < rows.length; start += INSERT_BATCH_SIZE) {
-    const batch = rows.slice(start, start + INSERT_BATCH_SIZE)
+async function insertInBatches(client: QueryableClient, rows: NeighborInsertRow[]): Promise<void> {
+  for (let start = 0; start < rows.length; start += NEIGHBORS_INSERT_BATCH_SIZE) {
+    const batch = rows.slice(start, start + NEIGHBORS_INSERT_BATCH_SIZE)
     const values: unknown[] = []
     const placeholders = batch
       .map((row, i) => {

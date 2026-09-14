@@ -9,6 +9,14 @@ describe('when swapping the neighbours table', () => {
   let rows: Array<{ itemId: string; source: string; neighborId: string; sim: number; support: number; rank: number }>
   let lockAcquired: boolean
 
+  /** Feeds a fixed set of rows through the producer contract the swap expects. */
+  function producing(batch: typeof rows, m: NeighborsMeta) {
+    return async (insert: (chunk: typeof rows) => Promise<void>) => {
+      await insert(batch)
+      return m
+    }
+  }
+
   beforeEach(() => {
     recorded = []
     lockAcquired = true
@@ -34,7 +42,7 @@ describe('when swapping the neighbours table', () => {
     let outcome: string
 
     beforeEach(async () => {
-      outcome = await swapNeighborsTable(client, rows, meta)
+      outcome = await swapNeighborsTable(client, producing(rows, meta))
     })
 
     it('should report that it rebuilt the table', () => {
@@ -82,7 +90,7 @@ describe('when swapping the neighbours table', () => {
 
     beforeEach(async () => {
       lockAcquired = false
-      outcome = await swapNeighborsTable(client, rows, meta)
+      outcome = await swapNeighborsTable(client, producing(rows, meta))
     })
 
     it('should report that it skipped the rebuild', () => {
@@ -111,7 +119,7 @@ describe('when swapping the neighbours table', () => {
         })
       }
       try {
-        await swapNeighborsTable(client, rows, meta)
+        await swapNeighborsTable(client, producing(rows, meta))
       } catch (e) {
         error = e as Error
       }
@@ -140,7 +148,7 @@ describe('when swapping the neighbours table', () => {
         support: 3,
         rank: 0
       }))
-      await swapNeighborsTable(client, rows, meta)
+      await swapNeighborsTable(client, producing(rows, meta))
     })
 
     it('should split them into batches that stay inside the bind-parameter limit', () => {

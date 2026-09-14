@@ -32,7 +32,14 @@ export type CoOwnershipOptions = {
   blockWidth?: number
 }
 
-export const DEFAULT_BLOCK_WIDTH = 1024
+/**
+ * Neighbour columns per accumulation pass.
+ *
+ * Measured against production: 512 peaks at 537 MB and 128 at 411 MB, for 1.0 s versus 1.3 s of
+ * accumulation inside a ~115 s job. The narrower block is effectively free, and this job shares a
+ * 2 GB task with the API, so it takes the memory.
+ */
+export const DEFAULT_BLOCK_WIDTH = 128
 
 /**
  * The per-item weight vector's L2 norm, over the same damped weights the dot products use. Together

@@ -22,6 +22,14 @@ test('item neighbours table', function ({ components }) {
   ]
   const META = { cfRows: 1, contentRows: 1, itemsCovered: 1, durationMs: 42 }
 
+  /** Feeds a fixed set of rows through the producer contract the swap expects. */
+  function producing(rows: typeof ROWS, meta = META) {
+    return async (insert: (batch: typeof ROWS) => Promise<void>) => {
+      await insert(rows)
+      return meta
+    }
+  }
+
   async function withClient<T>(
     run: (client: { query: (sql: string, values?: unknown[]) => Promise<{ rows: any[] }> }) => Promise<T>
   ): Promise<T> {
@@ -45,7 +53,7 @@ test('item neighbours table', function ({ components }) {
     let outcome: string
 
     beforeEach(async () => {
-      outcome = await withClient(client => swapNeighborsTable(client, ROWS, META))
+      outcome = await withClient(client => swapNeighborsTable(client, producing(ROWS)))
     })
 
     it('should report that it rebuilt the table', () => {
@@ -76,7 +84,7 @@ test('item neighbours table', function ({ components }) {
 
     describe('and the job runs again', () => {
       beforeEach(async () => {
-        await withClient(client => swapNeighborsTable(client, ROWS, { ...META, durationMs: 43 }))
+        await withClient(client => swapNeighborsTable(client, producing(ROWS, { ...META, durationMs: 43 })))
       })
 
       it('should replace the previous set rather than accumulate alongside it', async () => {
@@ -96,7 +104,7 @@ test('item neighbours table', function ({ components }) {
 
     beforeEach(async () => {
       try {
-        await withClient(client => swapNeighborsTable(client, [...ROWS, ROWS[0]], META))
+        await withClient(client => swapNeighborsTable(client, producing([...ROWS, ROWS[0]])))
       } catch (e) {
         error = e as Error
       }

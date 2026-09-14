@@ -73,10 +73,23 @@ function buildIndex(items: ContentItem[], maxTagDocumentFrequency: number): Inve
  * list. Scanning the whole catalogue per anchor to prove that would cost ~130M comparisons.
  */
 export function buildContentNeighbors(items: ContentItem[], options: ContentOptions = {}): NeighborRow[] {
+  const rows: NeighborRow[] = []
+  for (const anchorRows of contentNeighborsByAnchor(items, options)) rows.push(...anchorRows)
+  return rows
+}
+
+/**
+ * The same computation, yielded one anchor at a time.
+ *
+ * The content pass produces ~590k rows across the catalogue — more than co-ownership, because every
+ * anchor gets a full list whereas co-ownership only reaches items with enough co-owners. Materialising
+ * them all was the largest remaining item in the job's memory profile, so the job consumes this and
+ * writes as it goes.
+ */
+export function* contentNeighborsByAnchor(items: ContentItem[], options: ContentOptions = {}): Generator<NeighborRow[]> {
   const k = options.neighborsPerItem ?? NEIGHBORS_PER_ITEM
   const index = buildIndex(items, options.maxTagDocumentFrequency ?? MAX_TAG_DOCUMENT_FREQUENCY)
 
-  const rows: NeighborRow[] = []
   const tagDot = new Float64Array(items.length)
   const touched: number[] = []
   const pool = new Set<number>()
@@ -123,10 +136,9 @@ export function buildContentNeighbors(items: ContentItem[], options: ContentOpti
     touched.length = 0
 
     scored.sort((a, b) => b.sim - a.sim || a.neighbor - b.neighbor)
-    for (let i = 0; i < Math.min(k, scored.length); i++) rows.push(scored[i])
+    if (scored.length > k) scored.length = k
+    if (scored.length > 0) yield scored
   }
-
-  return rows
 }
 
 /** Price quartile within the item's own sub-category, so "expensive" means expensive for a hat. */
