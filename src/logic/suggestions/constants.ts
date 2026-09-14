@@ -50,7 +50,15 @@ export const SCORE_WEIGHTS = {
   popularity: 0.1
 }
 
-/** Profile weights per signal (§4.1 of the spec). */
+/**
+ * How much each signal about a wallet is worth, relative to a purchase.
+ *
+ * What the avatar is wearing and what it has favourited outrank a purchase, and carry no age decay:
+ * they are statements about what the wallet likes NOW, while a purchase is a statement about what it
+ * liked on the day it was made. A seed — something viewed or put in the cart this session — is real
+ * but weaker intent. An unpaid acquisition is worth least by a wide margin, because most of them are
+ * airdrops and claims the wallet never chose.
+ */
 export const PROFILE_WEIGHTS = {
   paid: 1.0,
   free: FREE_ACQUISITION_WEIGHT,
