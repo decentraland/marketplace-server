@@ -4,7 +4,7 @@ import type { ProfileAggregates } from './profile'
 
 const RARITY_TIERS = Rarity.getRarities().map(rarity => rarity.toLowerCase())
 
-export type SuggestionReasonKind = 'co_owned' | 'creator_affinity' | 'favorite_similar' | 'equipped_similar' | 'trending'
+export type SuggestionReasonKind = 'co_owned' | 'creator_affinity' | 'favorite_similar' | 'equipped_similar' | 'seed_similar' | 'trending'
 
 export type SuggestionReason = {
   kind: SuggestionReasonKind
@@ -76,7 +76,11 @@ export type BlendedCandidate = ScoredCandidate & {
  * happens. Popularity arrives already normalised to 0..1 across the catalogue and is left alone —
  * it is the one component that is deliberately NOT relative to the wallet.
  */
-export function blendCandidates(candidates: ScoredCandidate[], aggregates: ProfileAggregates): BlendedCandidate[] {
+export function blendCandidates(
+  candidates: ScoredCandidate[],
+  aggregates: ProfileAggregates,
+  profileCreatorCounts: Map<string, number> = new Map()
+): BlendedCandidate[] {
   const tastes = candidates.map(candidate => tasteScore(candidate, aggregates))
 
   const maxCf = Math.max(0, ...candidates.map(c => c.cf))
@@ -97,7 +101,7 @@ export function blendCandidates(candidates: ScoredCandidate[], aggregates: Profi
       ...candidate,
       taste: tastes[i],
       score: contributions.cf + contributions.content + contributions.taste + contributions.popularity,
-      reason: pickReason(candidate, contributions)
+      reason: pickReason(candidate, contributions, collectsCreator(candidate.creator, profileCreatorCounts))
     }
   })
 }
@@ -110,22 +114,53 @@ export function blendCandidates(candidates: ScoredCandidate[], aggregates: Profi
  */
 export function pickReason(
   candidate: ScoredCandidate,
-  contributions: { cf: number; content: number; taste: number; popularity: number }
+  contributions: { cf: number; content: number; taste: number; popularity: number },
+  collectsCreator = false
 ): SuggestionReason {
   const ranked = (Object.entries(contributions) as Array<[keyof typeof contributions, number]>).sort((a, b) => b[1] - a[1])
   const [winner, value] = ranked[0]
 
   if (value <= 0) return { kind: 'trending' }
-  if (winner === 'taste') return { kind: 'creator_affinity', creator: candidate.creator || undefined }
+
+  // Taste is three things at once -- creator, sub-category, rarity/price -- so winning on taste is not
+  // by itself evidence that the wallet collects this creator. Claiming "more from a creator you
+  // collect" about a creator the wallet has never bought from is the one explanation here that would
+  // read as an outright lie, so it has to be earned separately.
+  if (winner === 'taste') {
+    if (collectsCreator && candidate.creator) return { kind: 'creator_affinity', creator: candidate.creator }
+    return reasonFromTrigger(candidate)
+  }
   if (winner === 'popularity') return { kind: 'trending' }
 
-  // cf or content: both are driven by a specific profile item, so the explanation names it.
+  return reasonFromTrigger(candidate)
+}
+
+/** cf and content are both driven by a specific profile item, so the explanation names it -- and names
+ * it for what it was: something worn, favourited, browsed, or owned. */
+function reasonFromTrigger(candidate: ScoredCandidate): SuggestionReason {
   const trigger = candidate.topTriggerItemId
   if (!trigger) return { kind: 'trending' }
-  if (candidate.topTriggerSource === 'favorite') return { kind: 'favorite_similar', itemId: trigger }
-  if (candidate.topTriggerSource === 'equipped') return { kind: 'equipped_similar', itemId: trigger }
-  return { kind: 'co_owned', itemId: trigger }
+  switch (candidate.topTriggerSource) {
+    case 'favorite':
+      return { kind: 'favorite_similar', itemId: trigger }
+    case 'equipped':
+      return { kind: 'equipped_similar', itemId: trigger }
+    // A seed is something the visitor looked at or put in the cart, never something they hold, so
+    // "because you have X" would be wrong about an item they do not own.
+    case 'seed':
+      return { kind: 'seed_similar', itemId: trigger }
+    default:
+      return { kind: 'co_owned', itemId: trigger }
+  }
 }
+
+/** Whether the profile holds enough of this creator for "a creator you collect" to be true. */
+export function collectsCreator(creator: string, profileCreatorCounts: Map<string, number>): boolean {
+  return creator !== '' && (profileCreatorCounts.get(creator) ?? 0) >= MIN_ITEMS_TO_COLLECT_CREATOR
+}
+
+/** One item by a creator is a purchase; two is a pattern worth naming. */
+const MIN_ITEMS_TO_COLLECT_CREATOR = 2
 
 /**
  * Re-ranks the scored head into the rail the user sees.

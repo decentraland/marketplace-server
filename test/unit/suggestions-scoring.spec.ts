@@ -2,6 +2,7 @@ import { SCORE_WEIGHTS } from '../../src/logic/suggestions/constants'
 import type { ProfileAggregates } from '../../src/logic/suggestions/profile'
 import {
   blendCandidates,
+  collectsCreator,
   pickReason,
   rerankForDiversity,
   type BlendedCandidate,
@@ -145,9 +146,39 @@ describe('when choosing the reason for a row', () => {
   })
 
   describe('and aggregate taste contributed most', () => {
-    it('should attribute the row to the creator the wallet collects', () => {
-      const reason = pickReason(candidate({ creator: '0xcreator' }), { cf: 0.05, content: 0.02, taste: 0.19, popularity: 0.01 })
-      expect(reason).toEqual({ kind: 'creator_affinity', creator: '0xcreator' })
+    describe('and the wallet really does collect that creator', () => {
+      it('should attribute the row to the creator', () => {
+        const reason = pickReason(candidate({ creator: '0xcreator' }), { cf: 0.05, content: 0.02, taste: 0.19, popularity: 0.01 }, true)
+        expect(reason).toEqual({ kind: 'creator_affinity', creator: '0xcreator' })
+      })
+    })
+
+    describe('and the taste match came from something other than the creator', () => {
+      it('should fall back to the trigger rather than claim a creator the wallet never bought from', () => {
+        const reason = pickReason(
+          candidate({ creator: '0xstranger', topTriggerItemId: '0xbbb-2', topTriggerSource: 'owned' }),
+          { cf: 0.05, content: 0.02, taste: 0.19, popularity: 0.01 },
+          false
+        )
+        expect(reason).toEqual({ kind: 'co_owned', itemId: '0xbbb-2' })
+      })
+
+      it('should fall back to trending when there is no trigger to name either', () => {
+        const reason = pickReason(candidate({ creator: '0xstranger' }), { cf: 0, content: 0, taste: 0.19, popularity: 0 }, false)
+        expect(reason).toEqual({ kind: 'trending' })
+      })
+    })
+  })
+
+  describe('and the trigger item is only something the visitor looked at', () => {
+    it('should not claim they have it', () => {
+      const reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'seed' }), {
+        cf: 0.4,
+        content: 0.1,
+        taste: 0,
+        popularity: 0
+      })
+      expect(reason).toEqual({ kind: 'seed_similar', itemId: '0xbbb-2' })
     })
   })
 
@@ -160,6 +191,26 @@ describe('when choosing the reason for a row', () => {
   describe('and co-ownership won but no trigger item was recorded', () => {
     it('should fall back to trending rather than claim an explanation it cannot name', () => {
       expect(pickReason(candidate(), { cf: 0.4, content: 0, taste: 0, popularity: 0 })).toEqual({ kind: 'trending' })
+    })
+  })
+})
+
+describe('when deciding whether a wallet collects a creator', () => {
+  describe('and the profile holds two items by them', () => {
+    it('should say it does', () => {
+      expect(collectsCreator('0xcreator', new Map([['0xcreator', 2]]))).toBe(true)
+    })
+  })
+
+  describe('and the profile holds only one', () => {
+    it('should say it does not, because one purchase is not a pattern', () => {
+      expect(collectsCreator('0xcreator', new Map([['0xcreator', 1]]))).toBe(false)
+    })
+  })
+
+  describe('and the candidate has no creator at all', () => {
+    it('should say it does not', () => {
+      expect(collectsCreator('', new Map())).toBe(false)
     })
   })
 })
