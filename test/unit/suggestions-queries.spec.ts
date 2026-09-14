@@ -1,0 +1,117 @@
+import SQL from 'sql-template-strings'
+import type { ProfileEntry } from '../../src/logic/suggestions/profile'
+import { buildCandidateScoresQuery } from '../../src/ports/suggestions/queries'
+
+describe('when building the candidate scores query', () => {
+  let profile: ProfileEntry[]
+
+  function build(overrides: Partial<Parameters<typeof buildCandidateScoresQuery>[0]> = {}) {
+    return buildCandidateScoresQuery({
+      profile,
+      core: SQL`SELECT 1 AS usd_wei`,
+      ownedItemIds: [],
+      excludeItemIds: [],
+      topCreators: [],
+      limit: 36,
+      ...overrides
+    })
+  }
+
+  beforeEach(() => {
+    profile = [{ itemId: '0xaaa-1', weight: 1, source: 'owned' }]
+  })
+
+  describe('and the caller sends a body shape', () => {
+    describe('and it is BaseFemale', () => {
+      it('should exclude only the wearables that declare the male shape exclusively', () => {
+        expect(build({ bodyShape: 'BaseFemale' }).values).toContain('male')
+      })
+    })
+
+    describe('and it is BaseMale', () => {
+      it('should exclude only the wearables that declare the female shape exclusively', () => {
+        expect(build({ bodyShape: 'BaseMale' }).values).toContain('female')
+      })
+    })
+
+    describe('and it is something the avatar system does not define', () => {
+      it('should ignore it rather than filter on a shape no item declares', () => {
+        expect(build({ bodyShape: 'BaseAlien' }).text).not.toContain('core.gender')
+      })
+    })
+
+    describe('and it is absent', () => {
+      it('should not filter on body shape at all, so unisex and emotes are unaffected', () => {
+        expect(build().text).not.toContain('core.gender')
+      })
+    })
+  })
+
+  describe('and the wallet already owns items', () => {
+    it('should keep them out with a bound array rather than an interpolated list', () => {
+      const query = build({ ownedItemIds: ['0xaaa-1', '0xbbb-2'] })
+      expect(query.values).toContainEqual(['0xaaa-1', '0xbbb-2'])
+    })
+  })
+
+  describe('and the caller excludes an anchor item', () => {
+    it('should keep it out of the rail', () => {
+      const query = build({ excludeItemIds: ['0xccc-9'] })
+      expect(query.values).toContainEqual(['0xccc-9'])
+    })
+  })
+
+  describe('and the profile leans on particular creators', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = build({ topCreators: ['0xcreator1', '0xcreator2'] }).text
+    })
+
+    it('should add a second branch for their catalogue', () => {
+      expect(text).toContain('UNION')
+    })
+
+    it('should cap how much of each creator it pulls in', () => {
+      expect(text).toContain('creator_rank <=')
+    })
+
+    it('should rank that branch by recency, so it surfaces new drops', () => {
+      expect(text).toContain('PARTITION BY lower(core.creator) ORDER BY core.created_at DESC')
+    })
+  })
+
+  describe('and the profile leans on no creator in particular', () => {
+    it('should leave the second branch out entirely', () => {
+      expect(build({ topCreators: [] }).text).not.toContain('UNION')
+    })
+  })
+
+  describe('and the neighbour branch is ranked', () => {
+    it('should weight co-ownership above content, matching the published blend', () => {
+      expect(build().text).toContain('(cf * 0.45 + content * 0.25)')
+    })
+
+    it('should limit it, so the creator branch cannot be starved by neighbours', () => {
+      expect(build({ limit: 36 }).values).toContain(36)
+    })
+  })
+
+  describe('and the profile carries several signals', () => {
+    beforeEach(() => {
+      profile = [
+        { itemId: '0xaaa-1', weight: 1.5, source: 'equipped' },
+        { itemId: '0xbbb-2', weight: 0.8, source: 'seed' }
+      ]
+    })
+
+    it('should bind every profile item and its weight, so nothing reaches SQL as text', () => {
+      const query = build()
+      expect(query.values).toEqual(expect.arrayContaining(['0xaaa-1', 1.5, 'equipped', '0xbbb-2', 0.8, 'seed']))
+    })
+
+    it('should carry the source through, which is what turns a row into the right reason', () => {
+      expect(build().text).toContain('trigger_source')
+    })
+  })
+})

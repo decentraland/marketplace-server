@@ -83,6 +83,17 @@ export const MAX_EXCLUDE = 20
  */
 export const MAX_PROFILE_ITEMS = 200
 
+/**
+ * Creators whose recent catalogue is pulled in alongside the neighbour-driven candidates, and how many
+ * items each contributes.
+ *
+ * Without this branch a brand-new drop from a creator the wallet collects can only surface if some
+ * neighbour happens to point at it, so "More from a creator you collect" appears by luck rather than
+ * by design -- and that is the reason the rail most needs to be able to give.
+ */
+export const TASTE_CREATOR_COUNT = 3
+export const TASTE_ITEMS_PER_CREATOR = 30
+
 /** Candidates pulled from SQL before the diversity re-rank trims to `first`. */
 export const CANDIDATE_MULTIPLIER = 3
 

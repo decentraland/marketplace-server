@@ -6,6 +6,7 @@ import {
   MAX_EXCLUDE,
   MAX_PROFILE_ITEMS,
   MAX_SEEDS,
+  TASTE_CREATOR_COUNT,
   MIN_PERSONAL_ROWS,
   SUGGESTED_DEFAULT_LIMIT,
   SUGGESTED_MAX_LIMIT,
@@ -118,14 +119,14 @@ export function createSuggestionsComponent(
       address ? getFavorites(address) : Promise.resolve([] as string[])
     ])
 
-    const fullProfile = buildTasteProfile({
+    const profile = buildTasteProfile({
       owned: owned.map(row => ({ itemId: row.item_id, paid: row.paid, acquiredAt: Number(row.acquired_at) })),
       favorites,
       equipped,
       seeds,
-      now: Math.floor(Date.now() / 1000)
+      now: Math.floor(Date.now() / 1000),
+      limit: MAX_PROFILE_ITEMS
     })
-    const profile = fullProfile.slice(0, MAX_PROFILE_ITEMS)
 
     if (profile.length === 0) {
       const fallback = await trendingFallback(filters, first, manaUsdRate)
@@ -144,6 +145,7 @@ export function createSuggestionsComponent(
         ownedItemIds: owned.map(row => row.item_id),
         excludeItemIds: exclude,
         bodyShape: filters.bodyShape,
+        topCreators: topCreatorsOf(aggregates.creatorAffinity),
         limit: first * CANDIDATE_MULTIPLIER
       })
     )
@@ -202,6 +204,14 @@ export function createSuggestionsComponent(
   }
 
   return { getSuggestions }
+}
+
+/** The creators the profile leans on hardest, which is what the taste branch of the query pulls from. */
+function topCreatorsOf(creatorAffinity: Map<string, number>): string[] {
+  return [...creatorAffinity.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, TASTE_CREATOR_COUNT)
+    .map(([creator]) => creator.toLowerCase())
 }
 
 /**

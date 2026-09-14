@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { NEIGHBORS_TABLE } from '../../logic/suggestions/constants'
+import { NEIGHBORS_TABLE, TASTE_ITEMS_PER_CREATOR } from '../../logic/suggestions/constants'
 import type { ProfileEntry } from '../../logic/suggestions/profile'
 
 const THIRTY_DAYS_IN_SECONDS = 2592000
@@ -72,9 +72,11 @@ export function buildCandidateScoresQuery(opts: {
   ownedItemIds: string[]
   excludeItemIds: string[]
   bodyShape?: string
+  /** Lowercased creator addresses the profile shows the strongest affinity for. */
+  topCreators: string[]
   limit: number
 }): SQLStatement {
-  const { profile, core, ownedItemIds, excludeItemIds, bodyShape, limit } = opts
+  const { profile, core, ownedItemIds, excludeItemIds, bodyShape, topCreators, limit } = opts
 
   const values = SQL``
   profile.forEach((entry, index) => {
@@ -117,18 +119,21 @@ export function buildCandidateScoresQuery(opts: {
     ),
     core AS (`
     )
-    .append(core).append(SQL`)
-    SELECT
-      core.*,
-      COALESCE(nb.cf, 0)::float8 AS cf,
-      COALESCE(nb.content, 0)::float8 AS content,
-      COALESCE(pop.popularity, 0)::float8 AS popularity,
-      nb.trigger_item_id,
-      nb.trigger_source
-    FROM core
-    LEFT JOIN neighbours nb ON nb.neighbour_item_id = core.contract_address || '-' || core.item_id
-    LEFT JOIN popularity pop ON pop.popular_item_id = core.contract_address || '-' || core.item_id
-    WHERE core.usd_wei > 0`)
+    .append(core).append(SQL`),
+    scored AS (
+      SELECT
+        core.*,
+        COALESCE(nb.cf, 0)::float8 AS cf,
+        COALESCE(nb.content, 0)::float8 AS content,
+        COALESCE(pop.popularity, 0)::float8 AS popularity,
+        nb.trigger_item_id,
+        nb.trigger_source,
+        (nb.neighbour_item_id IS NOT NULL) AS from_neighbours,
+        row_number() OVER (PARTITION BY lower(core.creator) ORDER BY core.created_at DESC) AS creator_rank
+      FROM core
+      LEFT JOIN neighbours nb ON nb.neighbour_item_id = core.contract_address || '-' || core.item_id
+      LEFT JOIN popularity pop ON pop.popular_item_id = core.contract_address || '-' || core.item_id
+      WHERE core.usd_wei > 0`)
 
   // Already-held items are the single most damaging thing a recommender can show, so the filter is a
   // parameterised array rather than an interpolated list: the owned set can run to thousands of ids.
@@ -145,11 +150,28 @@ export function buildCandidateScoresQuery(opts: {
     query.append(SQL` AND (core.gender IS NULL OR core.gender <> ${incompatible})`)
   }
 
-  // Only rows the profile actually reached: a row with neither contribution is the trending fallback's
-  // job, not this query's.
-  query.append(SQL` AND (nb.cf IS NOT NULL OR nb.content IS NOT NULL)`)
-  query.append(SQL` ORDER BY (COALESCE(nb.cf, 0) * 0.45 + COALESCE(nb.content, 0) * 0.25) DESC, core.created_at DESC`)
-  query.append(SQL` LIMIT ${limit}`)
+  // Two branches, limited on their own terms. A creator-affinity candidate carries no neighbour score
+  // at all, so ranking the union by that score would cut every one of them before the blend in
+  // TypeScript ever saw it -- and those are exactly the rows that produce "more from a creator you
+  // collect", which no neighbour list can reach for a drop nobody owns yet.
+  query.append(SQL`
+    )
+    (
+      SELECT * FROM scored
+       WHERE from_neighbours
+       ORDER BY (cf * 0.45 + content * 0.25) DESC, created_at DESC
+       LIMIT ${limit}
+    )`)
+
+  if (topCreators.length > 0) {
+    query.append(SQL`
+    UNION
+    (
+      SELECT * FROM scored
+       WHERE lower(creator) = ANY(${topCreators}::text[])
+         AND creator_rank <= ${TASTE_ITEMS_PER_CREATOR}
+    )`)
+  }
 
   return query
 }
