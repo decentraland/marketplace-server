@@ -250,3 +250,20 @@ export function buildCandidateScoresQuery(opts: {
 
   return query
 }
+
+/**
+ * Which of THESE items the wallet already holds.
+ *
+ * The profile cannot answer this: it is capped and paid-only, so an item that was gifted, or one held
+ * beyond the cap, is absent from it and would be offered back to its own owner. Asking `nft` directly
+ * closes that, and asking it about the handful of candidates already on the table -- rather than about
+ * every holding -- keeps it an index probe on `owner_address` narrowed by a small array, which is the
+ * same access path the profile query uses and for which the largest holder in production is no worse
+ * than the smallest.
+ */
+export function buildOwnedAmongQuery(address: string, itemIds: string[]): SQLStatement {
+  return SQL`
+    SELECT DISTINCT n.item_id::text AS item_id
+      FROM `.append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.nft n
+     WHERE n.owner_address = ${address} AND n.item_id = ANY(${itemIds}::text[])`)
+}

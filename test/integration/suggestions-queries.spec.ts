@@ -4,6 +4,7 @@ import type { ProfileEntry } from '../../src/logic/suggestions/profile'
 import {
   buildCandidateContractsQuery,
   buildCandidateScoresQuery,
+  buildOwnedAmongQuery,
   buildOwnedQuery,
   buildProfileAttributesQuery
 } from '../../src/ports/suggestions/queries'
@@ -43,6 +44,12 @@ test('suggestions queries', function ({ components }) {
   describe('when resolving the attributes of the profile items', () => {
     it('should be accepted by the database', async () => {
       await expect(run(buildProfileAttributesQuery(['0xaaa-1', '0xbbb-2'], 0.0179))).resolves.toBeUndefined()
+    })
+  })
+
+  describe('when asking which of a handful of candidates the wallet already holds', () => {
+    it('should be accepted by the database', async () => {
+      await expect(run(buildOwnedAmongQuery(ADDRESS, ['0xaaa-1', '0xbbb-2']))).resolves.toBeUndefined()
     })
   })
 

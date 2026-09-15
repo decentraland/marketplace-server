@@ -168,6 +168,44 @@ describe('when running the item neighbours job', () => {
     })
   })
 
+  describe('and a connection is lost before the first batch is inserted', () => {
+    let outcome: string
+    let inserted: number
+    let committed: boolean
+
+    beforeEach(async () => {
+      inserted = 0
+      committed = false
+      // The real swap is the thing under discussion here, so this stand-in records the two facts that
+      // separate a rollback from a commit: whether any row was written, and whether the swap returned.
+      jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
+        await produce(async rows => {
+          inserted += rows.length
+        })
+        committed = true
+        return 'rebuilt'
+      })
+      buildSpy.mockImplementation(async (_client, insert) => {
+        clients.write.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
+        await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
+        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+      })
+      outcome = await runNeighborsJob({ connect, logger })
+    })
+
+    it('should report the failure', () => {
+      expect(outcome).toBe('failed')
+    })
+
+    it('should write no rows, so the transaction rolls back instead of leaving a half-built table', () => {
+      expect(inserted).toBe(0)
+    })
+
+    it('should never reach the commit, which is what keeps the previous neighbours serving', () => {
+      expect(committed).toBe(false)
+    })
+  })
+
   describe('and metrics are wired', () => {
     let observe: jest.Mock
 

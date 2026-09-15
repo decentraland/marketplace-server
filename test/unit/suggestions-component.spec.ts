@@ -1,4 +1,3 @@
-import { GenderFilterOption } from '@dcl/schemas'
 import { createSuggestionsComponent } from '../../src/ports/suggestions/component'
 import type { ISuggestionsComponent } from '../../src/ports/suggestions/types'
 
@@ -49,7 +48,7 @@ describe('when asking for suggestions', () => {
   let cacheGet: jest.Mock
   let cacheSet: jest.Mock
 
-  beforeEach(() => {
+  beforeEach(async () => {
     queryRows = []
     query = jest.fn(async () => ({ rows: queryRows.shift() ?? [] }))
     getTrendingItems = jest.fn(async () => ({ data: [{ name: 'Trending item', trendingSales: 3 }] }))
@@ -57,11 +56,12 @@ describe('when asking for suggestions', () => {
     cacheGet = jest.fn(async () => undefined)
     cacheSet = jest.fn(async () => undefined)
 
-    suggestions = createSuggestionsComponent({
+    suggestions = await createSuggestionsComponent({
       dappsDatabase: { query },
       shopCatalog: { getTrendingItems },
       lists: { getPicksByListId },
       cache: { get: cacheGet, set: cacheSet },
+      config: { getNumber: async () => undefined },
       logs: { getLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
     } as never)
   })
@@ -205,29 +205,74 @@ describe('when asking for suggestions', () => {
     })
   })
 
-  describe('and the rail falls back with hard filters in the request', () => {
+  describe('and the rail falls back with an exclusion in the request', () => {
     let result: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
 
     beforeEach(async () => {
       getTrendingItems.mockResolvedValue({
         data: [
-          { contractAddress: ADDRESS, itemId: '1', name: 'Excluded' },
-          { contractAddress: ADDRESS, itemId: '2', name: 'Kept' }
+          { contractAddress: ADDRESS, itemId: '1', gender: 'unisex' },
+          { contractAddress: ADDRESS, itemId: '2', gender: 'unisex' }
         ]
       })
-      result = await suggestions.getSuggestions({ exclude: [`${ADDRESS}-1`], bodyShape: 'BaseFemale' }, RATE)
+      result = await suggestions.getSuggestions({ exclude: [`${ADDRESS}-1`] }, RATE)
     })
 
     it('should not offer back the item the caller asked it to leave out', () => {
       expect(result.data.map(item => item.itemId)).toEqual(['2'])
     })
 
-    it('should narrow the trending query to what this avatar can wear', () => {
-      expect(getTrendingItems.mock.calls[0][0]).toEqual(expect.objectContaining({ wearableGenders: [GenderFilterOption.FEMALE] }))
-    })
-
     it('should ask for more rows than the rail shows, so the exclusion cannot leave it short', () => {
       expect(getTrendingItems.mock.calls[0][0].first).toBeGreaterThan(result.data.length)
+    })
+  })
+
+  describe('and the rail falls back for an avatar with a body shape', () => {
+    let result: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+
+    beforeEach(async () => {
+      getTrendingItems.mockResolvedValue({
+        data: [
+          { contractAddress: ADDRESS, itemId: 'emote', gender: null },
+          { contractAddress: ADDRESS, itemId: 'unisex', gender: 'unisex' },
+          { contractAddress: ADDRESS, itemId: 'female', gender: 'female' },
+          { contractAddress: ADDRESS, itemId: 'male', gender: 'male' }
+        ]
+      })
+      result = await suggestions.getSuggestions({ bodyShape: 'BaseFemale' }, RATE)
+    })
+
+    it('should drop only the shape this avatar cannot wear', () => {
+      expect(result.data.map(item => item.itemId)).toEqual(['emote', 'unisex', 'female'])
+    })
+
+    it('should never narrow the catalogue query by wearable body shapes, which would drop every emote', () => {
+      expect(getTrendingItems.mock.calls[0][0].wearableGenders).toBeUndefined()
+    })
+  })
+
+  describe('and the wallet holds a trending item the profile never saw', () => {
+    let result: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+
+    beforeEach(async () => {
+      // Nothing bought, so no profile and no personalisation -- but `nft` still says one of these is theirs,
+      // which is what a gift, or a holding past the profile's cap, looks like from here.
+      queryRows = [[], [{ item_id: `${ADDRESS}-1` }]]
+      getTrendingItems.mockResolvedValue({
+        data: [
+          { contractAddress: ADDRESS, itemId: '1', gender: 'unisex' },
+          { contractAddress: ADDRESS, itemId: '2', gender: 'unisex' }
+        ]
+      })
+      result = await suggestions.getSuggestions({ address: ADDRESS }, RATE)
+    })
+
+    it('should not offer it back to its own owner', () => {
+      expect(result.data.map(item => item.itemId)).toEqual(['2'])
+    })
+
+    it('should ask about the candidates on the table rather than load every holding', () => {
+      expect(query.mock.calls[1][0].values).toEqual([ADDRESS, [`${ADDRESS}-1`, `${ADDRESS}-2`]])
     })
   })
 
@@ -249,8 +294,8 @@ describe('when asking for suggestions', () => {
       expect(keys[2]).not.toBe(keys[1])
     })
 
-    it('should not narrow the trending query by a gender it could not resolve', () => {
-      expect(getTrendingItems.mock.calls[0][0].wearableGenders).toBeUndefined()
+    it('should keep every row, since there is no shape to judge compatibility against', () => {
+      expect(getTrendingItems).toHaveBeenCalled()
     })
   })
 
@@ -280,6 +325,50 @@ describe('when asking for suggestions', () => {
 
     it('should not pass it to the catalogue, which would filter on a category that matches nothing', () => {
       expect(getTrendingItems.mock.calls[0][0].category).toBeUndefined()
+    })
+  })
+
+  describe('and more computations are already in flight than the process allows', () => {
+    let results: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>[]
+    let releaseTrending: () => void
+
+    beforeEach(async () => {
+      suggestions = await createSuggestionsComponent({
+        dappsDatabase: { query },
+        shopCatalog: { getTrendingItems },
+        cache: { get: cacheGet, set: cacheSet },
+        config: { getNumber: async () => 1 },
+        logs: { getLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
+      } as never)
+      // Holds the first request inside the gate so the second one arrives while it is still occupied.
+      getTrendingItems.mockImplementation(
+        () => new Promise(resolve => (releaseTrending = () => resolve({ data: [{ contractAddress: ADDRESS, itemId: '1', gender: null }] })))
+      )
+      const held = suggestions.getSuggestions({}, RATE)
+      const shed = suggestions.getSuggestions({ first: 7 }, RATE)
+      const shedResult = await shed
+      releaseTrending()
+      results = [await held, shedResult]
+    })
+
+    it('should serve the request that got in', () => {
+      expect(results[0].data).toHaveLength(1)
+    })
+
+    it('should shed the one that did not, rather than queue it behind the database', () => {
+      expect(results[1].data).toEqual([])
+    })
+
+    it('should mark the shed rail unpersonalised, which is what makes the Shop hide it', () => {
+      expect(results[1].personalized).toBe(false)
+    })
+
+    it('should not touch the catalogue for the shed request', () => {
+      expect(getTrendingItems).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not cache the shed answer, which would serve emptiness for the whole TTL', () => {
+      expect(cacheSet).toHaveBeenCalledTimes(1)
     })
   })
 })

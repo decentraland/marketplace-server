@@ -3,6 +3,7 @@ import { Rarity } from '@dcl/schemas'
 import { buildCoOwnershipNeighbors, type AcquisitionMatrix, type NeighborRow } from './co-ownership'
 import { NEIGHBORS_PER_ITEM } from './constants'
 import { assignPriceBands, buildTagVectors, contentNeighborsByAnchor, type ContentItem } from './content'
+import { YIELD_EVERY_STEPS, yieldToEventLoop } from './cooperative'
 import {
   SELECT_ACQUISITIONS,
   SELECT_ITEMS,
@@ -214,11 +215,18 @@ const EMPTY_TAGS = new Uint32Array(0)
 const EMPTY_WEIGHTS = new Float32Array(0)
 
 /** Neighbour rows -> insertable rows, numbering each anchor's list so the endpoint can cut by rank. */
-export function toInsertRows(rows: NeighborRow[], source: string, items: ItemRecord[]): NeighborInsertRow[] {
+/**
+ * Async only so it can yield: the conversion is a single pass whose rank counter depends on the rows
+ * before it, so it cannot be split into independent chunks -- but it CAN be paused between them.
+ */
+export async function toInsertRows(rows: NeighborRow[], source: string, items: ItemRecord[]): Promise<NeighborInsertRow[]> {
   const out: NeighborInsertRow[] = []
   let currentItem = -1
   let rank = 0
+  let step = 0
   for (const row of rows) {
+    if (step > 0 && step % YIELD_EVERY_STEPS === 0) await yieldToEventLoop()
+    step += 1
     if (row.item !== currentItem) {
       currentItem = row.item
       rank = 0
@@ -241,6 +249,18 @@ export function toInsertRows(rows: NeighborRow[], source: string, items: ItemRec
  * a few hundred anchors' worth -- enough to keep the inserts batched, small enough that the ~590k-row
  * content set never exists all at once. */
 const CONTENT_FLUSH_SIZE = 20_000
+
+/**
+ * Anchors between two yields in the content stage.
+ *
+ * Measured against production data (11,790 items, 8,024 wallets): this stage, not the co-ownership
+ * accumulator, is the job's longest stall by an order of magnitude, and the cadence is what bounds it.
+ * Over repeated runs the worst slice was 268-339 ms every 500 anchors, 67 ms every 100, and 45-83 ms
+ * every 25, for single-digit-percent more wall time on a stage that runs once every six hours. The
+ * stall is what the API's latency pays for; the wall time is not. (The figures come from a developer
+ * machine running other work, so read them as an order of magnitude and a ranking, not as a budget.)
+ */
+const CONTENT_YIELD_EVERY_ANCHORS = 25
 
 export type BuildOptions = {
   blockWidth?: number
@@ -299,8 +319,8 @@ export async function produceNeighborRows(
   const covered = new Set<string>()
 
   started = Date.now()
-  let cfRows: NeighborInsertRow[] | null = toInsertRows(
-    buildCoOwnershipNeighbors(matrix, isCandidate, { blockWidth: options.blockWidth }),
+  let cfRows: NeighborInsertRow[] | null = await toInsertRows(
+    await buildCoOwnershipNeighbors(matrix, isCandidate, { blockWidth: options.blockWidth }),
     'cf',
     catalogue.items
   )
@@ -314,8 +334,16 @@ export async function produceNeighborRows(
   const contentItems = await loadContentItems(client, catalogue)
   let contentCount = 0
   let buffer: NeighborInsertRow[] = []
+  let anchorsSinceYield = 0
   for (const anchorRows of contentNeighborsByAnchor(contentItems)) {
-    const converted = toInsertRows(anchorRows, 'content', catalogue.items)
+    // The generator is synchronous, so its `yield` never reaches the event loop -- without this the
+    // whole content stage is one stall broken only by the occasional flush.
+    anchorsSinceYield += 1
+    if (anchorsSinceYield >= CONTENT_YIELD_EVERY_ANCHORS) {
+      anchorsSinceYield = 0
+      await yieldToEventLoop()
+    }
+    const converted = await toInsertRows(anchorRows, 'content', catalogue.items)
     contentCount += converted.length
     for (const row of converted) covered.add(row.itemId)
     buffer.push(...converted)

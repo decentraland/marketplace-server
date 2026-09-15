@@ -56,6 +56,13 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
   // Set by a connection-level error. The run is abandoned at the next checkpoint rather than carried
   // on with a client that is no longer talking to anything.
   let fatal: unknown
+  // Checked INSIDE the swap's transaction, before every insert. Checking only after the swap returns
+  // would be checking after COMMIT: the half-built table would already be live, and all the throw could
+  // do is mislabel the run. Thrown from inside the producer it unwinds through the swap, which rolls
+  // back and leaves the previous neighbours serving.
+  const abortIfFatal = () => {
+    if (fatal) throw fatal
+  }
 
   try {
     writeClient = await connect('write')
@@ -80,10 +87,12 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     // rename at the end.
     let timings: BuildTimings | undefined
     let rowsWritten = 0
+    abortIfFatal()
     const outcome = await swapNeighborsTable(writeClient as unknown as QueryableClient, async insert =>
       produceNeighborRows(
         asCursorClient(readClient as unknown as QueryableClient),
         async rows => {
+          abortIfFatal()
           rowsWritten += rows.length
           await insert(rows)
         },
@@ -94,7 +103,7 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
       )
     )
 
-    if (fatal) throw fatal
+    abortIfFatal()
 
     const durationMs = Date.now() - started
     logger.info(

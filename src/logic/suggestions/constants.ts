@@ -135,6 +135,20 @@ export const CANDIDATE_MULTIPLIER = 3
 
 export const SUGGESTIONS_CACHE_TTL_SECONDS = 600
 
+/**
+ * Suggestion computations allowed in flight at once, past which the rail sheds instead of queueing.
+ *
+ * A cache MISS on this endpoint is several seconds of database work across three queries, and the
+ * validation on the request parameters bounds how many DISTINCT keys a caller can invent, not how many
+ * requests they can send. Without a ceiling, enough concurrent misses hold every connection in the pool
+ * and every OTHER route on the service waits behind a rail the Shop treats as optional.
+ *
+ * Shedding returns an empty, unpersonalised rail rather than an error: the Shop already hides the rail
+ * in that case, so a saturated process degrades to "no suggestions" instead of to a failed request on
+ * the storefront. Cache hits are served whatever the load -- the gate sits after the cache read.
+ */
+export const SUGGESTIONS_MAX_CONCURRENT = 4
+
 /** How often the neighbours job rebuilds the table. */
 export const NEIGHBORS_REBUILD_INTERVAL_MS = 6 * 60 * 60 * 1000
 /** Let a freshly deployed replica finish warming up before a multi-minute scan starts. */

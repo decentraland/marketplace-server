@@ -1,4 +1,5 @@
 import { CO_OWNERSHIP_SHRINKAGE, MIN_CO_OWNERS, NEIGHBORS_PER_ITEM } from './constants'
+import { YIELD_EVERY_STEPS, yieldToEventLoop } from './cooperative'
 
 /**
  * Acquisitions in compressed row form, one row per wallet. Wallet `w` owns the entries in
@@ -67,11 +68,11 @@ export function computeNorms(matrix: AcquisitionMatrix): Float64Array {
  * each anchor's block-local best merged into a running top-K. That keeps peak memory at
  * `itemCount * blockWidth * 8` bytes regardless of catalogue size.
  */
-export function buildCoOwnershipNeighbors(
+export async function buildCoOwnershipNeighbors(
   matrix: AcquisitionMatrix,
   isCandidate: Uint8Array,
   options: CoOwnershipOptions = {}
-): NeighborRow[] {
+): Promise<NeighborRow[]> {
   const minSupport = options.minSupport ?? MIN_CO_OWNERS
   const k = options.neighborsPerItem ?? NEIGHBORS_PER_ITEM
   const shrinkage = options.shrinkage ?? CO_OWNERSHIP_SHRINKAGE
@@ -151,6 +152,10 @@ export function buildCoOwnershipNeighbors(
         if (sim > 0) heaps.offer(anchor, neighbor, sim, co)
       }
     }
+
+    // One block is the natural slice: the accumulator is already sized to it, so nothing has to be
+    // carried across the yield that was not being carried anyway.
+    await yieldToEventLoop()
   }
 
   return heaps.drain()
@@ -192,9 +197,10 @@ class TopKHeaps {
     this.siftDown(base, 0, this.k)
   }
 
-  drain(): NeighborRow[] {
+  async drain(): Promise<NeighborRow[]> {
     const rows: NeighborRow[] = []
     for (let anchor = 0; anchor < this.itemCount; anchor++) {
+      if (anchor > 0 && anchor % YIELD_EVERY_STEPS === 0) await yieldToEventLoop()
       const size = this.sizes[anchor]
       if (size === 0) continue
       const base = anchor * this.k
