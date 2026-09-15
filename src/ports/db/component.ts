@@ -4,22 +4,33 @@ import { PoolClient } from 'pg'
 import { createPgComponent as createBasePgComponent, Options } from '@dcl/pg-component'
 import { IPgComponent } from './types'
 
+/**
+ * The connection string for a database prefix, either given whole or assembled from its parts.
+ *
+ * Exported because the neighbours rebuild needs its own connection rather than one from the pool -- the
+ * pool caps every statement at 40 seconds and that job's first scan runs past 80 -- and it must reach
+ * the same database this resolves to, not a second guess at how the environment is spelled.
+ */
+export async function resolveConnectionString(config: IConfigComponent, dbPrefix: string): Promise<string> {
+  const connectionString = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_CONNECTION_STRING`)
+  if (connectionString) return connectionString
+
+  const dbUser = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_USER`)
+  const dbDatabaseName = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_DATABASE`)
+  const dbPort = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_PORT`)
+  const dbHost = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_HOST`)
+  const dbPassword = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_PASSWORD`)
+
+  return `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
+}
+
 export async function createPgComponent(
   components: { config: IConfigComponent; logs: ILoggerComponent; metrics?: IMetricsComponent<string> },
   options: { dbPrefix: string; migrations?: boolean } & Options
 ): Promise<IPgComponent & IBaseComponent> {
   const { config, logs, metrics } = components
   const { dbPrefix, migrations = true } = options
-  let databaseUrl: string | undefined = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_CONNECTION_STRING`)
-  if (!databaseUrl) {
-    const dbUser = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_USER`)
-    const dbDatabaseName = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_DATABASE`)
-    const dbPort = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_PORT`)
-    const dbHost = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_HOST`)
-    const dbPassword = await config.requireString(`${dbPrefix}_PG_COMPONENT_PSQL_PASSWORD`)
-
-    databaseUrl = `postgres://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbDatabaseName}`
-  }
+  const databaseUrl = await resolveConnectionString(config, dbPrefix)
 
   const schema = await config.getString(`${dbPrefix}_PG_COMPONENT_PSQL_SCHEMA`)
 

@@ -40,6 +40,7 @@ import { createSalesComponents } from '../src/ports/sales'
 import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
 import { createShopNotifierComponent } from '../src/ports/shop-notifier/component'
 import { createStatsComponent } from '../src/ports/stats/component'
+import { createSuggestionsComponent } from '../src/ports/suggestions'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
@@ -140,6 +141,7 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
+  const suggestions = await createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, cache, logs, config })
   const inMemoryCache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
@@ -157,6 +159,12 @@ async function initComponents(): Promise<TestComponents> {
   })
   const flushTradesMaterializedViewJob = createJobComponent({ logs }, () => undefined, 30 * 1000, {
     startupDelay: 30
+  })
+  // The neighbours rebuild opens its own connections and scans millions of rows; integration tests get
+  // an inert job and drive swapNeighborsTable directly instead.
+  const rebuildItemNeighborsJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
+    repeat: false,
+    startupDelay: 60 * 60 * 1000
   })
   const refreshCouponStateJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
     startupDelay: 30
@@ -194,6 +202,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    suggestions,
     shopNotifier,
     manaUsdRate,
     wertSigner,
@@ -202,6 +211,7 @@ async function initComponents(): Promise<TestComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
+    rebuildItemNeighborsJob,
     access,
     lists,
     picks,

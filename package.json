@@ -63,6 +63,8 @@
     "nock": "^14.0.15",
     "node-pg-migrate": "^7.9.1",
     "p-limit": "^3.1.0",
+    "pg": "^8.17.2",
+    "pg-cursor": "^2.21.0",
     "seedrandom": "^3.0.5"
   }
 }
