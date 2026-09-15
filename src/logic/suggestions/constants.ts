@@ -146,8 +146,13 @@ export const SUGGESTIONS_CACHE_TTL_SECONDS = 600
  * Shedding returns an empty, unpersonalised rail rather than an error: the Shop already hides the rail
  * in that case, so a saturated process degrades to "no suggestions" instead of to a failed request on
  * the storefront. Cache hits are served whatever the load -- the gate sits after the cache read.
+ *
+ * PER PROCESS, and the service runs three tasks: the number that reaches the database is three times
+ * this one. It is set from what the shared read replica should carry, not from what one process could
+ * stand -- two here is six concurrent scans against one database, which a single process would barely
+ * notice and three together can measurably slow every other route down.
  */
-export const SUGGESTIONS_MAX_CONCURRENT = 4
+export const SUGGESTIONS_MAX_CONCURRENT = 2
 
 /** Quietest a saturated process stays between two shed-warning lines. */
 export const SHED_LOG_INTERVAL_MS = 60_000
