@@ -11,10 +11,14 @@ const THIRTY_DAYS_IN_SECONDS = 2592000
  * `nft` answers "holds", which is the question at request time — unlike the neighbours job, which asks
  * "acquired" and must use dated events. A resold item correctly drops out of the profile here.
  *
- * The join to `sale` is inner, not outer, on purpose: an item the wallet was given carries no taste
- * signal (see FREE_ACQUISITION_WEIGHT) and would otherwise spend the row budget below. Note this
- * narrows the PROFILE only — the exclusion in the scoring query still covers every holding, bought or
- * not, because owning something is reason enough not to be shown it.
+ * The `sale` lookup is a semi-join. An item the wallet was given carries no taste signal (see
+ * FREE_ACQUISITION_WEIGHT) and would otherwise spend the row budget below, but an item resold several
+ * times matches several sale rows, so a plain join would return it once per sale. `EXISTS` gives one
+ * row per holding without a DISTINCT — and the DISTINCT is what must be avoided, because Postgres then
+ * refuses to order by the decay expression, which is not one of the selected columns.
+ *
+ * This narrows the PROFILE only. The exclusion in the scoring query still covers every holding, bought
+ * or not, because owning something is reason enough not to be shown it.
  *
  * Three things this query is careful about, each measured against production:
  *
@@ -42,11 +46,12 @@ export function buildOwnedQuery(address: string, limit: number): SQLStatement {
       SQL`.nft n
        WHERE n.owner_address = ${address} AND n.item_id IS NOT NULL
     )
-    SELECT DISTINCT o.item_id, o.acquired_at
+    SELECT o.item_id, o.acquired_at
       FROM owned o
-      JOIN `
+     WHERE EXISTS (
+       SELECT 1 FROM `
     )
-    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.sale s ON s.item_id = o.item_id AND s.buyer = ${address}
+    .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.sale s WHERE s.item_id = o.item_id AND s.buyer = ${address})
      ORDER BY exp(-GREATEST(0, (extract(epoch from now())::bigint - o.acquired_at)) / 86400.0 / ${RECENCY_DECAY_DAYS}::numeric) DESC
      LIMIT ${limit}`)
 }

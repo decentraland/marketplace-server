@@ -9,9 +9,14 @@ describe('when asking what the wallet bought', () => {
     query = buildOwnedQuery('0xwallet', 400)
   })
 
-  it('should keep an item the wallet was given out of the profile, by joining sales rather than outer-joining them', () => {
-    expect(query.text).toContain('JOIN')
-    expect(query.text).not.toContain('LEFT JOIN')
+  // Whether this SQL is VALID is settled by test/integration/suggestions-queries.spec.ts, which runs it
+  // against a real Postgres. Asserting on the text here can only describe intent, never correctness.
+  it('should require a matching sale, so an item the wallet was given never reaches the profile', () => {
+    expect(query.text).toContain('WHERE EXISTS')
+  })
+
+  it('should not need a DISTINCT, which would forbid ordering by the decay expression', () => {
+    expect(query.text).not.toContain('DISTINCT')
   })
 
   it('should look the holdings up by the indexed column, without wrapping it', () => {
