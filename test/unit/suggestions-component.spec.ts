@@ -188,9 +188,9 @@ describe('when asking for suggestions', () => {
     })
   })
 
-  describe('and the wallet has favorites', () => {
+  describe('and the caller asks about a wallet without proving they are it', () => {
     beforeEach(async () => {
-      getPicksByListId.mockResolvedValue([{ itemId: '0xbbb-2' }])
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
       queryRows = [
         [{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }],
         [],
@@ -200,8 +200,57 @@ describe('when asking for suggestions', () => {
       await suggestions.getSuggestions({ address: ADDRESS }, RATE)
     })
 
-    it('should never read them, since the endpoint is unsigned and cannot tell whose address this is', () => {
+    it("should not read the favorites, which is what stops one person enumerating another's", () => {
       expect(getPicksByListId).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('and the caller proved they are the wallet', () => {
+    beforeEach(async () => {
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
+      queryRows = [
+        [{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }],
+        [],
+        [{ contract: '0xc0' }],
+        Array.from({ length: 8 }, (_, i) => candidateRow(i))
+      ]
+      await suggestions.getSuggestions({ address: ADDRESS, verifiedAddress: ADDRESS }, RATE)
+    })
+
+    it('should read their favorites, which is the one thing the signature buys', () => {
+      expect(getPicksByListId).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ userAddress: ADDRESS }))
+    })
+  })
+
+  describe('and the proven identity is a different wallet from the one asked about', () => {
+    beforeEach(async () => {
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
+      queryRows = [
+        [{ item_id: '0xaaa-1', acquired_at: '1700000000', paid: true }],
+        [],
+        [{ contract: '0xc0' }],
+        Array.from({ length: 8 }, (_, i) => candidateRow(i))
+      ]
+      await suggestions.getSuggestions({ address: ADDRESS, verifiedAddress: '0x000000000000000000000000000000000000dead' }, RATE)
+    })
+
+    it("should read neither wallet's favorites rather than mix two people into one rail", () => {
+      expect(getPicksByListId).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('and the same wallet is asked about signed and unsigned', () => {
+    let keys: string[]
+
+    beforeEach(async () => {
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
+      await suggestions.getSuggestions({ address: ADDRESS, verifiedAddress: ADDRESS }, RATE)
+      await suggestions.getSuggestions({ address: ADDRESS }, RATE)
+      keys = cacheSet.mock.calls.map(call => call[0])
+    })
+
+    it("should cache the two apart, so the unsigned caller cannot read the signed one's favorites out of the cache", () => {
+      expect(keys[0]).not.toBe(keys[1])
     })
   })
 

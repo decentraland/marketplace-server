@@ -16,7 +16,7 @@ import {
   TRENDING_DEFAULT_DAYS,
   TRENDING_DEFAULT_LIMIT
 } from '../../ports/shop-catalog/types'
-import { AppComponents, Context } from '../../types'
+import { AppComponents, AuthenticatedContext, Context } from '../../types'
 import { getItemsParams } from './utils'
 
 // Valid sort values, as a map so Params.getValue can validate the query param against them (mirrors
@@ -298,9 +298,11 @@ export function createShopRelatedHandler(
  * GET /v3/catalog/suggested -- the personalised rail: items this wallet is likely to want, drawn from
  * the same credit-buyable universe as the browse grid so the Shop renders them with the same card.
  *
- * Public and unsigned. Everything it reads about a wallet -- what it holds, what it bought -- is
- * already public through /v1/nfts?owner=, so requiring a signature would buy no privacy while making
- * the rail impossible to render for a signed-out visitor who has local seeds.
+ * The signature is OPTIONAL, and it buys exactly one thing: favourites. Everything else the rail reads
+ * about a wallet -- what it holds, what it bought -- is already public through /v1/nfts?owner=, so
+ * requiring a signature for that would buy no privacy while making the rail impossible to render for a
+ * signed-out visitor who has local seeds. Favourites are not public anywhere else in this service, so
+ * they are read only for the caller who PROVED they are that account.
  *
  * Every list parameter is capped rather than rejected when oversized: a client that sends 200 seeds
  * gets the first 20 considered, not a 400. `first` is the one exception the caller can get wrong in a
@@ -308,18 +310,20 @@ export function createShopRelatedHandler(
  */
 export function createShopSuggestedHandler(
   components: Pick<AppComponents, 'suggestions' | 'manaUsdRate'>
-): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/suggested'>> {
+): IHttpServerComponent.IRequestHandler<AuthenticatedContext<'/v3/catalog/suggested'>> {
   const { suggestions, manaUsdRate } = components
 
   return async context => {
     const params = new Params(context.url.searchParams)
     const address = params.getAddress('address')
     const first = params.getNumber('first', SUGGESTED_DEFAULT_LIMIT) ?? SUGGESTED_DEFAULT_LIMIT
+    const verifiedAddress = context.verification?.auth?.toLowerCase()
 
     return asJSON(async () =>
       suggestions.getSuggestions(
         {
           address: address ?? undefined,
+          verifiedAddress,
           seeds: csv(params.getString('seeds')),
           equipped: csv(params.getString('equipped')),
           exclude: csv(params.getString('exclude')),

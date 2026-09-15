@@ -96,6 +96,14 @@ export const MIN_PERSONAL_ROWS = 4
 export const SUGGESTED_DEFAULT_LIMIT = 12
 export const SUGGESTED_MAX_LIMIT = 40
 export const MAX_SEEDS = 20
+/**
+ * Favourites read per request, on their own budget rather than sharing the seeds'.
+ *
+ * They come from a list the caller SAVED deliberately, which is why they outweigh a cart or a view
+ * (PROFILE_WEIGHTS.favorite); sharing one cap with those would let a browsing session push the
+ * deliberate signal out of the profile entirely.
+ */
+export const MAX_FAVORITES = 20
 export const MAX_EQUIPPED = 30
 export const MAX_EXCLUDE = 20
 /**
