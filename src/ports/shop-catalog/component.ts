@@ -562,9 +562,17 @@ function unifiedBranch(opts: {
 
 // Build the inner UNION ALL of the requested source branches (native and/or legacy). Shared by the
 // per-listing unified feed and the item-unified browse feed so both draw from the SAME credit-buyable
-// universe (native primary + native secondary + legacy primary) with identical filters. Legacy is
-// primary-only here -- legacy ERC20 SECONDARY is Phase 3; adding it later is a one-line change (drop
-// `primaryOnly`), and the item grouping/ordering below already extends to it unchanged.
+// universe with identical filters.
+//
+// The LEGACY TRADE branch is primary-only unless the request sets `includeLegacySecondary` -- see the
+// filter's own doc for why it is opt-in. Opening it adds `public_nft_order` rows priced in MANA, which is
+// what a resale listed through the classic Marketplace looks like; everything downstream already handles
+// them, because a native secondary row takes the same shape (a `token_id`, a seller and an issued id read
+// off `mv.assets->'sent'`) and only the price treatment differs, which `applyRate` already decides.
+//
+// The two STORE branches keep `primaryOnly: true` for the record, but it is inert there: `unifiedBranch`
+// returns before reading it for a store relation, which is primary by construction (it aliases
+// `'public_item_order'` as its own `type`).
 function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
   const parts: SQLStatement[] = []
   if (filters.source !== 'legacy') {
@@ -587,7 +595,7 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         source: 'legacy',
         acquisition: 'trade',
         assetType: ERC20_ASSET_TYPE,
-        primaryOnly: true,
+        primaryOnly: !filters.includeLegacySecondary,
         applyRate: true,
         rateNumericString,
         filters,
@@ -866,6 +874,13 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     }
     if (filters.isSmart) {
       query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
+    }
+    // Same expression the row mapper reads `listingType` from, so the filter and the reported value cannot
+    // disagree. See the filter's own doc for why a native-only feed still needs it.
+    if (filters.listingType === 'primary') {
+      query.append(SQL` AND mv.type = 'public_item_order'`)
+    } else if (filters.listingType === 'secondary') {
+      query.append(SQL` AND mv.type <> 'public_item_order'`)
     }
     appendDiscountedFilter(query, filters, true)
     // Price bounds apply to what the buyer would PAY, so a discounted listing lands in the slider range of its sale price.
@@ -1296,7 +1311,9 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const core = buildItemUnifiedCore(
       {
         category: reference.category,
-        wearableCategories: reference.wearableCategory ? [reference.wearableCategory] : undefined
+        wearableCategories: reference.wearableCategory ? [reference.wearableCategory] : undefined,
+        includeLegacySecondary: filters.includeLegacySecondary,
+        listingType: filters.listingType
       },
       rateNumericString
     )

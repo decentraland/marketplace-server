@@ -479,6 +479,41 @@ describe('Shop Catalog Component', () => {
     })
   })
 
+  /**
+   * `/v3/catalog/shop` is NATIVE-only, and that is NOT the same as primary-only: the native branch carries
+   * secondary rows, and those are durable signed orders that no flag cancels. A client that may not sell a
+   * resale therefore has to be able to ask, which is what this filter is for (the cart upsell reads it).
+   */
+  describe('and filtering the shop feed by listing type', () => {
+    const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+    const PRIMARY = "AND mv.type = 'public_item_order'"
+    const SECONDARY = "AND mv.type <> 'public_item_order'"
+
+    async function textFor(filters: Record<string, unknown>): Promise<string> {
+      query.mockClear()
+      query.mockResolvedValue({ rows: [] })
+      await shopCatalog.getShopListings(filters)
+      return query.mock.calls[0][0].text as string
+    }
+
+    it('should add a mint-only constraint when asked for primary', async () => {
+      const baseline = occurrences(await textFor({}), PRIMARY)
+
+      expect(occurrences(await textFor({ listingType: 'primary' }), PRIMARY)).toBe(baseline + 1)
+    })
+
+    it('should add a resale-only constraint when asked for secondary', async () => {
+      expect(await textFor({ listingType: 'secondary' })).toContain(SECONDARY)
+    })
+
+    it('should not constrain the type when omitted, so every existing caller is unchanged', async () => {
+      const text = await textFor({})
+
+      expect(text).not.toContain(SECONDARY)
+      expect(occurrences(text, PRIMARY)).toBe(occurrences(await textFor({}), PRIMARY))
+    })
+  })
+
   describe('when building the unified listings query', () => {
     // 0.5 USD/MANA, formatted the way the component binds it into the numeric multiply.
     const RATE = 0.5
@@ -613,6 +648,90 @@ describe('Shop Catalog Component', () => {
         await shopCatalog.getShopItems({ listingType: 'primary' }, RATE)
 
         expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline + UNION_BRANCHES)
+      })
+    })
+
+    /**
+     * OPENING THE LEGACY BRANCH TO RESALES.
+     *
+     * Resale LISTING lives in the classic Marketplace, so a copy somebody put up for sale is a
+     * `public_nft_order` priced in MANA -- and that is precisely the combination the legacy branch pinned
+     * out with its own `mv.type = 'public_item_order'`. Until this opt-in existed, the only resales this
+     * feed could return were native (USD-pegged) ones, which is an empty set for a Shop that takes no
+     * resale listings of its own.
+     *
+     * Counted, not matched, for the same reason the listingType block above counts: the predicate also
+     * appears in the query's own joins, so `toContain` would pass with the branch still shut.
+     */
+    describe('and opting in to classic (MANA-priced) resales', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const PRIMARY = "AND mv.type = 'public_item_order'"
+
+      async function textFor(filters: Record<string, unknown>): Promise<string> {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0].text as string
+      }
+
+      it('should pin the legacy branch to mints by default', async () => {
+        // The pre-existing feed, which every current caller is built on.
+        const baseline = await textFor({})
+        const opened = await textFor({ includeLegacySecondary: true })
+
+        // Exactly one constraint disappears: the legacy TRADE branch's. The native branch never had one,
+        // and the two store branches are primary by construction rather than by predicate.
+        expect(occurrences(baseline, PRIMARY)).toBe(occurrences(opened, PRIMARY) + 1)
+      })
+
+      it('should leave the request otherwise byte-for-byte unchanged', async () => {
+        const baseline = await textFor({})
+        const opened = await textFor({ includeLegacySecondary: true })
+
+        // The opt-in is a REMOVAL, not a rewrite: strip every copy of the predicate from both and the two
+        // queries must be identical. Nothing about the SELECT list, the joins, the price conversion or the
+        // ordering may move, or every existing response shifts along with the new rows.
+        // Whitespace-normalised because the predicate is appended as its own indented fragment, so removing
+        // it leaves the surrounding blanks arranged differently — which is not a difference in the query.
+        const shape = (text: string) => text.split(PRIMARY).join('').replace(/\s+/g, ' ').trim()
+        expect(shape(opened)).toBe(shape(baseline))
+      })
+
+      it('should treat an explicit false exactly like omitting it', async () => {
+        expect(await textFor({ includeLegacySecondary: false })).toBe(await textFor({}))
+      })
+
+      it('should still ask the legacy branch for the classic ERC20 asset type', async () => {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings({ includeLegacySecondary: true }, RATE)
+        const sql = query.mock.calls[0][0]
+
+        // Opening the branch must not change WHAT it is priced in — a resale listed on the Marketplace is
+        // MANA-denominated, so it still needs the rate multiply the legacy branch applies.
+        expect(sql.values).toContain(1)
+        expect(sql.text).toContain('mv.amount_received::text AS mana_wei')
+      })
+
+      it('should reach the grouped item feed the browse grid reads', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({}, RATE)
+        const baseline = occurrences(query.mock.calls[0][0].text as string, PRIMARY)
+
+        query.mockClear()
+        await shopCatalog.getShopItems({ includeLegacySecondary: true }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline - 1)
+      })
+
+      it('should combine with listingType=secondary to mean "every resale, both sources"', async () => {
+        // Orthogonal filters: listingType narrows the RESULT, this decides whether one SOURCE may
+        // contribute resales. Asked together, the legacy branch keeps only its resale constraint.
+        const text = await textFor({ listingType: 'secondary', includeLegacySecondary: true })
+
+        expect(occurrences(text, "AND mv.type <> 'public_item_order'")).toBe(3)
+        // And without the opt-in the same request contradicts itself on that branch, yielding native-only
+        // resales — which is the pre-existing behaviour and must stay that way.
+        const shut = await textFor({ listingType: 'secondary' })
+        expect(occurrences(shut, PRIMARY)).toBe(occurrences(text, PRIMARY) + 1)
       })
     })
 

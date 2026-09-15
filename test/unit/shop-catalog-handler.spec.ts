@@ -1,6 +1,7 @@
 import { URL } from 'url'
 import {
   createCatalogItemsHandler,
+  createShopCatalogHandler,
   createShopRelatedHandler,
   createShopTrendingHandler,
   createShopUnifiedHandler
@@ -10,6 +11,39 @@ import { TRENDING_DEFAULT_DAYS, TRENDING_DEFAULT_LIMIT } from '../../src/ports/s
 // The unified handler is a factory: createShopUnifiedHandler(components) -> (context) => response. These
 // tests drive the `groupBy` dispatch (per-listing default vs item-unified) and confirm the parsed filters
 // reach the component unchanged.
+/**
+ * `/v3/catalog/shop` is NATIVE-only, which is not the same as primary-only: the native branch carries
+ * secondary rows and those are durable signed orders. A client that may not sell a resale has to be able
+ * to say so, which is what this parameter is for (the Shop's cart upsell reads this feed).
+ */
+describe('when handling the shop catalog endpoint and a listing type is provided', () => {
+  let getShopListings: jest.Mock
+  let handler: ReturnType<typeof createShopCatalogHandler>
+
+  const noop = jest.fn()
+  const invoke = (url: string) => handler({ url: new URL(url), request: {} } as any, noop)
+
+  beforeEach(() => {
+    getShopListings = jest.fn().mockResolvedValue({ data: [], total: 0 })
+    handler = createShopCatalogHandler({ shopCatalog: { getShopListings } } as any)
+  })
+
+  it('should forward it so a client that may not sell resales can exclude them server-side', async () => {
+    await invoke('http://localhost/v3/catalog/shop?listingType=primary')
+    expect(getShopListings.mock.calls[0][0].listingType).toBe('primary')
+  })
+
+  it('should leave it unset when absent, so the pre-existing response is unchanged', async () => {
+    await invoke('http://localhost/v3/catalog/shop')
+    expect(getShopListings.mock.calls[0][0].listingType).toBeUndefined()
+  })
+
+  it('should drop an unsupported value rather than reach the query with it', async () => {
+    await invoke('http://localhost/v3/catalog/shop?listingType=bogus')
+    expect(getShopListings.mock.calls[0][0].listingType).toBeUndefined()
+  })
+})
+
 describe('when handling the unified shop catalog endpoint', () => {
   let getUnifiedListings: jest.Mock
   let getShopItems: jest.Mock
@@ -221,6 +255,41 @@ describe('when handling the unified shop catalog endpoint', () => {
       expect(getShopItems.mock.calls[0][0].includeSocialEmotes).toBe(true)
     })
   })
+
+  /**
+   * `includeLegacySecondary` opens the legacy branch to CLASSIC (MANA-priced) resales, which is where a
+   * copy listed through the Marketplace lives. It is the mirror image of `includeSocialEmotes`: opt-IN, so
+   * only the literal 'true' may change the answer, and every other spelling -- absent, 'false', a typo --
+   * must leave the caller with exactly the feed it gets today.
+   */
+  describe('and includeLegacySecondary is provided', () => {
+    it('should stay off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should turn on only for the literal true', async () => {
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=true')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(true)
+    })
+
+    it('should stay off on an explicit false', async () => {
+      // Read through the presence-based `Params.getBoolean` this would come back TRUE, opening the branch
+      // for a caller that asked in plain words to keep it shut.
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=false')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should stay off for any other value', async () => {
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=1')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should reach the grouped item feed the browse grid reads', async () => {
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeLegacySecondary=true')
+      expect(getShopItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
+    })
+  })
 })
 
 // The trending handler backs the Shop home's Trending row. What matters here is that the row's two
@@ -276,6 +345,21 @@ describe('when handling the trending items endpoint', () => {
     await invoke('http://localhost/v3/catalog/trending?listingType=primary')
 
     expect(getTrendingItems.mock.calls[0][0].listingType).toBe('primary')
+  })
+
+  it('should forward includeLegacySecondary only for the literal true', async () => {
+    // The row is drawn from the same universe as the grid, so without this a Marketplace-listed copy can
+    // never rank into it however much it trades.
+    await invoke('http://localhost/v3/catalog/trending?includeLegacySecondary=true')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending?includeLegacySecondary=false')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
   })
 
   it('should reject an unknown listingType rather than silently returning resales too', async () => {
@@ -339,6 +423,38 @@ describe('when handling the related items endpoint', () => {
       await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&first=20`)
 
       expect(getRelatedItems.mock.calls[0][0].first).toBe(20)
+    })
+
+    it('should forward listingType so a rail that may not sell resales can exclude them', async () => {
+      // The opt-in alone is not enough here: it governs the legacy branch, while NATIVE resales reach this
+      // rail unconditionally and their orders are durable. Without this the rail kept showing them.
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&listingType=primary`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBe('primary')
+    })
+
+    it('should leave listingType unset when absent, so the pre-existing rail is unchanged', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBeUndefined()
+    })
+
+    it('should drop an unsupported listingType rather than reach the query with it', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&listingType=bogus`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBeUndefined()
+    })
+
+    it('should forward includeLegacySecondary only for the literal true', async () => {
+      // The rail is meant to be indistinguishable from the grid; including a row the grid excludes would
+      // contradict the page around it.
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&includeLegacySecondary=true`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
+
+      getRelatedItems.mockClear()
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&includeLegacySecondary=false`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+
+      getRelatedItems.mockClear()
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
     })
   })
 
