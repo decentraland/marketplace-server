@@ -319,20 +319,27 @@ export function createShopSuggestedHandler(
     const first = params.getNumber('first', SUGGESTED_DEFAULT_LIMIT) ?? SUGGESTED_DEFAULT_LIMIT
     const verifiedAddress = context.verification?.auth?.toLowerCase()
 
-    return asJSON(async () =>
-      suggestions.getSuggestions(
-        {
-          address: address ?? undefined,
-          verifiedAddress,
-          seeds: csv(params.getString('seeds')),
-          equipped: csv(params.getString('equipped')),
-          exclude: csv(params.getString('exclude')),
-          bodyShape: params.getString('bodyShape'),
-          category: params.getString('category'),
-          first
-        },
-        manaUsdRate.getRate()
-      )
+    return asJSON(
+      async () =>
+        suggestions.getSuggestions(
+          {
+            address: address ?? undefined,
+            verifiedAddress,
+            seeds: csv(params.getString('seeds')),
+            equipped: csv(params.getString('equipped')),
+            exclude: csv(params.getString('exclude')),
+            bodyShape: params.getString('bodyShape'),
+            category: params.getString('category'),
+            first
+          },
+          manaUsdRate.getRate()
+        ),
+      // Never stored by anything on the way out, and this is NOT covered by the internal cache being
+      // keyed correctly. The signature travels in `x-identity-*` headers, so a shared cache keying on the
+      // URL -- which is all a CDN or proxy has -- cannot tell a signed response from an unsigned one and
+      // would happily hand a signed answer, favourites and all, to the next anonymous caller of the same
+      // URL. `Vary: Authorization` would not help either: that is not the header in play. RFC 9111 §3.5.
+      { 'Cache-Control': 'private, no-store' }
     )
   }
 }

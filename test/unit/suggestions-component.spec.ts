@@ -459,4 +459,77 @@ describe('when asking for suggestions', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('SUGGESTIONS_MAX_CONCURRENT'))
     })
   })
+
+  describe('and a real cache sits between two callers', () => {
+    let store: Map<string, unknown>
+    let cachedSuggestions: ISuggestionsComponent
+    let signedA: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+    let anonA: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+    let signedB: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+
+    const OTHER = '0x000000000000000000000000000000000000dead'
+
+    beforeEach(async () => {
+      // A cache that really stores and really serves, rather than two key strings compared by eye. If the
+      // key is wrong, the second caller gets the FIRST caller's answer here and the assertion sees it.
+      store = new Map()
+      const rows = () => [
+        [{ item_id: '0xaaa-1', acquired_at: '1700000000' }],
+        [],
+        [{ contract: '0xc0' }],
+        Array.from({ length: 8 }, (_, i) => candidateRow(i))
+      ]
+      cachedSuggestions = await createSuggestionsComponent({
+        dappsDatabase: { query },
+        shopCatalog: { getTrendingItems },
+        lists: { getPicksByListId },
+        cache: {
+          get: async (key: string) => store.get(key),
+          set: async (key: string, value: unknown) => {
+            store.set(key, value)
+          }
+        },
+        config: { getNumber: async () => undefined },
+        logs: { getLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
+      } as never)
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
+
+      queryRows = rows()
+      signedA = await cachedSuggestions.getSuggestions({ address: ADDRESS, verifiedAddress: ADDRESS }, RATE)
+      queryRows = rows()
+      anonA = await cachedSuggestions.getSuggestions({ address: ADDRESS }, RATE)
+      queryRows = rows()
+      signedB = await cachedSuggestions.getSuggestions({ address: ADDRESS, verifiedAddress: OTHER }, RATE)
+    })
+
+    it('should compute the unsigned answer rather than serve the signed one out of the cache', () => {
+      expect(store.size).toBeGreaterThan(1)
+    })
+
+    it('should read the favorites once, for the caller who proved the account', () => {
+      expect(getPicksByListId).toHaveBeenCalledTimes(1)
+    })
+
+    it('should answer all three, so the separation costs correctness nothing', () => {
+      expect([signedA.algorithm, anonA.algorithm, signedB.algorithm]).toEqual(['v1', 'v1', 'v1'])
+    })
+  })
+
+  describe('and the caller signed but named nobody', () => {
+    beforeEach(async () => {
+      getPicksByListId.mockResolvedValue([{ item_id: '0xbbb-2' }])
+      queryRows = [
+        [{ item_id: '0xaaa-1', acquired_at: '1700000000' }],
+        [],
+        [{ contract: '0xc0' }],
+        Array.from({ length: 8 }, (_, i) => candidateRow(i))
+      ]
+      await suggestions.getSuggestions({ verifiedAddress: ADDRESS }, RATE)
+    })
+
+    it('should treat the proven identity as the wallet in question, rather than read half of it', () => {
+      const ownedQuery = query.mock.calls.find(call => String(call[0].text ?? '').includes('owner_address'))
+      expect(ownedQuery?.[0].values).toContain(ADDRESS)
+    })
+  })
 })

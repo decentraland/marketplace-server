@@ -204,11 +204,17 @@ export async function createSuggestionsComponent(
     const bodyShape = normalizeBodyShape(filters.bodyShape)
     const category = normalizeCategory(filters.category)
     // Favourites are read only when the proven identity IS the wallet the rail is being built for. An
-    // anonymous caller has none to read, and a caller asking about someone else gets the public half.
+    // anonymous caller has none to read, and a caller asking about SOMEONE ELSE gets the public half of
+    // that someone else and no favourites at all -- mixing one person's holdings with another's saved
+    // items produces a rail belonging to neither, and the mismatch is always the caller's to resolve.
     const verifiedAddress = filters.verifiedAddress?.toLowerCase()
     const favoritesFor = verifiedAddress && (!address || address === verifiedAddress) ? verifiedAddress : undefined
+    // A caller who signed and named nobody means themselves. Without this the request reads their
+    // favourites but not their holdings, and recommends back items they already own -- a rail assembled
+    // from half an identity, which is worse than either half alone.
+    const profileFor = address ?? verifiedAddress
 
-    const cacheKey = buildCacheKey({ address, favoritesFor, seeds, equipped, exclude, bodyShape, category, first })
+    const cacheKey = buildCacheKey({ address: profileFor, favoritesFor, seeds, equipped, exclude, bodyShape, category, first })
     const cached = await cache.get<SuggestionsResult>(cacheKey)
     if (cached) return cached
 
@@ -237,14 +243,14 @@ export async function createSuggestionsComponent(
 
     async function compute(): Promise<SuggestionsResult> {
       const [owned, favorites] = await Promise.all([
-        address ? getOwned(address) : Promise.resolve([] as OwnedRow[]),
+        profileFor ? getOwned(profileFor) : Promise.resolve([] as OwnedRow[]),
         favoritesFor ? getFavorites(favoritesFor) : Promise.resolve([] as string[])
       ])
       // What the fallback needs from this request, gathered once: every call site is a different reason
       // for falling back, and all of them owe the reader the same hard filters. The ADDRESS travels rather
       // than the profile's item ids: the profile is capped and paid-only, so using it as the owned set
       // would offer a gift, or anything held past the cap, back to its own owner.
-      const fallbackOptions = { first, category, bodyShape, excludeItemIds: exclude, address }
+      const fallbackOptions = { first, category, bodyShape, excludeItemIds: exclude, address: profileFor }
 
       const profile = buildTasteProfile({
         owned: owned.map(row => ({ itemId: row.item_id, acquiredAt: Number(row.acquired_at) })),
@@ -286,7 +292,7 @@ export async function createSuggestionsComponent(
         buildCandidateScoresQuery({
           profile,
           core,
-          address,
+          address: profileFor,
           excludeItemIds: exclude,
           bodyShape,
           topCreators,
