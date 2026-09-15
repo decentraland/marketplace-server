@@ -214,7 +214,7 @@ export function createSuggestionsComponent(
       const row = byItemId.get(candidate.itemId)
       if (!row) continue
       data.push({
-        ...mapUnifiedItemRow(row, polygonChainId, ethereumChainId),
+        ...mapUnifiedItemRow(row, polygonChainId, ethereumChainId, message => logger.warn(message)),
         reason: candidate.reason,
         score: candidate.score
       })
