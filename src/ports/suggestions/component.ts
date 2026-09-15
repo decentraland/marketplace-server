@@ -32,7 +32,7 @@ type CandidateRow = RelatedItemRow & {
   trigger_source: string | null
 }
 
-type OwnedRow = { item_id: string; acquired_at: string; paid: boolean }
+type OwnedRow = { item_id: string; acquired_at: string }
 
 type AttributeRow = {
   item_id: string
@@ -121,7 +121,7 @@ export function createSuggestionsComponent(
     ])
 
     const profile = buildTasteProfile({
-      owned: owned.map(row => ({ itemId: row.item_id, paid: row.paid, acquiredAt: Number(row.acquired_at) })),
+      owned: owned.map(row => ({ itemId: row.item_id, acquiredAt: Number(row.acquired_at) })),
       favorites,
       equipped,
       seeds,

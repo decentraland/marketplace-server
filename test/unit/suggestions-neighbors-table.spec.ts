@@ -1,6 +1,29 @@
-import { swapNeighborsTable, type NeighborsMeta, type QueryableClient } from '../../src/logic/suggestions/neighbors-table'
+import {
+  SELECT_ACQUISITIONS,
+  swapNeighborsTable,
+  type NeighborsMeta,
+  type QueryableClient
+} from '../../src/logic/suggestions/neighbors-table'
 
 type Recorded = { sql: string; values?: unknown[] }
+
+describe('when selecting the acquisitions the neighbours are built from', () => {
+  it('should take only the mints somebody paid for', () => {
+    expect(SELECT_ACQUISITIONS).toContain('COALESCE(search_primary_sale_price, 0) > 0')
+  })
+
+  it('should strip the network suffix off the mint beneficiary, so one person is one owner', () => {
+    expect(SELECT_ACQUISITIONS).toContain("split_part(beneficiary, '-', 1)")
+  })
+
+  it('should drop wallets with too few or too many purchases to say anything about co-ownership', () => {
+    expect(SELECT_ACQUISITIONS).toContain('HAVING count(*) BETWEEN 2 AND 500')
+  })
+
+  it('should order by wallet, which is what lets the loader fold rows as they stream', () => {
+    expect(SELECT_ACQUISITIONS.trimEnd()).toMatch(/ORDER BY p\.wallet$/)
+  })
+})
 
 describe('when swapping the neighbours table', () => {
   let client: QueryableClient

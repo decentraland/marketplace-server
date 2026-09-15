@@ -5,24 +5,17 @@ const NOW = 1_800_000_000
 const DAY = 86400
 
 describe('when building a taste profile', () => {
-  describe('and the wallet holds one paid and one free item acquired today', () => {
+  describe('and the wallet bought something today', () => {
     let profile: ReturnType<typeof buildTasteProfile>
 
     beforeEach(() => {
       profile = buildTasteProfile({
-        owned: [
-          { itemId: 'paid-1', paid: true, acquiredAt: NOW },
-          { itemId: 'free-1', paid: false, acquiredAt: NOW }
-        ],
+        owned: [{ itemId: 'paid-1', acquiredAt: NOW }],
         favorites: [],
         equipped: [],
         seeds: [],
         now: NOW
       })
-    })
-
-    it('should weight the free acquisition at the airdrop discount fixed by phase 0', () => {
-      expect(profile.find(entry => entry.itemId === 'free-1')?.weight).toBeCloseTo(PROFILE_WEIGHTS.free, 6)
     })
 
     it('should weight the purchase at one', () => {
@@ -35,7 +28,7 @@ describe('when building a taste profile', () => {
 
     beforeEach(() => {
       profile = buildTasteProfile({
-        owned: [{ itemId: 'old', paid: true, acquiredAt: NOW - RECENCY_DECAY_DAYS * DAY }],
+        owned: [{ itemId: 'old', acquiredAt: NOW - RECENCY_DECAY_DAYS * DAY }],
         favorites: [],
         equipped: [],
         seeds: [],
@@ -53,7 +46,7 @@ describe('when building a taste profile', () => {
 
     beforeEach(() => {
       profile = buildTasteProfile({
-        owned: [{ itemId: 'shared', paid: true, acquiredAt: NOW }],
+        owned: [{ itemId: 'shared', acquiredAt: NOW }],
         favorites: ['shared'],
         equipped: ['shared'],
         seeds: ['shared'],
@@ -75,11 +68,7 @@ describe('when building a taste profile', () => {
 
     beforeEach(() => {
       profile = buildTasteProfile({
-        owned: Array.from({ length: 1000 }, (_, i) => ({
-          itemId: `item-${i}`,
-          paid: i < 3,
-          acquiredAt: NOW - i * DAY
-        })),
+        owned: Array.from({ length: 1000 }, (_, i) => ({ itemId: `item-${i}`, acquiredAt: NOW - i * DAY })),
         favorites: [],
         equipped: [],
         seeds: [],
@@ -91,9 +80,8 @@ describe('when building a taste profile', () => {
       expect(profile.slice(0, 3).map(entry => entry.itemId)).toEqual(['item-0', 'item-1', 'item-2'])
     })
 
-    it('should rank every purchase above every airdrop', () => {
-      const firstFree = profile.findIndex(entry => entry.weight < PROFILE_WEIGHTS.free)
-      expect(profile.slice(0, 3).every(entry => entry.weight > profile[firstFree].weight)).toBe(true)
+    it('should rank the most recent purchases first, since only the decay separates them', () => {
+      expect(profile[0].weight).toBeGreaterThan(profile[profile.length - 1].weight)
     })
   })
 
@@ -103,7 +91,7 @@ describe('when building a taste profile', () => {
     beforeEach(() => {
       profile = buildTasteProfile({
         // 300 recent purchases, each weighing about 1.0 -- more than the 0.8 a seed carries.
-        owned: Array.from({ length: 300 }, (_, i) => ({ itemId: `paid-${i}`, paid: true, acquiredAt: NOW })),
+        owned: Array.from({ length: 300 }, (_, i) => ({ itemId: `paid-${i}`, acquiredAt: NOW })),
         favorites: ['fav-1'],
         equipped: ['worn-1'],
         seeds: ['seed-1', 'seed-2'],
@@ -138,7 +126,7 @@ describe('when building a taste profile', () => {
 
     beforeEach(() => {
       profile = buildTasteProfile({
-        owned: [{ itemId: 'paid-1', paid: true, acquiredAt: NOW }],
+        owned: [{ itemId: 'paid-1', acquiredAt: NOW }],
         favorites: ['fav-1', 'fav-2'],
         equipped: ['worn-1', 'worn-2'],
         seeds: [],

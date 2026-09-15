@@ -1,16 +1,18 @@
 import { buildCoOwnershipNeighbors, computeNorms, type AcquisitionMatrix, type NeighborRow } from '../../src/logic/suggestions/co-ownership'
-import { FREE_ACQUISITION_WEIGHT } from '../../src/logic/suggestions/constants'
 
-/** Builds the compressed matrix the same way the job's loader does, so the damping is exercised too. */
-function matrixOf(wallets: Array<Array<{ item: number; paid: boolean }>>, itemCount: number): AcquisitionMatrix {
+/**
+ * Builds the compressed matrix the same way the job's loader does, so the damping is exercised too.
+ * Every entry is a purchase: unpaid acquisitions are filtered out in SQL before they reach here.
+ */
+function matrixOf(wallets: number[][], itemCount: number): AcquisitionMatrix {
   const offsets: number[] = [0]
   const items: number[] = []
   const weights: number[] = []
   for (const wallet of wallets) {
     const damping = Math.pow(wallet.length, -0.25)
-    for (const entry of wallet) {
-      items.push(entry.item)
-      weights.push((entry.paid ? 1 : FREE_ACQUISITION_WEIGHT) * damping)
+    for (const item of wallet) {
+      items.push(item)
+      weights.push(damping)
     }
     offsets.push(items.length)
   }
@@ -23,8 +25,8 @@ function matrixOf(wallets: Array<Array<{ item: number; paid: boolean }>>, itemCo
   }
 }
 
-function paid(...items: number[]): Array<{ item: number; paid: boolean }> {
-  return items.map(item => ({ item, paid: true }))
+function paid(...items: number[]): number[] {
+  return items
 }
 
 /** Similarity lookup that fails loudly when the pair is absent, rather than asserting on undefined. */
@@ -140,26 +142,6 @@ describe('when building co-ownership neighbours', () => {
 
     it('should not let its breadth inflate similarity above a focused wallet at the same support', () => {
       expect(hoarderSim).toBeLessThanOrEqual(focusedSim + 1e-6)
-    })
-  })
-
-  describe('and free acquisitions are involved', () => {
-    let paidSim: number
-    let freeSim: number
-
-    beforeEach(() => {
-      const candidates = Uint8Array.from([1, 1])
-      const paidWallets = Array.from({ length: 4 }, () => paid(0, 1))
-      const freeWallets = Array.from({ length: 4 }, () => [
-        { item: 0, paid: false },
-        { item: 1, paid: false }
-      ])
-      paidSim = buildCoOwnershipNeighbors(matrixOf(paidWallets, 2), candidates, { minSupport: 3 })[0].sim
-      freeSim = buildCoOwnershipNeighbors(matrixOf(freeWallets, 2), candidates, { minSupport: 3 })[0].sim
-    })
-
-    it('should score an airdropped pair no higher than a purchased one at the same support', () => {
-      expect(freeSim).toBeLessThanOrEqual(paidSim + 1e-6)
     })
   })
 

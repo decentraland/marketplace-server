@@ -1,30 +1,33 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { FREE_ACQUISITION_WEIGHT, NEIGHBORS_TABLE, RECENCY_DECAY_DAYS, TASTE_ITEMS_PER_CREATOR } from '../../logic/suggestions/constants'
+import { NEIGHBORS_TABLE, RECENCY_DECAY_DAYS, TASTE_ITEMS_PER_CREATOR } from '../../logic/suggestions/constants'
 import type { ProfileEntry } from '../../logic/suggestions/profile'
 
 const THIRTY_DAYS_IN_SECONDS = 2592000
 
 /**
- * What the wallet holds, strongest taste signal first.
+ * What the wallet BOUGHT and still holds, strongest taste signal first.
  *
  * `nft` answers "holds", which is the question at request time — unlike the neighbours job, which asks
  * "acquired" and must use dated events. A resold item correctly drops out of the profile here.
+ *
+ * The join to `sale` is inner, not outer, on purpose: an item the wallet was given carries no taste
+ * signal (see FREE_ACQUISITION_WEIGHT) and would otherwise spend the row budget below. Note this
+ * narrows the PROFILE only — the exclusion in the scoring query still covers every holding, bought or
+ * not, because owning something is reason enough not to be shown it.
  *
  * Three things this query is careful about, each measured against production:
  *
  * - **No `lower()` on `owner_address`.** Addresses are stored lowercased (zero rows differ), and
  *   wrapping the column makes `IDX_26e756121a20d1cc3e4d738279` unusable: the same lookup goes from a
  *   1 ms index scan to a 4.3 s parallel sequential scan over 5.3M rows.
- * - **"Paid" comes from `sale` alone.** The obvious second source is a primary mint with a non-zero
- *   sale price, but `mint.beneficiary` carries a `-POLYGON`/`-ETHEREUM` suffix and has no index, so
- *   joining it costs a 2.1 s sequential scan. It is also nearly redundant: of the paid mints in the
- *   last 180 days, 97.9% already have a matching `sale` row. The remaining 2% land at the unpaid
- *   weight, which is a far better trade than two seconds on every request.
+ * - **"Bought" comes from `sale` alone.** The other source is a primary mint with a non-zero sale
+ *   price, but `mint.beneficiary` carries a `-POLYGON`/`-ETHEREUM` suffix and has no index, so joining
+ *   it costs a 2.1 s sequential scan. It is also nearly redundant: of the paid mints in the last 180
+ *   days, 97.9% already have a matching `sale` row.
  * - **The weight is computed here and the row count capped**, so a wallet holding six figures of items
- *   does not ship all of them to the client. The cap is generous relative to what the profile keeps;
- *   deliberate signals (equipped, favourites, seeds) are added outside this query, so their priority
- *   is unaffected by it.
+ *   does not ship all of them to the client. Deliberate signals (equipped, favourites, seeds) are
+ *   added outside this query, so their priority is unaffected by the cap.
  *
  * `transferred_at` is when this wallet got it; `created_at` is when the NFT was minted. The first is
  * the right age for the decay, the second the fallback for rows that never moved.
@@ -38,18 +41,13 @@ export function buildOwnedQuery(address: string, limit: number): SQLStatement {
     .append(
       SQL`.nft n
        WHERE n.owner_address = ${address} AND n.item_id IS NOT NULL
-    ), paid AS (
-      SELECT DISTINCT o.item_id
-        FROM owned o
-        JOIN `
+    )
+    SELECT DISTINCT o.item_id, o.acquired_at
+      FROM owned o
+      JOIN `
     )
     .append(MARKETPLACE_SQUID_SCHEMA).append(SQL`.sale s ON s.item_id = o.item_id AND s.buyer = ${address}
-    )
-    SELECT o.item_id, o.acquired_at, (p.item_id IS NOT NULL) AS paid
-      FROM owned o
-      LEFT JOIN paid p ON p.item_id = o.item_id
-     ORDER BY (CASE WHEN p.item_id IS NOT NULL THEN 1.0 ELSE ${FREE_ACQUISITION_WEIGHT} END)
-              * exp(-GREATEST(0, (extract(epoch from now())::bigint - o.acquired_at)) / 86400.0 / ${RECENCY_DECAY_DAYS}::numeric) DESC
+     ORDER BY exp(-GREATEST(0, (extract(epoch from now())::bigint - o.acquired_at)) / 86400.0 / ${RECENCY_DECAY_DAYS}::numeric) DESC
      LIMIT ${limit}`)
 }
 

@@ -1,7 +1,7 @@
 import Cursor from 'pg-cursor'
 import { Rarity } from '@dcl/schemas'
 import { buildCoOwnershipNeighbors, type AcquisitionMatrix, type NeighborRow } from './co-ownership'
-import { FREE_ACQUISITION_WEIGHT, NEIGHBORS_PER_ITEM } from './constants'
+import { NEIGHBORS_PER_ITEM } from './constants'
 import { assignPriceBands, buildTagVectors, contentNeighborsByAnchor, type ContentItem } from './content'
 import {
   SELECT_ACQUISITIONS,
@@ -95,8 +95,9 @@ export type AcquisitionLoadResult = {
  * over columns and therefore makes several passes; re-running an 80-second scan once per block would
  * trade 500 MB for fifteen minutes.
  *
- * `weights` folds both the airdrop discount and the hoarder damping in at load time:
- * `w(u,i) * |items(u)|^(-1/4)`, so that `Σ x_a·x_b` over a wallet is `Σ w_a·w_b / sqrt(|items(u)|)`.
+ * Every row is a purchase — unpaid acquisitions are filtered in SQL — so the only per-row weight left
+ * is the hoarder damping, `|items(u)|^(-1/4)`, which makes `Σ x_a·x_b` over a wallet equal
+ * `Σ 1 / sqrt(|items(u)|)`.
  */
 export async function loadAcquisitions(
   client: CursorClient,
@@ -108,7 +109,6 @@ export async function loadAcquisitions(
 
   const offsets: number[] = [0]
   const items: number[] = []
-  const paidFlags: boolean[] = []
   let currentWallet: string | undefined
   let rowsRead = 0
 
@@ -129,7 +129,6 @@ export async function loadAcquisitions(
           currentWallet = wallet
         }
         items.push(index)
-        paidFlags.push(row[2] === true)
       }
 
       if (options.deadlineMs !== undefined && Date.now() - started > options.deadlineMs) {
@@ -149,9 +148,7 @@ export async function loadAcquisitions(
     const size = offsets[wallet + 1] - offsets[wallet]
     if (size === 0) continue
     const damping = Math.pow(size, -0.25)
-    for (let i = offsets[wallet]; i < offsets[wallet + 1]; i++) {
-      weights[i] = (paidFlags[i] ? 1 : FREE_ACQUISITION_WEIGHT) * damping
-    }
+    for (let i = offsets[wallet]; i < offsets[wallet + 1]; i++) weights[i] = damping
   }
 
   return {

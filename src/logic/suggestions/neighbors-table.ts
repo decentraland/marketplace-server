@@ -52,36 +52,43 @@ export const CREATE_NEIGHBORS_META_TABLE = `CREATE TABLE IF NOT EXISTS ${NEIGHBO
 export const DROP_NEIGHBORS_META_TABLE = `DROP TABLE IF EXISTS ${NEIGHBORS_META_TABLE}`
 
 /**
- * Every (wallet, item) acquisition, collapsed to one row carrying whether the wallet ever paid for it.
+ * Every (wallet, item) PURCHASE, one row each.
  *
- * Dated events, never `nft.owner_address`: the current owner tells you nothing about who acquired what,
- * and a resold item would be credited to the wrong wallet. `mint.search_primary_sale_price` null or 0 is
- * a free claim or airdrop — `sale` has no zero-price rows, because free mints never produce a sale.
+ * Dated events, never `nft.owner_address`: the current owner tells you nothing about who acquired
+ * what, and a resold item would be credited to the wrong wallet.
  *
- * The owner band drops one-item wallets (no co-occurrence to contribute) and 200+ item wallets, which
- * are bots and marketplace accounts whose holdings correlate everything with everything.
+ * Only paid acquisitions. Unpaid ones — airdrops, free claims, gifts — were carried at a discount
+ * until an offline evaluation showed they drag the hybrid below a plain popularity ranking: read as
+ * one person, a wallet has five to fifteen of them per purchase, and they pull the co-ownership
+ * vectors towards whatever was mass-distributed. Dropping them here rather than weighting them at
+ * zero also takes ~70% of the mint table out of the scan and the pair set from ~2M to ~150k.
+ *
+ * `mint.beneficiary` is NOT a bare address: it is `<address>-POLYGON` or `<address>-ETHEREUM`, while
+ * `sale.buyer` is the address alone. Lowercasing the two and calling it a day splits every person who
+ * both minted and bought into two separate owners, which is exactly the co-occurrence this table is
+ * built to find — the suffix has to come off. Both columns are already lowercase (verified against
+ * production), so nothing else is needed.
  */
 export const SELECT_ACQUISITIONS = `WITH acquisitions AS (
-      SELECT split_part(beneficiary, '-', 1) AS wallet, item_id, (COALESCE(search_primary_sale_price, 0) > 0) AS paid
+      SELECT split_part(beneficiary, '-', 1) AS wallet, item_id
         FROM ${MARKETPLACE_SQUID_SCHEMA}.mint
-       WHERE beneficiary IS NOT NULL AND item_id IS NOT NULL
+       WHERE beneficiary IS NOT NULL
+         AND item_id IS NOT NULL
+         AND COALESCE(search_primary_sale_price, 0) > 0
       UNION ALL
       SELECT buyer AS wallet,
-             COALESCE(item_id, search_contract_address || '-' || search_item_id::text) AS item_id,
-             true AS paid
+             COALESCE(item_id, search_contract_address || '-' || search_item_id::text) AS item_id
         FROM ${MARKETPLACE_SQUID_SCHEMA}.sale
        WHERE buyer IS NOT NULL AND (item_id IS NOT NULL OR search_item_id IS NOT NULL)
     ), pairs AS (
-      SELECT wallet, item_id, bool_or(paid) AS paid
-        FROM acquisitions
-       GROUP BY wallet, item_id
+      SELECT wallet, item_id FROM acquisitions GROUP BY wallet, item_id
     ), band AS (
       SELECT wallet
         FROM pairs
        GROUP BY wallet
       HAVING count(*) BETWEEN ${MIN_WALLET_ITEMS} AND ${MAX_WALLET_ITEMS}
     )
-    SELECT p.wallet, p.item_id, p.paid
+    SELECT p.wallet, p.item_id
       FROM pairs p
       JOIN band b ON b.wallet = p.wallet
      ORDER BY p.wallet`

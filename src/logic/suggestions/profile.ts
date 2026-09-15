@@ -11,9 +11,10 @@ export type ProfileEntry = {
   source: ProfileSource
 }
 
+/** A purchase the wallet still holds. Unpaid acquisitions never reach the profile — see
+ * FREE_ACQUISITION_WEIGHT — so there is no flag to carry. */
 export type OwnedAcquisition = {
   itemId: string
-  paid: boolean
   /** Unix seconds. */
   acquiredAt: number
 }
@@ -35,9 +36,8 @@ const EXPLICIT_SOURCES: ReadonlySet<ProfileSource> = new Set<ProfileSource>(['eq
 /**
  * The wallet's taste profile: every signal we have about it, as one weighted set of item ids.
  *
- * Paid acquisitions outweigh free ones by more than three to one because 69% of recent mints are
- * airdrops and claims — an item someone was given says much less about their taste than one they chose
- * to buy. Both decay with age. Favorites and equipped items outrank even a purchase: they are
+ * `owned` carries only what the wallet BOUGHT and still holds; an item it was given never gets here.
+ * Purchases decay with age. Favorites and equipped items outrank even a recent purchase: they are
  * statements about what the wallet likes NOW, not a year ago, so they carry no decay.
  *
  * When the same item arrives from several signals it keeps the strongest one rather than their sum,
@@ -54,8 +54,7 @@ export function buildTasteProfile(input: ProfileInput): ProfileEntry[] {
 
   for (const acquisition of input.owned) {
     const ageDays = Math.max(0, (input.now - acquisition.acquiredAt) / SECONDS_PER_DAY)
-    const base = acquisition.paid ? PROFILE_WEIGHTS.paid : PROFILE_WEIGHTS.free
-    offer(acquisition.itemId, base * Math.exp(-ageDays / RECENCY_DECAY_DAYS), 'owned')
+    offer(acquisition.itemId, PROFILE_WEIGHTS.paid * Math.exp(-ageDays / RECENCY_DECAY_DAYS), 'owned')
   }
   for (const itemId of input.favorites) offer(itemId, PROFILE_WEIGHTS.favorite, 'favorite')
   for (const itemId of input.equipped) offer(itemId, PROFILE_WEIGHTS.equipped, 'equipped')

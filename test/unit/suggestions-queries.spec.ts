@@ -1,6 +1,31 @@
 import SQL from 'sql-template-strings'
 import type { ProfileEntry } from '../../src/logic/suggestions/profile'
-import { buildCandidateContractsQuery, buildCandidateScoresQuery } from '../../src/ports/suggestions/queries'
+import { buildCandidateContractsQuery, buildCandidateScoresQuery, buildOwnedQuery } from '../../src/ports/suggestions/queries'
+
+describe('when asking what the wallet bought', () => {
+  let query: ReturnType<typeof buildOwnedQuery>
+
+  beforeEach(() => {
+    query = buildOwnedQuery('0xwallet', 400)
+  })
+
+  it('should keep an item the wallet was given out of the profile, by joining sales rather than outer-joining them', () => {
+    expect(query.text).toContain('JOIN')
+    expect(query.text).not.toContain('LEFT JOIN')
+  })
+
+  it('should look the holdings up by the indexed column, without wrapping it', () => {
+    expect(query.text).toContain('n.owner_address = $')
+  })
+
+  it('should cap how many rows it ships, so the largest holder does not send its whole collection', () => {
+    expect(query.values).toContain(400)
+  })
+
+  it('should order by recency, which is all that separates purchases once they all weigh the same', () => {
+    expect(query.text).toContain('ORDER BY exp(')
+  })
+})
 
 describe('when resolving which collections the candidates live in', () => {
   let profile: ProfileEntry[]
@@ -91,6 +116,11 @@ describe('when building the candidate scores query', () => {
 
     it('should look the holdings up by the indexed column, without wrapping it', () => {
       expect(query.text).toContain('n.owner_address = $')
+    })
+
+    it('should exclude everything the wallet holds, bought or not, because owning it is reason enough', () => {
+      const ownedCte = query.text.slice(query.text.indexOf('owned AS MATERIALIZED'), query.text.indexOf('profile(item_id'))
+      expect(ownedCte).not.toContain('sale')
     })
   })
 

@@ -17,17 +17,36 @@ export type NeighborSource = 'cf' | 'content'
  * the weights are only meaningful together.
  */
 
-/** Unpaid acquisitions (airdrops, free claims) count for this much of a purchase. */
-export const FREE_ACQUISITION_WEIGHT = 0.3
+/**
+ * What an unpaid acquisition — an airdrop, a free claim, a gift — is worth as evidence of taste.
+ *
+ * Zero, measured. Once a wallet's minting and buying histories are read as one person there are five
+ * to fifteen unpaid acquisitions for every purchase, and at any non-trivial weight they swamp both the
+ * profile and the co-ownership vectors: on the same evaluation set the hybrid scores 15-18%
+ * hit-rate@10 with unpaid acquisitions at zero against 4-9% at 0.3, which is below a plain popularity
+ * ranking. Being given something says nothing about wanting it.
+ *
+ * Because it is zero, both pipelines drop unpaid acquisitions in SQL rather than carrying them at zero
+ * weight — same result, far less to read. The constant stays as the single place the decision is
+ * recorded.
+ */
+export const FREE_ACQUISITION_WEIGHT = 0
 /** Neighbours kept per anchor item, per source. */
 export const NEIGHBORS_PER_ITEM = 50
 /** A co-ownership pair needs this many co-owners before it is trusted at all. */
 export const MIN_CO_OWNERS = 3
 /** Shrinks the cosine towards zero for thin pairs: sim * co / (co + this). */
 export const CO_OWNERSHIP_SHRINKAGE = 10
-/** Owners outside this band are dropped: one-item wallets carry no signal, 200+ are bots. */
+/**
+ * Owners outside this band contribute nothing to co-ownership: a wallet holding one item has no pair
+ * to offer, and past the ceiling a wallet correlates everything with everything.
+ *
+ * The ceiling counts PURCHASES, not holdings, so it is far higher than it looks: 500 bought items is a
+ * serious collector rather than a bot. It was 200 when the band still counted airdrops, where real
+ * collectors were being excluded by items they never chose.
+ */
 export const MIN_WALLET_ITEMS = 2
-export const MAX_WALLET_ITEMS = 200
+export const MAX_WALLET_ITEMS = 500
 /** Taste weights decay with e^(-age_days / this). */
 export const RECENCY_DECAY_DAYS = 365
 /** Tags this common carry no IDF signal; including them only inflates the content pass. */
@@ -61,7 +80,6 @@ export const SCORE_WEIGHTS = {
  */
 export const PROFILE_WEIGHTS = {
   paid: 1.0,
-  free: FREE_ACQUISITION_WEIGHT,
   favorite: 1.2,
   equipped: 1.5,
   seed: 0.8
