@@ -223,9 +223,7 @@ describe('when asking for suggestions', () => {
     })
 
     it('should narrow the trending query to what this avatar can wear', () => {
-      expect(getTrendingItems.mock.calls[0][0]).toEqual(
-        expect.objectContaining({ wearableGenders: [GenderFilterOption.FEMALE] })
-      )
+      expect(getTrendingItems.mock.calls[0][0]).toEqual(expect.objectContaining({ wearableGenders: [GenderFilterOption.FEMALE] }))
     })
 
     it('should ask for more rows than the rail shows, so the exclusion cannot leave it short', () => {
