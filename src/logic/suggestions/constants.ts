@@ -149,6 +149,9 @@ export const SUGGESTIONS_CACHE_TTL_SECONDS = 600
  */
 export const SUGGESTIONS_MAX_CONCURRENT = 4
 
+/** Quietest a saturated process stays between two shed-warning lines. */
+export const SHED_LOG_INTERVAL_MS = 60_000
+
 /** How often the neighbours job rebuilds the table. */
 export const NEIGHBORS_REBUILD_INTERVAL_MS = 6 * 60 * 60 * 1000
 /** Let a freshly deployed replica finish warming up before a multi-minute scan starts. */

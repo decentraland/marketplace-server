@@ -16,7 +16,8 @@ import {
   SUGGESTED_DEFAULT_LIMIT,
   SUGGESTED_MAX_LIMIT,
   SUGGESTIONS_CACHE_TTL_SECONDS,
-  SUGGESTIONS_MAX_CONCURRENT
+  SUGGESTIONS_MAX_CONCURRENT,
+  SHED_LOG_INTERVAL_MS
 } from '../../logic/suggestions/constants'
 import { buildProfileAggregates, buildTasteProfile, type ProfileItemAttributes } from '../../logic/suggestions/profile'
 import { blendCandidates, rerankForDiversity, type ScoredCandidate } from '../../logic/suggestions/scoring'
@@ -69,8 +70,16 @@ export async function createSuggestionsComponent(
 ): Promise<ISuggestionsComponent> {
   const { dappsDatabase: pg, shopCatalog, cache, logs, config } = components
   const logger = logs.getLogger('suggestions')
-  const maxConcurrent = (await config.getNumber('SUGGESTIONS_MAX_CONCURRENT')) ?? SUGGESTIONS_MAX_CONCURRENT
+  // Validated rather than trusted: a misconfigured 0 or -1 would shed EVERY request and leave the rail
+  // permanently empty, which looks exactly like the feature being off rather than like a broken setting.
+  const configured = await config.getNumber('SUGGESTIONS_MAX_CONCURRENT')
+  const maxConcurrent = Number.isInteger(configured) && (configured as number) > 0 ? (configured as number) : SUGGESTIONS_MAX_CONCURRENT
+  if (configured !== undefined && configured !== maxConcurrent) {
+    logger.warn(`SUGGESTIONS_MAX_CONCURRENT must be a positive integer, got ${configured}; using ${maxConcurrent}`)
+  }
   let inFlight = 0
+  let shedTotal = 0
+  let shedLoggedAt = 0
 
   async function getOwned(address: string): Promise<OwnedRow[]> {
     const result = await pg.query<OwnedRow>(buildOwnedQuery(address, PROFILE_SQL_LIMIT))
@@ -181,7 +190,16 @@ export async function createSuggestionsComponent(
     // into a pool exhaustion that every other route pays for, and this rail is the one thing on the
     // page the Shop is happy to render without.
     if (inFlight >= maxConcurrent) {
-      logger.warn(`suggestions shed: ${inFlight} computations already in flight`)
+      // Saturation arrives as a burst by definition, so one line per shed request is a flood on top of a
+      // flood. The count is CUMULATIVE rather than per-window: a window that ends before its line is
+      // printed would otherwise take its sheds with it, and a total that only ever grows is also the
+      // shape a counter metric wants if this is ever promoted to one.
+      shedTotal += 1
+      const now = Date.now()
+      if (now - shedLoggedAt >= SHED_LOG_INTERVAL_MS) {
+        logger.warn(`suggestions shed ${shedTotal} request(s) since start: ${inFlight} computations already in flight`)
+        shedLoggedAt = now
+      }
       return { data: [], personalized: false, algorithm: ALGORITHM_VERSION }
     }
     inFlight += 1

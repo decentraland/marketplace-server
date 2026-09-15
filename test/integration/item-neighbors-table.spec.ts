@@ -124,4 +124,44 @@ test('item neighbours table', function ({ components }) {
       expect(rows.rows[0].n).toBe(1)
     })
   })
+
+  describe('when the producer aborts part-way through, as it does on a lost connection', () => {
+    let error: Error | undefined
+    let rowsBefore: number
+
+    beforeEach(async () => {
+      // A first swap so there IS a previous set to protect; the second one then dies mid-produce, which
+      // is the shape the job takes when its connection error listener fires between two batches.
+      await withClient(client => swapNeighborsTable(client, producing(ROWS)))
+      rowsBefore = await withClient(
+        async client => (await client.query('SELECT count(*)::int AS n FROM marketplace.item_neighbors')).rows[0].n
+      )
+      try {
+        await withClient(client =>
+          swapNeighborsTable(client, async insert => {
+            await insert([{ itemId: '0xddd-9', source: 'cf', neighborId: '0xeee-8', sim: 0.9, support: 3, rank: 0 }])
+            throw new Error('neighbours job connection lost')
+          })
+        )
+      } catch (e) {
+        error = e as Error
+      }
+    })
+
+    it('should surface the producer failure rather than swallow it into a successful-looking run', () => {
+      expect(error?.message).toContain('connection lost')
+    })
+
+    it('should roll the half-written batch back, leaving the previous neighbours exactly as they were', async () => {
+      const rows = await withClient(client => client.query('SELECT count(*)::int AS n FROM marketplace.item_neighbors'))
+      expect(rows.rows[0].n).toBe(rowsBefore)
+    })
+
+    it("should not leave the aborted run's rows behind", async () => {
+      const rows = await withClient(client =>
+        client.query("SELECT count(*)::int AS n FROM marketplace.item_neighbors WHERE item_id = '0xddd-9'")
+      )
+      expect(rows.rows[0].n).toBe(0)
+    })
+  })
 })

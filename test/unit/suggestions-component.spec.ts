@@ -331,24 +331,29 @@ describe('when asking for suggestions', () => {
   describe('and more computations are already in flight than the process allows', () => {
     let results: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>[]
     let releaseTrending: () => void
+    let warn: jest.Mock
 
     beforeEach(async () => {
+      warn = jest.fn()
       suggestions = await createSuggestionsComponent({
         dappsDatabase: { query },
         shopCatalog: { getTrendingItems },
         cache: { get: cacheGet, set: cacheSet },
         config: { getNumber: async () => 1 },
-        logs: { getLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
+        logs: { getLogger: () => ({ info: jest.fn(), warn, error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
       } as never)
       // Holds the first request inside the gate so the second one arrives while it is still occupied.
       getTrendingItems.mockImplementation(
         () => new Promise(resolve => (releaseTrending = () => resolve({ data: [{ contractAddress: ADDRESS, itemId: '1', gender: null }] })))
       )
       const held = suggestions.getSuggestions({}, RATE)
-      const shed = suggestions.getSuggestions({ first: 7 }, RATE)
-      const shedResult = await shed
+      const shed = await Promise.all([
+        suggestions.getSuggestions({ first: 7 }, RATE),
+        suggestions.getSuggestions({ first: 8 }, RATE),
+        suggestions.getSuggestions({ first: 9 }, RATE)
+      ])
       releaseTrending()
-      results = [await held, shedResult]
+      results = [await held, ...shed]
     })
 
     it('should serve the request that got in', () => {
@@ -369,6 +374,40 @@ describe('when asking for suggestions', () => {
 
     it('should not cache the shed answer, which would serve emptiness for the whole TTL', () => {
       expect(cacheSet).toHaveBeenCalledTimes(1)
+    })
+
+    it('should say so once rather than once per shed request, since saturation arrives as a burst', () => {
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
+
+    it('should carry a running total, so the sheds it stayed quiet about are still countable', () => {
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('request(s) since start'))
+    })
+  })
+
+  describe('and the configured concurrency limit is not a positive integer', () => {
+    let result: Awaited<ReturnType<ISuggestionsComponent['getSuggestions']>>
+    let warn: jest.Mock
+
+    beforeEach(async () => {
+      warn = jest.fn()
+      suggestions = await createSuggestionsComponent({
+        dappsDatabase: { query },
+        shopCatalog: { getTrendingItems },
+        cache: { get: cacheGet, set: cacheSet },
+        config: { getNumber: async () => 0 },
+        logs: { getLogger: () => ({ info: jest.fn(), warn, error: jest.fn(), debug: jest.fn(), log: jest.fn() }) }
+      } as never)
+      getTrendingItems.mockResolvedValue({ data: [{ contractAddress: ADDRESS, itemId: '1', gender: null }] })
+      result = await suggestions.getSuggestions({}, RATE)
+    })
+
+    it('should fall back to the built-in limit rather than shed every request forever', () => {
+      expect(result.data).toHaveLength(1)
+    })
+
+    it('should say which setting it ignored, so the misconfiguration is findable', () => {
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SUGGESTIONS_MAX_CONCURRENT'))
     })
   })
 })

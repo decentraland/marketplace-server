@@ -176,8 +176,10 @@ describe('when running the item neighbours job', () => {
     beforeEach(async () => {
       inserted = 0
       committed = false
-      // The real swap is the thing under discussion here, so this stand-in records the two facts that
-      // separate a rollback from a commit: whether any row was written, and whether the swap returned.
+      // A stand-in, so what follows is about the JOB's control flow and not about Postgres: it records
+      // whether the producer got as far as handing over a row, and whether the swap ran to completion.
+      // That the transaction then rolls back is the swap's own behaviour, covered against real Postgres
+      // in the integration spec -- nothing here proves it.
       jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
         await produce(async rows => {
           inserted += rows.length
@@ -197,11 +199,11 @@ describe('when running the item neighbours job', () => {
       expect(outcome).toBe('failed')
     })
 
-    it('should write no rows, so the transaction rolls back instead of leaving a half-built table', () => {
+    it('should hand no rows to the swap, so there is nothing half-built for it to commit', () => {
       expect(inserted).toBe(0)
     })
 
-    it('should never reach the commit, which is what keeps the previous neighbours serving', () => {
+    it('should abort inside the swap rather than after it, which is what leaves the commit unreached', () => {
       expect(committed).toBe(false)
     })
   })
