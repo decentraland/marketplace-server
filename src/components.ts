@@ -30,7 +30,7 @@ import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
-import { createJobComponent } from './ports/job'
+import { createDisabledJobComponent, createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
@@ -184,39 +184,51 @@ export async function initComponents(): Promise<AppComponents> {
   // own short-lived connections: the pooled clients cap every statement at 40 seconds and the acquisition
   // scan alone runs past 80. All three replicas fire on the same schedule; the advisory lock inside the
   // job is what stops them duplicating the work.
+  //
+  // OFF unless SUGGESTIONS_NEIGHBORS_JOB_ENABLED says otherwise, and off is the default on purpose. The
+  // Shop's feature flag hides the RAIL; it has no bearing on this, which would otherwise start rebuilding
+  // in production the moment the service deploys, whether or not anyone can see a suggestion. Separating
+  // the two is what lets the endpoint ship and be smoke-tested before the heaviest part of the feature is
+  // allowed to run. When off, nothing is scheduled and no connection is opened.
   const rebuildNeighborsLogger = logs.getLogger('rebuild-item-neighbors-job')
-  const neighborsConnectionStrings = {
-    read: await resolveConnectionString(config, 'DAPPS_READ'),
-    write: await resolveConnectionString(config, 'DAPPS')
-  }
-  const rebuildItemNeighborsJob = createJobComponent(
-    { logs },
-    () =>
-      runNeighborsJob({
-        connect: async role => {
-          const client = new PgClient({
-            connectionString: neighborsConnectionStrings[role],
-            application_name: `marketplace-server-neighbors-${role}`
-          })
-          await client.connect()
-          return client
-        },
-        logger: rebuildNeighborsLogger,
-        metrics: {
-          observe: ({ durationMs, rows, peakRssBytes }) => {
-            metrics.observe('suggestions_neighbors_build_duration_seconds', {}, durationMs / 1000)
-            metrics.observe('suggestions_neighbors_rows', {}, rows)
-            metrics.observe('suggestions_neighbors_peak_rss_bytes', {}, peakRssBytes)
-          }
+  const neighborsJobEnabled = (await config.getString('SUGGESTIONS_NEIGHBORS_JOB_ENABLED')) === 'true'
+  const rebuildItemNeighborsJob = !neighborsJobEnabled
+    ? createDisabledJobComponent(rebuildNeighborsLogger, 'item neighbours rebuild')
+    : await (async () => {
+        const neighborsConnectionStrings = {
+          read: await resolveConnectionString(config, 'DAPPS_READ'),
+          write: await resolveConnectionString(config, 'DAPPS')
         }
-      }),
-    NEIGHBORS_REBUILD_INTERVAL_MS,
-    {
-      startupDelay: NEIGHBORS_REBUILD_STARTUP_DELAY_MS,
-      onError: error =>
-        rebuildNeighborsLogger.error(`Failed to rebuild item neighbours: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  )
+        return createJobComponent(
+          { logs },
+          () =>
+            runNeighborsJob({
+              connect: async role => {
+                const client = new PgClient({
+                  connectionString: neighborsConnectionStrings[role],
+                  application_name: `marketplace-server-neighbors-${role}`
+                })
+                await client.connect()
+                return client
+              },
+              logger: rebuildNeighborsLogger,
+              metrics: {
+                observe: ({ durationMs, rows, peakRssBytes }) => {
+                  metrics.observe('suggestions_neighbors_build_duration_seconds', {}, durationMs / 1000)
+                  metrics.observe('suggestions_neighbors_rows', {}, rows)
+                  metrics.observe('suggestions_neighbors_peak_rss_bytes', {}, peakRssBytes)
+                }
+              }
+            }),
+          NEIGHBORS_REBUILD_INTERVAL_MS,
+          {
+            startupDelay: NEIGHBORS_REBUILD_STARTUP_DELAY_MS,
+            onError: error =>
+              rebuildNeighborsLogger.error(`Failed to rebuild item neighbours: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        )
+      })()
+
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
