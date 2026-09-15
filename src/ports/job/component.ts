@@ -76,3 +76,18 @@ export function createJobComponent(
     stop
   }
 }
+
+/**
+ * A job that exists in the component tree and does nothing.
+ *
+ * Returned in place of a real job when its feature switch is off, so the switch costs no branching at
+ * every use site and, more importantly, so "off" means the schedule is never armed rather than armed
+ * and then ignored. Whatever the job needs to build itself — connections, credentials, a pool — is not
+ * built either, because this is constructed instead of it and not alongside it.
+ */
+export function createDisabledJobComponent(logger: { info: (message: string) => void }, name: string): IJobComponent {
+  return {
+    start: () => logger.info(`${name} is disabled by configuration; nothing scheduled`),
+    stop: async () => undefined
+  }
+}
