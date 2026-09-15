@@ -89,6 +89,7 @@ export type WidgetOptions = {
   tradeType?: TradeType // Can be primary in case of minting and secondary in case of secondary sale
   productsAvailed?: ProductsAvailed // Would be BUY as NFT checkout is a special case of on ramping
   isNFT?: boolean // Will be true in case the bought assset is an NFT
+  cryptoCurrencyCode?: string // Sent by the clients, but the widget is always quoted in MANA regardless of what arrives here
   nftData?: {
     imageURL: string
     nftName: string
