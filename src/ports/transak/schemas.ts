@@ -16,6 +16,7 @@ export const WidgetOptionsSchema: JSONSchema<Partial<WidgetOptions>> = {
     tradeType: { type: 'string', nullable: true },
     productsAvailed: { type: 'string', nullable: true },
     isNFT: { type: 'boolean', nullable: true },
+    cryptoCurrencyCode: { type: 'string', nullable: true },
     nftData: {
       type: 'array',
       nullable: true,

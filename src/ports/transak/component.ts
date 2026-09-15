@@ -109,13 +109,15 @@ export function createTransakComponent(
         },
         body: JSON.stringify({
           widgetParams: {
+            ...options,
+            // Last, not first: these stay the server's whatever a caller sends. cryptoCurrencyCode is a declared
+            // option now, so the schema no longer keeps it out of a body — the order is what forces MANA anyway.
             apiKey,
             referrerDomain: marketplaceDomain,
             networks: 'ethereum,polygon',
             cryptoCurrencyCode: 'MANA',
             defaultCryptoCurrency: 'MANA',
-            cyptoCurrencyList: 'MANA',
-            ...options
+            cyptoCurrencyList: 'MANA'
           }
         })
       })

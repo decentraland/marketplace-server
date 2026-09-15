@@ -485,14 +485,14 @@ describe('when getting a widget session URL', () => {
         },
         body: JSON.stringify({
           widgetParams: {
+            fiatAmount: 100,
+            fiatCurrency: 'USD',
             apiKey: mockConfig.apiKey,
             referrerDomain: new URL(mockConfig.marketplaceURL).hostname,
             networks: 'ethereum,polygon',
             cryptoCurrencyCode: 'MANA',
             defaultCryptoCurrency: 'MANA',
-            cyptoCurrencyList: 'MANA',
-            fiatAmount: 100,
-            fiatCurrency: 'USD'
+            cyptoCurrencyList: 'MANA'
           }
         })
       })
@@ -508,6 +508,28 @@ describe('when getting a widget session URL', () => {
           headers: expect.objectContaining({ 'x-api-key': mockConfig.apiKey, 'x-user-ip': '203.0.113.7' })
         })
       )
+    })
+
+    describe('and the caller sends values the server owns', () => {
+      it('should keep the server values and quote the widget in MANA anyway', async () => {
+        await transakComponent.getWidget({
+          cryptoCurrencyCode: 'USDC',
+          defaultNetwork: 'polygon',
+          walletAddress: '0x0000000000000000000000000000000000000001'
+        })
+
+        const { body } = (mockFetch as jest.Mock).mock.calls[0][1]
+        expect(JSON.parse(body).widgetParams).toEqual({
+          defaultNetwork: 'polygon',
+          walletAddress: '0x0000000000000000000000000000000000000001',
+          apiKey: mockConfig.apiKey,
+          referrerDomain: new URL(mockConfig.marketplaceURL).hostname,
+          networks: 'ethereum,polygon',
+          cryptoCurrencyCode: 'MANA',
+          defaultCryptoCurrency: 'MANA',
+          cyptoCurrencyList: 'MANA'
+        })
+      })
     })
   })
 
