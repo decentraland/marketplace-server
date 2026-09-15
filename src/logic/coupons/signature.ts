@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { AbiCoder, TypedDataDomain, TypedDataField, keccak256, toBeArray, verifyTypedData, zeroPadValue } from 'ethers'
 import { ChainId, TradeChecks } from '@dcl/schemas'
-import { ContractName, getContract } from 'decentraland-transactions'
+import { ContractName, getContract, getCouponManager } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../date'
-import { MARKETPLACE_TRADE_TYPES } from '../trades/utils'
+import { MARKETPLACE_TRADE_TYPES, OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES } from '../trades/utils'
 
 /**
  * Rate discount, in parts per million: 300_000 is 30% off. The only discount type the Shop signs. A flat
@@ -13,35 +13,39 @@ import { MARKETPLACE_TRADE_TYPES } from '../trades/utils'
 export const DISCOUNT_TYPE_RATE = 1
 
 export type CouponContracts = {
+  /** The off-chain marketplace version the manager is wired into: the only one that redeems coupons signed against it. */
+  marketplace: ContractName
   couponManager: { address: string; name: string; version: string }
   collectionDiscountCoupon: string
 }
 
 /**
- * The coupon deployments, from the transactions library when the installed version knows the chain.
+ * The coupon deployments of a chain, one per off-chain marketplace version, newest first.
  *
- * Polygon mainnet is listed in the public registry (contracts.decentraland.org/addresses.json) and wired
- * on-chain, but the library version this server pins predates its entry, so it is spelled out here as a
- * fallback. Remove once the library bump lands.
+ * Each marketplace version trusts its own CouponManager, so while two versions are live a chain has two
+ * managers and a coupon belongs to whichever one it was signed against. The CollectionDiscountCoupon is
+ * one per chain, shared by every manager. Empty on a chain without collections, where nothing is deployed.
  */
-const REGISTRY_FALLBACK: Partial<Record<number, CouponContracts>> = {
-  [ChainId.MATIC_MAINNET]: {
-    couponManager: { address: '0x3fd3056ee72a2a85e9392fab3a450e7736536081', name: 'CouponManager', version: '1.0.0' },
-    collectionDiscountCoupon: '0xc914507fe297b2dddd1232ac3a8903f1c125e794'
-  }
-}
-
-export function getCouponContracts(chainId: ChainId): CouponContracts | null {
+export function getCouponContracts(chainId: ChainId): CouponContracts[] {
+  let collectionDiscountCoupon: string
   try {
-    const manager = getContract(ContractName.CouponManager, chainId)
-    const coupon = getContract(ContractName.CollectionDiscountCoupon, chainId)
-    return {
-      couponManager: { address: manager.address, name: manager.name, version: manager.version },
-      collectionDiscountCoupon: coupon.address
-    }
+    collectionDiscountCoupon = getContract(ContractName.CollectionDiscountCoupon, chainId).address
   } catch (error) {
-    return REGISTRY_FALLBACK[chainId] ?? null
+    return []
   }
+  return OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES.reduce<CouponContracts[]>((contracts, marketplace) => {
+    try {
+      const manager = getCouponManager(marketplace, chainId)
+      contracts.push({
+        marketplace,
+        couponManager: { address: manager.address, name: manager.name, version: manager.version },
+        collectionDiscountCoupon
+      })
+    } catch (error) {
+      // A version without a manager on this chain is simply not a candidate.
+    }
+    return contracts
+  }, [])
 }
 
 // keccak256("Coupon(Checks checks,address couponAddress,bytes data)Checks(...)ExternalCheck(...)"), with the
@@ -93,7 +97,7 @@ export function getCouponTypedValues(checks: TradeChecks, couponAddress: string,
   }
 }
 
-/** Whether `signature` is `signer`'s EIP-712 signature of this coupon against the chain's CouponManager. */
+/** Whether `signature` is `signer`'s EIP-712 signature of this coupon against one CouponManager. */
 export function verifyCouponSignature(
   chainId: ChainId,
   contracts: CouponContracts,
@@ -113,6 +117,23 @@ export function verifyCouponSignature(
     return false
   }
   return recovered.toLowerCase() === signer.toLowerCase()
+}
+
+/**
+ * Which of the chain's coupon deployments `signature` was made against, or null if none. The EIP-712
+ * domain names its verifying contract, so a coupon signed against one manager verifies against that one
+ * alone, and the match says which marketplace can redeem it.
+ */
+export function resolveCouponSignature(
+  chainId: ChainId,
+  candidates: CouponContracts[],
+  checks: TradeChecks,
+  couponAddress: string,
+  data: string,
+  signature: string,
+  signer: string
+): CouponContracts | null {
+  return candidates.find(contracts => verifyCouponSignature(chainId, contracts, checks, couponAddress, data, signature, signer)) ?? null
 }
 
 /**

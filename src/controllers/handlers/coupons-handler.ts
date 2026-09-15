@@ -4,6 +4,7 @@ import { getPaginationParams, getParameter } from '../../logic/http'
 import { Coupon, CouponCreation } from '../../ports/coupons'
 import {
   CouponAlreadyUnusableError,
+  CouponNotAllowedError,
   CouponNotFoundError,
   DuplicateCouponError,
   InvalidCouponAddressError,
@@ -46,6 +47,7 @@ export async function addCouponHandler(
       e instanceof CouponAlreadyUnusableError ||
       e instanceof UnsupportedCouponChainError ||
       e instanceof InvalidCouponAddressError ||
+      e instanceof CouponNotAllowedError ||
       e instanceof InvalidCouponDiscountError ||
       e instanceof InvalidCouponCollectionsError ||
       e instanceof InvalidCouponChecksError ||

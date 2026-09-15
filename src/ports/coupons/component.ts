@@ -1,5 +1,6 @@
 import { Signature } from 'ethers'
 import { ChainId, Network } from '@dcl/schemas'
+import { ContractName } from 'decentraland-transactions'
 import { getNetworkChainId } from '../../logic/chainIds'
 import { collectionsRoot, uniqueCollections } from '../../logic/coupons/merkle'
 import {
@@ -7,7 +8,7 @@ import {
   DISCOUNT_TYPE_RATE,
   encodeCouponData,
   getCouponContracts,
-  verifyCouponSignature
+  resolveCouponSignature
 } from '../../logic/coupons/signature'
 import { isErrorWithMessage } from '../../logic/errors'
 import { hasECDSASignatureAValidV } from '../../logic/signatures'
@@ -15,6 +16,7 @@ import { AppComponents } from '../../types'
 import { createCouponChainReader } from './chain'
 import {
   CouponAlreadyUnusableError,
+  CouponNotAllowedError,
   CouponNotFoundError,
   DuplicateCouponError,
   InvalidCouponAddressError,
@@ -72,8 +74,12 @@ function isUniqueViolation(e: unknown): boolean {
  * Creator-signed discount coupons for the Shop.
  *
  * A coupon is validated the way a trade is: the caller must be its signer, the EIP-712 signature must
- * verify against the chain's CouponManager, and everything the contract will check at purchase time
- * (creator, indexes, window) is checked here first so a coupon that can never settle is never shown.
+ * verify against one of the chain's CouponManagers, and everything the contract will check at purchase
+ * time (creator, coupon allow-list, indexes, window) is checked here first so a coupon that can never
+ * settle is never shown.
+ *
+ * Each off-chain marketplace version has its own manager and only redeems coupons signed against it, so
+ * the coupon is stored with the manager that verified it and reports that marketplace.
  */
 export function createCouponsComponent(
   components: Pick<AppComponents, 'dappsDatabase' | 'logs'>,
@@ -82,6 +88,12 @@ export function createCouponsComponent(
   const { dappsDatabase: pg, logs } = components
   const logger = logs.getLogger('Coupons component')
   const chain = options.chain ?? createCouponChainReader()
+
+  /** The marketplace version paired with the manager a stored coupon was signed against. */
+  function marketplaceOf(row: DBCoupon): ContractName | null {
+    const manager = row.coupon_manager.toLowerCase()
+    return getCouponContracts(row.chain_id as ChainId).find(c => c.couponManager.address.toLowerCase() === manager)?.marketplace ?? null
+  }
 
   function toCoupon(row: DBCouponWithState, now = Date.now()): Coupon {
     const state =
@@ -109,6 +121,7 @@ export function createCouponsComponent(
       network: row.network,
       checks: row.checks,
       couponManager: row.coupon_manager,
+      marketplace: marketplaceOf(row),
       couponAddress: row.coupon_address,
       discountType: row.discount_type,
       discount: row.discount_ppm,
@@ -179,11 +192,12 @@ export function createCouponsComponent(
       throw new InvalidCouponSignerError()
     }
 
-    const contracts = getCouponContracts(coupon.chainId)
-    if (!contracts) {
+    const candidates = getCouponContracts(coupon.chainId)
+    if (candidates.length === 0) {
       throw new UnsupportedCouponChainError(coupon.chainId)
     }
-    if (coupon.couponAddress.toLowerCase() !== contracts.collectionDiscountCoupon.toLowerCase()) {
+    // One CollectionDiscountCoupon per chain, whichever manager the coupon is for.
+    if (coupon.couponAddress.toLowerCase() !== candidates[0].collectionDiscountCoupon.toLowerCase()) {
       throw new InvalidCouponAddressError()
     }
 
@@ -227,11 +241,19 @@ export function createCouponsComponent(
 
     const root = collectionsRoot(collections)
     const data = encodeCouponData(coupon.discountType, coupon.discount, root)
-    if (!verifyCouponSignature(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data, signature, signer)) {
+    // Whichever manager the creator signed against is the one the coupon belongs to.
+    const contracts = resolveCouponSignature(coupon.chainId, candidates, coupon.checks, coupon.couponAddress, data, signature, signer)
+    if (!contracts) {
       throw new InvalidCouponSignatureError()
     }
 
     await validateCreator(signer, collections, coupon.chainId)
+
+    // Each manager keeps its own allow-list of coupon contracts, and an older one may never have learnt the
+    // current CollectionDiscountCoupon, so `applyCoupon` would revert on a coupon that verifies here.
+    if (!(await chain.readCouponAllowed(coupon.chainId, contracts.couponManager.address, coupon.couponAddress))) {
+      throw new CouponNotAllowedError()
+    }
 
     // The contract rejects a coupon whose indexes lag the manager's, so a stale one is refused now rather
     // than shown to buyers and failing at checkout.
