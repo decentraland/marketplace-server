@@ -126,9 +126,10 @@ export function createShopCatalogHandler(
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
-    // Omitted = both, the pre-existing response. `getValue` rejects anything outside the set, so a typo is
-    // a 400 rather than a silently unfiltered feed — which for a caller asking for `primary` would mean
-    // showing the resales it meant to hide.
+    // Omitted = both, the pre-existing response. An unrecognized value DROPS the filter rather than being
+    // rejected — `getValue` falls back to its default — so a typo returns both kinds, which for a caller
+    // asking for `primary` is exactly the resales it meant to hide. The permissive direction, so it is
+    // worth knowing: the Shop sends a fixed literal, but a hand-written request gets no error to read.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const discounted = discountedParam(params)
 
@@ -223,9 +224,9 @@ export function createShopUnifiedHandler(
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
     const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
-    // Omitted = both, which is the pre-existing behaviour. `getValue` rejects anything outside the set,
-    // so a typo is a 400 rather than a silently unfiltered feed — the failure mode that matters here,
-    // since a caller asking for `primary` and getting everything would show resales it meant to hide.
+    // Omitted = both, which is the pre-existing behaviour. An unrecognized value DROPS the filter rather
+    // than being rejected (`getValue` falls back to its default), so a typo returns everything — and for a
+    // caller asking for `primary` that is the resales it meant to hide, with no error to notice.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
     // Same contract as every other feed: included unless `includeSocialEmotes=false` is sent, so the default
