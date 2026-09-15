@@ -23,6 +23,24 @@ export function urnsToItemIds(urns: string[]): string[] {
   return [...ids]
 }
 
+/**
+ * Either spelling of the same thing, because the equipped list is the one place the client has URNs
+ * rather than ids.
+ *
+ * A URN is 83 characters against the id's 45, and thirty of them is most of the query string; the Shop
+ * therefore converts before sending. Accepting both is what lets that change ship without the two
+ * deploys having to land in order -- an older Shop keeps working against a newer server.
+ */
+export function toItemIds(values: string[], limit: number): string[] {
+  const ids = new Set<string>()
+  for (const value of values) {
+    const id = value.includes(':') ? urnToItemId(value) : normalizeItemId(value)
+    if (id) ids.add(id)
+    if (ids.size >= limit) break
+  }
+  return [...ids]
+}
+
 /** `<contract>-<itemId>` as sent by the client, validated rather than trusted: it reaches SQL. */
 const ITEM_ID = /^(0x[0-9a-fA-F]{40})-(\d+)$/
 

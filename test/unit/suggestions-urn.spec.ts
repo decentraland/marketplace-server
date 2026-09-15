@@ -1,4 +1,4 @@
-import { normalizeItemId, normalizeItemIds, urnToItemId, urnsToItemIds } from '../../src/logic/suggestions/urn'
+import { normalizeItemId, normalizeItemIds, urnToItemId, urnsToItemIds, toItemIds } from '../../src/logic/suggestions/urn'
 
 describe('when parsing a wearable URN', () => {
   describe('and the URN is a Polygon collections-v2 item', () => {
@@ -94,6 +94,49 @@ describe('when normalizing a client-supplied item id', () => {
 
     it('should keep only as many ids as the cap allows', () => {
       expect(normalizeItemIds(ids, 20)).toHaveLength(20)
+    })
+  })
+})
+
+describe('when reading what the avatar is wearing', () => {
+  describe('and the client sent urns, as an older Shop does', () => {
+    it('should resolve them to the ids the rest of the pipeline keys on', () => {
+      expect(toItemIds(['urn:decentraland:matic:collections-v2:0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b:12'], 30)).toEqual([
+        '0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b-12'
+      ])
+    })
+  })
+
+  describe('and the client sent ids, which is the compact spelling', () => {
+    it('should take them as they are', () => {
+      expect(toItemIds(['0x0E8E2B8D3E5B9F4A1C2D3E4F5A6B7C8D9E0F1A2B-12'], 30)).toEqual(['0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b-12'])
+    })
+  })
+
+  describe('and the two spellings name the same item', () => {
+    it('should keep one entry, so a half-migrated client does not spend two slots on it', () => {
+      expect(
+        toItemIds(
+          [
+            'urn:decentraland:matic:collections-v2:0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b:12',
+            '0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b-12'
+          ],
+          30
+        )
+      ).toHaveLength(1)
+    })
+  })
+
+  describe('and there are more than the cap allows', () => {
+    it('should stop at the cap rather than trust the client about how much work to do', () => {
+      const many = Array.from({ length: 50 }, (_, i) => `0x0e8e2b8d3e5b9f4a1c2d3e4f5a6b7c8d9e0f1a2b-${i}`)
+      expect(toItemIds(many, 30)).toHaveLength(30)
+    })
+  })
+
+  describe('and a value is neither a urn nor an id', () => {
+    it('should drop it rather than let it reach sql', () => {
+      expect(toItemIds(["0xnope'; DROP TABLE items; --", 'urn:decentraland:off-chain:base-avatars:eyebrows_00'], 30)).toEqual([])
     })
   })
 })
