@@ -145,6 +145,26 @@ describe('when building co-ownership neighbours', () => {
     })
   })
 
+  describe('and a wallet is larger than the per-wallet scratch buffer', () => {
+    let rows: NeighborRow[]
+
+    beforeEach(() => {
+      // Deliberately past the 512-entry buffer: a typed array swallows out-of-bounds writes, so the
+      // failure this guards against would be silently wrong numbers rather than an exception.
+      const huge = Array.from({ length: 600 }, (_, i) => i)
+      const wallets = Array.from({ length: 4 }, () => huge)
+      rows = buildCoOwnershipNeighbors(matrixOf(wallets, 600), Uint8Array.from(Array(600).fill(1)), { minSupport: 3 })
+    })
+
+    it('should still produce finite similarities rather than NaN', () => {
+      expect(rows.every(row => Number.isFinite(row.sim))).toBe(true)
+    })
+
+    it('should still pair the items it did take in', () => {
+      expect(rows.length).toBeGreaterThan(0)
+    })
+  })
+
   describe('and more candidates qualify than the neighbour cap allows', () => {
     let rows: NeighborRow[]
 

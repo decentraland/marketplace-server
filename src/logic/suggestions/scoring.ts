@@ -83,9 +83,14 @@ export function blendCandidates(
 ): BlendedCandidate[] {
   const tastes = candidates.map(candidate => tasteScore(candidate, aggregates))
 
-  const maxCf = Math.max(0, ...candidates.map(c => c.cf))
-  const maxContent = Math.max(0, ...candidates.map(c => c.content))
-  const maxTaste = Math.max(0, ...tastes)
+  let maxCf = 0
+  let maxContent = 0
+  let maxTaste = 0
+  for (let i = 0; i < candidates.length; i++) {
+    if (candidates[i].cf > maxCf) maxCf = candidates[i].cf
+    if (candidates[i].content > maxContent) maxContent = candidates[i].content
+    if (tastes[i] > maxTaste) maxTaste = tastes[i]
+  }
 
   return candidates.map((candidate, i) => {
     const cf = maxCf > 0 ? candidate.cf / maxCf : 0

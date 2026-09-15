@@ -109,6 +109,11 @@ export function buildCoOwnershipNeighbors(
 
       let hits = 0
       for (let i = from; i < to; i++) {
+        // Out-of-bounds writes to a typed array are silent no-ops, so without this a wallet larger
+        // than the buffer would quietly produce wrong dot products rather than fail. The SQL band
+        // keeps wallets under MAX_WALLET_ITEMS, but the two are deliberately independent and the
+        // margin is now thin (500 against 512), so the guard is what makes that independence safe.
+        if (hits >= inBlock.length) break
         const column = columnOf[matrix.items[i]]
         if (column >= blockStart && column < blockEnd) {
           inBlock[hits] = column - blockStart
@@ -151,8 +156,8 @@ export function buildCoOwnershipNeighbors(
   return heaps.drain()
 }
 
-/** Wallets are capped at MAX_WALLET_ITEMS, but the buffer is sized independently so a caller that
- * raises the cap cannot silently overflow it. */
+/** Per-wallet scratch space. Sized independently of MAX_WALLET_ITEMS so this file does not have to
+ * track the SQL band; the bounds check in the accumulation loop is what keeps that safe. */
 const MAX_WALLET_ITEMS_BUFFER = 512
 
 /** One bounded min-heap per anchor, flat so there is no per-item object allocation. */

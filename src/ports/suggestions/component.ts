@@ -243,7 +243,10 @@ function topCreatorsOf(creatorAffinity: Map<string, number>): string[] {
 }
 
 /**
- * Cache key over everything that changes the answer. The seed and equipped lists are hashed rather
+ * Cache key over everything the CALLER changes. The MANA/USD rate is deliberately absent: it moves
+ * continuously, so including it would make the cache miss almost every time, and a rate change inside
+ * the ten-minute window only shifts credit prices by rounding. The browse grid caches on the same
+ * terms, so the two cannot disagree by more than that either. The seed and equipped lists are hashed rather
  * than spelled out: they are up to fifty ids, and a key that long is its own problem.
  */
 function buildCacheKey(input: {
