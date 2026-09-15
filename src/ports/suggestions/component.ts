@@ -1,3 +1,4 @@
+import { GenderFilterOption } from '@dcl/schemas'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import {
   ALGORITHM_VERSION,
@@ -6,6 +7,9 @@ import {
   MAX_EXCLUDE,
   MAX_PROFILE_ITEMS,
   MAX_SEEDS,
+  normalizeBodyShape,
+  type BodyShape,
+  normalizeCategory,
   PROFILE_SQL_LIMIT,
   TASTE_CREATOR_COUNT,
   MIN_PERSONAL_ROWS,
@@ -16,10 +20,9 @@ import {
 import { buildProfileAggregates, buildTasteProfile, type ProfileItemAttributes } from '../../logic/suggestions/profile'
 import { blendCandidates, rerankForDiversity, type ScoredCandidate } from '../../logic/suggestions/scoring'
 import { normalizeItemIds, urnsToItemIds } from '../../logic/suggestions/urn'
-import { DEFAULT_LIST_ID } from '../../migrations/favorites/1678303321034_default-list'
 import { AppComponents } from '../../types'
 import { buildItemUnifiedCore, clampCount, mapUnifiedItemRow, rateToNumericString } from '../shop-catalog/component'
-import { SHOP_MIN_PAGE_SIZE, type RelatedItemRow } from '../shop-catalog/types'
+import { SHOP_MIN_PAGE_SIZE, TRENDING_MAX_LIMIT, type RelatedItemRow } from '../shop-catalog/types'
 import { buildCandidateContractsQuery, buildCandidateScoresQuery, buildOwnedQuery, buildProfileAttributesQuery } from './queries'
 import { ISuggestionsComponent, SuggestedItem, SuggestionsFilters, SuggestionsResult } from './types'
 
@@ -55,26 +58,14 @@ type AttributeRow = {
  * advertise an item the browse grid would not sell, or at a price the grid would disagree with.
  */
 export function createSuggestionsComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'lists' | 'cache' | 'logs'>
+  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'cache' | 'logs'>
 ): ISuggestionsComponent {
-  const { dappsDatabase: pg, shopCatalog, lists, cache, logs } = components
+  const { dappsDatabase: pg, shopCatalog, cache, logs } = components
   const logger = logs.getLogger('suggestions')
 
   async function getOwned(address: string): Promise<OwnedRow[]> {
     const result = await pg.query<OwnedRow>(buildOwnedQuery(address, PROFILE_SQL_LIMIT))
     return result.rows
-  }
-
-  async function getFavorites(address: string): Promise<string[]> {
-    try {
-      const picks = await lists.getPicksByListId(DEFAULT_LIST_ID, { userAddress: address, limit: MAX_SEEDS, offset: 0 })
-      return picks.map(pick => pick.item_id)
-    } catch (error) {
-      // The favorites DB is a separate store; losing it should cost the rail its explicit-like signal,
-      // not the whole response.
-      logger.warn(`Could not read favorites: ${error instanceof Error ? error.message : String(error)}`)
-      return []
-    }
   }
 
   async function getProfileAttributes(itemIds: string[], manaUsdRate: number): Promise<Map<string, ProfileItemAttributes>> {
@@ -95,10 +86,50 @@ export function createSuggestionsComponent(
     )
   }
 
-  async function trendingFallback(filters: SuggestionsFilters, first: number, manaUsdRate: number): Promise<SuggestionsResult> {
-    const { data } = await shopCatalog.getTrendingItems({ first, category: filters.category, includeSocialEmotes: false }, manaUsdRate)
+  /**
+   * The rail when there was nothing personal to say.
+   *
+   * It still honours the caller's hard filters. They are not personalisation — "not this item" and
+   * "not a shape this avatar can wear" are true whatever produced the rows, and the moment the rail
+   * falls back is precisely when it would otherwise offer the PDP's own anchor item back to the
+   * reader, or something they already have.
+   *
+   * Owned items are excluded from what this request already knows: the profile is paid-only and
+   * capped, so an item acquired free can still slip through here. Closing that would mean a second
+   * pass over every holding for a rail the Shop hides anyway when `personalized` is false.
+   */
+  async function trendingFallback(
+    options: {
+      first: number
+      category?: string
+      bodyShape?: BodyShape
+      excludeItemIds: string[]
+      ownedItemIds: string[]
+    },
+    manaUsdRate: number
+  ): Promise<SuggestionsResult> {
+    const { first, category, bodyShape, excludeItemIds, ownedItemIds } = options
+    const unwanted = new Set([...excludeItemIds, ...ownedItemIds])
+
+    // Ask for more than the rail needs, because the filters below remove rows: without the headroom a
+    // fallback that excludes anything comes back short. The ceiling is the trending rail's own maximum --
+    // asking past it is clamped there anyway, so naming it keeps this from claiming headroom it never gets.
+    const { data } = await shopCatalog.getTrendingItems(
+      {
+        first: unwanted.size > 0 ? Math.min(first * 2, TRENDING_MAX_LIMIT) : first,
+        category,
+        includeSocialEmotes: false,
+        // An emote plays on any body and an item declaring no shape is unisex by omission, so only the
+        // opposite exclusive shape is filtered — the same rule the scored query applies.
+        ...(bodyShape ? { wearableGenders: [bodyShape === 'BaseMale' ? GenderFilterOption.MALE : GenderFilterOption.FEMALE] } : {})
+      },
+      manaUsdRate
+    )
+
+    const rows = data.filter(item => !unwanted.has(`${item.contractAddress}-${item.itemId}`)).slice(0, first)
+
     return {
-      data: data.map(item => ({ ...item, reason: { kind: 'trending' as const }, score: 0 })),
+      data: rows.map(item => ({ ...item, reason: { kind: 'trending' as const }, score: 0 })),
       personalized: false,
       algorithm: ALGORITHM_VERSION
     }
@@ -110,19 +141,38 @@ export function createSuggestionsComponent(
     const seeds = normalizeItemIds(filters.seeds ?? [], MAX_SEEDS)
     const equipped = urnsToItemIds((filters.equipped ?? []).slice(0, MAX_EQUIPPED))
     const exclude = normalizeItemIds(filters.exclude ?? [], MAX_EXCLUDE)
+    // Normalised BEFORE anything reads them, so the cache key and the query can never disagree about
+    // what was asked. An unrecognised value collapses to "absent" rather than becoming a distinct key
+    // for identical work — otherwise `?bodyShape=a`, `?bodyShape=b`, ... each miss the cache and each
+    // run the full catalogue query.
+    const bodyShape = normalizeBodyShape(filters.bodyShape)
+    const category = normalizeCategory(filters.category)
 
-    const cacheKey = buildCacheKey({ address, seeds, equipped, exclude, filters, first })
+    const cacheKey = buildCacheKey({ address, seeds, equipped, exclude, bodyShape, category, first })
     const cached = await cache.get<SuggestionsResult>(cacheKey)
     if (cached) return cached
 
-    const [owned, favorites] = await Promise.all([
-      address ? getOwned(address) : Promise.resolve([] as OwnedRow[]),
-      address ? getFavorites(address) : Promise.resolve([] as string[])
-    ])
+    const owned = address ? await getOwned(address) : []
+    // What the fallback needs from this request, gathered once: every call site is a different reason
+    // for falling back, and all of them owe the reader the same hard filters.
+    const fallbackOptions = {
+      first,
+      category,
+      bodyShape,
+      excludeItemIds: exclude,
+      ownedItemIds: owned.map(row => row.item_id)
+    }
 
     const profile = buildTasteProfile({
       owned: owned.map(row => ({ itemId: row.item_id, acquiredAt: Number(row.acquired_at) })),
-      favorites,
+      // No favourites, deliberately. They live behind a signature everywhere else in this service —
+      // `lists.getPicksByListId` takes the caller's VERIFIED identity — and this endpoint is public and
+      // unsigned, so reading them for a `?address=` anyone can type would let one person enumerate
+      // another's favourites through the `favorite_similar` reasons it hands back. The spec's argument
+      // for leaving the endpoint unsigned was that ownership is already public through /v1/nfts?owner=;
+      // that is true of ownership and does not extend to favourites. `buildTasteProfile` still supports
+      // them, so they return as one line here once this endpoint has a verified identity to read with.
+      favorites: [],
       equipped,
       seeds,
       now: Math.floor(Date.now() / 1000),
@@ -130,7 +180,7 @@ export function createSuggestionsComponent(
     })
 
     if (profile.length === 0) {
-      const fallback = await trendingFallback(filters, first, manaUsdRate)
+      const fallback = await trendingFallback(fallbackOptions, manaUsdRate)
       await cache.set(cacheKey, fallback, SUGGESTIONS_CACHE_TTL_SECONDS)
       return fallback
     }
@@ -149,29 +199,26 @@ export function createSuggestionsComponent(
     const contractRows = await pg.query<{ contract: string }>(buildCandidateContractsQuery(profile, topCreators))
     const contractAddresses = contractRows.rows.map(row => row.contract).filter(Boolean)
     if (contractAddresses.length === 0) {
-      const fallback = await trendingFallback(filters, first, manaUsdRate)
+      const fallback = await trendingFallback(fallbackOptions, manaUsdRate)
       await cache.set(cacheKey, fallback, SUGGESTIONS_CACHE_TTL_SECONDS)
       return fallback
     }
 
-    const core = buildItemUnifiedCore(
-      { category: filters.category, includeSocialEmotes: false, contractAddresses },
-      rateToNumericString(manaUsdRate)
-    )
+    const core = buildItemUnifiedCore({ category, includeSocialEmotes: false, contractAddresses }, rateToNumericString(manaUsdRate))
     const result = await pg.query<CandidateRow>(
       buildCandidateScoresQuery({
         profile,
         core,
         address,
         excludeItemIds: exclude,
-        bodyShape: filters.bodyShape,
+        bodyShape,
         topCreators,
         limit: first * CANDIDATE_MULTIPLIER
       })
     )
 
     if (result.rows.length < MIN_PERSONAL_ROWS) {
-      const fallback = await trendingFallback(filters, first, manaUsdRate)
+      const fallback = await trendingFallback(fallbackOptions, manaUsdRate)
       await cache.set(cacheKey, fallback, SUGGESTIONS_CACHE_TTL_SECONDS)
       return fallback
     }
@@ -254,7 +301,8 @@ function buildCacheKey(input: {
   seeds: string[]
   equipped: string[]
   exclude: string[]
-  filters: SuggestionsFilters
+  bodyShape?: string
+  category?: string
   first: number
 }): string {
   const parts = [
@@ -262,8 +310,8 @@ function buildCacheKey(input: {
     hashList(input.seeds),
     hashList(input.equipped),
     hashList(input.exclude),
-    input.filters.bodyShape ?? '',
-    input.filters.category ?? '',
+    input.bodyShape ?? '',
+    input.category ?? '',
     String(input.first)
   ]
   return `suggestions:${ALGORITHM_VERSION}:${parts.join(':')}`

@@ -152,7 +152,7 @@ export async function initComponents(): Promise<AppComponents> {
   // catalog
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
-  const suggestions = createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs })
+  const suggestions = createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, cache, logs })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })

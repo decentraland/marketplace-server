@@ -2,7 +2,7 @@ import * as buildNeighbors from '../../src/logic/suggestions/build-neighbors'
 import * as neighborsTable from '../../src/logic/suggestions/neighbors-table'
 import { runNeighborsJob, type NeighborsJobLogger } from '../../src/logic/suggestions/run-neighbors-job'
 
-type FakeClient = { query: jest.Mock; end: jest.Mock }
+type FakeClient = { query: jest.Mock; end: jest.Mock; on: jest.Mock; emit: (event: string, payload: unknown) => void }
 
 describe('when running the item neighbours job', () => {
   let logger: NeighborsJobLogger
@@ -12,12 +12,17 @@ describe('when running the item neighbours job', () => {
   let buildSpy: jest.SpyInstance
 
   function makeClient(): FakeClient {
+    const listeners: Record<string, ((payload: unknown) => void)[]> = {}
     return {
       query: jest.fn(async (sql: string) => {
         if (typeof sql === 'string' && sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: lockAcquired }] }
         return { rows: [] }
       }),
-      end: jest.fn(async () => undefined)
+      end: jest.fn(async () => undefined),
+      on: jest.fn((event: string, listener: (payload: unknown) => void) => {
+        listeners[event] = [...(listeners[event] ?? []), listener]
+      }),
+      emit: (event, payload) => (listeners[event] ?? []).forEach(listener => listener(payload))
     }
   }
 
@@ -71,6 +76,10 @@ describe('when running the item neighbours job', () => {
 
     it('should log one line carrying the stage timings and the peak memory', () => {
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('peak rss'))
+    })
+
+    it('should listen for connection errors on both clients, since an unhandled one would take the process down', () => {
+      expect([clients.read.on, clients.write.on].map(on => on.mock.calls.map(([event]) => event))).toEqual([['error'], ['error']])
     })
   })
 
@@ -132,6 +141,30 @@ describe('when running the item neighbours job', () => {
 
     it('should log only the error code and message, never anything carrying a connection string', () => {
       expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('28P01: password authentication failed'))
+    })
+  })
+
+  describe('and a connection is lost while the scan is running', () => {
+    let outcome: string
+
+    beforeEach(async () => {
+      buildSpy.mockImplementation(async () => {
+        clients.read.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
+        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+      })
+      outcome = await runNeighborsJob({ connect, logger })
+    })
+
+    it('should report the failure rather than letting the error reach the process as an unhandled event', () => {
+      expect(outcome).toBe('failed')
+    })
+
+    it('should name the lost connection in the log', () => {
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('neighbours job connection lost'))
+    })
+
+    it('should abandon the run rather than report a rebuild it can no longer vouch for', () => {
+      expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining('neighbours rebuild rebuilt'))
     })
   })
 

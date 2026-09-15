@@ -145,3 +145,23 @@ export const NEIGHBORS_JOB_STATEMENT_TIMEOUT_MS = 300_000
 export const ACQUISITION_SCAN_DEADLINE_MS = 240_000
 /** Rows per INSERT into the staging table. */
 export const NEIGHBORS_INSERT_BATCH_SIZE = 5000
+
+/** The only body shapes an avatar has, and so the only values worth carrying into a query or a cache
+ * key. Anything else is discarded rather than passed through: an unrecognised shape filters nothing,
+ * so letting it vary the key would let a caller ask for the same expensive answer under endless
+ * different names. */
+export const BODY_SHAPES = ['BaseMale', 'BaseFemale'] as const
+export type BodyShape = (typeof BODY_SHAPES)[number]
+
+/** Same reasoning for the category split the rail supports. */
+export const SUGGESTION_CATEGORIES = ['wearable', 'emote'] as const
+export type SuggestionCategory = (typeof SUGGESTION_CATEGORIES)[number]
+
+export function normalizeBodyShape(value?: string): BodyShape | undefined {
+  return BODY_SHAPES.find(shape => shape === value)
+}
+
+export function normalizeCategory(value?: string): SuggestionCategory | undefined {
+  const lowered = value?.toLowerCase()
+  return SUGGESTION_CATEGORIES.find(category => category === lowered)
+}

@@ -141,7 +141,7 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
-  const suggestions = createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs })
+  const suggestions = createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, cache, logs })
   const inMemoryCache = await createInMemoryCacheComponent()
 
   const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })

@@ -53,10 +53,15 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
 
   let readClient: Client | undefined
   let writeClient: Client | undefined
+  // Set by a connection-level error. The run is abandoned at the next checkpoint rather than carried
+  // on with a client that is no longer talking to anything.
+  let fatal: unknown
 
   try {
     writeClient = await connect('write')
-    await configure(writeClient)
+    await configure(writeClient, logger, error => {
+      fatal = error
+    })
 
     // Cheapest possible early exit: another replica is already doing this.
     if (!(await tryAcquireAdvisoryLock(writeClient))) {
@@ -65,7 +70,9 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     }
 
     readClient = await connect('read')
-    await configure(readClient)
+    await configure(readClient, logger, error => {
+      fatal = error
+    })
     await readClient.query('SET default_transaction_read_only = on')
 
     // The rows are generated INSIDE the swap transaction and inserted in chunks as they appear, so the
@@ -86,6 +93,8 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
         }
       )
     )
+
+    if (fatal) throw fatal
 
     const durationMs = Date.now() - started
     logger.info(
@@ -119,7 +128,21 @@ async function tryAcquireAdvisoryLock(client: Client): Promise<boolean> {
 /** Distinct from the transaction-scoped key the swap uses: this one guards the whole run. */
 const REBUILD_SESSION_LOCK_KEY = 8_421_312
 
-async function configure(client: Client): Promise<void> {
+/**
+ * Prepares one of the job's own connections.
+ *
+ * The error listener is not optional. node-postgres emits `error` on the CLIENT for anything the
+ * backend raises outside a query — a failover, an idle connection cut, an administrative termination —
+ * and these two clients spend most of the job idle while the other one works, which is exactly when
+ * that happens. An `error` event with no listener is an unhandled EventEmitter error, and that takes
+ * the whole API process down, not just the rebuild. The job's try/catch cannot help: the event is
+ * raised outside its promise chain.
+ */
+async function configure(client: Client, logger: NeighborsJobLogger, onFatal: (error: unknown) => void): Promise<void> {
+  client.on('error', error => {
+    logger.error(`neighbours job connection lost: ${message(error)}`)
+    onFatal(error)
+  })
   await client.query(`SET statement_timeout = ${NEIGHBORS_JOB_STATEMENT_TIMEOUT_MS}`)
 }
 
