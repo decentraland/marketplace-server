@@ -151,6 +151,14 @@ export type ShopCatalogFilters = {
    * status), so reusing that name would have turned the whole grid into the deals rail.
    */
   discounted?: boolean
+  /**
+   * Restrict to primary (mint) listings or to resales. Omitted = both, the pre-existing behaviour.
+   *
+   * This feed is NATIVE (USD-pegged) only, and its secondary rows are real, durable orders — a shop that
+   * stops offering resales does not cancel a single one. So "the feed is effectively primary" is a fact
+   * about today, not a property, and a client that may not sell a resale has to be able to say so.
+   */
+  listingType?: ShopListingType
 }
 
 // A seller's OLD classic (ERC20-MANA) listing that can be re-listed into the Shop as credit-buyable.
@@ -301,6 +309,22 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    * That is exactly the hole a client-side filter cannot close on a paginated feed, hence the server flag.
    */
   includeSocialEmotes?: boolean
+  /**
+   * Whether the LEGACY (classic MANA-priced) branch may contribute SECONDARY listings -- resales.
+   *
+   * Omitted/false keeps that branch primary-only, which is this feed's pre-existing behaviour and what
+   * every current response is built on. Opt-in rather than on-by-default for the same reason
+   * `includeSocialEmotes` is opt-OUT: a client that has not asked must get byte-for-byte the feed it gets
+   * today, and here the stakes are a shop surfacing listings it is not prepared to sell.
+   *
+   * It exists because resale LISTING lives in the classic Marketplace, so a copy somebody put up for sale
+   * is a `public_nft_order` priced in MANA -- exactly the combination the legacy branch excluded. The
+   * native (USD-pegged) branch has always carried secondary rows and is unaffected.
+   *
+   * Orthogonal to `listingType`: that narrows the result to one kind, this decides whether one SOURCE may
+   * contribute resales at all. Asking for `listingType=secondary` without this yields native resales only.
+   */
+  includeLegacySecondary?: boolean
 }
 
 // The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the
@@ -319,6 +343,16 @@ export type RelatedItemsFilters = {
   contractAddress: string
   itemId: string
   first?: number
+  /** See UnifiedCatalogFilters. The rail is drawn from the same universe as the grid, so it takes the same opt-in. */
+  includeLegacySecondary?: boolean
+  /**
+   * Restrict the rail to primary (mint) listings or to resales. Omitted = both.
+   *
+   * Needed for the SAME reason as on the other feeds, and it is the one people forget here: the opt-in
+   * above governs only the legacy branch, while NATIVE resales reach this rail unconditionally and their
+   * orders are durable. Without this, a client that may not sell a resale is still shown them.
+   */
+  listingType?: ShopListingType
 }
 
 /**
