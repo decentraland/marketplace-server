@@ -113,7 +113,17 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v3/catalog/items', createCatalogItemsHandler(components))
   router.get('/v3/catalog/related', createShopRelatedHandler(components))
   router.get('/v3/catalog/trending', createShopTrendingHandler(components))
-  router.get('/v3/catalog/suggested', createShopSuggestedHandler(components))
+  // OPTIONAL on purpose. A signed-out visitor personalises from `seeds` alone and must keep working,
+  // so the signature is what UNLOCKS favourites rather than what gates the rail.
+  router.get(
+    '/v3/catalog/suggested',
+    wellKnownComponents({
+      optional: true,
+      expiration: FIVE_MINUTES,
+      metadataValidator: validateNotKernelSceneSigner
+    }),
+    createShopSuggestedHandler(components)
+  )
   router.get('/v3/catalog/creators', createShopTopCreatorsHandler(components))
   router.get('/v3/catalog/importable', createShopImportableHandler(components))
 

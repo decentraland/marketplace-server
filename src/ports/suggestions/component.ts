@@ -5,6 +5,7 @@ import {
   MAX_EQUIPPED,
   MAX_EXCLUDE,
   MAX_PROFILE_ITEMS,
+  MAX_FAVORITES,
   MAX_SEEDS,
   normalizeBodyShape,
   type BodyShape,
@@ -21,7 +22,8 @@ import {
 } from '../../logic/suggestions/constants'
 import { buildProfileAggregates, buildTasteProfile, type ProfileItemAttributes } from '../../logic/suggestions/profile'
 import { blendCandidates, rerankForDiversity, type ScoredCandidate } from '../../logic/suggestions/scoring'
-import { normalizeItemIds, urnsToItemIds } from '../../logic/suggestions/urn'
+import { normalizeItemIds, toItemIds } from '../../logic/suggestions/urn'
+import { DEFAULT_LIST_ID } from '../../migrations/favorites/1678303321034_default-list'
 import { AppComponents } from '../../types'
 import { buildItemUnifiedCore, clampCount, mapUnifiedItemRow, rateToNumericString } from '../shop-catalog/component'
 import { SHOP_MIN_PAGE_SIZE, TRENDING_MAX_LIMIT, type RelatedItemRow } from '../shop-catalog/types'
@@ -66,9 +68,9 @@ type AttributeRow = {
  * advertise an item the browse grid would not sell, or at a price the grid would disagree with.
  */
 export async function createSuggestionsComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'cache' | 'logs' | 'config'>
+  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'lists' | 'cache' | 'logs' | 'config'>
 ): Promise<ISuggestionsComponent> {
-  const { dappsDatabase: pg, shopCatalog, cache, logs, config } = components
+  const { dappsDatabase: pg, shopCatalog, lists, cache, logs, config } = components
   const logger = logs.getLogger('suggestions')
   // Validated rather than trusted: a misconfigured 0 or -1 would shed EVERY request and leave the rail
   // permanently empty, which looks exactly like the feature being off rather than like a broken setting.
@@ -84,6 +86,26 @@ export async function createSuggestionsComponent(
   async function getOwned(address: string): Promise<OwnedRow[]> {
     const result = await pg.query<OwnedRow>(buildOwnedQuery(address, PROFILE_SQL_LIMIT))
     return result.rows
+  }
+
+  /**
+   * The caller's own favourites, and only ever their own.
+   *
+   * Read for the address the signature PROVED, never for the `?address=` query parameter -- reading them
+   * for an address anyone can type is exactly the hole this endpoint had, because the rail hands back
+   * `favorite_similar` reasons that name the items. When the two disagree the favourites are dropped
+   * rather than mixed: a rail built from one person's holdings and another's favourites belongs to
+   * nobody, and the caller can always ask again without the mismatch.
+   */
+  async function getFavorites(verifiedAddress: string): Promise<string[]> {
+    try {
+      const picks = await lists.getPicksByListId(DEFAULT_LIST_ID, { userAddress: verifiedAddress, limit: MAX_FAVORITES, offset: 0 })
+      return picks.map(pick => pick.item_id)
+    } catch (error) {
+      // A separate store: losing it should cost the rail one signal, not the whole response.
+      logger.warn(`Could not read favorites: ${error instanceof Error ? error.message : String(error)}`)
+      return []
+    }
   }
 
   async function getOwnedAmong(address: string, itemIds: string[]): Promise<Set<string>> {
@@ -173,7 +195,7 @@ export async function createSuggestionsComponent(
     const first = clampCount(filters.first, SUGGESTED_DEFAULT_LIMIT, SHOP_MIN_PAGE_SIZE, SUGGESTED_MAX_LIMIT)
     const address = filters.address?.toLowerCase()
     const seeds = normalizeItemIds(filters.seeds ?? [], MAX_SEEDS)
-    const equipped = urnsToItemIds((filters.equipped ?? []).slice(0, MAX_EQUIPPED))
+    const equipped = toItemIds(filters.equipped ?? [], MAX_EQUIPPED)
     const exclude = normalizeItemIds(filters.exclude ?? [], MAX_EXCLUDE)
     // Normalised BEFORE anything reads them, so the cache key and the query can never disagree about
     // what was asked. An unrecognised value collapses to "absent" rather than becoming a distinct key
@@ -181,8 +203,18 @@ export async function createSuggestionsComponent(
     // run the full catalogue query.
     const bodyShape = normalizeBodyShape(filters.bodyShape)
     const category = normalizeCategory(filters.category)
+    // Favourites are read only when the proven identity IS the wallet the rail is being built for. An
+    // anonymous caller has none to read, and a caller asking about SOMEONE ELSE gets the public half of
+    // that someone else and no favourites at all -- mixing one person's holdings with another's saved
+    // items produces a rail belonging to neither, and the mismatch is always the caller's to resolve.
+    const verifiedAddress = filters.verifiedAddress?.toLowerCase()
+    const favoritesFor = verifiedAddress && (!address || address === verifiedAddress) ? verifiedAddress : undefined
+    // A caller who signed and named nobody means themselves. Without this the request reads their
+    // favourites but not their holdings, and recommends back items they already own -- a rail assembled
+    // from half an identity, which is worse than either half alone.
+    const profileFor = address ?? verifiedAddress
 
-    const cacheKey = buildCacheKey({ address, seeds, equipped, exclude, bodyShape, category, first })
+    const cacheKey = buildCacheKey({ address: profileFor, favoritesFor, seeds, equipped, exclude, bodyShape, category, first })
     const cached = await cache.get<SuggestionsResult>(cacheKey)
     if (cached) return cached
 
@@ -210,23 +242,20 @@ export async function createSuggestionsComponent(
     }
 
     async function compute(): Promise<SuggestionsResult> {
-      const owned = address ? await getOwned(address) : []
+      const [owned, favorites] = await Promise.all([
+        profileFor ? getOwned(profileFor) : Promise.resolve([] as OwnedRow[]),
+        favoritesFor ? getFavorites(favoritesFor) : Promise.resolve([] as string[])
+      ])
       // What the fallback needs from this request, gathered once: every call site is a different reason
       // for falling back, and all of them owe the reader the same hard filters. The ADDRESS travels rather
       // than the profile's item ids: the profile is capped and paid-only, so using it as the owned set
       // would offer a gift, or anything held past the cap, back to its own owner.
-      const fallbackOptions = { first, category, bodyShape, excludeItemIds: exclude, address }
+      const fallbackOptions = { first, category, bodyShape, excludeItemIds: exclude, address: profileFor }
 
       const profile = buildTasteProfile({
         owned: owned.map(row => ({ itemId: row.item_id, acquiredAt: Number(row.acquired_at) })),
-        // No favourites, deliberately. They live behind a signature everywhere else in this service —
-        // `lists.getPicksByListId` takes the caller's VERIFIED identity — and this endpoint is public and
-        // unsigned, so reading them for a `?address=` anyone can type would let one person enumerate
-        // another's favourites through the `favorite_similar` reasons it hands back. The spec's argument
-        // for leaving the endpoint unsigned was that ownership is already public through /v1/nfts?owner=;
-        // that is true of ownership and does not extend to favourites. `buildTasteProfile` still supports
-        // them, so they return as one line here once this endpoint has a verified identity to read with.
-        favorites: [],
+        // Empty unless the caller signed: see getFavorites for why `?address=` is not enough.
+        favorites,
         equipped,
         seeds,
         now: Math.floor(Date.now() / 1000),
@@ -263,7 +292,7 @@ export async function createSuggestionsComponent(
         buildCandidateScoresQuery({
           profile,
           core,
-          address,
+          address: profileFor,
           excludeItemIds: exclude,
           bodyShape,
           topCreators,
@@ -353,6 +382,13 @@ function topCreatorsOf(creatorAffinity: Map<string, number>): string[] {
  */
 function buildCacheKey(input: {
   address?: string
+  /**
+   * Part of the key, and load-bearing. Without it a signed answer -- which carries `favorite_similar`
+   * reasons naming what the caller saved -- and an unsigned one for the same `?address=` collide on one
+   * entry, and whoever asks second reads the first one's favourites out of the cache. That is the same
+   * leak the signature exists to close, arriving by a different door.
+   */
+  favoritesFor?: string
   seeds: string[]
   equipped: string[]
   exclude: string[]
@@ -362,6 +398,7 @@ function buildCacheKey(input: {
 }): string {
   const parts = [
     input.address ?? 'anon',
+    input.favoritesFor ?? 'unsigned',
     hashList(input.seeds),
     hashList(input.equipped),
     hashList(input.exclude),
