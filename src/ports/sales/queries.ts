@@ -135,7 +135,7 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     .append(MARKETPLACE_SQUID_SCHEMA)
     .append(
       SQL`.item i
-        WHERE i.id = s.item_id AND i.creator = ${seller}
+        WHERE i.id = s.item_id AND LOWER(i.creator) = ${seller}
       ) `
     )
     .append(getSummaryWindow(filters)).append(SQL`

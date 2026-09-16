@@ -37,7 +37,12 @@ test('sales summary', ({ components }) => {
   beforeEach(async () => {
     await createSquidDBItem(components, { contractAddress: contract, itemId: '0' })
     await createSquidDBItem(components, { contractAddress: secondContract, itemId: '0' })
-    await components.dappsDatabase.query(SQL`UPDATE squid_marketplace.item SET creator = ${seller} WHERE id = ${`${contract}_0`}`)
+    // Checksummed on purpose: the indexer stores an address as it finds it, and every other creator
+    // filter in this repo lowercases the column before comparing. Written lowercase here, a mixed-case
+    // creator would silently report no royalties at all.
+    await components.dappsDatabase.query(
+      SQL`UPDATE squid_marketplace.item SET creator = ${seller.toUpperCase().replace('0X', '0x')} WHERE id = ${`${contract}_0`}`
+    )
   })
 
   afterEach(async () => {
