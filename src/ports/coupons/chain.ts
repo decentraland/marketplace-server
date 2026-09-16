@@ -43,10 +43,22 @@ export function createCouponChainReader(): ICouponChainReader {
     return { contractSignatureIndex: Number(contractSignatureIndex), signerSignatureIndex: Number(signerSignatureIndex) }
   }
 
-  async function readState(chainId: ChainId, managerAddress: string, stateKey: string): Promise<CouponChainState> {
+  /**
+   * A coupon can be keyed under more than one slot depending on the manager's generation, and only the one
+   * its own manager uses is ever written, so the answer is whichever slot holds something.
+   */
+  async function readState(chainId: ChainId, managerAddress: string, stateKeys: string[]): Promise<CouponChainState> {
     const manager = couponManager(chainId, managerAddress)
-    const [uses, cancelled] = await Promise.all([manager.signatureUses(stateKey), manager.cancelledSignatures(stateKey)])
-    return { uses: Number(uses), cancelled: Boolean(cancelled) }
+    const slots = await Promise.all(
+      stateKeys.map(stateKey => Promise.all([manager.signatureUses(stateKey), manager.cancelledSignatures(stateKey)]))
+    )
+    return slots.reduce<CouponChainState>(
+      (state, [uses, cancelled]) => ({
+        uses: Math.max(state.uses, Number(uses)),
+        cancelled: state.cancelled || Boolean(cancelled)
+      }),
+      { uses: 0, cancelled: false }
+    )
   }
 
   return { readCouponAllowed, readIndexes, readState }

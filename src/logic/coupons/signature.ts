@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { AbiCoder, TypedDataDomain, TypedDataField, keccak256, toBeArray, verifyTypedData, zeroPadValue } from 'ethers'
+import { AbiCoder, TypedDataDomain, TypedDataEncoder, TypedDataField, keccak256, toBeArray, verifyTypedData, zeroPadValue } from 'ethers'
 import { ChainId, TradeChecks } from '@dcl/schemas'
 import { ContractName, getContract, getCouponManager } from 'decentraland-transactions'
 import { fromMillisecondsToSeconds } from '../date'
@@ -136,11 +136,43 @@ export function resolveCouponSignature(
   return candidates.find(contracts => verifyCouponSignature(chainId, contracts, checks, couponAddress, data, signature, signer)) ?? null
 }
 
+/** The coupon deployment of `chainId` whose manager is `address`, or null when the library no longer lists it. */
+export function findCouponContracts(chainId: ChainId, address: string): CouponContracts | null {
+  const wanted = address.toLowerCase()
+  return getCouponContracts(chainId).find(contracts => contracts.couponManager.address.toLowerCase() === wanted) ?? null
+}
+
+/** The EIP-712 digest of a coupon: what the creator's wallet actually hashed before signing. */
+export function couponDigest(
+  chainId: ChainId,
+  contracts: CouponContracts,
+  checks: TradeChecks,
+  couponAddress: string,
+  data: string
+): string {
+  const domain = getCouponManagerDomain(chainId, contracts)
+  const values = getCouponTypedValues(checks, couponAddress, data)
+  return TypedDataEncoder.hash(domain, COUPON_TYPES, values)
+}
+
 /**
- * The slot the CouponManager keys `signatureUses` and `cancelledSignatures` on:
- * keccak256(abi.encode(signer, keccak256(signature))). Not keccak256(signature) alone — that reads zero
- * forever on the deployed contracts.
+ * The two slots a CouponManager can record a coupon's uses and cancellation under, one per generation of
+ * the contract. Both are live, because a coupon belongs to whichever manager it was signed against.
+ *
+ * The managers paired with the newest marketplace key on the EIP-712 digest, so that a re-encoded
+ * signature cannot present itself as a fresh coupon. The earlier ones key on the signature bytes. Which
+ * is which is not worth a table here: a coupon is bound to a single manager, so at most one of these
+ * slots can ever hold anything, and reading both always answers.
  */
-export function couponStateKey(signer: string, signature: string): string {
-  return keccak256(AbiCoder.defaultAbiCoder().encode(['address', 'bytes32'], [signer, keccak256(signature)]))
+export function digestCouponStateKey(signer: string, digest: string): string {
+  return couponStateKey(signer, digest)
+}
+
+/** @see digestCouponStateKey */
+export function legacyCouponStateKey(signer: string, signature: string): string {
+  return couponStateKey(signer, keccak256(signature))
+}
+
+function couponStateKey(signer: string, handle: string): string {
+  return keccak256(AbiCoder.defaultAbiCoder().encode(['address', 'bytes32'], [signer, handle]))
 }

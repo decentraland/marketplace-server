@@ -5,12 +5,14 @@ import { collectionLeaf, collectionProof, collectionsRoot, verifyCollectionProof
 import {
   COUPON_TYPES,
   CouponContracts,
-  couponStateKey,
+  couponDigest,
+  digestCouponStateKey,
   DISCOUNT_TYPE_RATE,
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
   getCouponTypedValues,
+  legacyCouponStateKey,
   resolveCouponSignature,
   verifyCouponSignature
 } from '../../src/logic/coupons/signature'
@@ -272,14 +274,53 @@ describe('when resolving which manager a coupon was signed against', () => {
   })
 })
 
-describe('when deriving the on-chain state key of a coupon', () => {
-  it('should scope the signature hash by signer, the way the deployed CouponManager does', () => {
+describe('when deriving the on-chain state keys of a coupon', () => {
+  it('should scope the signature hash by signer, the way the managers keyed on signature bytes do', () => {
     const signer = '0x4c09495cd2d4e3d3fa2808eb655d013de426157b'
     const signature = '0x' + 'ab'.repeat(65)
     // Pinned rather than recomputed: re-expressing the implementation would assert nothing. The second
-    // value is what keying on the signature hash alone would produce, which reads zero from the manager
+    // value is what keying on the signature hash alone would produce, which reads zero from every manager
     // forever, so the pair also documents the mistake it guards against.
-    expect(couponStateKey(signer, signature)).toEqual('0x05184e621d5f7d814b6684349ce2a8f07be24de1fa5f124f2914788c049b2ca0')
+    expect(legacyCouponStateKey(signer, signature)).toEqual('0x05184e621d5f7d814b6684349ce2a8f07be24de1fa5f124f2914788c049b2ca0')
     expect(keccak256(signature)).toEqual('0x1090dbec48f7f57f241cd63982ccab202c65844d3a54ee797b1a6de433635179')
+  })
+
+  /**
+   * Taken from a coupon really applied on Amoy: the CouponManager wrote that use under the digest key
+   * below, and the signature key alongside it stayed at zero. Pinning both is what keeps the pair honest,
+   * since a key derived correctly but from the wrong handle looks exactly as plausible.
+   */
+  describe('and the coupon was signed against a manager keyed on the EIP-712 digest', () => {
+    const contracts: CouponContracts = {
+      marketplace: ContractName.OffChainMarketplaceV3,
+      couponManager: { address: '0x6c956587d9fe70032781edcdc626310648575382', name: 'CouponManager', version: '1.0.0' },
+      collectionDiscountCoupon: '0x4ee8f6b87f4917a3bbc7c8bb3a06db8555f83db9'
+    }
+    const signer = '0x747c6f502272129bf1ba872a1903045b837ee86c'
+    const signature =
+      '0x8dfe3fa6844f0cdf55b7612bffa73bf846b161323f2b05c108f0dac55bd7832871783596ff6286e9f6cfc48d174e800e477d1c84e9b81acd0bc9b5b74407db4a1b'
+    const checks = {
+      uses: 5,
+      expiration: 1789732387809,
+      effective: 1789473194471,
+      salt: '0x3ecca08a6516479e33cf16ba01b056125a1e2eff4c9777035c0a60d98ebf34d0',
+      contractSignatureIndex: 0,
+      signerSignatureIndex: 0,
+      allowedRoot: '0x',
+      externalChecks: []
+    }
+    const data = encodeCouponData(DISCOUNT_TYPE_RATE, 300_000, '0x69f6a818d79fb8cc8ff81eda2ea5e280154f97013ae27ded14bb8a7e33d24c78')
+
+    it('should rebuild the digest the wallet signed', () => {
+      expect(couponDigest(ChainId.MATIC_AMOY, contracts, checks, contracts.collectionDiscountCoupon, data)).toEqual(
+        '0x2b001c39e76fd747c79a907071a815b4c72a9a15a1d6e303e9aba11c2fd8650d'
+      )
+    })
+
+    it('should key the slot the manager really wrote on that digest, not on the signature', () => {
+      const digest = couponDigest(ChainId.MATIC_AMOY, contracts, checks, contracts.collectionDiscountCoupon, data)
+      expect(digestCouponStateKey(signer, digest)).toEqual('0x3c6b8e7a72677c18bf9579179ba86c80f66a15470474be6c796ae52ae6af1bca')
+      expect(legacyCouponStateKey(signer, signature)).not.toEqual(digestCouponStateKey(signer, digest))
+    })
   })
 })
