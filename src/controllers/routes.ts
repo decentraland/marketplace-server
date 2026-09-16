@@ -22,6 +22,7 @@ import { pingHandler } from './handlers/ping-handler'
 import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
 import { getSalesHandler } from './handlers/sales-handler'
+import { getSalesSummaryHandler } from './handlers/sales-summary-handler'
 import {
   createCatalogItemsHandler,
   createShopCatalogHandler,
@@ -179,6 +180,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     getItemsHandler
   )
 
+  router.get('/v1/sales/summary', getSalesSummaryHandler)
   router.get('/v1/sales', getSalesHandler)
   router.get(
     '/v1/activity',
