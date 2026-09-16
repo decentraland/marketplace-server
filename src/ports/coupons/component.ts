@@ -4,10 +4,13 @@ import { ContractName } from 'decentraland-transactions'
 import { getNetworkChainId } from '../../logic/chainIds'
 import { collectionsRoot, uniqueCollections } from '../../logic/coupons/merkle'
 import {
-  couponStateKey,
+  couponDigest,
+  digestCouponStateKey,
   DISCOUNT_TYPE_RATE,
   encodeCouponData,
+  findCouponContracts,
   getCouponContracts,
+  legacyCouponStateKey,
   resolveCouponSignature
 } from '../../logic/coupons/signature'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -91,8 +94,7 @@ export function createCouponsComponent(
 
   /** The marketplace version paired with the manager a stored coupon was signed against. */
   function marketplaceOf(row: DBCoupon): ContractName | null {
-    const manager = row.coupon_manager.toLowerCase()
-    return getCouponContracts(row.chain_id as ChainId).find(c => c.couponManager.address.toLowerCase() === manager)?.marketplace ?? null
+    return findCouponContracts(row.chain_id as ChainId, row.coupon_manager)?.marketplace ?? null
   }
 
   function toCoupon(row: DBCouponWithState, now = Date.now()): Coupon {
@@ -265,8 +267,12 @@ export function createCouponsComponent(
       throw new InvalidCouponSignatureIndexError()
     }
 
-    const stateKey = couponStateKey(signer, signature)
-    const chainState = await chain.readState(coupon.chainId, contracts.couponManager.address, stateKey)
+    const stateKey = legacyCouponStateKey(signer, signature)
+    const digest = couponDigest(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data)
+    const chainState = await chain.readState(coupon.chainId, contracts.couponManager.address, [
+      digestCouponStateKey(signer, digest),
+      stateKey
+    ])
     if (chainState.cancelled) {
       throw new CouponAlreadyUnusableError('This coupon was already cancelled on chain')
     }
@@ -329,6 +335,24 @@ export function createCouponsComponent(
     return toCoupon(result.rows[0])
   }
 
+  /**
+   * Both slots this coupon could live in. `state_key` is the stored one, for the managers that key on the
+   * signature bytes; the digest slot is rebuilt here, which the row can afford because it names the manager
+   * it was signed against and so carries that EIP-712 domain by reference. A manager the transactions
+   * library has stopped listing leaves nothing to rebuild from — and could not have taken the coupon in
+   * the first place — so the read is refused and the row keeps its last known state.
+   */
+  function stateKeysOf(row: DBCoupon): string[] {
+    const chainId = row.chain_id as ChainId
+    const contracts = findCouponContracts(chainId, row.coupon_manager)
+    if (!contracts) {
+      throw new Error(`No coupon deployment on chain ${chainId} matches the manager ${row.coupon_manager}`)
+    }
+    const data = encodeCouponData(row.discount_type, row.discount_ppm, row.root)
+    const digest = couponDigest(chainId, contracts, row.checks, row.coupon_address, data)
+    return [digestCouponStateKey(row.signer, digest), row.state_key]
+  }
+
   async function refreshState(): Promise<number> {
     const result = await pg.query<DBCouponWithState>(getCouponsToRefreshQuery(REFRESH_BATCH))
     // Every coupon of one creator shares a signer, so the indexes cost roughly one read per creator per
@@ -354,7 +378,7 @@ export function createCouponsComponent(
     }
 
     async function refreshOne(row: DBCouponWithState): Promise<void> {
-      const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, row.state_key)
+      const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, stateKeysOf(row))
       const indexes = await readIndexesOnce(row)
       // `cancelSignature` takes a coupon's whole calldata, so a creator ending every sale at once reaches
       // for `increaseSignerSignatureIndex()` instead. That leaves `cancelled` false while the contract

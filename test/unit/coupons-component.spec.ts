@@ -6,6 +6,8 @@ import {
   COUPON_TYPES,
   CouponContracts,
   DISCOUNT_TYPE_RATE,
+  couponDigest,
+  digestCouponStateKey,
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
@@ -422,27 +424,15 @@ describe('when adding a coupon', () => {
 })
 
 describe('when refreshing the on-chain state of the live coupons', () => {
-  const SIGNER = '0x1111111111111111111111111111111111111111'
-  let rows: Record<string, unknown>[]
+  // Whole rows rather than the handful of columns the poller used to touch: rebuilding a coupon's digest
+  // reads the same fields the creator signed, so a stub row would exercise none of it.
+  let rows: DBCoupon[]
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const coupon = await buildCoupon()
     rows = [
-      {
-        id: 'a',
-        chain_id: CHAIN_ID,
-        coupon_manager: CONTRACTS.couponManager.address,
-        state_key: '0x01',
-        signer: SIGNER,
-        checks: { ...buildChecks(), contractSignatureIndex: 0, signerSignatureIndex: 0 }
-      },
-      {
-        id: 'b',
-        chain_id: CHAIN_ID,
-        coupon_manager: CONTRACTS.couponManager.address,
-        state_key: '0x02',
-        signer: SIGNER,
-        checks: { ...buildChecks(), contractSignatureIndex: 0, signerSignatureIndex: 0 }
-      }
+      { ...buildRow(coupon), id: 'a', state_key: '0x01' },
+      { ...buildRow(coupon), id: 'b', state_key: '0x02' }
     ]
     dbQueryMock.mockResolvedValueOnce({ rows, rowCount: rows.length }).mockResolvedValue({ rows: [], rowCount: 0 })
   })
@@ -453,6 +443,40 @@ describe('when refreshing the on-chain state of the live coupons', () => {
       expect(await coupons.refreshState()).toEqual(2)
     })
 
+    it('should ask for both slots a manager generation could have written, stored one included', async () => {
+      readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
+      await coupons.refreshState()
+      const [, , stateKeys] = readStateMock.mock.calls[0]
+      const digest = couponDigest(
+        CHAIN_ID,
+        CONTRACTS,
+        rows[0].checks,
+        rows[0].coupon_address,
+        encodeCouponData(rows[0].discount_type, rows[0].discount_ppm, rows[0].root)
+      )
+      expect(stateKeys).toEqual([digestCouponStateKey(rows[0].signer, digest), '0x01'])
+    })
+  })
+
+  describe('and the coupon names a manager no longer deployed', () => {
+    it('should leave the row with its last known state rather than read an invented slot', async () => {
+      rows[0].coupon_manager = '0x' + '99'.repeat(20)
+      readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
+      expect(await coupons.refreshState()).toEqual(1)
+      expect(readStateMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('and only one of the two slots holds anything', () => {
+    it('should write back whichever one does, because a coupon lives in exactly one', async () => {
+      readStateMock.mockResolvedValue({ uses: 3, cancelled: false })
+      await coupons.refreshState()
+      const written = dbQueryMock.mock.calls.slice(1).map(call => call[0].values)
+      expect(written.every(values => values.includes(3))).toBe(true)
+    })
+  })
+
+  describe('and several coupons share a signer', () => {
     it('should read the signature indexes once per signer rather than once per coupon', async () => {
       readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
       await coupons.refreshState()

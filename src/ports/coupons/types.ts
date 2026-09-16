@@ -40,6 +40,11 @@ export type DBCoupon = {
   signer: string
   signature: string
   hashed_signature: string
+  /**
+   * The slot the manager generation that keys on signature bytes records this coupon under. The newer
+   * managers key on the EIP-712 digest instead, which a row can rebuild for itself from the manager it
+   * names, so only this one is worth storing.
+   */
   state_key: string
   coupon_manager: string
   coupon_address: string
@@ -98,7 +103,7 @@ export type CouponStoredState = CouponChainState & { revoked: boolean }
 export type ICouponChainReader = {
   readCouponAllowed(chainId: ChainId, couponManager: string, coupon: string): Promise<boolean>
   readIndexes(chainId: ChainId, couponManager: string, signer: string): Promise<CouponChainIndexes>
-  readState(chainId: ChainId, couponManager: string, stateKey: string): Promise<CouponChainState>
+  readState(chainId: ChainId, couponManager: string, stateKeys: string[]): Promise<CouponChainState>
 }
 
 /** How much of a creator's coupon list to return. Bounded so a prolific creator cannot ask for all of it. */
