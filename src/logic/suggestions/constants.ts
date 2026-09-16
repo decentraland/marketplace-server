@@ -88,6 +88,15 @@ export const PROFILE_WEIGHTS = {
 /** Diversity caps applied to the re-ranked head. */
 export const MAX_PER_COLLECTION = 2
 export const MAX_PER_CREATOR = 3
+/**
+ * Rows the same PROFILE ITEM may explain.
+ *
+ * Distinct from the caps above, which are about where a candidate comes FROM. This one is about what
+ * the card SAYS: three rows reading "because you have Ruler of the North" look like one recommendation
+ * repeated, whatever the three items are. Two is enough to show a pattern without the rail turning into
+ * a list about one purchase.
+ */
+export const MAX_PER_TRIGGER = 2
 /** Wearable share used when the profile does not imply one. */
 export const DEFAULT_WEARABLE_RATIO = 0.7
 /** Below this many personally-sourced rows the response is not worth calling personalised. */
