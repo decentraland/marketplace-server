@@ -1,5 +1,6 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
+import { Client as PgClient } from 'pg'
 import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'
@@ -10,6 +11,8 @@ import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
+import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './logic/suggestions/constants'
+import { runNeighborsJob } from './logic/suggestions/run-neighbors-job'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
 import { createActivityComponent } from './ports/activity'
@@ -20,14 +23,14 @@ import { createCollectionsComponent } from './ports/collections/component'
 import { createContractsComponent } from './ports/contracts/component'
 import { createCouponsComponent } from './ports/coupons'
 import { COUPON_STATE_REFRESH_INTERVAL_MS } from './ports/coupons/types'
-import { createPgComponent } from './ports/db/component'
+import { createPgComponent, resolveConnectionString } from './ports/db/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
-import { createJobComponent } from './ports/job'
+import { createDisabledJobComponent, createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
@@ -39,6 +42,7 @@ import { createSalesComponents } from './ports/sales'
 import { createShopCatalogComponent } from './ports/shop-catalog/component'
 import { createShopNotifierComponent } from './ports/shop-notifier/component'
 import { createStatsComponent } from './ports/stats/component'
+import { createSuggestionsComponent } from './ports/suggestions'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
 import { createTrendingsComponent } from './ports/trendings/component'
@@ -148,6 +152,7 @@ export async function initComponents(): Promise<AppComponents> {
   // catalog
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const suggestions = await createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, cache, logs, config })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
@@ -174,6 +179,56 @@ export async function initComponents(): Promise<AppComponents> {
     onError: error =>
       refreshCouponStateLogger.error(`Failed to refresh coupon state: ${error instanceof Error ? error.message : String(error)}`)
   })
+
+  // Rebuilds the item-neighbours table behind /v3/catalog/suggested. It runs in this process but on its
+  // own short-lived connections: the pooled clients cap every statement at 40 seconds and the acquisition
+  // scan alone runs past 80. All three replicas fire on the same schedule; the advisory lock inside the
+  // job is what stops them duplicating the work.
+  //
+  // OFF unless SUGGESTIONS_NEIGHBORS_JOB_ENABLED says otherwise, and off is the default on purpose. The
+  // Shop's feature flag hides the RAIL; it has no bearing on this, which would otherwise start rebuilding
+  // in production the moment the service deploys, whether or not anyone can see a suggestion. Separating
+  // the two is what lets the endpoint ship and be smoke-tested before the heaviest part of the feature is
+  // allowed to run. When off, nothing is scheduled and no connection is opened.
+  const rebuildNeighborsLogger = logs.getLogger('rebuild-item-neighbors-job')
+  const neighborsJobEnabled = (await config.getString('SUGGESTIONS_NEIGHBORS_JOB_ENABLED')) === 'true'
+  const rebuildItemNeighborsJob = !neighborsJobEnabled
+    ? createDisabledJobComponent(rebuildNeighborsLogger, 'item neighbours rebuild')
+    : await (async () => {
+        const neighborsConnectionStrings = {
+          read: await resolveConnectionString(config, 'DAPPS_READ'),
+          write: await resolveConnectionString(config, 'DAPPS')
+        }
+        return createJobComponent(
+          { logs },
+          () =>
+            runNeighborsJob({
+              connect: async role => {
+                const client = new PgClient({
+                  connectionString: neighborsConnectionStrings[role],
+                  application_name: `marketplace-server-neighbors-${role}`
+                })
+                await client.connect()
+                return client
+              },
+              logger: rebuildNeighborsLogger,
+              metrics: {
+                observe: ({ durationMs, rows, peakRssBytes }) => {
+                  metrics.observe('suggestions_neighbors_build_duration_seconds', {}, durationMs / 1000)
+                  metrics.observe('suggestions_neighbors_rows', {}, rows)
+                  metrics.observe('suggestions_neighbors_peak_rss_bytes', {}, peakRssBytes)
+                }
+              }
+            }),
+          NEIGHBORS_REBUILD_INTERVAL_MS,
+          {
+            startupDelay: NEIGHBORS_REBUILD_STARTUP_DELAY_MS,
+            onError: error =>
+              rebuildNeighborsLogger.error(`Failed to rebuild item neighbours: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        )
+      })()
+
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -227,6 +282,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsWriteDatabase,
     catalog,
     shopCatalog,
+    suggestions,
     shopNotifier,
     manaUsdRate,
     wertSigner,
@@ -235,6 +291,7 @@ export async function initComponents(): Promise<AppComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
+    rebuildItemNeighborsJob,
     schemaValidator,
     snapshot,
     items,

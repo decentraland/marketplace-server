@@ -12,6 +12,20 @@ export const metricDeclarations = {
     help: 'Count calls to ping',
     type: IMetricsComponent.CounterType,
     labelNames: ['pathname']
+  },
+  // Gauges rather than counters: what matters is the shape of the LAST rebuild. A `built_at` that stops
+  // advancing is the alertable condition, and these make it visible without querying the table.
+  suggestions_neighbors_build_duration_seconds: {
+    help: 'Duration of the last item-neighbours rebuild',
+    type: IMetricsComponent.GaugeType
+  },
+  suggestions_neighbors_rows: {
+    help: 'Rows written by the last item-neighbours rebuild',
+    type: IMetricsComponent.GaugeType
+  },
+  suggestions_neighbors_peak_rss_bytes: {
+    help: 'Peak resident set size observed during the last item-neighbours rebuild',
+    type: IMetricsComponent.GaugeType
   }
 }
 

@@ -3,6 +3,7 @@ import { GenderFilterOption } from '@dcl/schemas'
 import { isAddress } from '../../logic/address'
 import { Params } from '../../logic/http/params'
 import { asJSON } from '../../logic/http/response'
+import { SUGGESTED_DEFAULT_LIMIT } from '../../logic/suggestions/constants'
 import {
   ShopListingType,
   ShopSortBy,
@@ -290,6 +291,45 @@ export function createShopRelatedHandler(
       if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
       return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
     })
+  }
+}
+
+/**
+ * GET /v3/catalog/suggested -- the personalised rail: items this wallet is likely to want, drawn from
+ * the same credit-buyable universe as the browse grid so the Shop renders them with the same card.
+ *
+ * Public and unsigned. Everything it reads about a wallet -- what it holds, what it bought -- is
+ * already public through /v1/nfts?owner=, so requiring a signature would buy no privacy while making
+ * the rail impossible to render for a signed-out visitor who has local seeds.
+ *
+ * Every list parameter is capped rather than rejected when oversized: a client that sends 200 seeds
+ * gets the first 20 considered, not a 400. `first` is the one exception the caller can get wrong in a
+ * way worth reporting, and clampCount handles it silently for consistency with the other rails.
+ */
+export function createShopSuggestedHandler(
+  components: Pick<AppComponents, 'suggestions' | 'manaUsdRate'>
+): IHttpServerComponent.IRequestHandler<Context<'/v3/catalog/suggested'>> {
+  const { suggestions, manaUsdRate } = components
+
+  return async context => {
+    const params = new Params(context.url.searchParams)
+    const address = params.getAddress('address')
+    const first = params.getNumber('first', SUGGESTED_DEFAULT_LIMIT) ?? SUGGESTED_DEFAULT_LIMIT
+
+    return asJSON(async () =>
+      suggestions.getSuggestions(
+        {
+          address: address ?? undefined,
+          seeds: csv(params.getString('seeds')),
+          equipped: csv(params.getString('equipped')),
+          exclude: csv(params.getString('exclude')),
+          bodyShape: params.getString('bodyShape'),
+          category: params.getString('category'),
+          first
+        },
+        manaUsdRate.getRate()
+      )
+    )
   }
 }
 
