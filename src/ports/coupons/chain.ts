@@ -4,6 +4,7 @@ import { getRPCUrlByChainId } from '../../logic/trades/utils'
 import { CouponChainIndexes, CouponChainState, ICouponChainReader } from './types'
 
 const COUPON_MANAGER_ABI = [
+  'function allowedCoupons(address) view returns (bool)',
   'function contractSignatureIndex() view returns (uint256)',
   'function signerSignatureIndex(address) view returns (uint256)',
   'function signatureUses(bytes32) view returns (uint256)',
@@ -21,6 +22,10 @@ export function createCouponChainReader(): ICouponChainReader {
       providers.set(chainId, provider)
     }
     return new Contract(address, COUPON_MANAGER_ABI, provider)
+  }
+
+  async function readCouponAllowed(chainId: ChainId, managerAddress: string, coupon: string): Promise<boolean> {
+    return Boolean(await couponManager(chainId, managerAddress).allowedCoupons(coupon))
   }
 
   /**
@@ -44,5 +49,5 @@ export function createCouponChainReader(): ICouponChainReader {
     return { uses: Number(uses), cancelled: Boolean(cancelled) }
   }
 
-  return { readIndexes, readState }
+  return { readCouponAllowed, readIndexes, readState }
 }
