@@ -127,6 +127,11 @@ export function createShopCatalogHandler(
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
+    // Omitted = both, the pre-existing response. An unrecognized value DROPS the filter rather than being
+    // rejected — `getValue` falls back to its default — so a typo returns both kinds, which for a caller
+    // asking for `primary` is exactly the resales it meant to hide. The permissive direction, so it is
+    // worth knowing: the Shop sends a fixed literal, but a hand-written request gets no error to read.
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const discounted = discountedParam(params)
 
     return asJSON(async () => {
@@ -144,6 +149,7 @@ export function createShopCatalogHandler(
         maxPriceCredits,
         search,
         sortBy,
+        listingType,
         discounted
       })
       return { data, total }
@@ -219,15 +225,25 @@ export function createShopUnifiedHandler(
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
     const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
-    // Omitted = both, which is the pre-existing behaviour. `getValue` rejects anything outside the set,
-    // so a typo is a 400 rather than a silently unfiltered feed — the failure mode that matters here,
-    // since a caller asking for `primary` and getting everything would show resales it meant to hide.
+    // Omitted = both, which is the pre-existing behaviour. An unrecognized value DROPS the filter rather
+    // than being rejected (`getValue` falls back to its default), so a typo returns everything — and for a
+    // caller asking for `primary` that is the resales it meant to hide, with no error to notice.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
     // Same contract as every other feed: included unless `includeSocialEmotes=false` is sent, so the default
     // is byte-for-byte the pre-existing response. Read as a string rather than through the presence-based
     // `getBoolean`, which would read `includeSocialEmotes=false` as `true`.
     const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
+    /**
+     * Opt-in to CLASSIC (MANA-priced) RESALES from the legacy branch, which is primary-only without it.
+     *
+     * Read as a STRING compared against the literal 'true', not through the presence-based `getBoolean`:
+     * that helper answers "was the key sent at all", so `includeLegacySecondary=false` would ENABLE the
+     * thing it plainly asks to disable. For an opt-in whose default is the pre-existing feed, only an
+     * explicit 'true' may change the answer -- an absent key, a 'false' or a typo all keep today's
+     * response. (`includeSocialEmotes` compares against 'false' for the mirror-image reason.)
+     */
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
     const discounted = discountedParam(params)
 
     const filters = {
@@ -249,6 +265,7 @@ export function createShopUnifiedHandler(
       source,
       listingType,
       includeSocialEmotes,
+      includeLegacySecondary,
       discounted
     }
 
@@ -276,6 +293,12 @@ export function createShopRelatedHandler(
     const contractAddress = params.getAddress('contractAddress')
     const itemId = params.getString('itemId')
     const first = params.getNumber('first', RELATED_DEFAULT_LIMIT) ?? RELATED_DEFAULT_LIMIT
+    // Same opt-in as the grid this rail is meant to mirror — see the unified handler for why it is read as
+    // a literal 'true'. A rail that included a row the grid excludes would contradict the page around it.
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
+    // And the same narrowing, for the same reason: the opt-in above covers the LEGACY branch only, while
+    // native resales reach this rail unconditionally, so a caller that may not sell one has to say so.
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
 
     return asJSON(async () => {
       // `itemId` is validated here, not just checked for presence, because the query casts it:
@@ -289,7 +312,7 @@ export function createShopRelatedHandler(
       // straight out of `/item/:contractAddress/:itemId`, so a malformed deep link would 500 the rail.
       // Blockchain ids are non-negative integers, so a digit check is the whole constraint.
       if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
-      return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
+      return shopCatalog.getRelatedItems({ contractAddress, itemId, first, includeLegacySecondary, listingType }, manaUsdRate.getRate())
     })
   }
 }
@@ -375,11 +398,24 @@ export function createShopTrendingHandler(
     // /v1/items, /v2/catalog and /v1/trendings. Read as a string rather than through `getBoolean`, which is
     // presence-based and would read `includeSocialEmotes=false` as `true`.
     const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
+    // Same opt-in as the grid — see the unified handler. Without it a Marketplace-listed copy can never
+    // rank into the row, however much it trades, because the row is drawn from the same universe.
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
 
     return asJSON(
       async () =>
         shopCatalog.getTrendingItems(
-          { first, days, category, rarities, wearableCategories, listingType, source, includeSocialEmotes },
+          {
+            first,
+            days,
+            category,
+            rarities,
+            wearableCategories,
+            listingType,
+            source,
+            includeSocialEmotes,
+            includeLegacySecondary
+          },
           manaUsdRate.getRate()
         ),
       { 'Cache-Control': 'public,max-age=3600,s-maxage=3600' }
