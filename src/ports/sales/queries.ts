@@ -3,6 +3,7 @@ import { SaleFilters, SaleSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
+import { SalesSummaryFilters } from './types'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 1000
@@ -88,4 +89,68 @@ export function getSalesQuery(filters: SaleFilters = {}) {
     .append(LEGACY_SALES)
     .append(getSalesSortByStatement(filters.sortBy))
     .append(getSalesLimitAndOffsetStatement(filters))
+}
+
+// Keep the bounds in seconds so PostgreSQL can use the sale timestamp index.
+function getSummaryWindow({ from, to }: SalesSummaryFilters) {
+  const window = SQL``
+  if (from !== undefined) window.append(SQL` AND timestamp >= ${from}::numeric / 1000 `)
+  if (to !== undefined) window.append(SQL` AND timestamp <= ${to}::numeric / 1000 `)
+  return window
+}
+
+export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
+  const seller = filters.seller.toLowerCase()
+  return SQL`WITH seller_sales AS (
+    SELECT type, price, timestamp, search_contract_address, search_item_id
+    FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale WHERE seller = ${seller}
+  ), window_sales AS (
+    SELECT * FROM seller_sales WHERE TRUE `
+    )
+    .append(getSummaryWindow(filters))
+    .append(
+      SQL`
+  ), collections AS (
+    SELECT search_contract_address, COUNT(*) AS sold, SUM(price)::text AS earned
+    FROM window_sales GROUP BY search_contract_address
+  ), items AS (
+    SELECT search_contract_address, search_item_id, COUNT(*) AS sold
+    FROM seller_sales
+    WHERE type = 'mint' AND search_item_id IS NOT NULL
+    GROUP BY search_contract_address, search_item_id
+  ), royalties AS (
+    SELECT COUNT(*) AS resales, COALESCE(SUM(price), 0)::text AS volume
+    FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale s
+    WHERE s.type IN ('order', 'bid')
+      AND EXISTS (
+        SELECT 1 FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item i
+        WHERE i.id = s.item_id AND i.creator = ${seller}
+      ) `
+    )
+    .append(getSummaryWindow(filters)).append(SQL`
+  )
+  SELECT json_build_object(
+    'total', COUNT(*),
+    'mints', COUNT(*) FILTER (WHERE type = 'mint'),
+    'resales', COUNT(*) FILTER (WHERE type IN ('order', 'bid')),
+    'earnedWei', COALESCE(SUM(price), 0)::text,
+    'byCollection', (SELECT COALESCE(json_agg(json_build_object(
+      'contractAddress', search_contract_address, 'sold', sold, 'earnedWei', earned
+    ) ORDER BY search_contract_address), '[]'::json) FROM collections),
+    'byItem', (SELECT COALESCE(json_agg(json_build_object(
+      'contractAddress', search_contract_address, 'itemId', search_item_id::text, 'soldLifetime', sold
+    ) ORDER BY search_contract_address, search_item_id), '[]'::json) FROM items),
+    'royalties', (SELECT json_build_object('resales', resales, 'volumeWei', volume) FROM royalties)
+  ) AS summary FROM window_sales`)
 }

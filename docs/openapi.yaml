@@ -1911,6 +1911,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/sales/summary:
+    get:
+      tags:
+        - Sales
+      summary: Aggregate a seller's completed sales
+      operationId: getSalesSummary
+      security: []
+      description: |
+        Returns unpaginated aggregates from the same sales source as /v1/sales.
+        All amounts are gross MANA wei encoded as decimal strings, including sales paid in Credits.
+        The optional inclusive millisecond bounds apply to totals, collections and royalties.
+        byItem counts only the seller's lifetime mint sales, ignoring both bounds; resales are excluded
+        so the count can be subtracted from totalSupply to estimate copies minted without a sale.
+        Items without mint sales are omitted. byItem may remain populated when the window has no sales.
+        Royalties count order/bid sales of items whose creator is seller, regardless of who sold them.
+        volumeWei is resale volume, not the actual royalty payout. Creator resale activity can be
+        nonzero even if the address has no direct sales. Otherwise absent activity returns zeros and empty arrays.
+      parameters:
+        - name: seller
+          in: query
+          required: true
+          description: Seller wallet address (case insensitive).
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
+        - name: from
+          in: query
+          description: Inclusive start in epoch milliseconds; must not exceed to.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+        - name: to
+          in: query
+          description: Inclusive end in epoch milliseconds.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+      responses:
+        '200':
+          description: Sales summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [total, mints, resales, earnedWei, byCollection, byItem, royalties]
+                    properties:
+                      total:
+                        type: integer
+                      mints:
+                        type: integer
+                      resales:
+                        type: integer
+                      earnedWei:
+                        type: string
+                        example: '115026000000000000000'
+                      byCollection:
+                        type: array
+                        items:
+                          type: object
+                          required: [contractAddress, sold, earnedWei]
+                          properties:
+                            contractAddress:
+                              type: string
+                            sold:
+                              type: integer
+                            earnedWei:
+                              type: string
+                      byItem:
+                        type: array
+                        items:
+                          type: object
+                          required: [contractAddress, itemId, soldLifetime]
+                          properties:
+                            contractAddress:
+                              type: string
+                            itemId:
+                              type: string
+                            soldLifetime:
+                              type: integer
+                      royalties:
+                        type: object
+                        required: [resales, volumeWei]
+                        properties:
+                          resales:
+                            type: integer
+                          volumeWei:
+                            type: string
+        '400':
+          description: Missing or invalid seller, invalid timestamps, or reversed time window.
+
   /v1/sales:
     get:
       tags:

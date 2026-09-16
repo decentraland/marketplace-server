@@ -1,8 +1,8 @@
 import { SaleFilters } from '@dcl/schemas'
 import { fromDBSaleToSale } from '../../adapters/sales'
 import { AppComponents } from '../../types'
-import { getSalesQuery } from './queries'
-import { DBSale, ISalesComponent } from './types'
+import { getSalesQuery, getSalesSummaryQuery } from './queries'
+import { DBSale, ISalesComponent, SalesSummary, SalesSummaryFilters } from './types'
 
 export function createSalesComponents(components: Pick<AppComponents, 'dappsDatabase'>): ISalesComponent {
   const { dappsDatabase: database } = components
@@ -16,5 +16,10 @@ export function createSalesComponents(components: Pick<AppComponents, 'dappsData
     }
   }
 
-  return { getSales }
+  async function getSummary(filters: SalesSummaryFilters): Promise<SalesSummary> {
+    const result = await database.query<{ summary: SalesSummary }>(getSalesSummaryQuery(filters))
+    return result.rows[0].summary
+  }
+
+  return { getSales, getSummary }
 }
