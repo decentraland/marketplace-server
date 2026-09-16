@@ -185,13 +185,14 @@ export async function initComponents(): Promise<AppComponents> {
   // scan alone runs past 80. All three replicas fire on the same schedule; the advisory lock inside the
   // job is what stops them duplicating the work.
   //
-  // OFF unless SUGGESTIONS_NEIGHBORS_JOB_ENABLED says otherwise, and off is the default on purpose. The
-  // Shop's feature flag hides the RAIL; it has no bearing on this, which would otherwise start rebuilding
-  // in production the moment the service deploys, whether or not anyone can see a suggestion. Separating
-  // the two is what lets the endpoint ship and be smoke-tested before the heaviest part of the feature is
-  // allowed to run. When off, nothing is scheduled and no connection is opened.
+  // A KILL SWITCH, not a provisioning step: SUGGESTIONS_NEIGHBORS_JOB_ENABLED=false stops the rebuild,
+  // and anything else runs it. The Shop's feature flag hides the RAIL and has no bearing on this, so
+  // without a switch of its own there would be no way to stop the rebuild short of killing the task --
+  // which is why it exists. It defaults to ON because the cost is backwards otherwise: a default of off
+  // makes the NORMAL case (the job should run) cost a definitions PR and a redeploy, to save that same
+  // cost on the rare one. When off, nothing is scheduled and no connection is opened.
   const rebuildNeighborsLogger = logs.getLogger('rebuild-item-neighbors-job')
-  const neighborsJobEnabled = (await config.getString('SUGGESTIONS_NEIGHBORS_JOB_ENABLED')) === 'true'
+  const neighborsJobEnabled = (await config.getString('SUGGESTIONS_NEIGHBORS_JOB_ENABLED')) !== 'false'
   const rebuildItemNeighborsJob = !neighborsJobEnabled
     ? createDisabledJobComponent(rebuildNeighborsLogger, 'item neighbours rebuild')
     : await (async () => {
