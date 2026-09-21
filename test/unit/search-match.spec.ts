@@ -32,10 +32,16 @@ describe('when building the search CTEs', () => {
     expect(text).toMatch(/GROUP BY w\.item_id, t\.term/)
   })
 
-  it('should weigh a word inherited from the collection name below one in the item name', () => {
+  it("should count a creator's name only when the term is most of it, never when the name merely contains or starts with it", () => {
+    const { text } = getSearchCteDefinitions('duck')
+
+    expect(text).toContain("AND (w.source <> 'creator' OR similarity(t.term, w.word) >= 0.5)")
+  })
+
+  it("should weigh a word from the creator's name below the item's own and above the collection's", () => {
     const { text } = getSearchCteDefinitions('mvfw')
 
-    expect(text).toContain("CASE w.source WHEN 'name' THEN 1.0 ELSE 0.7 END")
+    expect(text).toContain("CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN 0.8 ELSE 0.7 END")
   })
 
   it('should fold word hits and tag hits into one row per item', () => {
