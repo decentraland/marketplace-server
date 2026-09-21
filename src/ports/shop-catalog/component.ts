@@ -13,6 +13,7 @@ import {
 } from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { collectionProof } from '../../logic/coupons/merkle'
+import { getCouponMarketplacePairings } from '../../logic/coupons/signature'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
 // two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
@@ -139,11 +140,18 @@ function metadataJoins() {
 
 /**
  * The best live creator coupon for the listing aliased `mv`, exposed as `cp`: the creator's own coupon covering
- * the listed collection, inside its window, neither cancelled nor revoked and with uses left as of the last
- * on-chain read. Biggest discount wins; ties go to the one ending soonest. Primaries only: the coupon contract
- * refuses anything but collection items, so a resale never carries one.
+ * the listed collection, signed against the manager of the marketplace the listing settles on, inside its
+ * window, neither cancelled nor revoked and with uses left as of the last on-chain read. Biggest discount wins;
+ * ties go to the one ending soonest. Primaries only: the coupon contract refuses anything but collection items,
+ * so a resale never carries one.
+ *
+ * The manager pairing is not optional. Each marketplace version only redeems coupons signed against its own
+ * manager, and a listing keeps settling on the version it was signed against, so while two versions are live
+ * a creator's coupon covers only the listings on its marketplace. Advertising it on the others would show a
+ * sale price the purchase then cannot settle: `acceptWithCoupon` reverts after the buyer confirmed.
  */
 function couponJoin(): SQLStatement {
+  const pairings = getCouponMarketplacePairings()
   return SQL`
       LEFT JOIN LATERAL (
         SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
@@ -153,6 +161,16 @@ function couponJoin(): SQLStatement {
         WHERE mv.type = 'public_item_order'
           AND c.signer = LOWER(mv.signer)
           AND c.network = mv.network
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(${pairings.map(pairing => pairing.chainId)}::int[], ${pairings.map(
+    pairing => pairing.marketplace
+  )}::text[], ${pairings.map(pairing => pairing.couponManager)}::text[])
+              AS pairing(chain_id, marketplace, coupon_manager)
+            WHERE pairing.chain_id = c.chain_id
+              AND pairing.coupon_manager = LOWER(c.coupon_manager)
+              AND pairing.marketplace = LOWER(mv.trade_contract)
+          )
           AND c.effective_since <= now() AND c.expires_at > now()
           AND LOWER(mv.sent_contract_address) = ANY(c.collections)
           AND COALESCE(cs.cancelled, false) = false

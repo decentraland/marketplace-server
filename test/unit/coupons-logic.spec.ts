@@ -11,6 +11,8 @@ import {
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
+  getCouponMarketplacePairings,
+  CouponMarketplacePairing,
   getCouponTypedValues,
   legacyCouponStateKey,
   resolveCouponSignature,
@@ -132,6 +134,42 @@ describe('when resolving the coupon contracts of a chain', () => {
     it('should resolve nothing', () => {
       expect(contracts).toEqual([])
     })
+  })
+})
+
+describe('when pairing every coupon manager with the marketplace that redeems through it', () => {
+  let pairings: CouponMarketplacePairing[]
+
+  beforeEach(() => {
+    pairings = getCouponMarketplacePairings()
+  })
+
+  it('should pair each Polygon mainnet version with its own manager, lowercased', () => {
+    expect(pairings.filter(pairing => pairing.chainId === ChainId.MATIC_MAINNET)).toEqual([
+      {
+        chainId: ChainId.MATIC_MAINNET,
+        marketplace: '0xe38ef22abe871513555cba89adfe45ab4f548ada',
+        couponManager: '0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813'
+      },
+      {
+        chainId: ChainId.MATIC_MAINNET,
+        marketplace: '0xa40b1d129b8906888720686f3a01921ddf37716f',
+        couponManager: '0x3fd3056ee72a2a85e9392fab3a450e7736536081'
+      }
+    ])
+  })
+
+  it('should pair the Amoy versions as well', () => {
+    expect(pairings.filter(pairing => pairing.chainId === ChainId.MATIC_AMOY).map(pairing => pairing.couponManager)).toEqual([
+      '0x6c956587d9fe70032781edcdc626310648575382',
+      '0xa40b1d129b8906888720686f3a01921ddf37716f'
+    ])
+  })
+
+  it('should list nothing for the chains without collections', () => {
+    expect(
+      pairings.filter(pairing => pairing.chainId === ChainId.ETHEREUM_MAINNET || pairing.chainId === ChainId.ETHEREUM_SEPOLIA)
+    ).toEqual([])
   })
 })
 

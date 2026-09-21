@@ -142,6 +142,33 @@ export function findCouponContracts(chainId: ChainId, address: string): CouponCo
   return getCouponContracts(chainId).find(contracts => contracts.couponManager.address.toLowerCase() === wanted) ?? null
 }
 
+export type CouponMarketplacePairing = { chainId: number; marketplace: string; couponManager: string }
+
+/**
+ * Every (chain, marketplace, manager) pairing the registry knows, addresses lowercased: the one marketplace
+ * a coupon stored with a given manager can settle on. Built over every chain id rather than the configured
+ * ones, so the catalogue can pair a coupon with a listing without reading the environment.
+ */
+export function getCouponMarketplacePairings(): CouponMarketplacePairing[] {
+  const chainIds = Object.values(ChainId).filter((value): value is ChainId => typeof value === 'number')
+  return chainIds.flatMap(chainId =>
+    getCouponContracts(chainId).flatMap(contracts => {
+      try {
+        return [
+          {
+            chainId,
+            marketplace: getContract(contracts.marketplace, chainId).address.toLowerCase(),
+            couponManager: contracts.couponManager.address.toLowerCase()
+          }
+        ]
+      } catch (error) {
+        // A manager whose marketplace the registry does not list on this chain pairs with nothing.
+        return []
+      }
+    })
+  )
+}
+
 /** The EIP-712 digest of a coupon: what the creator's wallet actually hashed before signing. */
 export function couponDigest(
   chainId: ChainId,
