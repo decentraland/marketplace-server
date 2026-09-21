@@ -222,21 +222,15 @@ export async function deleteSearchTrade(dbComponent: Pick<BaseComponents, 'dapps
 /**
  * Tags live in the BUILDER's database and reach the marketplace through a materialized view over a
  * foreign table. The foreign table cannot be written (the builder's own NOT NULL columns are not part
- * of it), so the fixture goes straight to the builder database the tests' foreign server points at, and
- * then refreshes the view.
+ * of it), so the fixture goes straight to the builder database — through the connection the tests have
+ * to it from the host, not the compose-internal name the foreign server uses — and then refreshes the view.
  */
 export async function setBuilderTags(
   components: Pick<BaseComponents, 'dappsDatabase' | 'config'>,
   options: { contractAddress: string; itemId: string; tags: string[] }
 ): Promise<{ collectionId: string; itemId: string }> {
   const { config, dappsDatabase } = components
-  const builder = new Client({
-    host: await config.requireString('BUILDER_SERVER_DB_HOST'),
-    port: Number(await config.requireString('BUILDER_SERVER_DB_PORT')),
-    user: await config.requireString('BUILDER_SERVER_DB_USER'),
-    password: (await config.getString('BUILDER_SERVER_DB_PASSWORD')) || undefined,
-    database: 'builder'
-  })
+  const builder = new Client({ connectionString: await config.requireString('BUILDER_TEST_DB_CONNECTION_STRING') })
   const collectionId = randomUUID()
   const builderItemId = randomUUID()
   await builder.connect()
@@ -263,13 +257,7 @@ export async function clearBuilderTags(
   ids: { collectionId: string; itemId: string }
 ): Promise<void> {
   const { config, dappsDatabase } = components
-  const builder = new Client({
-    host: await config.requireString('BUILDER_SERVER_DB_HOST'),
-    port: Number(await config.requireString('BUILDER_SERVER_DB_PORT')),
-    user: await config.requireString('BUILDER_SERVER_DB_USER'),
-    password: (await config.getString('BUILDER_SERVER_DB_PASSWORD')) || undefined,
-    database: 'builder'
-  })
+  const builder = new Client({ connectionString: await config.requireString('BUILDER_TEST_DB_CONNECTION_STRING') })
   await builder.connect()
   try {
     await builder.query('DELETE FROM items WHERE id = $1', [ids.itemId])
