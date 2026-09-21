@@ -32,6 +32,13 @@ describe('when building the search CTEs', () => {
     expect(text).toMatch(/GROUP BY w\.item_id, t\.term/)
   })
 
+  it("should read this release's own words table, not the previous release's", () => {
+    const { text } = getSearchCteDefinitions('hat')
+
+    expect(text).toContain('FROM marketplace.item_search_words_v3 AS w')
+    expect(text).not.toContain('item_search_words_v2')
+  })
+
   it("should count a creator's name only when the term is most of it, never when the name merely contains or starts with it", () => {
     const { text } = getSearchCteDefinitions('duck')
 

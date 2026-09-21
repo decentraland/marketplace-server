@@ -169,7 +169,7 @@ describe('Catalog Component', () => {
         const statements = dbClientQueryMock.mock.calls.map(([sql]) => sql).filter((sql): sql is string => typeof sql === 'string')
 
         expect(statements).toContain('COMMIT')
-        expect(statements.some(sql => sql.includes('item_search_words_v2_staging'))).toBe(true)
+        expect(statements.some(sql => sql.includes('item_search_words_v3_staging'))).toBe(true)
         // one connection for the refresh, a separate one for the rebuild
         expect(dbClientReleaseMock).toHaveBeenCalledTimes(2)
       })

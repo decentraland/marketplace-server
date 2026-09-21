@@ -31,6 +31,9 @@ const CREW = '0xadf9b9dae5f203c4d5e6f7a8b9c0d1e2f3a4b5c6'
 const FANS = '0xbe0acaebf6a314d5e6f7a8b9c0d1e2f3a4b5c6d7'
 const TWIN_A = '0xcf1bdbfc07b425e6f7a8b9c0d1e2f3a4b5c6d7e8'
 const TWIN_B = '0xd02cec0d18c536f7a8b9c0d1e2f3a4b5c6d7e8f9'
+// ELEVEN holds eleven NAMEs; only the last one is anything like "zebrafinch".
+const ELEVEN = '0xe13dfd1e29d647a8b9c0d1e2f3a4b5c6d7e8f9a0'
+const ELEVEN_NAMES = [...Array.from({ length: 10 }, (_, i) => `Alias${String(i + 1).padStart(2, '0')}`), 'Zebrafinch']
 
 // Every fixture is a wearable in the catalogue: a name, a category, and whether it is on sale.
 const FIXTURES: CreateSearchableWearableOptions[] = [
@@ -51,7 +54,8 @@ const FIXTURES: CreateSearchableWearableOptions[] = [
   { itemId: '914', contractAddress: CONTRACT, name: 'Nebula Cape', category: 'upper_body', creator: GALAXY },
   { itemId: '915', contractAddress: CONTRACT, name: 'Comet Boots', category: 'feet', creator: GALAXY },
   { itemId: '916', contractAddress: CONTRACT, name: 'Plain Tee', category: 'upper_body', creator: NAMELESS },
-  { itemId: '917', contractAddress: CONTRACT, name: 'Galaxy Visor', category: 'eyewear' }
+  { itemId: '917', contractAddress: CONTRACT, name: 'Galaxy Visor', category: 'eyewear' },
+  { itemId: '918', contractAddress: CONTRACT, name: 'Plain Scarf', category: 'upper_body', creator: ELEVEN }
 ]
 
 test('when searching the catalogue', function ({ components }) {
@@ -89,6 +93,7 @@ test('when searching the catalogue', function ({ components }) {
     await setCreatorProfile(components, { address: FANS, name: 'Galaxy One Fans', items: 9, collections: 2 })
     await setCreatorProfile(components, { address: TWIN_A, name: 'Twin Maker', items: 3, collections: 1 })
     await setCreatorProfile(components, { address: TWIN_B, name: 'Twin Maker', items: 7, collections: 2 })
+    await setCreatorProfile(components, { address: ELEVEN, name: null, names: ELEVEN_NAMES, items: 1, collections: 1 })
     await rebuildSearchWords(components)
     // The unified feed lists open trades: the pirate hat as a native primary listing, and an ESTATE — a
     // row that is not a collection item, which the search reaches through its substring fallback on the
@@ -361,6 +366,27 @@ test('when searching the catalogue', function ({ components }) {
     it('should forgive a typo in the creator name', async () => {
       expect((await fetchCatalog('search=galaxi')).names.slice().sort()).toEqual(['Comet Boots', 'Galaxy Visor', 'Nebula Cape'])
     })
+
+    it("should give an item its creator's first ten NAMEs only, however many they hold", async () => {
+      expect(await fetchCatalog('search=alias03')).toEqual({ names: ['Plain Scarf'], total: 1 })
+      expect((await fetchCatalog('search=zebrafinch')).total).toEqual(0)
+    })
+
+    it('should keep answering from its own words table while the previous release rebuilds its own', async () => {
+      // What a rebuild by the previous release leaves behind: its table, without creator words. The two
+      // releases run side by side for as long as a roll-out or a rollback lasts; neither reads the other's.
+      await components.dappsDatabase.query('DROP TABLE IF EXISTS marketplace.item_search_words_v2')
+      await components.dappsDatabase.query(
+        "CREATE TABLE marketplace.item_search_words_v2 AS SELECT item_id, word, source, original_word FROM marketplace.item_search_words_v3 WHERE source <> 'creator'"
+      )
+
+      expect((await fetchCatalog('search=galaxystudio')).total).toEqual(2)
+      expect((await fetchCatalog('search=starforge')).total).toEqual(2)
+      const { rows } = await components.dappsDatabase.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM marketplace.item_search_words_v2 WHERE source = 'creator'"
+      )
+      expect(rows[0].n).toEqual('0')
+    })
   })
 
   describe('and suggesting creators', () => {
@@ -401,6 +427,10 @@ test('when searching the catalogue', function ({ components }) {
     it('should require every term, and show a creator with no profile under their NAME', async () => {
       expect((await fetchCreators('search=galaxy%20crew')).data).toEqual([crew])
       expect((await fetchCreators('search=wonderbot')).data).toEqual([nameless])
+    })
+
+    it('should find a creator by any NAME they hold, past the ten their items inherit', async () => {
+      expect((await fetchCreators('search=zebrafinch')).data).toEqual([{ address: ELEVEN, name: 'Alias01', items: 1, collections: 1 }])
     })
 
     it('should fall back to the creators matching the most terms when none matches them all', async () => {
@@ -513,6 +543,18 @@ test('when searching the catalogue', function ({ components }) {
       expect(rows.find(row => row.address === GALAXY)?.name).toEqual('Galaxy Studio')
       expect(rows.find(row => row.address === NAMELESS)?.names).toEqual(['Wonderbot', 'Wonderbot2'])
       await deleteSearchableName(components, '5004')
+    })
+
+    it('should keep the names it has when Catalyst answers nonsense behind an HTTP 200', async () => {
+      // An error object, then a list whose entry has no avatar: neither is an answer about any address.
+      for (const nonsense of [{ error: 'upstream temporary failure' }, [{ avatars: [] }]]) {
+        const component = await creatorProfiles(() => nonsense)
+
+        const result = await component.refresh()
+
+        expect(result).toEqual(expect.objectContaining({ outcome: 'refreshed', lookedUp: 0 }))
+        expect((await storedProfiles()).find(row => row.address === GALAXY)?.name).toEqual('Galaxy Studio')
+      }
     })
 
     it('should blank a name Catalyst no longer knows, once it has answered', async () => {

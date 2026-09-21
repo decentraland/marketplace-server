@@ -1,4 +1,5 @@
 import {
+  CatalystPayloadError,
   CREATOR_PROFILES_BATCH_SIZE,
   CatalystProfile,
   CreatorRow,
@@ -34,10 +35,14 @@ describe('when parsing a Catalyst profiles answer', () => {
     ])
   })
 
-  it('should skip entries without an avatar or an address rather than fail the batch', () => {
-    const profiles = parseCatalystProfiles([{ avatars: [] }, { avatars: [{ name: 'Nobody' }] }, catalystEntry('0x1')])
+  it('should refuse an entry without an avatar or without an address, so the batch is kept rather than blanked', () => {
+    expect(() => parseCatalystProfiles([catalystEntry('0x1'), { avatars: [] }])).toThrow(CatalystPayloadError)
+    expect(() => parseCatalystProfiles([{ avatars: [{ name: 'Nobody' }] }])).toThrow('entry 0 has no address')
+    expect(() => parseCatalystProfiles([null])).toThrow('entry 0 has no avatar')
+  })
 
-    expect(profiles.map(profile => profile.address)).toEqual(['0x1'])
+  it('should accept an empty list: that is how Catalyst says it knows none of the addresses', () => {
+    expect(parseCatalystProfiles([])).toEqual([])
   })
 
   it('should read an unclaimed or missing name as no name and a missing face as no face', () => {
@@ -51,9 +56,10 @@ describe('when parsing a Catalyst profiles answer', () => {
     expect(profiles[1].hasClaimedName).toBe(false)
   })
 
-  it('should return nothing for a body that is not a list', () => {
-    expect(parseCatalystProfiles({ error: 'nope' })).toEqual([])
-    expect(parseCatalystProfiles(null)).toEqual([])
+  it('should refuse a body that is not a list, such as an error object behind an HTTP 200', () => {
+    expect(() => parseCatalystProfiles({ error: 'upstream temporary failure' })).toThrow(CatalystPayloadError)
+    expect(() => parseCatalystProfiles(null)).toThrow('the body is not a list')
+    expect(() => parseCatalystProfiles('[]')).toThrow(CatalystPayloadError)
   })
 })
 

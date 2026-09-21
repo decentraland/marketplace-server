@@ -39,10 +39,10 @@ describe('when rebuilding the search tables', () => {
     it('should build and index the staging table before touching the live one', async () => {
       await rebuildSearchTables(client)
 
-      const created = indexOf('CREATE TABLE marketplace.item_search_words_v2_staging')
-      const indexed = indexOf('CREATE INDEX idx_item_search_words_v2_word_trgm_staging')
+      const created = indexOf('CREATE TABLE marketplace.item_search_words_v3_staging')
+      const indexed = indexOf('CREATE INDEX idx_item_search_words_v3_word_trgm_staging')
       const dropped = indexOfLiveDrop()
-      const renamed = indexOf('RENAME TO item_search_words_v2')
+      const renamed = indexOf('RENAME TO item_search_words_v3')
 
       expect(created).toBeGreaterThan(-1)
       expect(indexed).toBeGreaterThan(created)
@@ -56,7 +56,7 @@ describe('when rebuilding the search tables', () => {
 
       // everything expensive happens before the live table is dropped
       expect(all.indexOf('COMMIT')).toBeGreaterThan(indexOfLiveDrop())
-      expect(indexOfLiveDrop()).toBeGreaterThan(indexOf('CREATE TABLE marketplace.item_search_words_v2_staging'))
+      expect(indexOfLiveDrop()).toBeGreaterThan(indexOf('CREATE TABLE marketplace.item_search_words_v3_staging'))
     })
 
     it('should name the operator class schema, since migrations run without public on the search path', async () => {
@@ -82,18 +82,18 @@ describe('when rebuilding the search tables', () => {
     it('should give every item the words of its creator, from the profiles table, under their own source', async () => {
       await rebuildSearchTables(client)
 
-      const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.item_search_words_v2_staging')) as string
+      const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.item_search_words_v3_staging')) as string
       expect(build).toContain("'creator' AS source")
       expect(build).toContain('marketplace.creator_profiles AS cp')
       expect(build).toContain('cp.address = items.creator')
-      // The profile name and every NAME, as one list.
-      expect(build).toContain('unnest(array_prepend(cp.name, cp.names)) WITH ORDINALITY AS n(name, entry)')
+      // The profile name and the first ten NAMEs, as one list: an item does not inherit a hoard of names.
+      expect(build).toContain('unnest(array_prepend(cp.name, cp.names[1:10])) WITH ORDINALITY AS n(name, entry)')
     })
 
     it('should pair adjacent words only within the same name, so two names under one item never blend', async () => {
       await rebuildSearchTables(client)
 
-      const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.item_search_words_v2_staging')) as string
+      const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.item_search_words_v3_staging')) as string
       expect(build).toContain('AND b.entry = a.entry')
       expect(build).toContain('AND b.position = a.position + 1')
     })
@@ -104,6 +104,8 @@ describe('when rebuilding the search tables', () => {
       const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.creator_search_words_staging')) as string
       expect(build).toContain('GROUP BY address, word, source')
       expect(build).toContain("CASE WHEN n.entry = 1 THEN 'profile' ELSE 'ens' END AS source")
+      // EVERY NAME here, so the holder of the eleventh is still found by it.
+      expect(build).toContain('unnest(array_prepend(cp.name, cp.names)) WITH ORDINALITY AS n(name, entry)')
       const creatorDropped = indexOfCreatorDrop()
       const creatorRenamed = indexOf('RENAME TO creator_search_words')
       expect(creatorDropped).toBeGreaterThan(indexOfNamesDrop())
@@ -114,10 +116,10 @@ describe('when rebuilding the search tables', () => {
       ).toBe(true)
     })
 
-    it("should never touch the previous release's table, which its instances keep reading during a roll-out", async () => {
+    it("should never touch the previous releases' tables, which their instances keep reading and rebuilding during a roll-out", async () => {
       await rebuildSearchTables(client)
 
-      expect(statements().join('\n')).not.toMatch(/marketplace\.item_search_words(?!_v2|_names)/)
+      expect(statements().join('\n')).not.toMatch(/marketplace\.item_search_words(?!_v3|_names)/)
     })
 
     it('should rename the staging index so the next rebuild finds the expected name free', async () => {
@@ -125,7 +127,7 @@ describe('when rebuilding the search tables', () => {
 
       expect(
         statements().some(
-          sql => sql.includes('ALTER INDEX') && sql.includes('_staging') && sql.includes('RENAME TO idx_item_search_words_v2_word_trgm')
+          sql => sql.includes('ALTER INDEX') && sql.includes('_staging') && sql.includes('RENAME TO idx_item_search_words_v3_word_trgm')
         )
       ).toBe(true)
     })
@@ -155,7 +157,7 @@ describe('when rebuilding the search tables', () => {
       error = new Error('canceling statement due to statement timeout')
       queryMock.mockImplementation((sql: string) => {
         if (sql.includes('pg_try_advisory_xact_lock')) return Promise.resolve(lockAcquired())
-        if (sql.includes('CREATE TABLE marketplace.item_search_words_v2_staging')) return Promise.reject(error)
+        if (sql.includes('CREATE TABLE marketplace.item_search_words_v3_staging')) return Promise.reject(error)
         return Promise.resolve({ rows: [] })
       })
     })

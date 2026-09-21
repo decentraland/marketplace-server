@@ -14,14 +14,16 @@ export const CREATOR_SEARCH_WORDS_TABLE_NAME = 'creator_search_words'
 export const CREATOR_SEARCH_WORDS_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_SEARCH_WORDS_TABLE_NAME}`
 
 /**
- * How many of a creator's NAMEs are searchable, oldest first.
+ * How many of a creator's NAMEs their ITEMS inherit as search words.
  *
  * A creator is known by their profile name and, very often, by a NAME that is not it: the "atlasone" people
  * search for is a NAME owned by a profile called SWISSVERSE, "cubeman" one of fifteen owned by an unclaimed
- * profile. So NAMEs have to be in the index. But a handful of NAMEs is an identity and hundreds are stock —
- * one creator with a single item owns 3,084 of them — and indexing stock would hang every one of those
- * names on that item. Oldest first because the first names someone bought are the ones they go by; the
- * cases above all sit within the first ten.
+ * profile. So NAMEs have to be in the index — all of them, for the creator suggestions, where a NAME that
+ * is the query must find its holder however many they own. But a handful of NAMEs is an identity and
+ * hundreds are stock — one creator with a single item owns 3,084 of them — and hanging every one of those
+ * on the creator's items would attach that item to three thousand words. So the items take only this many,
+ * in order of the NAME's minting date: not when this creator got it, which the squid does not record, but
+ * the best proxy there is, and the cases above all sit within the first ten.
  */
 export const CREATOR_MAX_NAMES = 10
 
@@ -46,8 +48,9 @@ const REFRESH_ADVISORY_LOCK_KEY = 8_421_209
 
 /**
  * Every creator with an approved collection — the same population the Top Creators row draws from,
- * attributed by `item.creator`, never by who sells — with how much they have published and the NAMEs
- * they hold. Unapproved collections are not browsable, so their creators are not findable either.
+ * attributed by `item.creator`, never by who sells — with how much they have published and every NAME
+ * they hold, oldest minted first. Unapproved collections are not browsable, so their creators are not
+ * findable either.
  */
 export const SELECT_CREATORS = `WITH creators AS (
       SELECT item.creator AS address, COUNT(*)::int AS items, COUNT(DISTINCT item.collection_id)::int AS collections
@@ -59,17 +62,12 @@ export const SELECT_CREATORS = `WITH creators AS (
     SELECT c.address, c.items, c.collections, COALESCE(n.names, '{}'::text[]) AS names
     FROM creators AS c
     LEFT JOIN LATERAL (
-      SELECT array_agg(ens.subdomain ORDER BY owned.created_at, ens.subdomain) AS names
-      FROM (
-        SELECT nft.ens_id, nft.created_at
-        FROM ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft
-        WHERE nft.category = 'ens'
-          AND nft.owner_address = c.address
-        ORDER BY nft.created_at, nft.ens_id
-        LIMIT ${CREATOR_MAX_NAMES}
-      ) AS owned
-      JOIN ${MARKETPLACE_SQUID_SCHEMA}.ens AS ens ON ens.id = owned.ens_id
-      WHERE ens.subdomain IS NOT NULL
+      SELECT array_agg(ens.subdomain ORDER BY nft.created_at, ens.subdomain) AS names
+      FROM ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft
+      JOIN ${MARKETPLACE_SQUID_SCHEMA}.ens AS ens ON ens.id = nft.ens_id
+      WHERE nft.category = 'ens'
+        AND nft.owner_address = c.address
+        AND ens.subdomain IS NOT NULL
         AND ens.subdomain <> ''
     ) AS n ON true
     ORDER BY c.address`
@@ -100,30 +98,43 @@ export type CatalystProfile = {
   face: string | null
 }
 
+/** A Catalyst answer that is not the shape a profiles answer has. The batch it came for is kept as it was. */
+export class CatalystPayloadError extends Error {
+  constructor(reason: string) {
+    super(`Unexpected Catalyst profiles payload: ${reason}`)
+  }
+}
+
 /**
  * The profiles in a Catalyst `POST /lambdas/profiles` answer. Addresses with no profile are simply absent
- * from it, so the caller has to remember what it asked for. Anything malformed is skipped rather than
- * failing the batch: one odd profile must not cost the other ninety-nine their names.
+ * from it, so the caller has to remember what it asked for — that absence is the one VALID way to learn a
+ * profile is gone. Anything else that is not the documented shape — a body that is not a list, an entry
+ * without an avatar, an avatar without an address — throws, and the whole batch counts as failed: an
+ * HTTP 200 carrying an error object must keep every name in the batch, not blank it.
  */
 export function parseCatalystProfiles(body: unknown): CatalystProfile[] {
-  if (!Array.isArray(body)) return []
-  const profiles: CatalystProfile[] = []
-  for (const entry of body) {
-    const avatar = (entry as { avatars?: unknown[] })?.avatars?.[0] as
-      | { name?: unknown; hasClaimedName?: unknown; ethAddress?: unknown; userId?: unknown; avatar?: { snapshots?: { face256?: unknown } } }
-      | undefined
+  if (!Array.isArray(body)) throw new CatalystPayloadError('the body is not a list')
+  return body.map((entry, index) => {
+    const avatars = (entry as { avatars?: unknown } | null)?.avatars
+    if (!Array.isArray(avatars) || avatars.length === 0) throw new CatalystPayloadError(`entry ${index} has no avatar`)
+    const avatar = avatars[0] as {
+      name?: unknown
+      hasClaimedName?: unknown
+      ethAddress?: unknown
+      userId?: unknown
+      avatar?: { snapshots?: { face256?: unknown } }
+    }
     const rawAddress = avatar?.ethAddress ?? avatar?.userId
-    if (typeof rawAddress !== 'string' || !rawAddress) continue
-    const name = typeof avatar?.name === 'string' ? avatar.name.trim() : ''
-    const face = avatar?.avatar?.snapshots?.face256
-    profiles.push({
+    if (typeof rawAddress !== 'string' || !rawAddress) throw new CatalystPayloadError(`entry ${index} has no address`)
+    const name = typeof avatar.name === 'string' ? avatar.name.trim() : ''
+    const face = avatar.avatar?.snapshots?.face256
+    return {
       address: rawAddress.toLowerCase(),
       name: name || null,
-      hasClaimedName: avatar?.hasClaimedName === true,
+      hasClaimedName: avatar.hasClaimedName === true,
       face: typeof face === 'string' && face ? face : null
-    })
-  }
-  return profiles
+    }
+  })
 }
 
 export type CreatorRow = { address: string; items: number; collections: number; names: string[] }
@@ -136,7 +147,7 @@ export type RefreshClient = {
 export type CreatorProfilesRefreshDeps = {
   /** A client from the WRITE pool; released here when the refresh is over. */
   connect: () => Promise<RefreshClient>
-  /** One Catalyst lookup. Throws when the batch fails; it is retried, then left as it was for this run. */
+  /** One Catalyst lookup. Throws when the batch fails or answers nonsense; it is retried, then left as it was for this run. */
   fetchProfiles: (addresses: string[]) => Promise<CatalystProfile[]>
   logger: { info: (message: string) => void; warn: (message: string) => void }
   /** Injected by tests so the retry schedule is not waited out. */

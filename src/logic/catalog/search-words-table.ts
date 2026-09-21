@@ -1,16 +1,18 @@
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { CREATOR_PROFILES_TABLE, CREATOR_SEARCH_WORDS_TABLE, CREATOR_SEARCH_WORDS_TABLE_NAME } from './creator-profiles'
+import { CREATOR_MAX_NAMES, CREATOR_PROFILES_TABLE, CREATOR_SEARCH_WORDS_TABLE, CREATOR_SEARCH_WORDS_TABLE_NAME } from './creator-profiles'
 import { SEARCH_PHRASE_FUNCTION, SEARCH_TOKENS_FUNCTION } from './search-normalization'
 
 /**
- * VERSIONED on purpose. A release is rolled out instance by instance, and the previous release keeps
- * rebuilding ITS word table every five minutes until its last instance stops. Had this shape kept the
- * old name, an old instance rebuilding after the migration would have swapped a table without `source`
- * back in under the new readers, which fail on the missing column until the next new rebuild. Under its
- * own name, each release rebuilds and reads its own table; the previous one is dropped by a later
- * migration, once no instance reads it any more.
+ * VERSIONED on purpose, and bumped by any release that changes what the table HOLDS, not only its shape.
+ * A release is rolled out instance by instance, and the previous release keeps rebuilding ITS word table
+ * every five minutes until its last instance stops. Under one name the two would take turns: a rebuild
+ * by the previous release would drop the creator words this one added, and this release's words would
+ * reach the previous release's readers, which weigh an unknown source like a collection's and match it
+ * without the similarity gate — every five minutes, in both directions, for as long as a roll-out or a
+ * rollback lasts. Under its own name, each release rebuilds and reads its own table; the previous ones
+ * are dropped by a later migration, once no instance reads them any more.
  */
-export const SEARCH_WORDS_TABLE_NAME = 'item_search_words_v2'
+export const SEARCH_WORDS_TABLE_NAME = 'item_search_words_v3'
 export const SEARCH_WORDS_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${SEARCH_WORDS_TABLE_NAME}`
 export const SEARCH_WORDS_WORD_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_word_trgm`
 export const SEARCH_WORDS_ITEM_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_item_id`
@@ -103,7 +105,7 @@ function selectWordsFrom(named: string, key: string): string {
  * serving the retired deployment's names with nothing to signal it, and it would also make the
  * retired schema undroppable. Rebuilding a table from a plain query has neither problem.
  */
-const SELECT_SEARCH_WORDS = selectWordsFrom(
+export const SELECT_SEARCH_WORDS = selectWordsFrom(
   `SELECT items.id::text AS item_id, 1 AS entry, COALESCE(wb.name, em.name) AS name, 'name' AS source
       FROM ${MARKETPLACE_SQUID_SCHEMA}.item AS items
       JOIN ${MARKETPLACE_SQUID_SCHEMA}.metadata AS md
@@ -124,15 +126,16 @@ const SELECT_SEARCH_WORDS = selectWordsFrom(
       FROM ${MARKETPLACE_SQUID_SCHEMA}.item AS items
       JOIN ${CREATOR_PROFILES_TABLE} AS cp
         ON cp.address = items.creator
-      CROSS JOIN LATERAL unnest(array_prepend(cp.name, cp.names)) WITH ORDINALITY AS n(name, entry)
+      CROSS JOIN LATERAL unnest(array_prepend(cp.name, cp.names[1:${CREATOR_MAX_NAMES}])) WITH ORDINALITY AS n(name, entry)
       WHERE n.name IS NOT NULL`,
   'item_id'
 )
 
 /**
- * One row per (creator, searchable word, source), for the creator suggestions: the same words the items
- * inherit from their creator, keyed by the creator instead. Sixteen hundred creators make this a few
- * thousand rows, so it is rebuilt alongside the item words rather than kept up to date on its own.
+ * One row per (creator, searchable word, source), for the creator suggestions: the words of the profile
+ * name and of EVERY NAME the creator holds — not the handful their items inherit — keyed by the creator,
+ * so a NAME that is the query finds its holder however many they own. Sixteen hundred creators make this
+ * some thousands of rows, so it is rebuilt alongside the item words rather than kept up to date on its own.
  */
 const SELECT_CREATOR_SEARCH_WORDS = selectWordsFrom(
   `SELECT cp.address, n.entry::int AS entry, n.name, CASE WHEN n.entry = 1 THEN 'profile' ELSE 'ens' END AS source
