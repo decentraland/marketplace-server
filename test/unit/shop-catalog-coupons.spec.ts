@@ -152,21 +152,19 @@ describe('when the shop feed carries creator coupons', () => {
       )
     })
 
-    it('should admit coupons only from the chains this deployment serves, which network alone does not pin', async () => {
+    it("should require the coupon to be on the listing's own chain, which its network does not identify", async () => {
       await component.getShopListings({})
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('AND c.chain_id = ANY(')
-      // Polygon mainnet and Amoy are both MATIC, so the network cannot say which chain a coupon belongs to.
-      expect(sql.values).toContainEqual([137])
+      expect(sql.text).toContain('AND c.chain_id = mv.chain_id')
     })
 
-    it('should pair only the marketplaces of those chains', async () => {
+    it("should offer the pairings of every chain, so the listing's own chain is what selects one", async () => {
       await component.getShopListings({})
       const sql = query.mock.calls[0][0]
       const chainIds = sql.values.find(
         (value: unknown) => Array.isArray(value) && value.length > 1 && value.every(entry => typeof entry === 'number')
       ) as number[]
-      expect([...new Set(chainIds)]).toEqual([137])
+      expect([...new Set(chainIds)].sort((a, b) => a - b)).toEqual([137, 80002])
     })
 
     it('should keep only discounted listings on discounted=true and only the rest on discounted=false', async () => {

@@ -150,16 +150,14 @@ function metadataJoins() {
  * a creator's coupon covers only the listings on its marketplace. Advertising it on the others would show a
  * sale price the purchase then cannot settle: `acceptWithCoupon` reverts after the buyer confirmed.
  *
- * Chain is pinned as well, because `network` does not pin it: Polygon mainnet and Amoy are both MATIC, so two
- * chains of one network could deploy a marketplace at the same address and the pairing alone would let a coupon
- * from one advertise on the other's listings. A deployment serves a single chain per network, so restricting
- * the coupon to the chains served here and matching `c.network` to the listing's makes the two the same chain.
+ * Chain is matched directly, because `network` does not identify one: Polygon mainnet and Amoy are both MATIC,
+ * and addTrade stores whatever chain a trade's signature verifies against rather than the deployment's own, so
+ * a listing on either can sit in the same table. Two chains of one network deploying a marketplace at the same
+ * address would otherwise let a coupon from one advertise on the other's listings, and the pairing is bound to
+ * that same chain so the manager is the one that chain's marketplace redeems through.
  */
 function couponJoin(): SQLStatement {
-  // Only the chains this deployment actually serves, one per network.
-  const served = [getPolygonChainId(), getEthereumChainId()]
-  const pairings = getCouponMarketplacePairings().filter(pairing => served.includes(pairing.chainId))
-  const couponChainIds = [...new Set(pairings.map(pairing => pairing.chainId))]
+  const pairings = getCouponMarketplacePairings()
   return SQL`
       LEFT JOIN LATERAL (
         SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
@@ -169,7 +167,7 @@ function couponJoin(): SQLStatement {
         WHERE mv.type = 'public_item_order'
           AND c.signer = LOWER(mv.signer)
           AND c.network = mv.network
-          AND c.chain_id = ANY(${couponChainIds}::int[])
+          AND c.chain_id = mv.chain_id
           AND EXISTS (
             SELECT 1
             FROM unnest(${pairings.map(pairing => pairing.chainId)}::int[], ${pairings.map(
