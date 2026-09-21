@@ -155,9 +155,17 @@ function metadataJoins() {
  * a listing on either can sit in the same table. Two chains of one network deploying a marketplace at the same
  * address would otherwise let a coupon from one advertise on the other's listings, and the pairing is bound to
  * that same chain so the manager is the one that chain's marketplace redeems through.
+ *
+ * Both sides are then held to the chains this deployment serves. A listing from any other chain is unbuyable
+ * here regardless — the row mapper reports every MATIC row as the configured Polygon chain, so the client
+ * would settle on the wrong one — and giving it a discount would put a sale price on a row that cannot be
+ * bought. Reporting that row's real chain is a separate question, and a wider one than coupons.
  */
 function couponJoin(): SQLStatement {
-  const pairings = getCouponMarketplacePairings()
+  // Only the chains this deployment serves, one per network. A listing on any other chain is one this shop
+  // cannot sell whatever it is labelled, so it must not pick up a discount either.
+  const served = [getPolygonChainId(), getEthereumChainId()]
+  const pairings = getCouponMarketplacePairings().filter(pairing => served.includes(pairing.chainId))
   return SQL`
       LEFT JOIN LATERAL (
         SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
@@ -168,6 +176,7 @@ function couponJoin(): SQLStatement {
           AND c.signer = LOWER(mv.signer)
           AND c.network = mv.network
           AND c.chain_id = mv.chain_id
+          AND mv.chain_id = ANY(${served}::int[])
           AND EXISTS (
             SELECT 1
             FROM unnest(${pairings.map(pairing => pairing.chainId)}::int[], ${pairings.map(

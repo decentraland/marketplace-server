@@ -158,13 +158,20 @@ describe('when the shop feed carries creator coupons', () => {
       expect(sql.text).toContain('AND c.chain_id = mv.chain_id')
     })
 
-    it("should offer the pairings of every chain, so the listing's own chain is what selects one", async () => {
+    it('should hold the listing to a chain this deployment serves, since it could not be bought otherwise', async () => {
+      await component.getShopListings({})
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).toContain('AND mv.chain_id = ANY(')
+      expect(sql.values).toContainEqual([137, 1])
+    })
+
+    it('should pair only the marketplaces of those chains', async () => {
       await component.getShopListings({})
       const sql = query.mock.calls[0][0]
       const chainIds = sql.values.find(
-        (value: unknown) => Array.isArray(value) && value.length > 1 && value.every(entry => typeof entry === 'number')
+        (value: unknown) => Array.isArray(value) && value.length > 1 && value.every(entry => typeof entry === 'number') && value[1] === 137
       ) as number[]
-      expect([...new Set(chainIds)].sort((a, b) => a - b)).toEqual([137, 80002])
+      expect([...new Set(chainIds)]).toEqual([137])
     })
 
     it('should keep only discounted listings on discounted=true and only the rest on discounted=false', async () => {
