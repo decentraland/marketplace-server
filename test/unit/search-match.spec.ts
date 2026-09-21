@@ -41,7 +41,7 @@ describe('when building the search CTEs', () => {
   it("should weigh a word from the creator's name below the item's own and above the collection's", () => {
     const { text } = getSearchCteDefinitions('mvfw')
 
-    expect(text).toContain("CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN 0.8 ELSE 0.7 END")
+    expect(text).toContain("CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN 0.8 WHEN 'collection' THEN 0.7 ELSE 0 END")
   })
 
   it('should fold word hits and tag hits into one row per item', () => {

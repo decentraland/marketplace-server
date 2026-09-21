@@ -12,6 +12,8 @@ export type CreatorSearchHit = {
   face: string | null
   /** Approved items they have published. What the ranking breaks ties on. */
   items: number
+  /** Approved collections those items sit in. */
+  collections: number
 }
 
 export interface ICreatorProfilesComponent {
@@ -27,9 +29,14 @@ export const DEFAULT_PEER_URL = 'https://peer.decentraland.org'
 export const CREATOR_PROFILES_LOOKUP_TIMEOUT_MS = 10_000
 
 /**
- * Profile names and avatars change rarely, and the table is what the words rebuild reads every five
- * minutes, so this is about how stale a renamed creator may be in the search — hours is fine. The first
- * run happens shortly after boot, so a fresh deploy is not nameless until the first interval elapses.
+ * Profile names and avatars change rarely, so this is about how stale a renamed creator may be in the
+ * search: up to six hours here, plus up to five minutes for the words rebuild, plus the run itself
+ * (sixteen Catalyst calls and one upsert). A successful run triggers the rebuild at once, so the first
+ * fill after a deploy — a minute after boot — is searchable a minute or two later, not five more.
+ *
+ * A run that fails outright (the database, not one Catalyst batch, which has its own retries) is tried
+ * again after these waits rather than left for the next interval.
  */
 export const CREATOR_PROFILES_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
 export const CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS = 60 * 1000
+export const CREATOR_PROFILES_RUN_RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000]

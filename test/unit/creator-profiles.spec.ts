@@ -71,7 +71,12 @@ describe('when refreshing the creator profiles', () => {
   }
 
   beforeEach(() => {
-    creators = Array.from({ length: 250 }, (_, i) => ({ address: address(i + 1), items: i + 1, names: i % 2 ? [`Name${i}`] : [] }))
+    creators = Array.from({ length: 250 }, (_, i) => ({
+      address: address(i + 1),
+      items: i + 1,
+      collections: 1,
+      names: i % 2 ? [`Name${i}`] : []
+    }))
     query = jest.fn(async (sql: string) => {
       if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }] }
       if (sql.includes('WITH creators AS')) return { rows: creators }
@@ -83,9 +88,11 @@ describe('when refreshing the creator profiles', () => {
         addresses.map(a => ({ address: a, name: `Creator ${a.slice(-2)}`, hasClaimedName: true, face: null }))
     )
     logger = { info: jest.fn(), warn: jest.fn() }
+    sleep = jest.fn().mockResolvedValue(undefined)
   })
 
-  const run = () => refreshCreatorProfiles({ connect: async () => ({ query, release }), fetchProfiles, logger })
+  let sleep: jest.Mock
+  const run = () => refreshCreatorProfiles({ connect: async () => ({ query, release }), fetchProfiles, logger, sleep })
 
   describe('and another instance holds the lock', () => {
     beforeEach(() => {
@@ -129,7 +136,12 @@ describe('when refreshing the creator profiles', () => {
       expect(all).not.toContain('ROLLBACK')
 
       expect(payloadOf('INSERT INTO marketplace.creator_profiles')).toHaveLength(250)
-      expect(payloadOf('INSERT INTO marketplace.creator_profiles')[1]).toEqual({ address: address(2), names: ['Name1'], items: 2 })
+      expect(payloadOf('INSERT INTO marketplace.creator_profiles')[1]).toEqual({
+        address: address(2),
+        names: ['Name1'],
+        items: 2,
+        collections: 1
+      })
       expect(payloadOf('UPDATE marketplace.creator_profiles')[0]).toEqual({
         address: address(1),
         name: 'Creator 01',
@@ -180,6 +192,14 @@ describe('when refreshing the creator profiles', () => {
       })
     })
 
+    it('should try the batch again with a backoff before giving it up', async () => {
+      await run()
+
+      // three tries for the failing batch, one for each of the other two
+      expect(fetchProfiles).toHaveBeenCalledTimes(5)
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1000, 4000])
+    })
+
     it('should keep going, leave that batch out of the profile update and still write names and counts for everyone', async () => {
       await expect(run()).resolves.toEqual({ outcome: 'refreshed', creators: 250, lookedUp: 150, failedBatches: 1 })
 
@@ -189,8 +209,9 @@ describe('when refreshing the creator profiles', () => {
       expect(updated).not.toContain(address(101))
       expect(updated).not.toContain(address(200))
       expect(updated).toContain(address(201))
-      expect(logger.warn).toHaveBeenCalledTimes(1)
-      expect(logger.warn.mock.calls[0][0]).toContain('503 from Catalyst')
+      // two retries announced, then the batch given up
+      expect(logger.warn).toHaveBeenCalledTimes(3)
+      expect(logger.warn.mock.calls[2][0]).toContain('503 from Catalyst')
     })
   })
 
@@ -217,27 +238,35 @@ describe('when refreshing the creator profiles', () => {
 })
 
 describe('when building the creator search query', () => {
-  it('should match every term against the creator words under the trigram index and require all of them', () => {
+  it('should match the terms against the creator words under the trigram index, keeping the best hit per term', () => {
     const { text, values } = getCreatorSearchQuery('galaxy studio', 4)
 
     expect(text).toContain('FROM marketplace.creator_search_words AS w')
     expect(text).toContain('ON t.term <% w.word')
     // A name that merely CONTAINS the term is not a match: "duck" must not suggest the owner of STARDUCKS.
     expect(text).toContain('AND (starts_with(w.word, t.term) OR similarity(t.term, w.word) >= 0.5)')
-    expect(text).toContain('WHERE h.matched = (SELECT COUNT(*) FROM search_terms)')
-    expect(values).toEqual(['galaxy studio', 'galaxy studio', 4])
+    expect(text).toMatch(/MAX\(word_similarity\(t\.term, w\.word\)\)::float8 AS best/)
+    expect(text).toContain('GROUP BY w.address, t.term')
+    expect(values).toEqual(['galaxy studio', 'galaxy studio', 'galaxy studio', 4])
   })
 
-  it('should rank a name that is the whole query first, then the best match, then the bigger catalogue', () => {
+  it('should rank a name that is the whole query above one that starts with it above one that contains it, then the bigger catalogue, then name and address', () => {
     const { text } = getCreatorSearchQuery('galaxy', 4)
 
-    expect(text).toContain('THEN 1 ELSE 0 END)::float8 AS score')
-    expect(text).toContain('ORDER BY score DESC, p.items DESC, p.address ASC')
+    expect(text).toMatch(/= q\.sorted_words\s*\) THEN 1\s+WHEN EXISTS/)
+    expect(text).toMatch(/starts_with\(marketplace\.search_phrase\(n\.name\), q\.phrase\)\s*\) THEN 0\.5/)
+    expect(text).toContain('ORDER BY score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC')
   })
 
-  it('should show a creator under their profile name, or their first NAME when the profile has none', () => {
+  it('should fall back to the creators matching the most terms only when none matches them all', () => {
+    const { text } = getCreatorSearchQuery('galaxy wonderbot', 4)
+
+    expect(text).toContain('WHERE h.matched = (SELECT MAX(matched) FROM search_hits)')
+  })
+
+  it('should show a creator under their profile name, their first NAME when the profile has none, or their address', () => {
     const { text } = getCreatorSearchQuery('wonderbot', 4)
 
-    expect(text).toContain('COALESCE(p.name, p.names[1]) AS name')
+    expect(text).toContain('COALESCE(p.name, p.names[1], p.address) AS name')
   })
 })

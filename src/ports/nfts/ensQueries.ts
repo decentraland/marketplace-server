@@ -118,7 +118,7 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
                       sortBy
                         ? getNFTsSortBy(sortBy)
                         : nftFilters.search
-                        ? SQL` ORDER BY similarity(nft.search_text, ${nftFilters.search}) DESC, nft.name ASC `
+                        ? SQL` ORDER BY similarity(nft.search_text, ${nftFilters.search}) DESC, nft.name ASC, nft.id ASC `
                         : SQL``
                     )
                     .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))

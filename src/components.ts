@@ -11,6 +11,7 @@ import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
+import { withRetries } from './logic/retry'
 import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './logic/suggestions/constants'
 import { runNeighborsJob } from './logic/suggestions/run-neighbors-job'
 import { metricDeclarations } from './metrics'
@@ -24,7 +25,11 @@ import { createContractsComponent } from './ports/contracts/component'
 import { createCouponsComponent } from './ports/coupons'
 import { COUPON_STATE_REFRESH_INTERVAL_MS } from './ports/coupons/types'
 import { createCreatorProfilesComponent } from './ports/creator-profiles/component'
-import { CREATOR_PROFILES_REFRESH_INTERVAL_MS, CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS } from './ports/creator-profiles/types'
+import {
+  CREATOR_PROFILES_REFRESH_INTERVAL_MS,
+  CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS,
+  CREATOR_PROFILES_RUN_RETRY_DELAYS_MS
+} from './ports/creator-profiles/types'
 import { createPgComponent, resolveConnectionString } from './ports/db/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
@@ -241,11 +246,22 @@ export async function initComponents(): Promise<AppComponents> {
   // Keeps the creator profiles table — what the search knows creators as — in step with Catalyst and the
   // squid. Cheap: sixteen profile lookups and one upsert every few hours, on a pooled connection.
   const refreshCreatorProfilesLogger = logs.getLogger('refresh-creator-profiles-job')
-  const refreshCreatorProfilesJob = createJobComponent({ logs }, () => creatorProfiles.refresh(), CREATOR_PROFILES_REFRESH_INTERVAL_MS, {
-    startupDelay: CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS,
-    onError: error =>
-      refreshCreatorProfilesLogger.error(`Failed to refresh creator profiles: ${error instanceof Error ? error.message : String(error)}`)
-  })
+  const refreshCreatorProfilesJob = createJobComponent(
+    { logs },
+    () =>
+      withRetries(() => creatorProfiles.refresh(), CREATOR_PROFILES_RUN_RETRY_DELAYS_MS, {
+        onRetry: (error, delayMs) =>
+          refreshCreatorProfilesLogger.warn(
+            `Creator profiles refresh failed, trying again in ${delayMs} ms: ${error instanceof Error ? error.message : String(error)}`
+          )
+      }),
+    CREATOR_PROFILES_REFRESH_INTERVAL_MS,
+    {
+      startupDelay: CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS,
+      onError: error =>
+        refreshCreatorProfilesLogger.error(`Failed to refresh creator profiles: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  )
 
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })

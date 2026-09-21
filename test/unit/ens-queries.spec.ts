@@ -7,7 +7,7 @@ describe('when listing names', () => {
     it('should order the names by how well they match, so an exact name is never cut off by partial ones', () => {
       const { text, values } = getENSs({ search: 'metatiger', first: 20 } as GetNFTsFilters)
 
-      expect(text).toMatch(/ORDER BY similarity\(nft\.search_text, \$\d+\) DESC, nft\.name ASC/)
+      expect(text).toMatch(/ORDER BY similarity\(nft\.search_text, \$\d+\) DESC, nft\.name ASC, nft\.id ASC/)
       expect(values).toContain('metatiger')
     })
   })

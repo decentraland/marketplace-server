@@ -19,11 +19,8 @@ export function createCreatorSearchHandler(
     const search = params.getString('search', '')?.trim() ?? ''
     const first = params.getNumber('first', CREATOR_SEARCH_DEFAULT_LIMIT) ?? CREATOR_SEARCH_DEFAULT_LIMIT
 
-    if (!search) {
-      return { status: 400, body: { ok: false, message: 'The search parameter is required' } }
-    }
-
-    return asJSON(async () => creatorProfiles.search({ search, first }), {
+    // Nothing typed is nobody suggested, not an error: the dropdown asks on every keystroke.
+    return asJSON(async () => (search ? creatorProfiles.search({ search, first }) : { data: [] }), {
       'Cache-Control': 'public,max-age=60,s-maxage=60'
     })
   }

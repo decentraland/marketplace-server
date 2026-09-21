@@ -278,6 +278,7 @@ export type CreatorProfileFixture = {
   name: string | null
   names?: string[]
   items?: number
+  collections?: number
   face?: string | null
 }
 
@@ -287,15 +288,15 @@ export type CreatorProfileFixture = {
  * next rebuildSearchWords.
  */
 export async function setCreatorProfile(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, fixture: CreatorProfileFixture): Promise<void> {
-  const { address, name, names = [], items = 0, face = null } = fixture
+  const { address, name, names = [], items = 0, collections = 0, face = null } = fixture
   const namesLiteral = names.length ? `ARRAY[${names.map(quote).join(', ')}]::text[]` : "'{}'::text[]"
   await dbComponent.dappsDatabase.query(`
-    INSERT INTO marketplace.creator_profiles (address, name, has_claimed_name, face, names, items)
+    INSERT INTO marketplace.creator_profiles (address, name, has_claimed_name, face, names, items, collections)
     VALUES (${quote(address.toLowerCase())}, ${name === null ? 'NULL' : quote(name)}, ${name === null ? 'false' : 'true'},
-            ${face === null ? 'NULL' : quote(face)}, ${namesLiteral}, ${items})
+            ${face === null ? 'NULL' : quote(face)}, ${namesLiteral}, ${items}, ${collections})
     ON CONFLICT (address) DO UPDATE SET
       name = EXCLUDED.name, has_claimed_name = EXCLUDED.has_claimed_name, face = EXCLUDED.face,
-      names = EXCLUDED.names, items = EXCLUDED.items, updated_at = now()
+      names = EXCLUDED.names, items = EXCLUDED.items, collections = EXCLUDED.collections, updated_at = now()
   `)
 }
 

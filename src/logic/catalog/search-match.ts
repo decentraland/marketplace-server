@@ -80,7 +80,7 @@ export function getSearchCteDefinitions(search: string): SQLStatement {
       SELECT
         w.item_id,
         t.term,
-        MAX(word_similarity(t.term, w.word) * CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN ${CREATOR_WORD_WEIGHT} ELSE ${COLLECTION_WORD_WEIGHT} END)::float8 AS best
+        MAX(word_similarity(t.term, w.word) * CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN ${CREATOR_WORD_WEIGHT} WHEN 'collection' THEN ${COLLECTION_WORD_WEIGHT} ELSE 0 END)::float8 AS best
       FROM ${SEARCH_WORDS_TABLE} AS w
       JOIN search_terms AS t
         ON t.term <% w.word

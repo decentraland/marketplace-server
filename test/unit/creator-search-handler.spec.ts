@@ -12,14 +12,15 @@ describe('when searching creators', () => {
     )
 
   beforeEach(() => {
-    hits = [{ address: '0xa', name: 'Galaxy Studio', face: null, items: 12 }]
+    hits = [{ address: '0xa', name: 'Galaxy Studio', face: null, items: 12, collections: 3 }]
     search = jest.fn().mockResolvedValue({ data: hits })
   })
 
-  it('should answer 400 when there is nothing to search for', async () => {
+  it('should answer an empty list, not an error, when there is nothing to search for', async () => {
     const response = await handle('http://localhost/v3/catalog/creators/search?search=%20%20')
 
-    expect(response.status).toEqual(400)
+    expect(response.status).toEqual(200)
+    expect(response.body).toEqual({ data: [] })
     expect(search).not.toHaveBeenCalled()
   })
 

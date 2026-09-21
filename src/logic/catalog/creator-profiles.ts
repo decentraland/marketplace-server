@@ -1,6 +1,12 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { CREATOR_NAME_MIN_SIMILARITY, SEARCH_QUERY_TERMS_FUNCTION, SEARCH_TOKENS_FUNCTION } from './search-normalization'
+import { withRetries } from '../retry'
+import {
+  CREATOR_NAME_MIN_SIMILARITY,
+  SEARCH_PHRASE_FUNCTION,
+  SEARCH_QUERY_TERMS_FUNCTION,
+  SEARCH_TOKENS_FUNCTION
+} from './search-normalization'
 
 export const CREATOR_PROFILES_TABLE_NAME = 'creator_profiles'
 export const CREATOR_PROFILES_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_PROFILES_TABLE_NAME}`
@@ -21,30 +27,36 @@ export const CREATOR_MAX_NAMES = 10
 
 /** Addresses per Catalyst profile lookup. Sixteen calls cover every creator. */
 export const CREATOR_PROFILES_BATCH_SIZE = 100
+/** A batch that fails is tried again after these waits before it is given up on for this run. */
+export const CREATOR_PROFILES_BATCH_RETRY_DELAYS_MS = [1_000, 4_000]
+/** Longer than this is not a name anyone typed; the terms are capped at six anyway. */
+export const CREATOR_SEARCH_MAX_LENGTH = 100
 
 export const CREATOR_SEARCH_DEFAULT_LIMIT = 4
 export const CREATOR_SEARCH_MAX_LIMIT = 10
 
-// The same bonus an item name earns for matching the whole query, so the two rankings read alike.
+// The same bonuses an item name earns, so the two rankings read alike: a name that IS the query heads the
+// list whatever the terms weigh, and a name that STARTS with it goes above one that merely contains it.
 const EXACT_NAME_BONUS = 1.0
+const NAME_PREFIX_BONUS = 0.5
 
 // Any positive constant works; it only has to be the same in every instance of this service, and distinct
 // from the keys the other rebuild jobs take.
 const REFRESH_ADVISORY_LOCK_KEY = 8_421_209
 
 /**
- * Every creator with an approved collection — the same population the Top Creators row draws from — with
- * how much they have published and the NAMEs they hold. Unapproved collections are not browsable, so
- * their creators are not findable either.
+ * Every creator with an approved collection — the same population the Top Creators row draws from,
+ * attributed by `item.creator`, never by who sells — with how much they have published and the NAMEs
+ * they hold. Unapproved collections are not browsable, so their creators are not findable either.
  */
 export const SELECT_CREATORS = `WITH creators AS (
-      SELECT item.creator AS address, COUNT(*)::int AS items
+      SELECT item.creator AS address, COUNT(*)::int AS items, COUNT(DISTINCT item.collection_id)::int AS collections
       FROM ${MARKETPLACE_SQUID_SCHEMA}.item AS item
       WHERE item.search_is_collection_approved = true
         AND item.creator IS NOT NULL
       GROUP BY item.creator
     )
-    SELECT c.address, c.items, COALESCE(n.names, '{}'::text[]) AS names
+    SELECT c.address, c.items, c.collections, COALESCE(n.names, '{}'::text[]) AS names
     FROM creators AS c
     LEFT JOIN LATERAL (
       SELECT array_agg(ens.subdomain ORDER BY owned.created_at, ens.subdomain) AS names
@@ -68,11 +80,11 @@ export const SELECT_CREATORS = `WITH creators AS (
  * alone here and set by UPDATE_CREATOR_PROFILES only for the addresses Catalyst actually answered for, so
  * a failed lookup keeps the name and avatar from the last successful one rather than blanking them.
  */
-export const UPSERT_CREATORS = `INSERT INTO ${CREATOR_PROFILES_TABLE} (address, names, items, updated_at)
-    SELECT r.address, COALESCE(r.names, '{}'::text[]), r.items, now()
-    FROM jsonb_to_recordset($1::jsonb) AS r(address text, names text[], items int)
+export const UPSERT_CREATORS = `INSERT INTO ${CREATOR_PROFILES_TABLE} (address, names, items, collections, updated_at)
+    SELECT r.address, COALESCE(r.names, '{}'::text[]), r.items, r.collections, now()
+    FROM jsonb_to_recordset($1::jsonb) AS r(address text, names text[], items int, collections int)
     ON CONFLICT (address) DO UPDATE
-      SET names = EXCLUDED.names, items = EXCLUDED.items, updated_at = EXCLUDED.updated_at`
+      SET names = EXCLUDED.names, items = EXCLUDED.items, collections = EXCLUDED.collections, updated_at = EXCLUDED.updated_at`
 
 export const UPDATE_CREATOR_PROFILES = `UPDATE ${CREATOR_PROFILES_TABLE} AS p
     SET name = r.name, has_claimed_name = r.has_claimed_name, face = r.face
@@ -114,7 +126,7 @@ export function parseCatalystProfiles(body: unknown): CatalystProfile[] {
   return profiles
 }
 
-export type CreatorRow = { address: string; items: number; names: string[] }
+export type CreatorRow = { address: string; items: number; collections: number; names: string[] }
 
 export type RefreshClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>
@@ -124,9 +136,11 @@ export type RefreshClient = {
 export type CreatorProfilesRefreshDeps = {
   /** A client from the WRITE pool; released here when the refresh is over. */
   connect: () => Promise<RefreshClient>
-  /** One Catalyst lookup. Throws when the batch fails, and the batch is then left as it was. */
+  /** One Catalyst lookup. Throws when the batch fails; it is retried, then left as it was for this run. */
   fetchProfiles: (addresses: string[]) => Promise<CatalystProfile[]>
   logger: { info: (message: string) => void; warn: (message: string) => void }
+  /** Injected by tests so the retry schedule is not waited out. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 export type CreatorProfilesRefreshResult =
@@ -141,13 +155,16 @@ export type CreatorProfilesRefreshResult =
  * lock and step aside if another replica holds it; the lock spans the Catalyst calls, so the losers do
  * not spend sixteen requests on an answer they would throw away. Nothing here runs inside a request.
  *
- * Catalyst is called per batch and a failed batch is logged and skipped: the rows keep their previous
- * name and avatar, and the next run tries again. A creator seen for the first time in a failed batch is
- * written nameless, findable by their NAMEs until then. Creators who no longer have an approved collection
- * are removed, which is what keeps the table the same population the rest of the shop shows.
+ * Catalyst is called per batch; a batch that fails is retried with a short backoff and then skipped for
+ * this run, logged: those rows keep their previous name and avatar, and the next run tries again. A
+ * creator seen for the first time in a failed batch is written nameless, findable by their NAMEs until
+ * then. A batch that ANSWERS is the truth for every address in it — matched by address, never by position
+ * — so an address Catalyst no longer knows is written nameless rather than keeping a stale name for ever.
+ * Creators who no longer have an approved collection are removed, decided from the full creator list the
+ * database returned, never from what Catalyst did or did not answer.
  */
 export async function refreshCreatorProfiles(deps: CreatorProfilesRefreshDeps): Promise<CreatorProfilesRefreshResult> {
-  const { connect, fetchProfiles, logger } = deps
+  const { connect, fetchProfiles, logger, sleep } = deps
   const client = await connect()
   try {
     const { rows } = await client.query(`SELECT pg_try_advisory_lock(${REFRESH_ADVISORY_LOCK_KEY}) AS acquired`)
@@ -163,7 +180,13 @@ export async function refreshCreatorProfiles(deps: CreatorProfilesRefreshDeps): 
       for (let i = 0; i < creators.length; i += CREATOR_PROFILES_BATCH_SIZE) {
         const batch = creators.slice(i, i + CREATOR_PROFILES_BATCH_SIZE).map(creator => creator.address)
         try {
-          const found = await fetchProfiles(batch)
+          const found = await withRetries(() => fetchProfiles(batch), CREATOR_PROFILES_BATCH_RETRY_DELAYS_MS, {
+            sleep,
+            onRetry: (error, delayMs) =>
+              logger.warn(
+                `A creator profile lookup failed, trying again in ${delayMs} ms: ${error instanceof Error ? error.message : String(error)}`
+              )
+          })
           for (const address of batch) profiles.set(address, null)
           for (const profile of found) if (profiles.has(profile.address)) profiles.set(profile.address, profile)
         } catch (error) {
@@ -179,7 +202,9 @@ export async function refreshCreatorProfiles(deps: CreatorProfilesRefreshDeps): 
       const lookedUp = creators.filter(creator => profiles.has(creator.address))
       await client.query('BEGIN')
       try {
-        await client.query(UPSERT_CREATORS, [JSON.stringify(creators.map(({ address, names, items }) => ({ address, names, items })))])
+        await client.query(UPSERT_CREATORS, [
+          JSON.stringify(creators.map(({ address, names, items, collections }) => ({ address, names, items, collections })))
+        ])
         if (lookedUp.length > 0) {
           await client.query(UPDATE_CREATOR_PROFILES, [
             JSON.stringify(
@@ -210,18 +235,21 @@ export async function refreshCreatorProfiles(deps: CreatorProfilesRefreshDeps): 
   }
 }
 
-export type CreatorSearchRow = { address: string; name: string; face: string | null; items: number }
+export type CreatorSearchRow = { address: string; name: string; face: string | null; items: number; collections: number }
 
 /**
  * Creators whose profile name or NAMEs match every term of the query, best first.
  *
  * The same matching as the item feeds — normalized query terms against pre-split words, `<%` under the
- * trigram index, the best hit per term — over the creator words table instead of the item one. A name
- * counts when the term starts it or is most of it, never when it merely contains it, and there is no
- * relaxation: this backs a suggestion row, where a creator who matches half the query is not a suggestion.
- * Ranked by the summed similarity plus a bonus for a name that IS the query, then by how much the creator
- * has published, so a tie between two similarly named creators goes to the one with a shop to browse.
- * Shown under their profile name, or their first NAME when the profile has none.
+ * trigram index, the best hit per term, every term required and, only when nothing matches them all, the
+ * creators that match the most — over the creator words table instead of the item one. A name counts
+ * when the term starts it or is most of it, never when it merely contains it.
+ *
+ * Ranked by the summed similarity plus the item feeds' bonuses — a profile name or NAME that IS the query,
+ * then one that STARTS with it — so exact beats prefix beats partial by construction rather than by luck
+ * of the weights; then by how much the creator has published, so a tie between two similarly named
+ * creators goes to the one with a shop to browse; then by name and address, so pages are stable. Shown
+ * under the profile name, or the first NAME when the profile has none, or the address when it has neither.
  */
 export function getCreatorSearchQuery(search: string, first: number): SQLStatement {
   return SQL``
@@ -245,27 +273,48 @@ export function getCreatorSearchQuery(search: string, first: number): SQLStateme
       FROM search_term_hits
       GROUP BY address
     ), search_query AS (
-      SELECT (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(`
+      SELECT
+        ${SEARCH_PHRASE_FUNCTION}(`
+    )
+    .append(SQL`${search}`)
+    .append(
+      `) AS phrase,
+        (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(`
     )
     .append(SQL`${search}`)
     .append(
       `)) AS word) AS sorted_words
+    ), search_names AS (
+      SELECT p.address, n.name
+      FROM ${CREATOR_PROFILES_TABLE} AS p
+      JOIN search_hits AS h ON h.address = p.address
+      CROSS JOIN LATERAL unnest(array_prepend(p.name, p.names)) AS n(name)
+      WHERE n.name IS NOT NULL
     )
     SELECT
       p.address,
-      COALESCE(p.name, p.names[1]) AS name,
+      COALESCE(p.name, p.names[1], p.address) AS name,
       p.face,
       p.items,
-      (h.score + CASE WHEN EXISTS (
-        SELECT 1
-        FROM unnest(array_prepend(p.name, p.names)) AS n(name)
-        WHERE (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(n.name)) AS word) = q.sorted_words
-      ) THEN ${EXACT_NAME_BONUS} ELSE 0 END)::float8 AS score
+      p.collections,
+      (h.score + CASE
+        WHEN EXISTS (
+          SELECT 1 FROM search_names AS n
+          WHERE n.address = p.address
+            AND (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(n.name)) AS word) = q.sorted_words
+        ) THEN ${EXACT_NAME_BONUS}
+        WHEN EXISTS (
+          SELECT 1 FROM search_names AS n
+          WHERE n.address = p.address
+            AND starts_with(${SEARCH_PHRASE_FUNCTION}(n.name), q.phrase)
+        ) THEN ${NAME_PREFIX_BONUS}
+        ELSE 0
+      END)::float8 AS score
     FROM search_hits AS h
     JOIN ${CREATOR_PROFILES_TABLE} AS p ON p.address = h.address
     CROSS JOIN search_query AS q
-    WHERE h.matched = (SELECT COUNT(*) FROM search_terms)
-    ORDER BY score DESC, p.items DESC, p.address ASC
+    WHERE h.matched = (SELECT MAX(matched) FROM search_hits)
+    ORDER BY score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC
     LIMIT `
     )
     .append(SQL`${first}`)
