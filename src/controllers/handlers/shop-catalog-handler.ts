@@ -26,7 +26,8 @@ const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
   cheapest: 'cheapest',
   most_expensive: 'most_expensive',
   name: 'name',
-  discount: 'discount'
+  discount: 'discount',
+  relevance: 'relevance'
 }
 
 // `discounted=true` keeps only listings a creator coupon discounts right now, `discounted=false` only the rest.

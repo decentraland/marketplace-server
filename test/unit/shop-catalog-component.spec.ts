@@ -211,8 +211,8 @@ describe('Shop Catalog Component', () => {
 
       const sql = query.mock.calls[0][0]
       expect(sql.text).toContain('marketplace.item_search_words')
-      expect(sql.text).toContain('search_words.word % lower(')
-      expect(sql.text).toContain('lower(search_tags.tag) = lower(')
+      expect(sql.text).toContain('t.term <% w.word')
+      expect(sql.text).toContain('lower(tags.tag) = lower(')
       // The old form matched the item NAME by substring, which is what missed multi-word terms. The only
       // ILIKE left is the fallback for rows that are not collection items, and it is guarded by IS NULL.
       expect(sql.text).not.toMatch(/COALESCE\(nft\.name, w_p\.name, e_p\.name\) ILIKE/)
@@ -224,7 +224,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ search: 'hat' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.item_id = COALESCE(item_p.id, item_s.id)::text')
+      expect(sql.text).toContain('LEFT JOIN search_matches AS search_match ON search_match.item_id = COALESCE(item_p.id, item_s.id)::text')
     })
 
     it('should select the seller and issued id from the sent asset JSON (no extra join)', async () => {
@@ -267,8 +267,42 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ search: 'Cool' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.text).toContain('t.term <% w.word')
       expect(sql.values).toContain('Cool')
+    })
+
+    it('should open with the search CTEs, keep the best-matching rows of the filtered set and count above that filter', async () => {
+      await shopCatalog.getShopListings({ search: 'Cool', category: 'emote' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text.trimStart().startsWith('WITH search_terms AS (')).toBe(true)
+      expect(sql.text).toContain('MAX(c.search_matched) OVER () AS search_required')
+      expect(sql.text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
+      expect(sql.text.indexOf('COUNT(*) OVER () AS total')).toBeLessThan(sql.text.indexOf('search_required'))
+      expect(sql.text).not.toContain('COUNT(*) OVER() AS total')
+    })
+
+    it('should default a search to relevance and read every sort key off the level-filtered relation', async () => {
+      await shopCatalog.getShopListings({ search: 'Cool' })
+      await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'cheapest' })
+      await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'discount' })
+
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC'
+      )
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY COALESCE(f.sale_price, f.price)::numeric ASC')
+      expect(query.mock.calls[2][0].text).toContain(
+        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.created_at DESC'
+      )
+    })
+
+    it('should leave a search-less statement in its plain shape, with relevance falling back to newest', async () => {
+      await shopCatalog.getShopListings({ sortBy: 'relevance' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('search_matches')
+      expect(sql.text).toContain('COUNT(*) OVER() AS total')
+      expect(sql.text).toContain('ORDER BY mv.created_at DESC')
     })
 
     it('should lowercase rarities and bind them as an array', async () => {
@@ -432,8 +466,19 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getLegacyListings({ search: '50%_off' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.text).toContain('t.term <% w.word')
       expect(sql.values).toContain('50%_off')
+    })
+
+    it('should rank a search by relevance over the level-filtered rows, and price a sort off the output columns', async () => {
+      await shopCatalog.getLegacyListings({ search: 'hat' })
+      await shopCatalog.getLegacyListings({ search: 'hat', sortBy: 'cheapest' })
+
+      expect(query.mock.calls[0][0].text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC'
+      )
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY f.mana_wei::numeric ASC')
     })
 
     it('should lowercase rarities and bind them as an array param', async () => {
@@ -1238,8 +1283,11 @@ describe('Shop Catalog Component', () => {
       // One occurrence per branch — the point of reusing the join chain is that this holds by construction.
       expect(text.match(/ILIKE 'emote%'/g)).toHaveLength(3)
       expect(values.filter((v: unknown) => v === '0xabc')).toHaveLength(3)
-      // two bindings per branch now: one for the word match, one for the tag match
-      expect(values.filter((v: unknown) => v === 'hat')).toHaveLength(6)
+      // the term is bound four times, all in the CTEs (terms, phrase, sorted words, tag); the branches bind nothing
+      expect(values.filter((v: unknown) => v === 'hat')).toHaveLength(4)
+      // the search columns and the join reach every branch, so the level filter can read them off the union
+      expect(text.match(/AS search_matched/g)).toHaveLength(3)
+      expect(text.match(/LEFT JOIN search_matches AS search_match/g)).toHaveLength(3)
     })
 
     it('should not apply trade-only predicates to the store branch', async () => {

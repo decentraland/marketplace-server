@@ -113,7 +113,9 @@ export type ShopListing = {
   createdAt: number
 }
 
-export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name' | 'discount'
+// `relevance` is the default of a search and only meaningful with one: without a search every row ties, so
+// a feed given it falls back to `newest` (see resolveShopSortBy).
+export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name' | 'discount' | 'relevance'
 
 export type ShopCatalogFilters = {
   first?: number

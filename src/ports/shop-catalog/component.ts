@@ -1,7 +1,16 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getSearchMatchWhere } from '../../logic/catalog/search-match'
+import {
+  applySearchLevel,
+  getRelevanceOrderBy,
+  getSearchCteDefinitions,
+  getSearchMatchJoin,
+  getSearchMatchWhere,
+  getSearchScoreColumns,
+  resolveShopSortBy,
+  SEARCH_LEVEL_ALIAS
+} from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { collectionProof } from '../../logic/coupons/merkle'
 import { AppComponents } from '../../types'
@@ -25,6 +34,7 @@ import {
   ShopCouponRow,
   ShopListing,
   ShopListingRow,
+  ShopSortBy,
   TrendingItem,
   TrendingItemRow,
   TrendingItemsFilters,
@@ -350,6 +360,11 @@ const SHOP_ITEM_ID_EXPRESSION = 'COALESCE(item_p.id, item_s.id)::text'
 // entry in the word table, so without this a search would exclude every one of them.
 const SHOP_NON_ITEM_NAME_EXPRESSION = 'nft.name'
 
+// A searching statement opens with the search CTEs; without a search it opens with nothing.
+function searchCtes(search: string | undefined): SQLStatement {
+  return search ? SQL`WITH `.append(getSearchCteDefinitions(search)).append(SQL` `) : SQL``
+}
+
 // A trade whose item belongs to a collection curation did not approve is not something to list, mirroring
 // the base WHERE /v2/catalog applies. Rows whose sent asset is not a collection item at all -- LAND,
 // estates, names -- have no collection to judge, so they stay: COALESCE cannot tell "no item" from "item
@@ -523,10 +538,14 @@ function unifiedBranch(opts: {
     .append(withCoupons ? couponColumns() : nullCouponColumns())
     .append(SQL`, `)
     .append(genderExpr())
+    // Search columns ride along on every branch alike, so the UNION lines up and the level filter above it
+    // can read them off the merged set.
+    .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
     .append(SQL` `)
     // The store branch brings its own base relation; both then share the identical join chain and filters.
     .append(isStore ? storeBaseRelation() : metadataJoins())
     .append(withCoupons ? couponJoin() : SQL``)
+    .append(filters.search ? getSearchMatchJoin(SHOP_ITEM_ID_EXPRESSION) : SQL``)
 
   if (isStore) {
     // The store relation has already filtered itself (minter / approved / available / price) and has no
@@ -786,6 +805,31 @@ function rarityDistanceExpr(referenceRarity: string | null): SQLStatement {
   return expr.append(SQL` ELSE ${UNKNOWN_RARITY_DISTANCE} END`)
 }
 
+/**
+ * ORDER BY for the two unified feeds, over the merged set's output columns (`usd_wei`, `name`, `created_at`,
+ * the coupon columns, `trade_id`), which is what lets one list serve the plain relation and the
+ * level-filtered one alike. `alias` and every key are fixed SQL, never user input; `sortBy` has already
+ * been validated by the handler and resolved by resolveShopSortBy.
+ */
+function unifiedOrderBy(sortBy: ShopSortBy, alias: string): SQLStatement {
+  const a = alias
+  switch (sortBy) {
+    case 'cheapest':
+      return SQL``.append(` ORDER BY ${a}.usd_wei ASC, ${a}.trade_id`)
+    case 'most_expensive':
+      return SQL``.append(` ORDER BY ${a}.usd_wei DESC, ${a}.trade_id`)
+    case 'name':
+      return SQL``.append(` ORDER BY ${a}.name ASC, ${a}.trade_id`)
+    case 'discount':
+      return SQL``.append(` ORDER BY ${a}.coupon_discount_ppm DESC NULLS LAST, ${a}.sale_ends_at ASC NULLS LAST, ${a}.trade_id`)
+    case 'relevance':
+      return getRelevanceOrderBy(a, `${a}.created_at DESC, ${a}.trade_id`)
+    case 'newest':
+    default:
+      return SQL``.append(` ORDER BY ${a}.created_at DESC, ${a}.trade_id`)
+  }
+}
+
 export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
   const { dappsDatabase: pg } = components
   const logger = components.logs.getLogger('shop-catalog-component')
@@ -795,8 +839,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
   async function getShopListings(filters: ShopCatalogFilters): Promise<{ data: ShopListing[]; total: number }> {
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
+    const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
-    const query = SQL`
+    // With a search the total is counted above the level filter (see applySearchLevel), not here.
+    const core = SQL`
       SELECT
         mv.id AS trade_id,
         mv.type AS trade_type,
@@ -821,17 +867,19 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         SQL`::text END AS sale_price,
         mv.available::text AS available,
         mv.network AS network,
-        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
-        COUNT(*) OVER() AS total
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at
       `
       )
+      .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
       .append(SQL`, `)
       .append(couponColumns())
+      .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
       .append(SQL` `)
       .append(metadataJoins())
       .append(couponJoin())
+      .append(filters.search ? getSearchMatchJoin(SHOP_ITEM_ID_EXPRESSION) : SQL``)
       .append(
         SQL`
       WHERE mv.status = 'open'
@@ -845,49 +893,49 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.contractAddress) {
-      query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
+      core.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
     }
     if (filters.itemId != null) {
-      query.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
+      core.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
     }
     if (filters.creator) {
-      query.append(SQL` AND lower(COALESCE(item_p.creator, item_s.creator, '')) = ${filters.creator.toLowerCase()}`)
+      core.append(SQL` AND lower(COALESCE(item_p.creator, item_s.creator, '')) = ${filters.creator.toLowerCase()}`)
     }
     if (filters.category === 'emote') {
-      query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) ILIKE 'emote%'`)
+      core.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) ILIKE 'emote%'`)
     } else if (filters.category === 'wearable') {
-      query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) NOT ILIKE 'emote%'`)
+      core.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) NOT ILIKE 'emote%'`)
     }
     if (filters.rarities?.length) {
-      query.append(
+      core.append(
         SQL` AND lower(COALESCE(item_p.rarity, item_s.rarity, nft.search_wearable_rarity)) = ANY(${filters.rarities.map(r =>
           r.toLowerCase()
         )})`
       )
     }
     if (filters.wearableCategories?.length) {
-      query.append(
+      core.append(
         SQL` AND lower(COALESCE(item_p.search_wearable_category, item_s.search_wearable_category, item_p.search_emote_category, item_s.search_emote_category)) = ANY(${filters.wearableCategories.map(
           c => c.toLowerCase()
         )})`
       )
     }
     if (filters.isSmart) {
-      query.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
+      core.append(SQL` AND COALESCE(item_p.item_type, item_s.item_type, nft.item_type) = 'smart_wearable_v1'`)
     }
     // Same expression the row mapper reads `listingType` from, so the filter and the reported value cannot
     // disagree. See the filter's own doc for why a native-only feed still needs it.
     if (filters.listingType === 'primary') {
-      query.append(SQL` AND mv.type = 'public_item_order'`)
+      core.append(SQL` AND mv.type = 'public_item_order'`)
     } else if (filters.listingType === 'secondary') {
-      query.append(SQL` AND mv.type <> 'public_item_order'`)
+      core.append(SQL` AND mv.type <> 'public_item_order'`)
     }
-    appendDiscountedFilter(query, filters, true)
+    appendDiscountedFilter(core, filters, true)
     // Price bounds apply to what the buyer would PAY, so a discounted listing lands in the slider range of its sale price.
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
       if (minWei != null)
-        query
+        core
           .append(SQL` AND `)
           .append(effectiveWeiExpr())
           .append(SQL` >= ${minWei.toString()}`)
@@ -895,29 +943,47 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     if (filters.maxPriceCredits != null) {
       const maxWei = creditsToWei(filters.maxPriceCredits)
       if (maxWei != null)
-        query
+        core
           .append(SQL` AND `)
           .append(effectiveWeiExpr())
           .append(SQL` <= ${maxWei.toString()}`)
     }
     if (filters.search) {
-      query
+      core
         .append(SQL` AND `)
         .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
-    // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
-    const order =
-      filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` ASC`)
-        : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` DESC`)
-        : filters.sortBy === 'name'
-        ? SQL` ORDER BY COALESCE(nft.name, w_p.name, e_p.name) ASC`
-        : filters.sortBy === 'discount'
-        ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC`
-        : SQL` ORDER BY mv.created_at DESC`
-    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+    // A search reads its sort keys off the level-filtered relation's output columns; without one the core is
+    // the statement and the keys are the source expressions. Either way: fixed expressions only, never user
+    // input. The effective price is the sale price while a coupon applies, else the list price — the same
+    // rule effectiveWeiExpr encodes, spelled on the output columns.
+    const f = SEARCH_LEVEL_ALIAS
+    const order = filters.search
+      ? sortBy === 'cheapest'
+        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric ASC`)
+        : sortBy === 'most_expensive'
+        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric DESC`)
+        : sortBy === 'name'
+        ? SQL``.append(` ORDER BY ${f}.name ASC`)
+        : sortBy === 'discount'
+        ? SQL``.append(` ORDER BY ${f}.coupon_discount_ppm DESC NULLS LAST, ${f}.sale_ends_at ASC NULLS LAST, ${f}.created_at DESC`)
+        : sortBy === 'relevance'
+        ? getRelevanceOrderBy(f, `${f}.created_at DESC`)
+        : SQL``.append(` ORDER BY ${f}.created_at DESC`)
+      : sortBy === 'cheapest'
+      ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` ASC`)
+      : sortBy === 'most_expensive'
+      ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` DESC`)
+      : sortBy === 'name'
+      ? SQL` ORDER BY COALESCE(nft.name, w_p.name, e_p.name) ASC`
+      : sortBy === 'discount'
+      ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC`
+      : SQL` ORDER BY mv.created_at DESC`
+    const query = searchCtes(filters.search)
+      .append(filters.search ? applySearchLevel(core, 'total') : core)
+      .append(order)
+      .append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<ShopListingRow>(query)
     const polygonChainId = getPolygonChainId()
@@ -1038,8 +1104,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
   async function getLegacyListings(filters: LegacyCatalogFilters): Promise<{ data: LegacyListing[]; total: number }> {
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
+    const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
-    const query = SQL`
+    // With a search the total is counted above the level filter (see applySearchLevel), not here.
+    const core = SQL`
       SELECT
         mv.id AS trade_id,
         mv.sent_contract_address AS contract_address,
@@ -1053,13 +1121,15 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         mv.amount_received::text AS mana_wei,
         mv.available::text AS available,
         mv.network AS network,
-        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
-        COUNT(*) OVER() AS total
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at
       `
+      .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
+      .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
       .append(SQL` `)
       .append(metadataJoins())
+      .append(filters.search ? getSearchMatchJoin(SHOP_ITEM_ID_EXPRESSION) : SQL``)
       .append(
         SQL`
       WHERE mv.status = 'open'
@@ -1074,36 +1144,50 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(APPROVED_COLLECTION_PREDICATE)
 
     if (filters.category === 'emote') {
-      query.append(SQL` AND item_p.item_type ILIKE 'emote%'`)
+      core.append(SQL` AND item_p.item_type ILIKE 'emote%'`)
     } else if (filters.category === 'wearable') {
-      query.append(SQL` AND item_p.item_type NOT ILIKE 'emote%'`)
+      core.append(SQL` AND item_p.item_type NOT ILIKE 'emote%'`)
     }
     if (filters.rarities?.length) {
-      query.append(SQL` AND lower(item_p.rarity) = ANY(${filters.rarities.map(r => r.toLowerCase())})`)
+      core.append(SQL` AND lower(item_p.rarity) = ANY(${filters.rarities.map(r => r.toLowerCase())})`)
     }
     if (filters.wearableCategories?.length) {
-      query.append(
+      core.append(
         SQL` AND lower(COALESCE(item_p.search_wearable_category, item_p.search_emote_category)) = ANY(${filters.wearableCategories.map(c =>
           c.toLowerCase()
         )})`
       )
     }
     if (filters.search) {
-      query
+      core
         .append(SQL` AND `)
         .append(getSearchMatchWhere(SHOP_ITEM_ID_EXPRESSION, filters.search, { nonItemNameExpression: SHOP_NON_ITEM_NAME_EXPRESSION }))
     }
 
-    // Sort (fixed expressions only -- never interpolate user input into ORDER BY).
-    const order =
-      filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY mv.amount_received ASC`
-        : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY mv.amount_received DESC`
-        : filters.sortBy === 'name'
-        ? SQL` ORDER BY COALESCE(w_p.name, e_p.name) ASC`
-        : SQL` ORDER BY mv.created_at DESC`
-    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+    // Sort keys off the level-filtered relation's output columns when searching, off the source expressions
+    // otherwise. Fixed expressions only -- never interpolate user input into ORDER BY.
+    const f = SEARCH_LEVEL_ALIAS
+    const order = filters.search
+      ? sortBy === 'cheapest'
+        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric ASC`)
+        : sortBy === 'most_expensive'
+        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric DESC`)
+        : sortBy === 'name'
+        ? SQL``.append(` ORDER BY ${f}.name ASC`)
+        : sortBy === 'relevance'
+        ? getRelevanceOrderBy(f, `${f}.created_at DESC`)
+        : SQL``.append(` ORDER BY ${f}.created_at DESC`)
+      : sortBy === 'cheapest'
+      ? SQL` ORDER BY mv.amount_received ASC`
+      : sortBy === 'most_expensive'
+      ? SQL` ORDER BY mv.amount_received DESC`
+      : sortBy === 'name'
+      ? SQL` ORDER BY COALESCE(w_p.name, e_p.name) ASC`
+      : SQL` ORDER BY mv.created_at DESC`
+    const query = searchCtes(filters.search)
+      .append(filters.search ? applySearchLevel(core, 'total') : core)
+      .append(order)
+      .append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<LegacyListingRow>(query)
     const polygonChainId = getPolygonChainId()
@@ -1146,19 +1230,25 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
     const rateNumericString = rateToNumericString(manaUsdRate)
+    const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
     // Build only the requested branch(es); default is both, UNION ALL-ed together.
     const inner = buildUnifiedInner(filters, rateNumericString)
 
-    // Wrap the union so priceCredits, the price-range filter and the sort operate on the merged set.
-    const query = SQL`
+    // Wrap the union so priceCredits, the price-range filter and the sort operate on the merged set. With a
+    // search the total is counted above the level filter (see applySearchLevel), not here.
+    const core = SQL`
       SELECT
         sub.*,
         CEIL(sub.usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint AS price_credits,
         CASE WHEN sub.compare_at_usd_wei IS NOT NULL
-             THEN CEIL(sub.compare_at_usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint END AS compare_at_credits,
-        COUNT(*) OVER() AS total
-      FROM (`.append(inner).append(SQL`) sub
+             THEN CEIL(sub.compare_at_usd_wei / ${USD_WEI_PER_CREDIT.toString()}::numeric)::bigint END AS compare_at_credits`
+      .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
+      .append(
+        SQL`
+      FROM (`
+      )
+      .append(inner).append(SQL`) sub
       WHERE sub.usd_wei > 0 AND sub.usd_wei <= ${MAX_USD_WEI}::numeric`)
 
     // minPriceCredits is a floor on the DISPLAYED price, which is CEIL(usd_wei / USD_WEI_PER_CREDIT).
@@ -1169,27 +1259,23 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
       if (minWei != null && minWei > 0n) {
-        query.append(SQL` AND sub.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
+        core.append(SQL` AND sub.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
       }
     }
     if (filters.maxPriceCredits != null) {
       const maxWei = creditsToWei(filters.maxPriceCredits)
-      if (maxWei != null) query.append(SQL` AND sub.usd_wei <= ${maxWei.toString()}`)
+      if (maxWei != null) core.append(SQL` AND sub.usd_wei <= ${maxWei.toString()}`)
     }
 
-    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `sub.trade_id`
-    // tiebreaker makes the order total so pagination is stable when many rows share a usd_wei/name.
-    const order =
-      filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY sub.usd_wei ASC, sub.trade_id`
-        : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY sub.usd_wei DESC, sub.trade_id`
-        : filters.sortBy === 'name'
-        ? SQL` ORDER BY sub.name ASC, sub.trade_id`
-        : filters.sortBy === 'discount'
-        ? SQL` ORDER BY sub.coupon_discount_ppm DESC NULLS LAST, sub.sale_ends_at ASC NULLS LAST, sub.trade_id`
-        : SQL` ORDER BY sub.created_at DESC, sub.trade_id`
-    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `trade_id` tiebreaker
+    // makes the order total so pagination is stable when many rows share a usd_wei/name. Every key is an
+    // output column of `sub`, so the same list reads off the level-filtered relation when searching.
+    const alias = filters.search ? SEARCH_LEVEL_ALIAS : 'sub'
+    const order = unifiedOrderBy(sortBy, alias)
+    const query = searchCtes(filters.search)
+      .append(filters.search ? applySearchLevel(core, 'total') : core)
+      .append(order)
+      .append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<UnifiedListingRow>(query)
     const polygonChainId = getPolygonChainId()
@@ -1209,15 +1295,24 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const first = clampCount(filters.first, SHOP_DEFAULT_PAGE_SIZE, SHOP_MIN_PAGE_SIZE, SHOP_MAX_PAGE_SIZE)
     const skip = clampCount(filters.skip, 0, 0, Number.MAX_SAFE_INTEGER)
     const rateNumericString = rateToNumericString(manaUsdRate)
+    const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
-    const query = SQL`
+    // With a search the total is counted above the level filter (see applySearchLevel), not here.
+    const core = SQL`
       SELECT
-        d.*,
-        COUNT(*) OVER() AS total
+        d.*`
+      .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
+      .append(
+        SQL`
       FROM (
-        `.append(buildItemUnifiedCore(filters, rateNumericString)).append(SQL`
+        `
+      )
+      .append(buildItemUnifiedCore(filters, rateNumericString))
+      .append(
+        SQL`
       ) d
-      WHERE d.usd_wei > 0`)
+      WHERE d.usd_wei > 0`
+      )
 
     // Price-range on the item's DISPLAYED (headline) price -- see getUnifiedListings for the CEIL-consistent
     // lower bound (usd_wei > (m - 1) * C). listing_count is intentionally NOT narrowed by this filter: the
@@ -1225,27 +1320,23 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
       if (minWei != null && minWei > 0n) {
-        query.append(SQL` AND d.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
+        core.append(SQL` AND d.usd_wei > ${(minWei - USD_WEI_PER_CREDIT).toString()}`)
       }
     }
     if (filters.maxPriceCredits != null) {
       const maxWei = creditsToWei(filters.maxPriceCredits)
-      if (maxWei != null) query.append(SQL` AND d.usd_wei <= ${maxWei.toString()}`)
+      if (maxWei != null) core.append(SQL` AND d.usd_wei <= ${maxWei.toString()}`)
     }
 
-    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `d.trade_id`
-    // tiebreaker keeps pagination stable when many items share a headline usd_wei/name.
-    const order =
-      filters.sortBy === 'cheapest'
-        ? SQL` ORDER BY d.usd_wei ASC, d.trade_id`
-        : filters.sortBy === 'most_expensive'
-        ? SQL` ORDER BY d.usd_wei DESC, d.trade_id`
-        : filters.sortBy === 'name'
-        ? SQL` ORDER BY d.name ASC, d.trade_id`
-        : filters.sortBy === 'discount'
-        ? SQL` ORDER BY d.coupon_discount_ppm DESC NULLS LAST, d.sale_ends_at ASC NULLS LAST, d.trade_id`
-        : SQL` ORDER BY d.created_at DESC, d.trade_id`
-    query.append(order).append(SQL` LIMIT ${first} OFFSET ${skip}`)
+    // Sort (fixed expressions only -- never interpolate user input into ORDER BY). A `trade_id` tiebreaker
+    // keeps pagination stable when many items share a headline usd_wei/name. Same keys as the per-listing
+    // feed, read off `d` or, when searching, off the level-filtered relation.
+    const alias = filters.search ? SEARCH_LEVEL_ALIAS : 'd'
+    const order = unifiedOrderBy(sortBy, alias)
+    const query = searchCtes(filters.search)
+      .append(filters.search ? applySearchLevel(core, 'total') : core)
+      .append(order)
+      .append(SQL` LIMIT ${first} OFFSET ${skip}`)
 
     const result = await pg.query<UnifiedItemRow>(query)
     const polygonChainId = getPolygonChainId()
