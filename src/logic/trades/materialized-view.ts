@@ -62,9 +62,7 @@ export const TRADES_MV_CREATE_SQL = `
           MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
           MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
           t.network,
-          -- Projected, not just grouped: network does not identify a chain (Polygon mainnet and Amoy are
-          -- both MATIC) and addTrade stores whatever chain the signature verifies against, so readers that
-          -- must not mix chains need the trade's own.
+          -- Selected, not just grouped: network does not identify a chain, since Polygon mainnet and Amoy are both MATIC.
           t.chain_id,
           t.expires_at,
           MAX(t.contract) AS trade_contract,

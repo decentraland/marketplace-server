@@ -131,47 +131,59 @@ describe('when the shop feed carries creator coupons', () => {
       expect(sql.text).toContain('AS coupon')
     })
 
-    it('should pair the coupon with the marketplace the listing settles on, never another version', async () => {
-      await component.getShopListings({})
-      const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('pairing.chain_id = c.chain_id')
-      expect(sql.text).toContain('pairing.coupon_manager = LOWER(c.coupon_manager)')
-      expect(sql.text).toContain('pairing.marketplace = LOWER(mv.trade_contract)')
-      // The pairings ride along as three aligned arrays: Polygon mainnet's V3 and V2 each with its own manager.
-      const marketplaces = sql.values.find(
-        (value: unknown) => Array.isArray(value) && value.includes('0xe38ef22abe871513555cba89adfe45ab4f548ada')
-      ) as string[]
-      const managers = sql.values.find(
-        (value: unknown) => Array.isArray(value) && value.includes('0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813')
-      ) as string[]
-      expect(managers[marketplaces.indexOf('0xe38ef22abe871513555cba89adfe45ab4f548ada')]).toBe(
-        '0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813'
-      )
-      expect(managers[marketplaces.indexOf('0xa40b1d129b8906888720686f3a01921ddf37716f')]).toBe(
-        '0x3fd3056ee72a2a85e9392fab3a450e7736536081'
-      )
-    })
+    describe('and the coupon join is built', () => {
+      let sql: { text: string; values: unknown[] }
+      let marketplaces: string[]
+      let managers: string[]
+      let pairedChainIds: number[]
 
-    it("should require the coupon to be on the listing's own chain, which its network does not identify", async () => {
-      await component.getShopListings({})
-      const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('AND c.chain_id = mv.chain_id')
-    })
+      beforeEach(async () => {
+        await component.getShopListings({})
+        sql = query.mock.calls[0][0]
+        // The pairings ride along as three aligned arrays, so a marketplace's manager is the entry at its index.
+        marketplaces = sql.values.find(
+          (value: unknown) => Array.isArray(value) && value.includes('0xe38ef22abe871513555cba89adfe45ab4f548ada')
+        ) as string[]
+        managers = sql.values.find(
+          (value: unknown) => Array.isArray(value) && value.includes('0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813')
+        ) as string[]
+        pairedChainIds = sql.values.find(
+          (value: unknown) =>
+            Array.isArray(value) && value.length > 1 && value.every(entry => typeof entry === 'number') && value[1] === 137
+        ) as number[]
+      })
 
-    it('should hold the listing to a chain this deployment serves, since it could not be bought otherwise', async () => {
-      await component.getShopListings({})
-      const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('AND mv.chain_id = ANY(')
-      expect(sql.values).toContainEqual([137, 1])
-    })
+      it('should require the manager to be the one paired with the marketplace the listing names', () => {
+        expect(sql.text).toContain('pairing.marketplace = LOWER(mv.trade_contract)')
+      })
 
-    it('should pair only the marketplaces of those chains', async () => {
-      await component.getShopListings({})
-      const sql = query.mock.calls[0][0]
-      const chainIds = sql.values.find(
-        (value: unknown) => Array.isArray(value) && value.length > 1 && value.every(entry => typeof entry === 'number') && value[1] === 137
-      ) as number[]
-      expect([...new Set(chainIds)]).toEqual([137])
+      it("should match that pairing on the coupon's own manager and chain", () => {
+        expect(sql.text).toContain('pairing.coupon_manager = LOWER(c.coupon_manager)')
+        expect(sql.text).toContain('pairing.chain_id = c.chain_id')
+      })
+
+      it('should give each live Polygon mainnet version the manager it redeems through', () => {
+        expect([
+          managers[marketplaces.indexOf('0xe38ef22abe871513555cba89adfe45ab4f548ada')],
+          managers[marketplaces.indexOf('0xa40b1d129b8906888720686f3a01921ddf37716f')]
+        ]).toEqual(['0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813', '0x3fd3056ee72a2a85e9392fab3a450e7736536081'])
+      })
+
+      it("should require the coupon to be on the listing's own chain, which its network does not identify", () => {
+        expect(sql.text).toContain('AND c.chain_id = mv.chain_id')
+      })
+
+      it('should hold the listing to a chain this deployment serves, since it could not be bought otherwise', () => {
+        expect(sql.text).toContain('AND mv.chain_id = ANY(')
+      })
+
+      it('should bind those served chains as the values of that check', () => {
+        expect(sql.values).toContainEqual([137, 1])
+      })
+
+      it('should offer pairings for no chain beyond them', () => {
+        expect([...new Set(pairedChainIds)]).toEqual([137])
+      })
     })
 
     it('should keep only discounted listings on discounted=true and only the rest on discounted=false', async () => {

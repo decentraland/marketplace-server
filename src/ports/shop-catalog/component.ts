@@ -140,30 +140,15 @@ function metadataJoins() {
 
 /**
  * The best live creator coupon for the listing aliased `mv`, exposed as `cp`: the creator's own coupon covering
- * the listed collection, signed against the manager of the marketplace the listing settles on, inside its
- * window, neither cancelled nor revoked and with uses left as of the last on-chain read. Biggest discount wins;
- * ties go to the one ending soonest. Primaries only: the coupon contract refuses anything but collection items,
- * so a resale never carries one.
+ * the listed collection, inside its window, neither cancelled nor revoked and with uses left as of the last
+ * on-chain read. Biggest discount wins; ties go to the one ending soonest. Primaries only: the coupon contract
+ * refuses anything but collection items, so a resale never carries one.
  *
- * The manager pairing is not optional. Each marketplace version only redeems coupons signed against its own
- * manager, and a listing keeps settling on the version it was signed against, so while two versions are live
- * a creator's coupon covers only the listings on its marketplace. Advertising it on the others would show a
- * sale price the purchase then cannot settle: `acceptWithCoupon` reverts after the buyer confirmed.
- *
- * Chain is matched directly, because `network` does not identify one: Polygon mainnet and Amoy are both MATIC,
- * and addTrade stores whatever chain a trade's signature verifies against rather than the deployment's own, so
- * a listing on either can sit in the same table. Two chains of one network deploying a marketplace at the same
- * address would otherwise let a coupon from one advertise on the other's listings, and the pairing is bound to
- * that same chain so the manager is the one that chain's marketplace redeems through.
- *
- * Both sides are then held to the chains this deployment serves. A listing from any other chain is unbuyable
- * here regardless — the row mapper reports every MATIC row as the configured Polygon chain, so the client
- * would settle on the wrong one — and giving it a discount would put a sale price on a row that cannot be
- * bought. Reporting that row's real chain is a separate question, and a wider one than coupons.
+ * Matched on the listing's chain and on the manager paired with its marketplace, because a version only redeems
+ * coupons signed against its own manager. See the PR for why network alone cannot stand in for the chain.
  */
 function couponJoin(): SQLStatement {
-  // Only the chains this deployment serves, one per network. A listing on any other chain is one this shop
-  // cannot sell whatever it is labelled, so it must not pick up a discount either.
+  // A listing from a chain this deployment does not serve is unbuyable here, so it must not be discounted either.
   const served = [getPolygonChainId(), getEthereumChainId()]
   const pairings = getCouponMarketplacePairings().filter(pairing => served.includes(pairing.chainId))
   return SQL`
