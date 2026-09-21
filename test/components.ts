@@ -38,6 +38,7 @@ import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
+import { createSearchSuggestComponent } from '../src/ports/search-suggest/component'
 import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
 import { createShopNotifierComponent } from '../src/ports/shop-notifier/component'
 import { createStatsComponent } from '../src/ports/stats/component'
@@ -127,6 +128,7 @@ async function initComponents(): Promise<TestComponents> {
   })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
+  const searchSuggest = createSearchSuggestComponent({ dappsDatabase: dappsReadDatabase, items, creatorProfiles, manaUsdRate })
   const schemaValidator = await createSchemaValidatorComponent()
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
   // The shared harness must never reach the chain: jest.setup disables outbound connections, so a real
@@ -217,6 +219,7 @@ async function initComponents(): Promise<TestComponents> {
     catalog,
     shopCatalog,
     creatorProfiles,
+    searchSuggest,
     suggestions,
     shopNotifier,
     manaUsdRate,

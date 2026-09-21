@@ -1,5 +1,13 @@
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import {
+  COLLECTION_SEARCH_NAMES_TABLE,
+  COLLECTION_SEARCH_NAMES_TABLE_NAME,
+  COLLECTION_SEARCH_WORDS_TABLE,
+  COLLECTION_SEARCH_WORDS_TABLE_NAME,
+  SELECT_COLLECTION_SEARCH_NAMES,
+  SELECT_SEARCHABLE_COLLECTIONS
+} from './collection-search'
+import {
   CREATOR_MAX_NAMES,
   CREATOR_PROFILES_TABLE,
   CREATOR_SEARCH_NAMES_TABLE,
@@ -31,6 +39,9 @@ export const SEARCH_NAMES_ITEM_INDEX = `idx_${SEARCH_NAMES_TABLE_NAME}_item_id`
 export const CREATOR_SEARCH_WORDS_WORD_INDEX = `idx_${CREATOR_SEARCH_WORDS_TABLE_NAME}_word_trgm`
 export const CREATOR_SEARCH_WORDS_ADDRESS_INDEX = `idx_${CREATOR_SEARCH_WORDS_TABLE_NAME}_address`
 export const CREATOR_SEARCH_NAMES_ADDRESS_INDEX = `idx_${CREATOR_SEARCH_NAMES_TABLE_NAME}_address`
+export const COLLECTION_SEARCH_WORDS_WORD_INDEX = `idx_${COLLECTION_SEARCH_WORDS_TABLE_NAME}_word_trgm`
+export const COLLECTION_SEARCH_WORDS_COLLECTION_INDEX = `idx_${COLLECTION_SEARCH_WORDS_TABLE_NAME}_collection_id`
+export const COLLECTION_SEARCH_NAMES_COLLECTION_INDEX = `idx_${COLLECTION_SEARCH_NAMES_TABLE_NAME}_collection_id`
 
 const STAGING_TABLE_NAME = `${SEARCH_WORDS_TABLE_NAME}_staging`
 const STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_TABLE_NAME}`
@@ -46,6 +57,13 @@ const CREATOR_STAGING_ADDRESS_INDEX = `${CREATOR_SEARCH_WORDS_ADDRESS_INDEX}_sta
 const CREATOR_NAMES_STAGING_TABLE_NAME = `${CREATOR_SEARCH_NAMES_TABLE_NAME}_staging`
 const CREATOR_NAMES_STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_NAMES_STAGING_TABLE_NAME}`
 const CREATOR_NAMES_STAGING_ADDRESS_INDEX = `${CREATOR_SEARCH_NAMES_ADDRESS_INDEX}_staging`
+const COLLECTION_STAGING_TABLE_NAME = `${COLLECTION_SEARCH_WORDS_TABLE_NAME}_staging`
+const COLLECTION_STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_STAGING_TABLE_NAME}`
+const COLLECTION_STAGING_WORD_INDEX = `${COLLECTION_SEARCH_WORDS_WORD_INDEX}_staging`
+const COLLECTION_STAGING_COLLECTION_INDEX = `${COLLECTION_SEARCH_WORDS_COLLECTION_INDEX}_staging`
+const COLLECTION_NAMES_STAGING_TABLE_NAME = `${COLLECTION_SEARCH_NAMES_TABLE_NAME}_staging`
+const COLLECTION_NAMES_STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_NAMES_STAGING_TABLE_NAME}`
+const COLLECTION_NAMES_STAGING_COLLECTION_INDEX = `${COLLECTION_SEARCH_NAMES_COLLECTION_INDEX}_staging`
 
 // Any positive constant works; it only has to be the same in every instance of this service.
 const REBUILD_ADVISORY_LOCK_KEY = 8_421_207
@@ -190,18 +208,27 @@ const SELECT_CREATOR_SEARCH_NAMES = `SELECT
     CROSS JOIN LATERAL unnest(array_prepend(cp.name, cp.names)) AS n(name)
     WHERE n.name IS NOT NULL`
 
+/**
+ * One row per (collection, searchable word, source), for the collection suggestions: the collection's
+ * name through the same tokenizer as everything else, so "coca cola", "coca-cola" and "cristobal" find
+ * the collections the substring search used to miss.
+ */
+const SELECT_COLLECTION_SEARCH_WORDS = selectWordsFrom(SELECT_SEARCHABLE_COLLECTIONS, 'collection_id')
+
 const DROP_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${SEARCH_WORDS_TABLE}`
 const DROP_SEARCH_NAMES_TABLE = `DROP TABLE IF EXISTS ${SEARCH_NAMES_TABLE}`
 const DROP_CREATOR_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${CREATOR_SEARCH_WORDS_TABLE}`
 const DROP_CREATOR_SEARCH_NAMES_TABLE = `DROP TABLE IF EXISTS ${CREATOR_SEARCH_NAMES_TABLE}`
+const DROP_COLLECTION_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${COLLECTION_SEARCH_WORDS_TABLE}`
+const DROP_COLLECTION_SEARCH_NAMES_TABLE = `DROP TABLE IF EXISTS ${COLLECTION_SEARCH_NAMES_TABLE}`
 
 export type RebuildOutcome = 'rebuilt' | 'skipped'
 
 type QueryableClient = { query: (sql: string) => Promise<{ rows: { acquired?: boolean }[] }> }
 
 /**
- * Rebuilds the four search tables from scratch and swaps them in: the item words, the item names, the
- * creator words and the creator names.
+ * Rebuilds the six search tables from scratch and swaps them in: the item words and names, the creator
+ * words and names, the collection words and names.
  *
  * Everything happens in one transaction, and the live tables are only touched by the drop-and-rename at
  * the very end. So a failure part way through — including hitting the pool's statement timeout — rolls
@@ -242,6 +269,15 @@ export async function rebuildSearchTables(client: QueryableClient): Promise<Rebu
     await client.query(`CREATE TABLE ${CREATOR_NAMES_STAGING_TABLE} AS ${SELECT_CREATOR_SEARCH_NAMES}`)
     await client.query(`CREATE INDEX ${CREATOR_NAMES_STAGING_ADDRESS_INDEX} ON ${CREATOR_NAMES_STAGING_TABLE} (address)`)
     await client.query(`ANALYZE ${CREATOR_NAMES_STAGING_TABLE}`)
+    await client.query(`DROP TABLE IF EXISTS ${COLLECTION_STAGING_TABLE}`)
+    await client.query(`CREATE TABLE ${COLLECTION_STAGING_TABLE} AS ${SELECT_COLLECTION_SEARCH_WORDS}`)
+    await client.query(`CREATE INDEX ${COLLECTION_STAGING_WORD_INDEX} ON ${COLLECTION_STAGING_TABLE} USING gin (word ${TRIGRAM_OPS})`)
+    await client.query(`CREATE INDEX ${COLLECTION_STAGING_COLLECTION_INDEX} ON ${COLLECTION_STAGING_TABLE} (collection_id)`)
+    await client.query(`ANALYZE ${COLLECTION_STAGING_TABLE}`)
+    await client.query(`DROP TABLE IF EXISTS ${COLLECTION_NAMES_STAGING_TABLE}`)
+    await client.query(`CREATE TABLE ${COLLECTION_NAMES_STAGING_TABLE} AS ${SELECT_COLLECTION_SEARCH_NAMES}`)
+    await client.query(`CREATE INDEX ${COLLECTION_NAMES_STAGING_COLLECTION_INDEX} ON ${COLLECTION_NAMES_STAGING_TABLE} (collection_id)`)
+    await client.query(`ANALYZE ${COLLECTION_NAMES_STAGING_TABLE}`)
 
     await client.query(DROP_SEARCH_WORDS_TABLE)
     await client.query(`ALTER TABLE ${STAGING_TABLE} RENAME TO ${SEARCH_WORDS_TABLE_NAME}`)
@@ -262,6 +298,19 @@ export async function rebuildSearchTables(client: QueryableClient): Promise<Rebu
     await client.query(`ALTER TABLE ${CREATOR_NAMES_STAGING_TABLE} RENAME TO ${CREATOR_SEARCH_NAMES_TABLE_NAME}`)
     await client.query(
       `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_NAMES_STAGING_ADDRESS_INDEX} RENAME TO ${CREATOR_SEARCH_NAMES_ADDRESS_INDEX}`
+    )
+    await client.query(DROP_COLLECTION_SEARCH_WORDS_TABLE)
+    await client.query(`ALTER TABLE ${COLLECTION_STAGING_TABLE} RENAME TO ${COLLECTION_SEARCH_WORDS_TABLE_NAME}`)
+    await client.query(
+      `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_STAGING_WORD_INDEX} RENAME TO ${COLLECTION_SEARCH_WORDS_WORD_INDEX}`
+    )
+    await client.query(
+      `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_STAGING_COLLECTION_INDEX} RENAME TO ${COLLECTION_SEARCH_WORDS_COLLECTION_INDEX}`
+    )
+    await client.query(DROP_COLLECTION_SEARCH_NAMES_TABLE)
+    await client.query(`ALTER TABLE ${COLLECTION_NAMES_STAGING_TABLE} RENAME TO ${COLLECTION_SEARCH_NAMES_TABLE_NAME}`)
+    await client.query(
+      `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_NAMES_STAGING_COLLECTION_INDEX} RENAME TO ${COLLECTION_SEARCH_NAMES_COLLECTION_INDEX}`
     )
 
     await client.query('COMMIT')

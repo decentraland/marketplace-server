@@ -116,6 +116,24 @@ describe('when rebuilding the search tables', () => {
       ).toBe(true)
     })
 
+    it('should rebuild the collection words and names too, in the same transaction, after the creator tables', async () => {
+      await rebuildSearchTables(client)
+
+      const words = statements().find(sql => sql.includes('CREATE TABLE marketplace.collection_search_words_staging')) as string
+      expect(words).toContain('c.is_approved = true')
+      expect(words).toContain('GROUP BY collection_id, word, source')
+      const names = statements().find(sql => sql.includes('CREATE TABLE marketplace.collection_search_names_staging')) as string
+      expect(names).toContain('COALESCE(sold.sales, 0) AS sales')
+      const wordsRenamed = indexOf('RENAME TO collection_search_words')
+      const namesRenamed = indexOf('RENAME TO collection_search_names')
+      expect(wordsRenamed).toBeGreaterThan(indexOf('RENAME TO creator_search_names'))
+      expect(namesRenamed).toBeGreaterThan(wordsRenamed)
+      expect(statements().indexOf('COMMIT')).toBeGreaterThan(namesRenamed)
+      expect(
+        statements().some(sql => sql.includes('idx_collection_search_words_word_trgm_staging') && sql.includes('public.gin_trgm_ops'))
+      ).toBe(true)
+    })
+
     it("should precompute each creator name's phrase and sorted words, swapped in last, for the ranking bonuses", async () => {
       await rebuildSearchTables(client)
 

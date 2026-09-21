@@ -46,6 +46,7 @@ import { createPricesComponents } from './ports/prices'
 import { createRankingsComponent } from './ports/rankings/component'
 import { createRentalsComponent } from './ports/rentals/components'
 import { createSalesComponents } from './ports/sales'
+import { createSearchSuggestComponent } from './ports/search-suggest/component'
 import { createShopCatalogComponent } from './ports/shop-catalog/component'
 import { createShopNotifierComponent } from './ports/shop-notifier/component'
 import { createStatsComponent } from './ports/stats/component'
@@ -169,6 +170,7 @@ export async function initComponents(): Promise<AppComponents> {
   const suggestions = await createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs, config })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
+  const searchSuggest = createSearchSuggestComponent({ dappsDatabase: dappsReadDatabase, items, creatorProfiles, manaUsdRate })
   const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
   // Trailing flush for the debounced trades materialized view refresh: any write that
   // arrived while the leading-edge debounce gate was closed only marks the state row
@@ -317,6 +319,7 @@ export async function initComponents(): Promise<AppComponents> {
     catalog,
     shopCatalog,
     creatorProfiles,
+    searchSuggest,
     suggestions,
     shopNotifier,
     manaUsdRate,

@@ -4,6 +4,7 @@ import { withRetries } from '../retry'
 import {
   CREATOR_NAME_MIN_SIMILARITY,
   SEARCH_PHRASE_FUNCTION,
+  SEARCH_QUERY_MAX_LENGTH,
   SEARCH_QUERY_TERMS_FUNCTION,
   SEARCH_TOKENS_FUNCTION
 } from './search-normalization'
@@ -33,8 +34,7 @@ export const CREATOR_MAX_NAMES = 10
 export const CREATOR_PROFILES_BATCH_SIZE = 100
 /** A batch that fails is tried again after these waits before it is given up on for this run. */
 export const CREATOR_PROFILES_BATCH_RETRY_DELAYS_MS = [1_000, 4_000]
-/** Longer than this is not a name anyone typed; the terms are capped at six anyway. */
-export const CREATOR_SEARCH_MAX_LENGTH = 100
+export const CREATOR_SEARCH_MAX_LENGTH = SEARCH_QUERY_MAX_LENGTH
 
 export const CREATOR_SEARCH_DEFAULT_LIMIT = 4
 export const CREATOR_SEARCH_MAX_LIMIT = 10
@@ -246,6 +246,14 @@ export async function refreshCreatorProfiles(deps: CreatorProfilesRefreshDeps): 
   } finally {
     client.release()
   }
+}
+
+/** What to call a creator on a row about their work: the profile name, or the first NAME, or nothing. */
+export function getCreatorDisplayNamesQuery(addresses: string[]): SQLStatement {
+  return SQL``
+    .append(`SELECT address, COALESCE(name, names[1]) AS name FROM ${CREATOR_PROFILES_TABLE} WHERE address = ANY(`)
+    .append(SQL`${addresses}`)
+    .append(')')
 }
 
 export type CreatorSearchRow = { address: string; name: string; face: string | null; items: number; collections: number }
