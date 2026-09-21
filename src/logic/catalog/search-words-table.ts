@@ -1,5 +1,12 @@
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { CREATOR_MAX_NAMES, CREATOR_PROFILES_TABLE, CREATOR_SEARCH_WORDS_TABLE, CREATOR_SEARCH_WORDS_TABLE_NAME } from './creator-profiles'
+import {
+  CREATOR_MAX_NAMES,
+  CREATOR_PROFILES_TABLE,
+  CREATOR_SEARCH_NAMES_TABLE,
+  CREATOR_SEARCH_NAMES_TABLE_NAME,
+  CREATOR_SEARCH_WORDS_TABLE,
+  CREATOR_SEARCH_WORDS_TABLE_NAME
+} from './creator-profiles'
 import { SEARCH_PHRASE_FUNCTION, SEARCH_TOKENS_FUNCTION } from './search-normalization'
 
 /**
@@ -23,6 +30,7 @@ export const SEARCH_NAMES_ITEM_INDEX = `idx_${SEARCH_NAMES_TABLE_NAME}_item_id`
 
 export const CREATOR_SEARCH_WORDS_WORD_INDEX = `idx_${CREATOR_SEARCH_WORDS_TABLE_NAME}_word_trgm`
 export const CREATOR_SEARCH_WORDS_ADDRESS_INDEX = `idx_${CREATOR_SEARCH_WORDS_TABLE_NAME}_address`
+export const CREATOR_SEARCH_NAMES_ADDRESS_INDEX = `idx_${CREATOR_SEARCH_NAMES_TABLE_NAME}_address`
 
 const STAGING_TABLE_NAME = `${SEARCH_WORDS_TABLE_NAME}_staging`
 const STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${STAGING_TABLE_NAME}`
@@ -35,6 +43,9 @@ const CREATOR_STAGING_TABLE_NAME = `${CREATOR_SEARCH_WORDS_TABLE_NAME}_staging`
 const CREATOR_STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_STAGING_TABLE_NAME}`
 const CREATOR_STAGING_WORD_INDEX = `${CREATOR_SEARCH_WORDS_WORD_INDEX}_staging`
 const CREATOR_STAGING_ADDRESS_INDEX = `${CREATOR_SEARCH_WORDS_ADDRESS_INDEX}_staging`
+const CREATOR_NAMES_STAGING_TABLE_NAME = `${CREATOR_SEARCH_NAMES_TABLE_NAME}_staging`
+const CREATOR_NAMES_STAGING_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_NAMES_STAGING_TABLE_NAME}`
+const CREATOR_NAMES_STAGING_ADDRESS_INDEX = `${CREATOR_SEARCH_NAMES_ADDRESS_INDEX}_staging`
 
 // Any positive constant works; it only has to be the same in every instance of this service.
 const REBUILD_ADVISORY_LOCK_KEY = 8_421_207
@@ -165,17 +176,32 @@ const SELECT_SEARCH_NAMES = `SELECT
       ON em.id = md.emote_id
      AND md.item_type = 'emote_v1'`
 
+/**
+ * One row per (creator, name) — the profile name and every NAME — in the two shapes the creator ranking
+ * compares a query against: the normalized phrase and the same words sorted. Precomputed for the same
+ * reason as the item names: one creator holds three thousand NAMEs, and normalizing them on each request
+ * that reached them cost fifty milliseconds a keystroke.
+ */
+const SELECT_CREATOR_SEARCH_NAMES = `SELECT
+      cp.address,
+      ${SEARCH_PHRASE_FUNCTION}(n.name) AS phrase,
+      (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(n.name)) AS word) AS sorted_words
+    FROM ${CREATOR_PROFILES_TABLE} AS cp
+    CROSS JOIN LATERAL unnest(array_prepend(cp.name, cp.names)) AS n(name)
+    WHERE n.name IS NOT NULL`
+
 const DROP_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${SEARCH_WORDS_TABLE}`
 const DROP_SEARCH_NAMES_TABLE = `DROP TABLE IF EXISTS ${SEARCH_NAMES_TABLE}`
 const DROP_CREATOR_SEARCH_WORDS_TABLE = `DROP TABLE IF EXISTS ${CREATOR_SEARCH_WORDS_TABLE}`
+const DROP_CREATOR_SEARCH_NAMES_TABLE = `DROP TABLE IF EXISTS ${CREATOR_SEARCH_NAMES_TABLE}`
 
 export type RebuildOutcome = 'rebuilt' | 'skipped'
 
 type QueryableClient = { query: (sql: string) => Promise<{ rows: { acquired?: boolean }[] }> }
 
 /**
- * Rebuilds the three search tables from scratch and swaps them in: the item words, the item names and
- * the creator words.
+ * Rebuilds the four search tables from scratch and swaps them in: the item words, the item names, the
+ * creator words and the creator names.
  *
  * Everything happens in one transaction, and the live tables are only touched by the drop-and-rename at
  * the very end. So a failure part way through — including hitting the pool's statement timeout — rolls
@@ -212,6 +238,10 @@ export async function rebuildSearchTables(client: QueryableClient): Promise<Rebu
     await client.query(`CREATE INDEX ${CREATOR_STAGING_WORD_INDEX} ON ${CREATOR_STAGING_TABLE} USING gin (word ${TRIGRAM_OPS})`)
     await client.query(`CREATE INDEX ${CREATOR_STAGING_ADDRESS_INDEX} ON ${CREATOR_STAGING_TABLE} (address)`)
     await client.query(`ANALYZE ${CREATOR_STAGING_TABLE}`)
+    await client.query(`DROP TABLE IF EXISTS ${CREATOR_NAMES_STAGING_TABLE}`)
+    await client.query(`CREATE TABLE ${CREATOR_NAMES_STAGING_TABLE} AS ${SELECT_CREATOR_SEARCH_NAMES}`)
+    await client.query(`CREATE INDEX ${CREATOR_NAMES_STAGING_ADDRESS_INDEX} ON ${CREATOR_NAMES_STAGING_TABLE} (address)`)
+    await client.query(`ANALYZE ${CREATOR_NAMES_STAGING_TABLE}`)
 
     await client.query(DROP_SEARCH_WORDS_TABLE)
     await client.query(`ALTER TABLE ${STAGING_TABLE} RENAME TO ${SEARCH_WORDS_TABLE_NAME}`)
@@ -227,6 +257,11 @@ export async function rebuildSearchTables(client: QueryableClient): Promise<Rebu
     )
     await client.query(
       `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_STAGING_ADDRESS_INDEX} RENAME TO ${CREATOR_SEARCH_WORDS_ADDRESS_INDEX}`
+    )
+    await client.query(DROP_CREATOR_SEARCH_NAMES_TABLE)
+    await client.query(`ALTER TABLE ${CREATOR_NAMES_STAGING_TABLE} RENAME TO ${CREATOR_SEARCH_NAMES_TABLE_NAME}`)
+    await client.query(
+      `ALTER INDEX ${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_NAMES_STAGING_ADDRESS_INDEX} RENAME TO ${CREATOR_SEARCH_NAMES_ADDRESS_INDEX}`
     )
 
     await client.query('COMMIT')

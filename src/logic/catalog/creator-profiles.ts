@@ -12,6 +12,8 @@ export const CREATOR_PROFILES_TABLE_NAME = 'creator_profiles'
 export const CREATOR_PROFILES_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_PROFILES_TABLE_NAME}`
 export const CREATOR_SEARCH_WORDS_TABLE_NAME = 'creator_search_words'
 export const CREATOR_SEARCH_WORDS_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_SEARCH_WORDS_TABLE_NAME}`
+export const CREATOR_SEARCH_NAMES_TABLE_NAME = 'creator_search_names'
+export const CREATOR_SEARCH_NAMES_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${CREATOR_SEARCH_NAMES_TABLE_NAME}`
 
 /**
  * How many of a creator's NAMEs their ITEMS inherit as search words.
@@ -261,6 +263,10 @@ export type CreatorSearchRow = { address: string; name: string; face: string | n
  * of the weights; then by how much the creator has published, so a tie between two similarly named
  * creators goes to the one with a shop to browse; then by name and address, so pages are stable. Shown
  * under the profile name, or the first NAME when the profile has none, or the address when it has neither.
+ *
+ * The bonuses read the names' precomputed phrase and sorted words rather than normalizing each name here:
+ * one creator holds three thousand NAMEs, and a three-letter query that reached them cost fifty
+ * milliseconds normalizing every one of them on every keystroke.
  */
 export function getCreatorSearchQuery(search: string, first: number): SQLStatement {
   return SQL``
@@ -295,12 +301,6 @@ export function getCreatorSearchQuery(search: string, first: number): SQLStateme
     .append(SQL`${search}`)
     .append(
       `)) AS word) AS sorted_words
-    ), search_names AS (
-      SELECT p.address, n.name
-      FROM ${CREATOR_PROFILES_TABLE} AS p
-      JOIN search_hits AS h ON h.address = p.address
-      CROSS JOIN LATERAL unnest(array_prepend(p.name, p.names)) AS n(name)
-      WHERE n.name IS NOT NULL
     )
     SELECT
       p.address,
@@ -310,14 +310,14 @@ export function getCreatorSearchQuery(search: string, first: number): SQLStateme
       p.collections,
       (h.score + CASE
         WHEN EXISTS (
-          SELECT 1 FROM search_names AS n
+          SELECT 1 FROM ${CREATOR_SEARCH_NAMES_TABLE} AS n
           WHERE n.address = p.address
-            AND (SELECT string_agg(word, ' ' ORDER BY word) FROM unnest(${SEARCH_TOKENS_FUNCTION}(n.name)) AS word) = q.sorted_words
+            AND n.sorted_words = q.sorted_words
         ) THEN ${EXACT_NAME_BONUS}
         WHEN EXISTS (
-          SELECT 1 FROM search_names AS n
+          SELECT 1 FROM ${CREATOR_SEARCH_NAMES_TABLE} AS n
           WHERE n.address = p.address
-            AND starts_with(${SEARCH_PHRASE_FUNCTION}(n.name), q.phrase)
+            AND starts_with(n.phrase, q.phrase)
         ) THEN ${NAME_PREFIX_BONUS}
         ELSE 0
       END)::float8 AS score

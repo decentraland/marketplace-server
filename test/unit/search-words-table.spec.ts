@@ -116,6 +116,18 @@ describe('when rebuilding the search tables', () => {
       ).toBe(true)
     })
 
+    it("should precompute each creator name's phrase and sorted words, swapped in last, for the ranking bonuses", async () => {
+      await rebuildSearchTables(client)
+
+      const build = statements().find(sql => sql.includes('CREATE TABLE marketplace.creator_search_names_staging')) as string
+      expect(build).toContain('marketplace.search_phrase(n.name) AS phrase')
+      expect(build).toContain('AS sorted_words')
+      expect(build).toContain('unnest(array_prepend(cp.name, cp.names)) AS n(name)')
+      const renamed = indexOf('RENAME TO creator_search_names')
+      expect(renamed).toBeGreaterThan(indexOf('RENAME TO creator_search_words'))
+      expect(statements().indexOf('COMMIT')).toBeGreaterThan(renamed)
+    })
+
     it("should never touch the previous releases' tables, which their instances keep reading and rebuilding during a roll-out", async () => {
       await rebuildSearchTables(client)
 

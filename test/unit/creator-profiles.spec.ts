@@ -259,8 +259,12 @@ describe('when building the creator search query', () => {
   it('should rank a name that is the whole query above one that starts with it above one that contains it, then the bigger catalogue, then name and address', () => {
     const { text } = getCreatorSearchQuery('galaxy', 4)
 
-    expect(text).toMatch(/= q\.sorted_words\s*\) THEN 1\s+WHEN EXISTS/)
-    expect(text).toMatch(/starts_with\(marketplace\.search_phrase\(n\.name\), q\.phrase\)\s*\) THEN 0\.5/)
+    expect(text).toMatch(
+      /FROM marketplace\.creator_search_names AS n\s+WHERE n\.address = p\.address\s+AND n\.sorted_words = q\.sorted_words\s*\) THEN 1\s+WHEN EXISTS/
+    )
+    expect(text).toMatch(/starts_with\(n\.phrase, q\.phrase\)\s*\) THEN 0\.5/)
+    // never normalizing the names at request time: one creator holds three thousand
+    expect(text).not.toContain('search_tokens(n.name)')
     expect(text).toContain('ORDER BY score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC')
   })
 

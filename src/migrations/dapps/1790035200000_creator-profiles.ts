@@ -5,10 +5,11 @@ import { MigrationBuilder } from 'node-pg-migrate'
 // name and avatar Catalyst gives them, the NAMEs they hold and how much they have published. A job fills
 // and refreshes it; the migration only makes the empty table, so the deploy does not depend on Catalyst.
 //
-// The second table holds the searchable words of those names, keyed by creator, for the creator
-// suggestions. It is rebuilt every few minutes by the same job that rebuilds the item words, which is
-// also where the creator names reach the item words. Its columns are spelled out here so the very first
-// rebuild's staging table — a CREATE TABLE AS — lands on the same shape.
+// The second and third tables hold, keyed by creator, the searchable words of those names and each
+// name's normalized shapes, for the creator suggestions. They are rebuilt every few minutes by the same
+// job that rebuilds the item words, which is also where the creator names reach the item words. Their
+// columns are spelled out here so the very first rebuild's staging tables — CREATE TABLE AS — land on the
+// same shape.
 //
 // The item words move to a NEW name, `item_search_words_v3`, because their content changes (they gain
 // the creator's names as a third source): under the previous name, this release and the previous one
@@ -18,7 +19,7 @@ import { MigrationBuilder } from 'node-pg-migrate'
 // after deploy — with no creator words yet, since the profiles table is empty until the job runs — from a
 // COPY of the query the code built at the time, never an import of it: a migration is a record of what ran.
 //
-// `down` drops the three. Run it only once no instance of this release is up: the rebuild of a running one
+// `down` drops the four. Run it only once no instance of this release is up: the rebuild of a running one
 // would fail on the missing tables every five minutes (harmlessly — it keeps the previous ones — but
 // loudly) until it stops.
 
@@ -91,6 +92,12 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_creator_search_words_word_trgm ON marketplace.creator_search_words USING gin (word public.gin_trgm_ops);'
   )
   pgm.sql('CREATE INDEX IF NOT EXISTS idx_creator_search_words_address ON marketplace.creator_search_words (address);')
+  pgm.sql(`CREATE TABLE IF NOT EXISTS marketplace.creator_search_names (
+    address text,
+    phrase text,
+    sorted_words text
+  );`)
+  pgm.sql('CREATE INDEX IF NOT EXISTS idx_creator_search_names_address ON marketplace.creator_search_names (address);')
   pgm.sql('DROP TABLE IF EXISTS marketplace.item_search_words_v3;')
   pgm.sql(`CREATE TABLE marketplace.item_search_words_v3 AS ${SELECT_SEARCH_WORDS_V3};`)
   pgm.sql('CREATE INDEX idx_item_search_words_v3_word_trgm ON marketplace.item_search_words_v3 USING gin (word public.gin_trgm_ops);')
@@ -99,6 +106,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
   pgm.sql('DROP TABLE IF EXISTS marketplace.item_search_words_v3;')
+  pgm.sql('DROP TABLE IF EXISTS marketplace.creator_search_names;')
   pgm.sql('DROP TABLE IF EXISTS marketplace.creator_search_words;')
   pgm.sql('DROP TABLE IF EXISTS marketplace.creator_profiles;')
 }
