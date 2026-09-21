@@ -957,20 +957,24 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     // A search reads its sort keys off the level-filtered relation's output columns; without one the core is
     // the statement and the keys are the source expressions. Either way: fixed expressions only, never user
     // input. The effective price is the sale price while a coupon applies, else the list price — the same
-    // rule effectiveWeiExpr encodes, spelled on the output columns.
+    // rule effectiveWeiExpr encodes, spelled on the output columns. Every searching order ends in trade_id:
+    // listings of one item share matched, score and often the timestamp, and a LIMIT/OFFSET over ties is
+    // not paging.
     const f = SEARCH_LEVEL_ALIAS
     const order = filters.search
       ? sortBy === 'cheapest'
-        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric ASC`)
+        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric ASC, ${f}.trade_id`)
         : sortBy === 'most_expensive'
-        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric DESC`)
+        ? SQL``.append(` ORDER BY COALESCE(${f}.sale_price, ${f}.price)::numeric DESC, ${f}.trade_id`)
         : sortBy === 'name'
-        ? SQL``.append(` ORDER BY ${f}.name ASC`)
+        ? SQL``.append(` ORDER BY ${f}.name ASC, ${f}.trade_id`)
         : sortBy === 'discount'
-        ? SQL``.append(` ORDER BY ${f}.coupon_discount_ppm DESC NULLS LAST, ${f}.sale_ends_at ASC NULLS LAST, ${f}.created_at DESC`)
+        ? SQL``.append(
+            ` ORDER BY ${f}.coupon_discount_ppm DESC NULLS LAST, ${f}.sale_ends_at ASC NULLS LAST, ${f}.created_at DESC, ${f}.trade_id`
+          )
         : sortBy === 'relevance'
-        ? getRelevanceOrderBy(f, `${f}.created_at DESC`)
-        : SQL``.append(` ORDER BY ${f}.created_at DESC`)
+        ? getRelevanceOrderBy(f, `${f}.created_at DESC, ${f}.trade_id`)
+        : SQL``.append(` ORDER BY ${f}.created_at DESC, ${f}.trade_id`)
       : sortBy === 'cheapest'
       ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` ASC`)
       : sortBy === 'most_expensive'
@@ -1169,14 +1173,14 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const f = SEARCH_LEVEL_ALIAS
     const order = filters.search
       ? sortBy === 'cheapest'
-        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric ASC`)
+        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric ASC, ${f}.trade_id`)
         : sortBy === 'most_expensive'
-        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric DESC`)
+        ? SQL``.append(` ORDER BY ${f}.mana_wei::numeric DESC, ${f}.trade_id`)
         : sortBy === 'name'
-        ? SQL``.append(` ORDER BY ${f}.name ASC`)
+        ? SQL``.append(` ORDER BY ${f}.name ASC, ${f}.trade_id`)
         : sortBy === 'relevance'
-        ? getRelevanceOrderBy(f, `${f}.created_at DESC`)
-        : SQL``.append(` ORDER BY ${f}.created_at DESC`)
+        ? getRelevanceOrderBy(f, `${f}.created_at DESC, ${f}.trade_id`)
+        : SQL``.append(` ORDER BY ${f}.created_at DESC, ${f}.trade_id`)
       : sortBy === 'cheapest'
       ? SQL` ORDER BY mv.amount_received ASC`
       : sortBy === 'most_expensive'

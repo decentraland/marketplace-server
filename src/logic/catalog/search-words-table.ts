@@ -1,7 +1,15 @@
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { SEARCH_PHRASE_FUNCTION, SEARCH_TOKENS_FUNCTION } from './search-normalization'
 
-export const SEARCH_WORDS_TABLE_NAME = 'item_search_words'
+/**
+ * VERSIONED on purpose. A release is rolled out instance by instance, and the previous release keeps
+ * rebuilding ITS word table every five minutes until its last instance stops. Had this shape kept the
+ * old name, an old instance rebuilding after the migration would have swapped a table without `source`
+ * back in under the new readers, which fail on the missing column until the next new rebuild. Under its
+ * own name, each release rebuilds and reads its own table; the previous one is dropped by a later
+ * migration, once no instance reads it any more.
+ */
+export const SEARCH_WORDS_TABLE_NAME = 'item_search_words_v2'
 export const SEARCH_WORDS_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${SEARCH_WORDS_TABLE_NAME}`
 export const SEARCH_WORDS_WORD_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_word_trgm`
 export const SEARCH_WORDS_ITEM_INDEX = `idx_${SEARCH_WORDS_TABLE_NAME}_item_id`

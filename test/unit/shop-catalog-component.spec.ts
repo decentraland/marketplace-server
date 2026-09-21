@@ -282,17 +282,17 @@ describe('Shop Catalog Component', () => {
       expect(sql.text).not.toContain('COUNT(*) OVER() AS total')
     })
 
-    it('should default a search to relevance and read every sort key off the level-filtered relation', async () => {
+    it('should default a search to relevance and read every sort key off the level-filtered relation, ending in the trade id', async () => {
       await shopCatalog.getShopListings({ search: 'Cool' })
       await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'cheapest' })
       await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'discount' })
 
       expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC'
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
       )
-      expect(query.mock.calls[1][0].text).toContain('ORDER BY COALESCE(f.sale_price, f.price)::numeric ASC')
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY COALESCE(f.sale_price, f.price)::numeric ASC, f.trade_id')
       expect(query.mock.calls[2][0].text).toContain(
-        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.created_at DESC'
+        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.created_at DESC, f.trade_id'
       )
     })
 
@@ -476,9 +476,9 @@ describe('Shop Catalog Component', () => {
 
       expect(query.mock.calls[0][0].text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
       expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC'
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
       )
-      expect(query.mock.calls[1][0].text).toContain('ORDER BY f.mana_wei::numeric ASC')
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY f.mana_wei::numeric ASC, f.trade_id')
     })
 
     it('should lowercase rarities and bind them as an array param', async () => {

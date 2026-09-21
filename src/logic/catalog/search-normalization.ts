@@ -23,10 +23,13 @@ const UNACCENT_DICTIONARY = "'public.unaccent'::regdictionary"
  * in the search table and the terms a query is split into. It lives in SQL so there is exactly one
  * implementation, rather than a TypeScript copy that has to be kept in step with it.
  *
- * lower → split on anything that is not a letter or digit → strip diacritics → drop empties. Splitting
- * BEFORE unaccent matters: unaccent expands some symbols into several characters ('©' → '(C)'), so a
- * symbol has to be gone before it can be expanded. Letters it expands stay letters ('ß' → 'ss',
- * 'æ' → 'ae'); the trailing replace is insurance against the rule file changing that.
+ * NFC → lower → split on anything that is not a letter or digit → strip diacritics → drop empties.
+ * Composing first (NFC) is what makes "Máscara" typed with a combining accent the same word as the
+ * precomposed one: decomposed, the accent is a separate mark, not a letter, and the split would cut the
+ * word in two. Splitting BEFORE unaccent matters too: unaccent expands some symbols into several
+ * characters ('©' → '(C)', '½' → ' 1/2'), so a symbol has to be gone before it can be expanded. Letters
+ * it expands stay letters ('ß' → 'ss', 'æ' → 'ae'); the trailing replace is insurance against the rule
+ * file changing that.
  */
 const CREATE_SEARCH_TOKENS_FUNCTION = `CREATE OR REPLACE FUNCTION ${SEARCH_TOKENS_FUNCTION}(input text) RETURNS text[]
   LANGUAGE sql STABLE PARALLEL SAFE AS $fn$
@@ -35,7 +38,7 @@ const CREATE_SEARCH_TOKENS_FUNCTION = `CREATE OR REPLACE FUNCTION ${SEARCH_TOKEN
       SELECT
         pg_catalog.regexp_replace(public.unaccent(${UNACCENT_DICTIONARY}, parts.part), '[^[:alnum:]]', '', 'g') AS token,
         parts.ordinality
-      FROM pg_catalog.regexp_split_to_table(pg_catalog.lower(COALESCE(input, '')), '[^[:alnum:]]+')
+      FROM pg_catalog.regexp_split_to_table(pg_catalog.lower(normalize(COALESCE(input, ''), NFC)), '[^[:alnum:]]+')
         WITH ORDINALITY AS parts(part, ordinality)
     ) t
     WHERE t.token <> ''
@@ -52,6 +55,10 @@ const CREATE_SEARCH_PHRASE_FUNCTION = `CREATE OR REPLACE FUNCTION ${SEARCH_PHRAS
  * digits ("t-shirt" → tshirt, "o'brien" → obrien), deduplicated in first-seen order, minus the stopwords
  * (kept when nothing else remains), capped.
  *
+ * A word is collapsed by joining what search_tokens makes of it — the SAME cleaning the stored words went
+ * through, symbols included. Cleaning it any other way diverged: unaccent run on the whole word expanded
+ * '©' into '(C)' and '½' into '12', so a query carrying a symbol reached words the index never stored.
+ *
  * Collapsing rather than splitting is what the stored words are built for: a hyphenated name is stored
  * as its parts AND as one token, and adjacent words as one token too, so the collapsed query reaches
  * "T-Shirt", "Tshirt" and "T Shirt" alike. Split into t + shirt it could not reach "Tshirt" at all.
@@ -63,7 +70,7 @@ const CREATE_SEARCH_QUERY_TERMS_FUNCTION = `CREATE OR REPLACE FUNCTION ${SEARCH_
   LANGUAGE sql STABLE PARALLEL SAFE AS $fn$
     WITH words AS (
       SELECT
-        pg_catalog.regexp_replace(public.unaccent(${UNACCENT_DICTIONARY}, pg_catalog.lower(w.word)), '[^[:alnum:]]', '', 'g') AS term,
+        pg_catalog.array_to_string(${SEARCH_TOKENS_FUNCTION}(w.word), '') AS term,
         w.ordinality
       FROM pg_catalog.regexp_split_to_table(COALESCE(input, ''), '\\s+') WITH ORDINALITY AS w(word, ordinality)
     ), tokens AS (
