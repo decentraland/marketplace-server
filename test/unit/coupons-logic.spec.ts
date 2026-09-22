@@ -11,6 +11,8 @@ import {
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
+  getCouponMarketplacePairings,
+  CouponMarketplacePairing,
   getCouponTypedValues,
   legacyCouponStateKey,
   resolveCouponSignature,
@@ -131,6 +133,63 @@ describe('when resolving the coupon contracts of a chain', () => {
 
     it('should resolve nothing', () => {
       expect(contracts).toEqual([])
+    })
+  })
+})
+
+describe('when pairing every coupon manager with the marketplace that redeems through it', () => {
+  let pairings: CouponMarketplacePairing[]
+  let onChain: (chainId: ChainId) => CouponMarketplacePairing[]
+
+  beforeEach(() => {
+    pairings = getCouponMarketplacePairings()
+    onChain = chainId => pairings.filter(pairing => pairing.chainId === chainId)
+  })
+
+  describe('and the chain is Polygon mainnet', () => {
+    let polygon: CouponMarketplacePairing[]
+
+    beforeEach(() => {
+      polygon = onChain(ChainId.MATIC_MAINNET)
+    })
+
+    it('should pair each live version with its own manager, lowercased', () => {
+      expect(polygon).toEqual([
+        {
+          chainId: ChainId.MATIC_MAINNET,
+          marketplace: '0xe38ef22abe871513555cba89adfe45ab4f548ada',
+          couponManager: '0x655fdfa91d69ea49f4ce1a8f7f7e2622c8630813'
+        },
+        {
+          chainId: ChainId.MATIC_MAINNET,
+          marketplace: '0xa40b1d129b8906888720686f3a01921ddf37716f',
+          couponManager: '0x3fd3056ee72a2a85e9392fab3a450e7736536081'
+        }
+      ])
+    })
+  })
+
+  describe('and the chain is Amoy', () => {
+    let managers: string[]
+
+    beforeEach(() => {
+      managers = onChain(ChainId.MATIC_AMOY).map(pairing => pairing.couponManager)
+    })
+
+    it('should pair each live version with its own manager there as well', () => {
+      expect(managers).toEqual(['0x6c956587d9fe70032781edcdc626310648575382', '0xa40b1d129b8906888720686f3a01921ddf37716f'])
+    })
+  })
+
+  describe('and the chain has no collections', () => {
+    let ethereum: CouponMarketplacePairing[]
+
+    beforeEach(() => {
+      ethereum = [...onChain(ChainId.ETHEREUM_MAINNET), ...onChain(ChainId.ETHEREUM_SEPOLIA)]
+    })
+
+    it('should list no pairing at all', () => {
+      expect(ethereum).toEqual([])
     })
   })
 })

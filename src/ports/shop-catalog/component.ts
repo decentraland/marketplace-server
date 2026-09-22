@@ -13,6 +13,7 @@ import {
 } from '../../logic/catalog/search-match'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { collectionProof } from '../../logic/coupons/merkle'
+import { getCouponMarketplacePairings } from '../../logic/coupons/signature'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
 // two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
@@ -142,8 +143,14 @@ function metadataJoins() {
  * the listed collection, inside its window, neither cancelled nor revoked and with uses left as of the last
  * on-chain read. Biggest discount wins; ties go to the one ending soonest. Primaries only: the coupon contract
  * refuses anything but collection items, so a resale never carries one.
+ *
+ * Matched on the listing's chain and on the manager paired with its marketplace, because a version only redeems
+ * coupons signed against its own manager. See the PR for why network alone cannot stand in for the chain.
  */
 function couponJoin(): SQLStatement {
+  // A listing from a chain this deployment does not serve is unbuyable here, so it must not be discounted either.
+  const served = [getPolygonChainId(), getEthereumChainId()]
+  const pairings = getCouponMarketplacePairings().filter(pairing => served.includes(pairing.chainId))
   return SQL`
       LEFT JOIN LATERAL (
         SELECT c.id, c.signer, c.coupon_manager, c.coupon_address, c.checks, c.discount_type, c.discount_ppm, c.root,
@@ -153,6 +160,18 @@ function couponJoin(): SQLStatement {
         WHERE mv.type = 'public_item_order'
           AND c.signer = LOWER(mv.signer)
           AND c.network = mv.network
+          AND c.chain_id = mv.chain_id
+          AND mv.chain_id = ANY(${served}::int[])
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(${pairings.map(pairing => pairing.chainId)}::int[], ${pairings.map(
+    pairing => pairing.marketplace
+  )}::text[], ${pairings.map(pairing => pairing.couponManager)}::text[])
+              AS pairing(chain_id, marketplace, coupon_manager)
+            WHERE pairing.chain_id = c.chain_id
+              AND pairing.coupon_manager = LOWER(c.coupon_manager)
+              AND pairing.marketplace = LOWER(mv.trade_contract)
+          )
           AND c.effective_since <= now() AND c.expires_at > now()
           AND LOWER(mv.sent_contract_address) = ANY(c.collections)
           AND COALESCE(cs.cancelled, false) = false

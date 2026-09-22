@@ -62,6 +62,8 @@ export const TRADES_MV_CREATE_SQL = `
           MAX(av.item_id)          FILTER (WHERE av.direction = 'sent') AS sent_item_id,
           MAX(av.nft_id)           FILTER (WHERE av.direction = 'sent') AS sent_nft_id,
           t.network,
+          -- Selected, not just grouped: network does not identify a chain, since Polygon mainnet and Amoy are both MATIC.
+          t.chain_id,
           t.expires_at,
           MAX(t.contract) AS trade_contract,
           CASE
@@ -177,6 +179,88 @@ export const TRADES_MV_CREATE_SQL = `
           si_signer.index;
     `
 
+/**
+ * Remember who could READ the view before it is dropped, so the same roles can read it afterwards.
+ *
+ * `DROP` + `CREATE` is not `REFRESH`: the new view is a different object and carries no grants at all,
+ * so every reader that is not the owner silently loses access. Nothing fails loudly when that happens —
+ * the view keeps refreshing, the triggers keep firing, and only whatever reads it from OUTSIDE goes
+ * quiet. That is how the warehouse tap lost `marketplace.mv_trades` while `trades` and `trade_assets`
+ * beside it kept loading, and the sales mart went stale for weeks before anybody noticed.
+ *
+ * Read from the catalogue rather than configured, so this file never has to know the name of every
+ * reporting role: whoever could read it before can read it after. It has to be taken HERE, before the
+ * drop, because that is the last moment the grants still exist.
+ *
+ * `pg_class.relacl` and NOT `information_schema.role_table_grants`, for two independent reasons, either
+ * of which alone makes the standard view return an empty set and this whole block a silent no-op:
+ *
+ *   1. `information_schema.table_privileges` filters `relkind IN ('r','v','f','p')`. A materialized view
+ *      is `'m'` — a Postgres extension with no place in the SQL standard — so it is never listed. On this
+ *      database three sibling matviews hold 16 non-owner SELECT grants between them and the standard view
+ *      reports zero of them.
+ *   2. It also only shows grants whose grantor or grantee is a role the CURRENT session belongs to. A
+ *      grant made by a superuser to a warehouse role this service is not a member of is invisible to it
+ *      by design, which is exactly the shape of grant being preserved here.
+ *
+ * `aclexplode` has neither restriction. It also yields no rows for a NULL `relacl` (an object with no
+ * explicit grants), which is the correct answer rather than a case to special-case.
+ *
+ * Shared with the migrations that recreate the view, for the same reason the definition is: a copy that one
+ * path had and the other did not is exactly how the grants were lost the last time the view was rebuilt.
+ */
+export const TRADES_MV_READERS_SNAPSHOT_SQL = `
+      CREATE TEMP TABLE mv_trades_prior_readers ON COMMIT DROP AS
+      SELECT DISTINCT
+             CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+             a.is_grantable
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL aclexplode(c.relacl) AS a
+      WHERE n.nspname = 'marketplace'
+        AND c.relname = '${TRADES_MV_NAME}'
+        AND c.relkind = 'm'
+        AND a.privilege_type = 'SELECT'
+        AND a.grantee <> c.relowner
+    `
+
+/**
+ * Put the readers captured before the drop back on the new view (see the temp table above). Guarded per
+ * role so one grantee dropped since the snapshot costs that role its access and nothing more, instead of
+ * rolling the recreate back and leaving the view on its old definition.
+ *
+ * Runs after `ALTER MATERIALIZED VIEW ... OWNER TO mv_trades_owner`, so the session is granting on an
+ * object it no longer owns. That works because the ALTER already required membership of the new owner,
+ * and membership makes the session count as the owner for this ACL check — but it is not obvious, and if
+ * it ever stopped being true the failure would be swallowed by the handler below.
+ */
+export const TRADES_MV_READERS_RESTORE_SQL = `
+      DO $$
+      DECLARE
+        reader TEXT;
+        grantable BOOLEAN;
+        suffix TEXT;
+      BEGIN
+        FOR reader, grantable IN (SELECT grantee, is_grantable FROM mv_trades_prior_readers)
+        LOOP
+          -- A reader holding WITH GRANT OPTION may have re-granted onward; replaying without it downgrades
+          -- them silently and breaks whoever they granted to.
+          suffix := CASE WHEN grantable THEN ' WITH GRANT OPTION' ELSE '' END;
+          BEGIN
+            -- PUBLIC is a keyword, not a role: %I would quote it into a role of that name, which does not
+            -- exist, and the grant would be dropped on the floor by the handler below.
+            IF reader = 'PUBLIC' THEN
+              EXECUTE format('GRANT SELECT ON marketplace.%I TO PUBLIC%s', '${TRADES_MV_NAME}', suffix);
+            ELSE
+              EXECUTE format('GRANT SELECT ON marketplace.%I TO %I%s', '${TRADES_MV_NAME}', reader, suffix);
+            END IF;
+          EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+            RAISE NOTICE 'Skipping GRANT on ${TRADES_MV_NAME} to %: %', reader, SQLERRM;
+          END;
+        END LOOP;
+      END $$;
+    `
+
 export const TRADES_MV_INDEX_SQLS: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_trades_id ON marketplace.${TRADES_MV_NAME} (id)`,
   // Status and type - improves queries filtering by open trades and specific trade types
@@ -285,47 +369,7 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
   try {
     await client.query('BEGIN')
 
-    /**
-     * Remember who could READ the view before it is dropped, so the same roles can read it afterwards.
-     *
-     * `DROP` + `CREATE` is not `REFRESH`: the new view is a different object and carries no grants at all,
-     * so every reader that is not the owner silently loses access. Nothing fails loudly when that happens —
-     * the view keeps refreshing, the triggers keep firing, and only whatever reads it from OUTSIDE goes
-     * quiet. That is how the warehouse tap lost `marketplace.mv_trades` while `trades` and `trade_assets`
-     * beside it kept loading, and the sales mart went stale for weeks before anybody noticed.
-     *
-     * Read from the catalogue rather than configured, so this file never has to know the name of every
-     * reporting role: whoever could read it before can read it after. It has to be taken HERE, before the
-     * drop, because that is the last moment the grants still exist.
-     *
-     * `pg_class.relacl` and NOT `information_schema.role_table_grants`, for two independent reasons, either
-     * of which alone makes the standard view return an empty set and this whole block a silent no-op:
-     *
-     *   1. `information_schema.table_privileges` filters `relkind IN ('r','v','f','p')`. A materialized view
-     *      is `'m'` — a Postgres extension with no place in the SQL standard — so it is never listed. On this
-     *      database three sibling matviews hold 16 non-owner SELECT grants between them and the standard view
-     *      reports zero of them.
-     *   2. It also only shows grants whose grantor or grantee is a role the CURRENT session belongs to. A
-     *      grant made by a superuser to a warehouse role this service is not a member of is invisible to it
-     *      by design, which is exactly the shape of grant being preserved here.
-     *
-     * `aclexplode` has neither restriction. It also yields no rows for a NULL `relacl` (an object with no
-     * explicit grants), which is the correct answer rather than a case to special-case.
-     */
-    await client.query(`
-      CREATE TEMP TABLE mv_trades_prior_readers ON COMMIT DROP AS
-      SELECT DISTINCT
-             CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
-             a.is_grantable
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      CROSS JOIN LATERAL aclexplode(c.relacl) AS a
-      WHERE n.nspname = 'marketplace'
-        AND c.relname = '${TRADES_MV_NAME}'
-        AND c.relkind = 'm'
-        AND a.privilege_type = 'SELECT'
-        AND a.grantee <> c.relowner
-    `)
+    await client.query(TRADES_MV_READERS_SNAPSHOT_SQL)
 
     // Drop triggers with exception handling
     await client.query(`
@@ -474,40 +518,7 @@ export async function recreateTradesMaterializedView(db: IPgComponent) {
 
     await client.query('GRANT SELECT ON ALL TABLES IN SCHEMA squid_marketplace TO dappsdata;')
 
-    // Put the readers captured before the drop back on the new view (see the temp table above). Guarded per
-    // role so one grantee dropped since the snapshot costs that role its access and nothing more, instead of
-    // rolling the recreate back and leaving the view on its old definition.
-    //
-    // Runs after `ALTER MATERIALIZED VIEW ... OWNER TO mv_trades_owner`, so the session is granting on an
-    // object it no longer owns. That works because the ALTER already required membership of the new owner,
-    // and membership makes the session count as the owner for this ACL check — but it is not obvious, and if
-    // it ever stopped being true the failure would be swallowed by the handler below.
-    await client.query(`
-      DO $$
-      DECLARE
-        reader TEXT;
-        grantable BOOLEAN;
-        suffix TEXT;
-      BEGIN
-        FOR reader, grantable IN (SELECT grantee, is_grantable FROM mv_trades_prior_readers)
-        LOOP
-          -- A reader holding WITH GRANT OPTION may have re-granted onward; replaying without it downgrades
-          -- them silently and breaks whoever they granted to.
-          suffix := CASE WHEN grantable THEN ' WITH GRANT OPTION' ELSE '' END;
-          BEGIN
-            -- PUBLIC is a keyword, not a role: %I would quote it into a role of that name, which does not
-            -- exist, and the grant would be dropped on the floor by the handler below.
-            IF reader = 'PUBLIC' THEN
-              EXECUTE format('GRANT SELECT ON marketplace.%I TO PUBLIC%s', '${TRADES_MV_NAME}', suffix);
-            ELSE
-              EXECUTE format('GRANT SELECT ON marketplace.%I TO %I%s', '${TRADES_MV_NAME}', reader, suffix);
-            END IF;
-          EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
-            RAISE NOTICE 'Skipping GRANT on ${TRADES_MV_NAME} to %: %', reader, SQLERRM;
-          END;
-        END LOOP;
-      END $$;
-    `)
+    await client.query(TRADES_MV_READERS_RESTORE_SQL)
 
     await client.query('COMMIT')
   } catch (error) {
