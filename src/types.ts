@@ -28,6 +28,7 @@ import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
+import { ISearchSuggestComponent } from './ports/search-suggest/types'
 import { IShopCatalogComponent } from './ports/shop-catalog/types'
 import { IShopNotifierComponent } from './ports/shop-notifier/types'
 import { IStatsComponent } from './ports/stats/types'
@@ -59,6 +60,7 @@ export type BaseComponents = {
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
   creatorProfiles: ICreatorProfilesComponent
+  searchSuggest: ISearchSuggestComponent
   suggestions: ISuggestionsComponent
   shopNotifier: IShopNotifierComponent
   manaUsdRate: IManaUsdRateComponent

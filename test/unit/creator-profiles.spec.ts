@@ -256,16 +256,17 @@ describe('when building the creator search query', () => {
     expect(values).toEqual(['galaxy studio', 'galaxy studio', 'galaxy studio', 4])
   })
 
-  it('should rank a name that is the whole query above one that starts with it above one that contains it, then the bigger catalogue, then name and address', () => {
+  it('should rank by an explicit tier — exact, prefix, the rest — then score, then the bigger catalogue, then name and address', () => {
     const { text } = getCreatorSearchQuery('galaxy', 4)
 
     expect(text).toMatch(
-      /FROM marketplace\.creator_search_names AS n\s+WHERE n\.address = p\.address\s+AND n\.sorted_words = q\.sorted_words\s*\) THEN 1\s+WHEN EXISTS/
+      /FROM marketplace\.creator_search_names AS n\s+WHERE n\.address = p\.address\s+AND n\.sorted_words = q\.sorted_words\s*\) THEN 2\s+WHEN EXISTS/
     )
-    expect(text).toMatch(/starts_with\(n\.phrase, q\.phrase\)\s*\) THEN 0\.5/)
+    expect(text).toMatch(/starts_with\(n\.phrase, q\.phrase\)\s*\) THEN 1\s+ELSE 0\s+END AS tier/)
     // never normalizing the names at request time: one creator holds three thousand
     expect(text).not.toContain('search_tokens(n.name)')
-    expect(text).toContain('ORDER BY score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC')
+    // the tier is its own column, so exact beats prefix beats partial whatever the similarities sum to
+    expect(text).toContain('ORDER BY tier DESC, h.score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC')
   })
 
   it('should fall back to the creators matching the most terms only when none matches them all', () => {

@@ -7,11 +7,13 @@ import {
   clearCreatorProfiles,
   createSearchableName,
   createSearchableWearable,
+  createSearchSale,
   CreateSearchableWearableOptions,
   createSearchNativeTrade,
   deleteSearchableCollection,
   deleteSearchableName,
   deleteSearchableWearable,
+  deleteSearchSale,
   deleteSearchTrade,
   rebuildSearchWords,
   setBuilderTags,
@@ -34,6 +36,11 @@ const TWIN_B = '0xd02cec0d18c536f7a8b9c0d1e2f3a4b5c6d7e8f9'
 // ELEVEN holds eleven NAMEs; only the last one is anything like "zebrafinch".
 const ELEVEN = '0xe13dfd1e29d647a8b9c0d1e2f3a4b5c6d7e8f9a0'
 const ELEVEN_NAMES = [...Array.from({ length: 10 }, (_, i) => `Alias${String(i + 1).padStart(2, '0')}`), 'Zebrafinch']
+// Collections for the suggestions: two sharing a brand word (one of them selling), one with an accent.
+const COLA_A = '0xf24efe2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d'
+const COLA_B = '0x0350f03f4a5b6c7d8e9fa0b1c2d3e4f5a6b7c8d9'
+const CRISTOBAL = '0x1461a14f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0e'
+const COLA_SALES = ['search_sale_cola_1', 'search_sale_cola_2']
 
 // Every fixture is a wearable in the catalogue: a name, a category, and whether it is on sale.
 const FIXTURES: CreateSearchableWearableOptions[] = [
@@ -55,7 +62,16 @@ const FIXTURES: CreateSearchableWearableOptions[] = [
   { itemId: '915', contractAddress: CONTRACT, name: 'Comet Boots', category: 'feet', creator: GALAXY },
   { itemId: '916', contractAddress: CONTRACT, name: 'Plain Tee', category: 'upper_body', creator: NAMELESS },
   { itemId: '917', contractAddress: CONTRACT, name: 'Galaxy Visor', category: 'eyewear' },
-  { itemId: '918', contractAddress: CONTRACT, name: 'Plain Scarf', category: 'upper_body', creator: ELEVEN }
+  { itemId: '918', contractAddress: CONTRACT, name: 'Plain Scarf', category: 'upper_body', creator: ELEVEN },
+  { itemId: '919', contractAddress: COLA_A, name: 'Cola Cap', collectionName: 'Coca-Cola Friendship Wearables', category: 'upper_body' },
+  { itemId: '920', contractAddress: COLA_B, name: 'Cola Tee', collectionName: 'Coca-Cola Refresh Drop', category: 'upper_body' },
+  {
+    itemId: '921',
+    contractAddress: CRISTOBAL,
+    name: 'Balenciaga Boots',
+    collectionName: 'Cristóbal Balenciaga - NEW CODE',
+    category: 'feet'
+  }
 ]
 
 test('when searching the catalogue', function ({ components }) {
@@ -94,6 +110,7 @@ test('when searching the catalogue', function ({ components }) {
     await setCreatorProfile(components, { address: TWIN_A, name: 'Twin Maker', items: 3, collections: 1 })
     await setCreatorProfile(components, { address: TWIN_B, name: 'Twin Maker', items: 7, collections: 2 })
     await setCreatorProfile(components, { address: ELEVEN, name: null, names: ELEVEN_NAMES, items: 1, collections: 1 })
+    for (const saleId of COLA_SALES) await createSearchSale(components, { contractAddress: COLA_A, itemId: '919', saleId })
     await rebuildSearchWords(components)
     // The unified feed lists open trades: the pirate hat as a native primary listing, and an ESTATE — a
     // row that is not a collection item, which the search reaches through its substring fallback on the
@@ -111,6 +128,8 @@ test('when searching the catalogue', function ({ components }) {
     for (const fixture of FIXTURES) await deleteSearchableWearable(components, fixture.itemId, fixture.contractAddress)
     await deleteSearchableCollection(components, CONTRACT)
     await deleteSearchableCollection(components, HAT_CLUB)
+    for (const saleId of COLA_SALES) await deleteSearchSale(components, saleId)
+    for (const contract of [COLA_A, COLA_B, CRISTOBAL]) await deleteSearchableCollection(components, contract)
     await clearCreatorProfiles(components)
     await rebuildSearchWords(components)
   })
@@ -441,6 +460,85 @@ test('when searching the catalogue', function ({ components }) {
       expect((await fetchCreators('search=galaxy&first=1')).data).toHaveLength(1)
       expect(await fetchCreators('search=%20')).toEqual({ status: 200, data: [] })
       expect(await fetchCreators('search=%21%21%21')).toEqual({ status: 200, data: [] })
+    })
+  })
+
+  describe('and asking for suggestions', () => {
+    type Suggestions = {
+      items: { data: { name: string; creator: string; creatorName: string | null }[]; total: number }
+      collections: { data: { contractAddress: string; name: string; creatorName: string | null; items: number; sales: number }[] }
+      creators: { data: { address: string; name: string }[] }
+    }
+    async function fetchSuggestions(query: string): Promise<{ status: number; body: Suggestions }> {
+      const response = await components.localFetch.fetch(`/v3/catalog/suggest?${query}`)
+      return { status: response.status, body: (await response.json()) as Suggestions }
+    }
+
+    it('should answer items, collections and creators for the query in one call, the items being what the grid shows', async () => {
+      const { status, body } = await fetchSuggestions('search=galaxy')
+
+      expect(status).toEqual(200)
+      expect(body.items.data[0].name).toEqual('Galaxy Visor')
+      expect(body.items.total).toEqual(3)
+      expect(body.collections.data).toEqual([])
+      expect(body.creators.data.map(creator => creator.address)).toEqual([FANS, CREW, GALAXY])
+    })
+
+    it("should name each item's creator from the profiles, or leave it null when there is none", async () => {
+      const { body } = await fetchSuggestions('search=galaxy')
+
+      const byName = Object.fromEntries(body.items.data.map(item => [item.name, item.creatorName]))
+      expect(byName['Nebula Cape']).toEqual('Galaxy Studio')
+      expect(byName['Galaxy Visor']).toBeNull()
+      expect((await fetchSuggestions('search=wonderbot')).body.items.data[0].creatorName).toEqual('Wonderbot')
+    })
+
+    it('should find collections by their words, whatever the punctuation, and put the one that sells first', async () => {
+      const { body } = await fetchSuggestions('search=coca%20cola')
+
+      expect(body.collections.data.map(c => [c.contractAddress, c.sales, c.items])).toEqual([
+        [COLA_A, 2, 1],
+        [COLA_B, 0, 1]
+      ])
+      expect(body.collections.data[0].creatorName).toBeNull()
+      // and the items inherit the collection's words, so both caps are on the list
+      expect(body.items.data.map(item => item.name).sort()).toEqual(['Cola Cap', 'Cola Tee'])
+    })
+
+    it('should find a collection through an accent it does not have, and a name that IS the query first', async () => {
+      expect((await fetchSuggestions('search=cristobal')).body.collections.data.map(c => c.name)).toEqual([
+        'Cristóbal Balenciaga - NEW CODE'
+      ])
+      expect((await fetchSuggestions('search=hat%20club')).body.collections.data[0].contractAddress).toEqual(HAT_CLUB)
+    })
+
+    it('should fall back to the collections matching the most terms when none matches them all', async () => {
+      expect((await fetchSuggestions('search=coca%20zzz')).body.collections.data.map(c => c.contractAddress)).toEqual([COLA_A, COLA_B])
+    })
+
+    it('should search exactly the text the grid then searches, however long, so "See all" lands on the same results', async () => {
+      // A query with 97 spaces inside: cut at 100 characters it would be "hat" alone in the dropdown and
+      // "hat pirate" in the grid it opens.
+      const long = 'hat' + ' '.repeat(97) + 'pirate'
+      const { body } = await fetchSuggestions(`search=${encodeURIComponent(long)}`)
+      const grid = await fetchCatalog(`search=${encodeURIComponent(long)}&first=5&sortBy=relevance`)
+
+      expect(body.items.data.map(item => item.name)).toEqual(grid.names)
+      expect(body.items.total).toEqual(grid.total)
+      expect(grid.names[0]).toEqual('Pirate Hat')
+    })
+
+    it('should size each section on its own and answer nothing for an empty query', async () => {
+      const { body } = await fetchSuggestions('search=galaxy&items=1&collections=1&creators=1')
+      expect(body.items.data).toHaveLength(1)
+      expect(body.items.total).toEqual(3)
+      expect(body.creators.data).toHaveLength(1)
+
+      expect((await fetchSuggestions('search=%20')).body).toEqual({
+        items: { data: [], total: 0 },
+        collections: { data: [] },
+        creators: { data: [] }
+      })
     })
   })
 

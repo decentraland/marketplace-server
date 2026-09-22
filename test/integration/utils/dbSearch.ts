@@ -342,3 +342,32 @@ export async function deleteSearchableName(dbComponent: Pick<BaseComponents, 'da
   await dbComponent.dappsDatabase.query(`DELETE FROM squid_marketplace."nft" WHERE id = '${NAMES_CONTRACT}-${tokenId}'`)
   await dbComponent.dappsDatabase.query(`DELETE FROM squid_marketplace."ens" WHERE id = '${NAMES_CONTRACT}-${tokenId}-ens'`)
 }
+
+export type CreateSearchSaleOptions = {
+  contractAddress: string
+  itemId: string
+  saleId: string
+  /** Epoch seconds. Defaults to now, inside any sales window. */
+  timestamp?: number
+}
+
+/** A sale of an item, attributed through `item_id` — what the collection tiebreak and Top Creators read. */
+export async function createSearchSale(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: CreateSearchSaleOptions
+): Promise<void> {
+  const { contractAddress, itemId, saleId, timestamp = Math.floor(Date.now() / 1000) } = options
+  await dbComponent.dappsDatabase.query(`
+    INSERT INTO squid_marketplace."sale" (
+      id, type, buyer, seller, price, timestamp, tx_hash, search_token_id, search_contract_address, search_category,
+      search_item_id, network, item_id
+    ) VALUES (
+      ${quote(saleId)}, 'mint', '${contractAddress}', '${contractAddress}', 100000000000000000000, ${timestamp}, ${quote('0xtx_' + saleId)},
+      ${itemId}, '${contractAddress}', 'wearable', ${itemId}, 'matic', '${contractAddress}-${itemId}'
+    ) ON CONFLICT (id) DO NOTHING
+  `)
+}
+
+export async function deleteSearchSale(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, saleId: string): Promise<void> {
+  await dbComponent.dappsDatabase.query(`DELETE FROM squid_marketplace."sale" WHERE id = ${quote(saleId)}`)
+}
