@@ -4,7 +4,6 @@ import { withRetries } from '../retry'
 import {
   CREATOR_NAME_MIN_SIMILARITY,
   SEARCH_PHRASE_FUNCTION,
-  SEARCH_QUERY_MAX_LENGTH,
   SEARCH_QUERY_TERMS_FUNCTION,
   SEARCH_TOKENS_FUNCTION
 } from './search-normalization'
@@ -34,15 +33,14 @@ export const CREATOR_MAX_NAMES = 10
 export const CREATOR_PROFILES_BATCH_SIZE = 100
 /** A batch that fails is tried again after these waits before it is given up on for this run. */
 export const CREATOR_PROFILES_BATCH_RETRY_DELAYS_MS = [1_000, 4_000]
-export const CREATOR_SEARCH_MAX_LENGTH = SEARCH_QUERY_MAX_LENGTH
 
 export const CREATOR_SEARCH_DEFAULT_LIMIT = 4
 export const CREATOR_SEARCH_MAX_LIMIT = 10
 
-// The same bonuses an item name earns, so the two rankings read alike: a name that IS the query heads the
-// list whatever the terms weigh, and a name that STARTS with it goes above one that merely contains it.
-const EXACT_NAME_BONUS = 1.0
-const NAME_PREFIX_BONUS = 0.5
+// A name that IS the query, then one that STARTS with it, then the rest: an explicit level in the ORDER
+// BY rather than a bonus added to the score, so the promise holds for every multi-term query.
+const EXACT_NAME_TIER = 2
+const NAME_PREFIX_TIER = 1
 
 // Any positive constant works; it only has to be the same in every instance of this service, and distinct
 // from the keys the other rebuild jobs take.
@@ -256,7 +254,15 @@ export function getCreatorDisplayNamesQuery(addresses: string[]): SQLStatement {
     .append(')')
 }
 
-export type CreatorSearchRow = { address: string; name: string; face: string | null; items: number; collections: number }
+export type CreatorSearchRow = {
+  address: string
+  name: string
+  face: string | null
+  items: number
+  collections: number
+  tier: number
+  score: number
+}
 
 /**
  * Creators whose profile name or NAMEs match every term of the query, best first.
@@ -266,11 +272,12 @@ export type CreatorSearchRow = { address: string; name: string; face: string | n
  * creators that match the most — over the creator words table instead of the item one. A name counts
  * when the term starts it or is most of it, never when it merely contains it.
  *
- * Ranked by the summed similarity plus the item feeds' bonuses — a profile name or NAME that IS the query,
- * then one that STARTS with it — so exact beats prefix beats partial by construction rather than by luck
- * of the weights; then by how much the creator has published, so a tie between two similarly named
- * creators goes to the one with a shop to browse; then by name and address, so pages are stable. Shown
- * under the profile name, or the first NAME when the profile has none, or the address when it has neither.
+ * Ranked in tiers, then by score: a profile name or NAME that IS the query above one that STARTS with it
+ * above one that merely matches — the tier is its own ORDER BY column, so the promise holds for every
+ * multi-term query rather than by luck of the weights — and within a tier by the summed similarity; then
+ * by how much the creator has published, so a tie between two similarly named creators goes to the one
+ * with a shop to browse; then by name and address, so pages are stable. Shown under the profile name,
+ * or the first NAME when the profile has none, or the address when it has neither.
  *
  * The bonuses read the names' precomputed phrase and sorted words rather than normalizing each name here:
  * one creator holds three thousand NAMEs, and a three-letter query that reached them cost fifty
@@ -316,24 +323,25 @@ export function getCreatorSearchQuery(search: string, first: number): SQLStateme
       p.face,
       p.items,
       p.collections,
-      (h.score + CASE
+      CASE
         WHEN EXISTS (
           SELECT 1 FROM ${CREATOR_SEARCH_NAMES_TABLE} AS n
           WHERE n.address = p.address
             AND n.sorted_words = q.sorted_words
-        ) THEN ${EXACT_NAME_BONUS}
+        ) THEN ${EXACT_NAME_TIER}
         WHEN EXISTS (
           SELECT 1 FROM ${CREATOR_SEARCH_NAMES_TABLE} AS n
           WHERE n.address = p.address
             AND starts_with(n.phrase, q.phrase)
-        ) THEN ${NAME_PREFIX_BONUS}
+        ) THEN ${NAME_PREFIX_TIER}
         ELSE 0
-      END)::float8 AS score
+      END AS tier,
+      h.score
     FROM search_hits AS h
     JOIN ${CREATOR_PROFILES_TABLE} AS p ON p.address = h.address
     CROSS JOIN search_query AS q
     WHERE h.matched = (SELECT MAX(matched) FROM search_hits)
-    ORDER BY score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC
+    ORDER BY tier DESC, h.score DESC, p.items DESC, COALESCE(p.name, p.names[1], p.address) ASC, p.address ASC
     LIMIT `
     )
     .append(SQL`${first}`)

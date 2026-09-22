@@ -24,7 +24,11 @@ export type SuggestedCollection = {
 }
 
 export type SuggestResponse = {
-  /** `total` is what the grid the query lands on shows, so "See all (N)" is that number. */
+  /**
+   * What the grid the query lands on reports for it — the same universe and matching — so "See all (N)" is
+   * that number. Not a promise of equality at the moment the grid opens: this answer may be cached for a
+   * minute and the catalogue keeps moving underneath both.
+   */
   items: { data: SuggestedItem[]; total: number }
   collections: { data: SuggestedCollection[] }
   creators: { data: CreatorSearchHit[] }

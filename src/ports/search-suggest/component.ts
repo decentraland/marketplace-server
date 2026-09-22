@@ -1,6 +1,5 @@
 import { COLLECTION_SUGGEST_DEFAULT_LIMIT, CollectionSearchRow, getCollectionSearchQuery } from '../../logic/catalog/collection-search'
 import { getCreatorDisplayNamesQuery } from '../../logic/catalog/creator-profiles'
-import { SEARCH_QUERY_MAX_LENGTH } from '../../logic/catalog/search-normalization'
 import { AppComponents } from '../../types'
 import { clampCount } from '../shop-catalog/component'
 import {
@@ -25,7 +24,9 @@ export function createSearchSuggestComponent(
   const { dappsDatabase, items, creatorProfiles, manaUsdRate } = components
 
   async function suggest(filters: SuggestFilters): Promise<SuggestResponse> {
-    const search = filters.search.trim().slice(0, SEARCH_QUERY_MAX_LENGTH)
+    // Trimmed and nothing else: the grid a suggestion opens searches the text as typed, and cutting it here
+    // would make "See all" search for something other than what was suggested.
+    const search = filters.search.trim()
     if (!search) return EMPTY
 
     const [catalog, collections, creators] = await Promise.all([

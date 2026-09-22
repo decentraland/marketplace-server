@@ -8,19 +8,20 @@ export const COLLECTION_SEARCH_NAMES_TABLE_NAME = 'collection_search_names'
 export const COLLECTION_SEARCH_NAMES_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${COLLECTION_SEARCH_NAMES_TABLE_NAME}`
 
 /**
- * The window the sales tiebreak counts over. A brand word names many collections — "rtfkt" ten, "doki"
- * fifty-eight — and among them the one people are buying from is the one to offer first; the item count
- * used to decide, and put a ten-year-old drop above the current one. The same window as the trending
- * rail, so "what sells now" means the same thing across the shop.
+ * The window the sales tiebreak counts over: the number of sales (not their value) of the collection's
+ * items, primary and secondary alike, attributed to the collection through the item. The same window as
+ * the trending rail, so "what sells now" means the same thing across the shop. It breaks ties AFTER the
+ * item count: on the clicked-collection golden set neither order beat the other, so the count that does
+ * not move with the calendar goes first.
  */
 export const COLLECTION_SALES_WINDOW_DAYS = 90
 
 export const COLLECTION_SUGGEST_DEFAULT_LIMIT = 4
 export const COLLECTION_SUGGEST_MAX_LIMIT = 10
 
-// The same bonuses an item name earns, so the three rankings read alike.
-const EXACT_NAME_BONUS = 1.0
-const NAME_PREFIX_BONUS = 0.5
+// A name that IS the query, then one that STARTS with it, then the rest: an explicit level, not a bonus.
+const EXACT_NAME_TIER = 2
+const NAME_PREFIX_TIER = 1
 
 /**
  * The collections the suggestions can offer, in the shape the shared tokenizer takes: approved, with at
@@ -67,6 +68,7 @@ export type CollectionSearchRow = {
   creator: string
   items: number
   sales: number
+  tier: number
   score: number
 }
 
@@ -77,9 +79,13 @@ export type CollectionSearchRow = {
  * The same matching as the item feeds — normalized query terms against pre-split words, `<%` under the
  * trigram index, the best hit per term — with containment, as for an item's own words: a collection's
  * name describes the collection, so "duck" finding "Duck Race Starducks Collection" is right, unlike a
- * creator's NAME hanging on their whole catalogue. Ranked by the summed similarity plus a bonus for a
- * name that IS the query, then one that STARTS with it; ties go to the collection selling most in the
- * window, then to the bigger one, then by name and id, so pages are stable.
+ * creator's NAME hanging on their whole catalogue.
+ *
+ * Ranked in tiers, then by score: a name that IS the query (tier 2) above one that STARTS with it (tier
+ * 1) above one that merely matches (tier 0), and within a tier by the summed similarity — the tier is a
+ * column of its own in the ORDER BY, because adding it to a sum of several similarities would not hold
+ * the promise for every multi-term query. Ties go to the collection with more approved items, then to
+ * the one selling most in the window, then by name and id, so pages are stable.
  */
 export function getCollectionSearchQuery(search: string, first: number): SQLStatement {
   return SQL``
@@ -119,17 +125,18 @@ export function getCollectionSearchQuery(search: string, first: number): SQLStat
       c.creator,
       n.items,
       n.sales,
-      (h.score + CASE
-        WHEN n.sorted_words = q.sorted_words THEN ${EXACT_NAME_BONUS}
-        WHEN starts_with(n.phrase, q.phrase) THEN ${NAME_PREFIX_BONUS}
+      CASE
+        WHEN n.sorted_words = q.sorted_words THEN ${EXACT_NAME_TIER}
+        WHEN starts_with(n.phrase, q.phrase) THEN ${NAME_PREFIX_TIER}
         ELSE 0
-      END)::float8 AS score
+      END AS tier,
+      h.score
     FROM search_hits AS h
     JOIN ${COLLECTION_SEARCH_NAMES_TABLE} AS n ON n.collection_id = h.collection_id
     JOIN ${MARKETPLACE_SQUID_SCHEMA}.collection AS c ON c.id = h.collection_id
     CROSS JOIN search_query AS q
     WHERE h.matched = (SELECT MAX(matched) FROM search_hits)
-    ORDER BY score DESC, n.sales DESC, n.items DESC, c.name ASC, c.id ASC
+    ORDER BY tier DESC, h.score DESC, n.items DESC, n.sales DESC, c.name ASC, c.id ASC
     LIMIT `
     )
     .append(SQL`${first}`)

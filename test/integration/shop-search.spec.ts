@@ -516,6 +516,18 @@ test('when searching the catalogue', function ({ components }) {
       expect((await fetchSuggestions('search=coca%20zzz')).body.collections.data.map(c => c.contractAddress)).toEqual([COLA_A, COLA_B])
     })
 
+    it('should search exactly the text the grid then searches, however long, so "See all" lands on the same results', async () => {
+      // A query with 97 spaces inside: cut at 100 characters it would be "hat" alone in the dropdown and
+      // "hat pirate" in the grid it opens.
+      const long = 'hat' + ' '.repeat(97) + 'pirate'
+      const { body } = await fetchSuggestions(`search=${encodeURIComponent(long)}`)
+      const grid = await fetchCatalog(`search=${encodeURIComponent(long)}&first=5&sortBy=relevance`)
+
+      expect(body.items.data.map(item => item.name)).toEqual(grid.names)
+      expect(body.items.total).toEqual(grid.total)
+      expect(grid.names[0]).toEqual('Pirate Hat')
+    })
+
     it('should size each section on its own and answer nothing for an empty query', async () => {
       const { body } = await fetchSuggestions('search=galaxy&items=1&collections=1&creators=1')
       expect(body.items.data).toHaveLength(1)

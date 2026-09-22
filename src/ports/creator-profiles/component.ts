@@ -1,6 +1,5 @@
 import {
   CREATOR_SEARCH_DEFAULT_LIMIT,
-  CREATOR_SEARCH_MAX_LENGTH,
   CREATOR_SEARCH_MAX_LIMIT,
   CreatorSearchRow,
   getCreatorSearchQuery,
@@ -69,7 +68,8 @@ export async function createCreatorProfilesComponent(
 
   async function search(filters: CreatorSearchFilters): Promise<{ data: CreatorSearchHit[] }> {
     const first = clampCount(filters.first, CREATOR_SEARCH_DEFAULT_LIMIT, 1, CREATOR_SEARCH_MAX_LIMIT)
-    const search = filters.search.trim().slice(0, CREATOR_SEARCH_MAX_LENGTH)
+    // The whole text, as the grid searches it: the terms are capped at six by the normalization anyway.
+    const search = filters.search.trim()
     if (!search) return { data: [] }
     const result = await dappsDatabase.query<CreatorSearchRow>(getCreatorSearchQuery(search, first))
     return {

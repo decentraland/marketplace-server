@@ -14,9 +14,6 @@ export const SEARCH_STOPWORDS = ['the', 'a', 'an', 'of', 'and', 'x', 'de', 'la',
 /** A query longer than this is truncated: every extra term is another index probe, and nobody types seven. */
 export const SEARCH_MAX_TERMS = 6
 
-/** Longer than this is not a name anyone typed; the terms are capped at six anyway. */
-export const SEARCH_QUERY_MAX_LENGTH = 100
-
 /**
  * How alike a query term and a creator's name must be for the name to count.
  *

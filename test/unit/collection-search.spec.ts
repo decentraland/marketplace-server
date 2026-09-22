@@ -23,12 +23,15 @@ describe('when building the collection search query', () => {
     expect(text).toContain('WHERE h.matched = (SELECT MAX(matched) FROM search_hits)')
   })
 
-  it('should rank a name that is the query above one that starts with it above one that contains it, then by sales, items, name and id', () => {
+  it('should rank by an explicit tier — exact, prefix, the rest — then score, then items, sales, name and id', () => {
     const { text } = getCollectionSearchQuery('rtfkt', 4)
 
-    expect(text).toMatch(/n\.sorted_words = q\.sorted_words THEN 1\s+WHEN starts_with\(n\.phrase, q\.phrase\) THEN 0\.5/)
+    expect(text).toMatch(
+      /n\.sorted_words = q\.sorted_words THEN 2\s+WHEN starts_with\(n\.phrase, q\.phrase\) THEN 1\s+ELSE 0\s+END AS tier/
+    )
     expect(text).toContain('JOIN marketplace.collection_search_names AS n ON n.collection_id = h.collection_id')
-    expect(text).toContain('ORDER BY score DESC, n.sales DESC, n.items DESC, c.name ASC, c.id ASC')
+    // the tier is its own column: a bonus added to a sum of similarities would not hold for every multi-term query
+    expect(text).toContain('ORDER BY tier DESC, h.score DESC, n.items DESC, n.sales DESC, c.name ASC, c.id ASC')
   })
 })
 
