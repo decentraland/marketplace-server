@@ -2,6 +2,7 @@ import {
   ensureTradesRefreshGate,
   flushTradesMaterializedViewIfDirty,
   forceFlushTradesMaterializedView,
+  recreateTradesMaterializedView,
   TRADES_MV_NAME
 } from '../../src/logic/trades/materialized-view'
 import { IPgComponent } from '../../src/ports/db/types'
@@ -202,5 +203,72 @@ describe('when forcing a trades materialized view refresh after a write', () => 
 
       expect(mockQuery.mock.calls[2][0]).toContain('SET dirty = true')
     })
+  })
+})
+
+/**
+ * Recreating the view is a DROP followed by a CREATE, and that loses every grant on it: the new view is a
+ * different object owned by `mv_trades_owner` and readable by nobody else. Nothing fails loudly when it
+ * happens — the view still refreshes and the triggers still fire, so the only symptom is whatever reads it
+ * from outside going quiet, which is how the warehouse tap lost it and the sales mart went stale unnoticed.
+ */
+describe('when recreating the trades materialized view', () => {
+  let client: { query: jest.Mock; release: jest.Mock }
+
+  const sqlOf = () => client.query.mock.calls.map(c => String(c[0]))
+  const indexOf = (needle: string) => sqlOf().findIndex(s => s.includes(needle))
+
+  beforeEach(() => {
+    client = { query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }), release: jest.fn() }
+    ;(mockPg.getPool as jest.Mock).mockReturnValue({ connect: jest.fn().mockResolvedValue(client) })
+  })
+
+  it('should snapshot the current readers of the view', async () => {
+    await recreateTradesMaterializedView(mockPg)
+
+    const snapshot = sqlOf().find(s => s.includes('mv_trades_prior_readers'))
+    expect(snapshot).toBeDefined()
+    expect(snapshot).toContain(`c.relname = '${TRADES_MV_NAME}'`)
+    // Asserted deliberately: `information_schema.role_table_grants` omits materialized views entirely
+    // (relkind 'm' is not in its filter), so reading grants from there returns an empty set and makes the
+    // whole capture a silent no-op that every test in this file would still pass.
+    expect(snapshot).toContain('aclexplode')
+    expect(snapshot).toContain("c.relkind = 'm'")
+    expect(snapshot).not.toContain('information_schema')
+  })
+
+  /**
+   * The assertion the fix exists for. Taken after the DROP, the snapshot reads an empty set and the replay
+   * restores nothing, which is exactly the silent failure — and a test that only checked both statements
+   * were present would pass on it.
+   */
+  it('should take that snapshot BEFORE dropping the view, while the grants still exist', async () => {
+    await recreateTradesMaterializedView(mockPg)
+
+    const snapshot = indexOf('CREATE TEMP TABLE mv_trades_prior_readers')
+    const drop = indexOf(`DROP MATERIALIZED VIEW IF EXISTS marketplace.${TRADES_MV_NAME}`)
+    expect(snapshot).toBeGreaterThanOrEqual(0)
+    expect(drop).toBeGreaterThan(snapshot)
+  })
+
+  it('should grant the view back to every snapshotted reader, after it has been recreated', async () => {
+    await recreateTradesMaterializedView(mockPg)
+
+    const replay = indexOf('FROM mv_trades_prior_readers')
+    const create = indexOf('CREATE MATERIALIZED VIEW')
+    expect(replay).toBeGreaterThan(create)
+    const sql = sqlOf()[replay]
+    expect(sql).toContain('GRANT SELECT ON marketplace.%I')
+    // PUBLIC is a keyword, not a role: quoting it as an identifier silently drops the grant.
+    expect(sql).toContain('TO PUBLIC')
+  })
+
+  // Behaviour proper is covered by the integration spec; this only pins that the guard is emitted at all.
+  it('should wrap each replayed grant in its own handler', async () => {
+    await recreateTradesMaterializedView(mockPg)
+
+    const replay = sqlOf().find(s => s.includes('FROM mv_trades_prior_readers'))
+    expect(replay).toContain('EXCEPTION WHEN undefined_object OR insufficient_privilege')
+    expect(sqlOf()).toContain('COMMIT')
   })
 })
