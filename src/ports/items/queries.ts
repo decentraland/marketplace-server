@@ -1,7 +1,16 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeAssetType, TradeType, WearableGender } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getSearchMatchWhere } from '../../logic/catalog/search-match'
+import {
+  applySearchLevel,
+  getRelevanceOrderBy,
+  getSearchCteDefinitions,
+  getSearchMatchJoin,
+  getSearchMatchWhere,
+  getSearchScoreColumns,
+  resolveShopSortBy,
+  SEARCH_LEVEL_ALIAS
+} from '../../logic/catalog/search-match'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
 import { ShopSortBy } from '../shop-catalog/types'
@@ -70,8 +79,11 @@ function getIsOnSalePredicate(): SQLStatement {
 
 // Item name as the other shop feeds resolve it (/v3/catalog/unified, /v3/catalog/shop) -- the
 // wearable's or the emote's, whichever the metadata join produced.
+const ITEM_NAME_EXPRESSION = 'COALESCE(wearable.name, emote.name)'
+const ITEM_ID_EXPRESSION = 'item.id::text'
+
 function getItemNameExpression(): SQLStatement {
-  return SQL` COALESCE(wearable.name, emote.name) `
+  return SQL``.append(` ${ITEM_NAME_EXPRESSION} `)
 }
 
 // Sorting is NOT this builder's job, and the `TODO: Add sort by logic` that used to sit here read as if
@@ -108,7 +120,7 @@ function getItemsWhereStatement(
   // Word-level match over the item's name plus its tags -- the same rule /v3/catalog/unified and
   // /v3/catalog/shop apply, so every shop surface agrees on what a query matches. See
   // getSearchMatchWhere for why the previous `name ILIKE '%q%'` had to go.
-  const FILTER_BY_TEXT = filters.search ? getSearchMatchWhere('item.id::text', filters.search) : null
+  const FILTER_BY_TEXT = filters.search ? getSearchMatchWhere(ITEM_ID_EXPRESSION, filters.search) : null
   const FILTER_BY_WEARABLE_HEAD = filters.isWearableHead ? SQL` item.search_is_wearable_head = true ` : null
   const FILTER_BY_WEARABLE_ACCESSORY = filters.isWearableAccessory ? SQL` item.search_is_wearable_accessory = true ` : null
   const FILTER_BY_WEARABLE_SMART = filters.isWearableSmart ? SQL` item.item_type = ${ItemType.SMART_WEARABLE_V1} ` : null
@@ -201,10 +213,13 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
    * `/v2/catalog` does (its `MAX(id::text)`, see getTradesJoin in ports/catalog/queries), so the two feeds
    * cannot quote different prices for the same item.
    */
-  return getTradesCTE({ cteName: ITEM_TRADES_CTE }).append(
-    SQL`
+  // With a search the count is taken above the level filter (see applySearchLevel), not here.
+  const core = SQL`
     SELECT
-      COUNT(*) OVER() as count,
+      `
+    .append(filters.search ? SQL`` : SQL`COUNT(*) OVER() as count,`)
+    .append(
+      SQL`
       item.id,
       item.image,
       item.uri,
@@ -239,30 +254,35 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
       unified_trades.trade_contract as trade_contract,
-      unified_trades.assets -> 'received' ->> 'amount' as trade_price
+      unified_trades.assets -> 'received' ->> 'amount' as trade_price`
+    )
+    .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
+    .append(
+      SQL`
     FROM
       `
-      .append(MARKETPLACE_SQUID_SCHEMA)
-      .append(
-        SQL`.item item
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item item
     LEFT JOIN `
-          .append(MARKETPLACE_SQUID_SCHEMA)
-          .append(
-            SQL`.metadata metadata on
+        .append(MARKETPLACE_SQUID_SCHEMA)
+        .append(
+          SQL`.metadata metadata on
       item.metadata_id = metadata.id
     LEFT JOIN `
-              .append(MARKETPLACE_SQUID_SCHEMA)
-              .append(
-                SQL`.wearable wearable on
+            .append(MARKETPLACE_SQUID_SCHEMA)
+            .append(
+              SQL`.wearable wearable on
       metadata.wearable_id = wearable.id
     LEFT JOIN `
-                  .append(MARKETPLACE_SQUID_SCHEMA)
-                  .append(
-                    SQL`.emote emote on
+                .append(MARKETPLACE_SQUID_SCHEMA)
+                .append(
+                  SQL`.emote emote on
       metadata.emote_id = emote.id
   `
-                      .append(
-                        ` LEFT JOIN LATERAL (
+                    .append(
+                      ` LEFT JOIN LATERAL (
             SELECT * FROM ${ITEM_TRADES_CTE}
             WHERE sent_item_id = item.blockchain_id::text
               AND sent_contract_address = item.collection_id
@@ -271,14 +291,26 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
             ORDER BY id::text DESC
             LIMIT 1
           ) unified_trades ON TRUE `
-                      )
-                      .append(getItemsWhereStatement(filters))
-                      .append(getItemsLimitAndOffsetStatement(filters))
-                  )
-              )
+                    )
+                    .append(filters.search ? getSearchMatchJoin(ITEM_ID_EXPRESSION) : SQL``)
+                    .append(getItemsWhereStatement(filters))
+                )
+            )
+        )
+    )
+
+  // This feed emits no ORDER BY of its own. A search adds one: with the rows ranked, an unordered page would
+  // hand back the ranking in whatever order the plan produced it, and a LIMIT/OFFSET over that is not paging.
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
+    .append(filters.search ? SQL`, `.append(getSearchCteDefinitions(filters.search)) : SQL``)
+    .append(
+      filters.search
+        ? applySearchLevel(core, 'count').append(
+            getRelevanceOrderBy(SEARCH_LEVEL_ALIAS, `${SEARCH_LEVEL_ALIAS}.created_at DESC, ${SEARCH_LEVEL_ALIAS}.id ASC`)
           )
-      )
-  )
+        : core
+    )
+    .append(getItemsLimitAndOffsetStatement(filters))
 }
 
 // 1 credit = $0.10; $1 = 1e18 USD wei = 10 credits, so 1 credit = 1e17 USD wei. Kept as a literal
@@ -323,7 +355,27 @@ function getPriceCreditsSelect(rateNumericString: string): SQLStatement {
 // shifts, so an infinite-scroll grid duplicates and drops items. `item.id` breaks ties so equal keys
 // (same creation block, same price, same name) page stably. Fixed expressions only — user input never
 // reaches ORDER BY.
-function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy?: ShopSortBy): SQLStatement {
+//
+// With a search the keys are read off the level-filtered relation's OUTPUT columns (`price_credits`,
+// `name`, `created_at`, `id`): the same order the source expressions give, spelled where the wrapper can
+// see it.
+function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy: ShopSortBy, searching: boolean): SQLStatement {
+  if (searching) {
+    const f = SEARCH_LEVEL_ALIAS
+    switch (sortBy) {
+      case 'cheapest':
+        return SQL``.append(` ORDER BY NULLIF(${f}.price_credits, 0) ASC NULLS LAST, ${f}.id ASC `)
+      case 'most_expensive':
+        return SQL``.append(` ORDER BY ${f}.price_credits DESC, ${f}.id ASC `)
+      case 'name':
+        return SQL``.append(` ORDER BY ${f}.name ASC, ${f}.id ASC `)
+      case 'relevance':
+        return getRelevanceOrderBy(f, `${f}.created_at DESC, ${f}.id ASC`)
+      case 'newest':
+      default:
+        return SQL``.append(` ORDER BY ${f}.created_at DESC, ${f}.id ASC `)
+    }
+  }
   switch (sortBy) {
     // Not-for-sale items price at 0 credits, which would otherwise head the cheapest list; NULLIF sends
     // them to the end, where "cheapest" means cheapest thing you can actually buy.
@@ -333,8 +385,9 @@ function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy?: Sho
       return SQL` ORDER BY `.append(priceCreditsExpr(rateNumericString)).append(SQL` DESC, item.id ASC `)
     case 'name':
       return SQL` ORDER BY `.append(getItemNameExpression()).append(SQL` ASC, item.id ASC `)
-    // Listed rather than left to fall through: ShopSortBy has four members and this switch covers all
-    // four, so naming 'newest' makes the mapping readable without checking the type to see what is missing.
+    // Listed rather than left to fall through, so naming 'newest' makes the mapping readable without
+    // checking the type to see what is missing. `relevance` cannot reach here: without a search
+    // resolveShopSortBy has already turned it into `newest`.
     case 'newest':
     default:
       return SQL` ORDER BY item.created_at DESC, item.id ASC `
@@ -348,12 +401,15 @@ function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy?: Sho
 // through fromDBItemToItem unchanged, plus the one extra column. `rateNumericString` is the MANA/USD rate
 // as a fixed-precision numeric literal.
 export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumericString = '0') {
-  // Same two rules as getItemsQuery above: no `category` on the trades CTE, and one trade per item.
-  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
+  const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
+
+  // With a search the count is taken above the level filter (see applySearchLevel), not here.
+  const core = SQL`
+    SELECT
+      `
+    .append(filters.search ? SQL`` : SQL`COUNT(*) OVER() as count,`)
     .append(
       SQL`
-    SELECT
-      COUNT(*) OVER() as count,
       item.id,
       item.image,
       item.uri,
@@ -391,6 +447,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
       unified_trades.assets -> 'received' ->> 'amount' as trade_price,`
     )
     .append(getPriceCreditsSelect(rateNumericString))
+    .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
     .append(
       SQL`
     FROM
@@ -425,14 +482,20 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
             LIMIT 1
           ) unified_trades ON TRUE `
                         )
+                        .append(filters.search ? getSearchMatchJoin(ITEM_ID_EXPRESSION) : SQL``)
                         .append(getItemsWhereStatement(filters, rateNumericString, { onlyApprovedCollections: true }))
-                        .append(getCatalogItemsOrderByStatement(rateNumericString, filters.sortBy))
-                        .append(getItemsLimitAndOffsetStatement(filters))
                     )
                 )
             )
         )
     )
+
+  // Same two rules as getItemsQuery above: no `category` on the trades CTE, and one trade per item.
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
+    .append(filters.search ? SQL`, `.append(getSearchCteDefinitions(filters.search)) : SQL``)
+    .append(filters.search ? applySearchLevel(core, 'count') : core)
+    .append(getCatalogItemsOrderByStatement(rateNumericString, sortBy, !!filters.search))
+    .append(getItemsLimitAndOffsetStatement(filters))
 }
 
 export function getUtilityByItem(contractAddress: string, itemId: string) {

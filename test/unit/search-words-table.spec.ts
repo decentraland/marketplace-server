@@ -1,4 +1,4 @@
-import { rebuildItemSearchWords, SEARCH_WORDS_TABLE } from '../../src/logic/catalog/search-words-table'
+import { rebuildItemSearchWords, SEARCH_NAMES_TABLE, SEARCH_WORDS_TABLE } from '../../src/logic/catalog/search-words-table'
 
 let queryMock: jest.Mock
 let client: { query: jest.Mock }
@@ -7,6 +7,7 @@ const statements = () => queryMock.mock.calls.map(([sql]) => sql as string)
 const indexOf = (fragment: string) => statements().findIndex(sql => sql.includes(fragment))
 // The staging name contains the live name, so matching the live table needs the staging rows excluded.
 const indexOfLiveDrop = () => statements().findIndex(sql => sql === `DROP TABLE IF EXISTS ${SEARCH_WORDS_TABLE}`)
+const indexOfNamesDrop = () => statements().findIndex(sql => sql === `DROP TABLE IF EXISTS ${SEARCH_NAMES_TABLE}`)
 
 const lockAcquired = () => ({ rows: [{ acquired: true }] })
 
@@ -36,10 +37,10 @@ describe('when rebuilding the item search words table', () => {
     it('should build and index the staging table before touching the live one', async () => {
       await rebuildItemSearchWords(client)
 
-      const created = indexOf('CREATE TABLE marketplace.item_search_words_staging')
-      const indexed = indexOf('CREATE INDEX idx_item_search_words_word_trgm_staging')
+      const created = indexOf('CREATE TABLE marketplace.item_search_words_v2_staging')
+      const indexed = indexOf('CREATE INDEX idx_item_search_words_v2_word_trgm_staging')
       const dropped = indexOfLiveDrop()
-      const renamed = indexOf('RENAME TO item_search_words')
+      const renamed = indexOf('RENAME TO item_search_words_v2')
 
       expect(created).toBeGreaterThan(-1)
       expect(indexed).toBeGreaterThan(created)
@@ -53,7 +54,7 @@ describe('when rebuilding the item search words table', () => {
 
       // everything expensive happens before the live table is dropped
       expect(all.indexOf('COMMIT')).toBeGreaterThan(indexOfLiveDrop())
-      expect(indexOfLiveDrop()).toBeGreaterThan(indexOf('CREATE TABLE marketplace.item_search_words_staging'))
+      expect(indexOfLiveDrop()).toBeGreaterThan(indexOf('CREATE TABLE marketplace.item_search_words_v2_staging'))
     })
 
     it('should name the operator class schema, since migrations run without public on the search path', async () => {
@@ -63,12 +64,31 @@ describe('when rebuilding the item search words table', () => {
       expect(index).toContain('public.gin_trgm_ops')
     })
 
+    it('should rebuild the names table in the same transaction, swapping it in after the words', async () => {
+      await rebuildItemSearchWords(client)
+
+      const namesBuilt = indexOf('CREATE TABLE marketplace.item_search_names_staging')
+      const namesDropped = indexOfNamesDrop()
+      const namesRenamed = indexOf('RENAME TO item_search_names')
+
+      expect(namesBuilt).toBeGreaterThan(-1)
+      expect(namesDropped).toBeGreaterThan(indexOfLiveDrop())
+      expect(namesRenamed).toBeGreaterThan(namesDropped)
+      expect(statements().indexOf('COMMIT')).toBeGreaterThan(namesRenamed)
+    })
+
+    it("should never touch the previous release's table, which its instances keep reading during a roll-out", async () => {
+      await rebuildItemSearchWords(client)
+
+      expect(statements().join('\n')).not.toMatch(/marketplace\.item_search_words(?!_v2|_names)/)
+    })
+
     it('should rename the staging index so the next rebuild finds the expected name free', async () => {
       await rebuildItemSearchWords(client)
 
       expect(
         statements().some(
-          sql => sql.includes('ALTER INDEX') && sql.includes('_staging') && sql.includes('RENAME TO idx_item_search_words_word_trgm')
+          sql => sql.includes('ALTER INDEX') && sql.includes('_staging') && sql.includes('RENAME TO idx_item_search_words_v2_word_trgm')
         )
       ).toBe(true)
     })
@@ -98,7 +118,7 @@ describe('when rebuilding the item search words table', () => {
       error = new Error('canceling statement due to statement timeout')
       queryMock.mockImplementation((sql: string) => {
         if (sql.includes('pg_try_advisory_xact_lock')) return Promise.resolve(lockAcquired())
-        if (sql.includes('CREATE TABLE marketplace.item_search_words_staging')) return Promise.reject(error)
+        if (sql.includes('CREATE TABLE marketplace.item_search_words_v2_staging')) return Promise.reject(error)
         return Promise.resolve({ rows: [] })
       })
     })
