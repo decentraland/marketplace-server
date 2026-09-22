@@ -39,6 +39,7 @@ import { ISuggestionsComponent, SuggestedItem, SuggestionsFilters, SuggestionsRe
 type CandidateRow = RelatedItemRow & {
   cf: number
   content: number
+  worn: number
   popularity: number
   gender: string | null
   trigger_item_id: string | null
@@ -319,6 +320,7 @@ export async function createSuggestionsComponent(
         isWearable: !(row.item_type ?? '').startsWith('emote'),
         cf: Number(row.cf),
         content: Number(row.content),
+        worn: Number(row.worn),
         popularity: maxPopularity > 0 ? Number(row.popularity) / maxPopularity : 0,
         topTriggerItemId: row.trigger_item_id ?? undefined,
         topTriggerSource: (row.trigger_source as ScoredCandidate['topTriggerSource']) ?? undefined

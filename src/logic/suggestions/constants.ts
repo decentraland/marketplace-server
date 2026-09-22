@@ -9,7 +9,7 @@ export const NEIGHBORS_META_TABLE = `${BUILDER_SERVER_TABLE_SCHEMA}.${NEIGHBORS_
 /** Bumped whenever the maths change, so a stale table is recognisable and the A/B can split on it. */
 export const ALGORITHM_VERSION = 'v1'
 
-export type NeighborSource = 'cf' | 'content'
+export type NeighborSource = 'cf' | 'content' | 'worn'
 
 /**
  * Every constant below was fixed by the phase 0 offline evaluation (temporal holdout over dated
@@ -61,13 +61,27 @@ export const CONTENT_WEIGHTS = {
   priceBand: 0.05
 }
 
-/** Final blend over the per-wallet max-normalised components. */
+/**
+ * Final blend over the per-wallet max-normalised components.
+ *
+ * `worn` is zero until it has been through the same offline evaluation as the rest: at zero its rows
+ * are built but never read, so the rail ranks exactly as before.
+ */
 export const SCORE_WEIGHTS = {
   cf: 0.45,
   content: 0.25,
+  worn: 0,
   taste: 0.2,
   popularity: 0.1
 }
+
+/** Neighbour sources the request-time query reads: a source with no weight only widens the candidates. */
+export const ACTIVE_NEIGHBOR_SOURCES: NeighborSource[] = (['cf', 'content', 'worn'] as const).filter(source => SCORE_WEIGHTS[source] > 0)
+
+/** A co-wear pair needs this many profiles wearing both before it is trusted at all. */
+export const MIN_CO_WEARERS = 5
+/** Only profiles deployed this recently count towards co-wear: what an avatar wears NOW. */
+export const CO_WEAR_ACTIVE_DAYS = 90
 
 /**
  * How much each signal about a wallet is worth, relative to a purchase.

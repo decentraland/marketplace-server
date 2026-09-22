@@ -12,6 +12,7 @@ import {
   type NeighborsMeta,
   type QueryableClient
 } from './neighbors-table'
+import { produceWornRows } from './worn'
 
 const RARITY_TIERS = Rarity.getRarities().map(rarity => rarity.toLowerCase())
 
@@ -266,6 +267,11 @@ export type BuildOptions = {
   blockWidth?: number
   /** Abort the acquisition scan past this, leaving the previous neighbours serving. */
   acquisitionDeadlineMs?: number
+  /** Where the co-wear source is read from. Absent, the source is not built. */
+  worn?: {
+    client: CursorClient
+    discard: () => Promise<void>
+  }
 }
 
 export type BuildTimings = {
@@ -273,6 +279,9 @@ export type BuildTimings = {
   acquisitionsMs: number
   coOwnershipMs: number
   contentMs: number
+  wornMs: number
+  /** Set when the co-wear source failed; the other two sources are still swapped in. */
+  wornError?: unknown
   walletsSeen: number
   rowsRead: number
 }
@@ -297,6 +306,7 @@ export async function produceNeighborRows(
     acquisitionsMs: 0,
     coOwnershipMs: 0,
     contentMs: 0,
+    wornMs: 0,
     walletsSeen: 0,
     rowsRead: 0
   }
@@ -355,11 +365,39 @@ export async function produceNeighborRows(
   if (buffer.length > 0) await insert(buffer)
   timings.contentMs = Date.now() - started
 
+  // A registry that is down or slow costs the rail its co-wear rows for one cycle, never the rebuild.
+  let wornCount = 0
+  if (options.worn) {
+    started = Date.now()
+    const wornCovered = new Set<string>()
+    // Only the registry's failures are the source's own; a failed write means the whole swap is lost.
+    let insertError: unknown
+    try {
+      wornCount = await produceWornRows(options.worn.client, catalogue, async rows => {
+        for (const row of rows) wornCovered.add(row.itemId)
+        try {
+          await insert(rows)
+        } catch (error) {
+          insertError = error
+          throw error
+        }
+      })
+      for (const itemId of wornCovered) covered.add(itemId)
+    } catch (error) {
+      if (insertError) throw insertError
+      timings.wornError = error
+      wornCount = 0
+      await options.worn.discard()
+    }
+    timings.wornMs = Date.now() - started
+  }
+
   onTimings?.(timings)
 
   return {
     cfRows: cfCount,
     contentRows: contentCount,
+    wornRows: wornCount,
     itemsCovered: covered.size,
     durationMs: Date.now() - jobStarted
   }

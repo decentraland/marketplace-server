@@ -43,7 +43,7 @@ describe('when swapping the neighbours table', () => {
   beforeEach(() => {
     recorded = []
     lockAcquired = true
-    meta = { cfRows: 1, contentRows: 1, itemsCovered: 2, durationMs: 1234 }
+    meta = { cfRows: 1, contentRows: 1, wornRows: 0, itemsCovered: 2, durationMs: 1234 }
     rows = [
       { itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 },
       { itemId: '0xa-1', source: 'content', neighborId: '0xc-3', sim: 0.35, support: 0, rank: 0 }
@@ -96,7 +96,7 @@ describe('when swapping the neighbours table', () => {
 
     it('should record the build in the metadata row so a stalled job is visible as data', () => {
       const metaWrite = recorded.find(entry => entry.sql.includes('item_neighbors_meta'))
-      expect(metaWrite?.values).toEqual([1234, 1, 1, 2, 'v1'])
+      expect(metaWrite?.values).toEqual([1234, 1, 1, 0, 2, 'v1'])
     })
 
     it('should commit exactly once', () => {

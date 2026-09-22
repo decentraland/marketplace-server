@@ -17,6 +17,9 @@ export type NeighborsJobDeps = {
   /** Opens a connection OUTSIDE the request pool. The pool caps statements at 40s; the acquisition
    * scan alone runs to 80. */
   connect: (role: 'read' | 'write') => Promise<Client>
+  /** Opens a connection to the asset-bundle-registry database, where the co-wear source is computed.
+   * Absent, the source is not built. */
+  connectProfiles?: () => Promise<Client>
   logger: NeighborsJobLogger
   metrics?: NeighborsJobMetrics
   blockWidth?: number
@@ -43,7 +46,7 @@ export type NeighborsJobOutcome = RebuildOutcome | 'failed'
  * connections back.
  */
 export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<NeighborsJobOutcome> {
-  const { connect, logger, metrics } = deps
+  const { connect, connectProfiles, logger, metrics } = deps
   const started = Date.now()
   let peakRss = process.memoryUsage().rss
   const sampler = setInterval(() => {
@@ -53,6 +56,7 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
 
   let readClient: Client | undefined
   let writeClient: Client | undefined
+  let profilesClient: Client | undefined
   // Set by a connection-level error. The run is abandoned at the next checkpoint rather than carried
   // on with a client that is no longer talking to anything.
   let fatal: unknown
@@ -82,13 +86,17 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     })
     await readClient.query('SET default_transaction_read_only = on')
 
+    if (connectProfiles) {
+      profilesClient = await openProfilesClient(connectProfiles, logger)
+    }
+
     // The rows are generated INSIDE the swap transaction and inserted in chunks as they appear, so the
     // job never holds the whole ~940k-row set in memory and the live table stays untouched until the
     // rename at the end.
     let timings: BuildTimings | undefined
     let rowsWritten = 0
     abortIfFatal()
-    const outcome = await swapNeighborsTable(writeClient as unknown as QueryableClient, async insert =>
+    const outcome = await swapNeighborsTable(writeClient as unknown as QueryableClient, async (insert, discard) =>
       produceNeighborRows(
         asCursorClient(readClient as unknown as QueryableClient),
         async rows => {
@@ -96,7 +104,14 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
           rowsWritten += rows.length
           await insert(rows)
         },
-        { blockWidth: deps.blockWidth, acquisitionDeadlineMs: ACQUISITION_SCAN_DEADLINE_MS },
+        {
+          blockWidth: deps.blockWidth,
+          acquisitionDeadlineMs: ACQUISITION_SCAN_DEADLINE_MS,
+          worn: profilesClient && {
+            client: asCursorClient(profilesClient as unknown as QueryableClient),
+            discard: () => discard('worn')
+          }
+        },
         t => {
           timings = t
         }
@@ -105,12 +120,16 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
 
     abortIfFatal()
 
+    if (timings?.wornError) {
+      logger.warn(`neighbours rebuild went ahead without the co-wear source: ${message(timings.wornError)}`)
+    }
+
     const durationMs = Date.now() - started
     logger.info(
       `neighbours rebuild ${outcome}: ${rowsWritten} rows over ${timings?.walletsSeen ?? 0} wallets ` +
         `and ${timings?.rowsRead ?? 0} acquisitions in ${durationMs} ms ` +
         `[catalogue ${timings?.catalogueMs ?? 0} ms, acquisitions ${timings?.acquisitionsMs ?? 0} ms, ` +
-        `co-ownership ${timings?.coOwnershipMs ?? 0} ms, content ${timings?.contentMs ?? 0} ms, ` +
+        `co-ownership ${timings?.coOwnershipMs ?? 0} ms, content ${timings?.contentMs ?? 0} ms, worn ${timings?.wornMs ?? 0} ms, ` +
         `peak rss ${Math.round(peakRss / 1048576)} MB]`
     )
     metrics?.observe({ durationMs, rows: rowsWritten, peakRssBytes: peakRss })
@@ -120,7 +139,26 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     return 'failed'
   } finally {
     clearInterval(sampler)
-    await Promise.all([close(readClient, logger), close(writeClient, logger)])
+    await Promise.all([close(readClient, logger), close(writeClient, logger), close(profilesClient, logger)])
+  }
+}
+
+/**
+ * The registry connection is the one connection whose loss is NOT fatal: without it the rebuild still
+ * swaps in co-ownership and content, so a failure to open it, or its dropping later, only costs the
+ * co-wear source.
+ */
+async function openProfilesClient(connectProfiles: () => Promise<Client>, logger: NeighborsJobLogger): Promise<Client | undefined> {
+  let client: Client | undefined
+  try {
+    client = await connectProfiles()
+    await configure(client, logger, () => undefined)
+    await client.query('SET default_transaction_read_only = on')
+    return client
+  } catch (error) {
+    logger.warn(`could not open the co-wear connection, building without it: ${message(error)}`)
+    await close(client, logger)
+    return undefined
   }
 }
 

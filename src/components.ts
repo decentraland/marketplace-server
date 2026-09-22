@@ -215,6 +215,8 @@ export async function initComponents(): Promise<AppComponents> {
           read: await resolveConnectionString(config, 'DAPPS_READ'),
           write: await resolveConnectionString(config, 'DAPPS')
         }
+        // Where the co-wear source is computed. Unset, the rebuild runs without it.
+        const profilesConnectionString = await config.getString('ASSET_BUNDLE_REGISTRY_PG_COMPONENT_PSQL_CONNECTION_STRING')
         return createJobComponent(
           { logs },
           () =>
@@ -227,6 +229,16 @@ export async function initComponents(): Promise<AppComponents> {
                 await client.connect()
                 return client
               },
+              connectProfiles: profilesConnectionString
+                ? async () => {
+                    const client = new PgClient({
+                      connectionString: profilesConnectionString,
+                      application_name: 'marketplace-server-neighbors-profiles'
+                    })
+                    await client.connect()
+                    return client
+                  }
+                : undefined,
               logger: rebuildNeighborsLogger,
               metrics: {
                 observe: ({ durationMs, rows, peakRssBytes }) => {

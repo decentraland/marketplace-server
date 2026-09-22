@@ -20,7 +20,7 @@ test('item neighbours table', function ({ components }) {
     { itemId: '0xaaa-1', source: 'cf', neighborId: '0xbbb-2', sim: 0.5, support: 7, rank: 0 },
     { itemId: '0xaaa-1', source: 'content', neighborId: '0xccc-3', sim: 0.35, support: 0, rank: 0 }
   ]
-  const META = { cfRows: 1, contentRows: 1, itemsCovered: 1, durationMs: 42 }
+  const META = { cfRows: 1, contentRows: 1, wornRows: 0, itemsCovered: 1, durationMs: 42 }
 
   /** Feeds a fixed set of rows through the producer contract the swap expects. */
   function producing(rows: typeof ROWS, meta = META) {

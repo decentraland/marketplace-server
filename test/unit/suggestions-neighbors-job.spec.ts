@@ -33,12 +33,15 @@ describe('when running the item neighbours job', () => {
     connect = jest.fn(async (role: 'read' | 'write') => clients[role])
     buildSpy = jest.spyOn(buildNeighbors, 'produceNeighborRows').mockImplementation(async (_client, insert, _options, onTimings) => {
       await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
-      onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, walletsSeen: 10, rowsRead: 20 })
-      return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+      onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, wornMs: 0, walletsSeen: 10, rowsRead: 20 })
+      return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
     })
     // The real swap is what drives the producer, so it is stubbed to run it and report success.
     jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
-      await produce(async () => undefined)
+      await produce(
+        async () => undefined,
+        async () => undefined
+      )
       return 'rebuilt'
     })
   })
@@ -150,7 +153,7 @@ describe('when running the item neighbours job', () => {
     beforeEach(async () => {
       buildSpy.mockImplementation(async () => {
         clients.read.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
-        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
       outcome = await runNeighborsJob({ connect, logger })
     })
@@ -181,16 +184,19 @@ describe('when running the item neighbours job', () => {
       // That the transaction then rolls back is the swap's own behaviour, covered against real Postgres
       // in the integration spec -- nothing here proves it.
       jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
-        await produce(async rows => {
-          inserted += rows.length
-        })
+        await produce(
+          async rows => {
+            inserted += rows.length
+          },
+          async () => undefined
+        )
         committed = true
         return 'rebuilt'
       })
       buildSpy.mockImplementation(async (_client, insert) => {
         clients.write.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
         await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
-        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
       outcome = await runNeighborsJob({ connect, logger })
     })
@@ -222,6 +228,90 @@ describe('when running the item neighbours job', () => {
 
     it('should report a peak memory reading', () => {
       expect(observe.mock.calls[0][0].peakRssBytes).toBeGreaterThan(0)
+    })
+  })
+
+  describe('and a registry connection is configured', () => {
+    let profilesClient: FakeClient
+    let connectProfiles: jest.Mock
+    let outcome: string
+
+    beforeEach(async () => {
+      profilesClient = makeClient()
+      connectProfiles = jest.fn(async () => profilesClient)
+      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+    })
+
+    it('should report that it rebuilt the table', () => {
+      expect(outcome).toBe('rebuilt')
+    })
+
+    it('should open the registry connection read-only', () => {
+      expect(profilesClient.query).toHaveBeenCalledWith('SET default_transaction_read_only = on')
+    })
+
+    it('should hand the build a co-wear source', () => {
+      expect(buildSpy.mock.calls[0][2]?.worn).toEqual(expect.objectContaining({ client: expect.anything(), discard: expect.any(Function) }))
+    })
+
+    it('should close the registry connection with the others', () => {
+      expect(profilesClient.end).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('and the registry connection cannot be opened', () => {
+    let outcome: string
+
+    beforeEach(async () => {
+      const connectProfiles = jest.fn(async () => {
+        throw Object.assign(new Error('connection refused'), { code: 'ECONNREFUSED' })
+      })
+      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+    })
+
+    it('should still rebuild the table from the other sources', () => {
+      expect(outcome).toBe('rebuilt')
+    })
+
+    it('should build without a co-wear source', () => {
+      expect(buildSpy.mock.calls[0][2]?.worn).toBeUndefined()
+    })
+
+    it('should warn that it went without it', () => {
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('could not open the co-wear connection'))
+    })
+  })
+
+  describe('and the co-wear source fails during the build', () => {
+    let outcome: string
+
+    beforeEach(async () => {
+      buildSpy.mockImplementation(async (_client, insert, _options, onTimings) => {
+        await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
+        onTimings?.({
+          catalogueMs: 1,
+          acquisitionsMs: 2,
+          coOwnershipMs: 3,
+          contentMs: 4,
+          wornMs: 5,
+          wornError: Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }),
+          walletsSeen: 10,
+          rowsRead: 20
+        })
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
+      })
+      const connectProfiles: jest.Mock = jest.fn(async () => makeClient())
+      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+    })
+
+    it('should still report the rebuild', () => {
+      expect(outcome).toBe('rebuilt')
+    })
+
+    it('should warn with the registry error', () => {
+      expect(logger.warn).toHaveBeenCalledWith(
+        'neighbours rebuild went ahead without the co-wear source: 57014: canceling statement due to statement timeout'
+      )
     })
   })
 })

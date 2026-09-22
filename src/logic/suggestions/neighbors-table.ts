@@ -45,6 +45,7 @@ export const CREATE_NEIGHBORS_META_TABLE = `CREATE TABLE IF NOT EXISTS ${NEIGHBO
     duration_ms integer NOT NULL,
     cf_rows integer NOT NULL,
     content_rows integer NOT NULL,
+    worn_rows integer NOT NULL DEFAULT 0,
     items_covered integer NOT NULL,
     algorithm text NOT NULL,
     CONSTRAINT ${NEIGHBORS_META_TABLE_SINGLETON} CHECK (id)
@@ -120,6 +121,7 @@ export const SELECT_TAGS = `SELECT item_id, lower(tag) AS tag
 export type NeighborsMeta = {
   cfRows: number
   contentRows: number
+  wornRows: number
   itemsCovered: number
   durationMs: number
 }
@@ -159,7 +161,11 @@ export type NeighborInsertRow = {
  * memory profile. Feeding them through in chunks lets each generator's output be released before the
  * next one runs.
  */
-export type NeighborProducer = (insert: (rows: NeighborInsertRow[]) => Promise<void>) => Promise<NeighborsMeta>
+export type NeighborProducer = (
+  insert: (rows: NeighborInsertRow[]) => Promise<void>,
+  /** Drops what was already inserted for a source, so a source that fails midway leaves nothing behind. */
+  discard: (source: string) => Promise<void>
+) => Promise<NeighborsMeta>
 
 /**
  * Swaps a freshly computed neighbour set in.
@@ -189,7 +195,12 @@ export async function swapNeighborsTable(client: QueryableClient, produce: Neigh
     // rather than being silently dropped, which is the right outcome for what would be a generator bug.
     await client.query(`CREATE TABLE ${STAGING_TABLE} (LIKE ${NEIGHBORS_TABLE} INCLUDING DEFAULTS)`)
 
-    const meta = await produce(rows => insertInBatches(client, rows))
+    const meta = await produce(
+      rows => insertInBatches(client, rows),
+      async source => {
+        await client.query(`DELETE FROM ${STAGING_TABLE} WHERE source = $1`, [source])
+      }
+    )
 
     await client.query(`ALTER TABLE ${STAGING_TABLE} ADD CONSTRAINT ${STAGING_PRIMARY_KEY} PRIMARY KEY (item_id, source, neighbor_id)`)
     await client.query(`CREATE INDEX ${STAGING_ITEM_INDEX} ON ${STAGING_TABLE} (item_id)`)
@@ -201,16 +212,17 @@ export async function swapNeighborsTable(client: QueryableClient, produce: Neigh
     await client.query(`ALTER TABLE ${NEIGHBORS_TABLE} RENAME CONSTRAINT ${STAGING_PRIMARY_KEY} TO ${NEIGHBORS_PRIMARY_KEY}`)
 
     await client.query(
-      `INSERT INTO ${NEIGHBORS_META_TABLE} (id, built_at, duration_ms, cf_rows, content_rows, items_covered, algorithm)
-       VALUES (true, now(), $1, $2, $3, $4, $5)
+      `INSERT INTO ${NEIGHBORS_META_TABLE} (id, built_at, duration_ms, cf_rows, content_rows, worn_rows, items_covered, algorithm)
+       VALUES (true, now(), $1, $2, $3, $4, $5, $6)
        ON CONFLICT (id) DO UPDATE SET
          built_at = EXCLUDED.built_at,
          duration_ms = EXCLUDED.duration_ms,
          cf_rows = EXCLUDED.cf_rows,
          content_rows = EXCLUDED.content_rows,
+         worn_rows = EXCLUDED.worn_rows,
          items_covered = EXCLUDED.items_covered,
          algorithm = EXCLUDED.algorithm`,
-      [meta.durationMs, meta.cfRows, meta.contentRows, meta.itemsCovered, ALGORITHM_VERSION]
+      [meta.durationMs, meta.cfRows, meta.contentRows, meta.wornRows, meta.itemsCovered, ALGORITHM_VERSION]
     )
 
     await client.query('COMMIT')
