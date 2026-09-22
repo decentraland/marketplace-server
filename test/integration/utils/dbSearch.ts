@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { Client } from 'pg'
-import { rebuildItemSearchWords } from '../../../src/logic/catalog/search-words-table'
+import { rebuildSearchTables } from '../../../src/logic/catalog/search-words-table'
 import { BaseComponents } from '../../../src/types'
 
 export type CreateSearchableWearableOptions = {
@@ -17,6 +17,8 @@ export type CreateSearchableWearableOptions = {
   price?: string
   /** Squid epoch seconds. Two items given the same one tie on the newest sort, which is what a paging test needs. */
   createdAt?: number
+  /** The item's creator. Defaults to the collection address, which is what the plain fixtures use. */
+  creator?: string
 }
 
 const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
@@ -40,7 +42,8 @@ export async function createSearchableWearable(
     available = 1,
     collectionApproved = true,
     price = '100000000000000000000',
-    createdAt = 1000000 + Number(itemId)
+    createdAt = 1000000 + Number(itemId),
+    creator = contractAddress
   } = options
 
   // Dash-joined like the squid's own ids, which is also the key the builder's tag view is joined on.
@@ -84,7 +87,7 @@ export async function createSearchableWearable(
       search_wearable_category, search_wearable_rarity, search_wearable_body_shapes, unique_collectors, unique_collectors_total,
       collection_id, metadata_id, network
     ) VALUES (
-      '${itemDbId}', ${itemId}, '${contractAddress}', 'wearable_v2', 1, 1, 'unique', 0, ${available}, ${price},
+      '${itemDbId}', ${itemId}, ${quote(creator)}, 'wearable_v2', 1, 1, 'unique', 0, ${available}, ${price},
       '${contractAddress}', 'aContentHash',
       'https://peer.decentraland.org/lambdas/collections/contents/urn:decentraland:matic:collections-v2:${contractAddress}:${itemId}/thumbnail',
       'https://example.com/token/${itemId}',
@@ -100,7 +103,8 @@ export async function createSearchableWearable(
       available = ${available},
       search_is_collection_approved = ${collectionApproved ? 'true' : 'false'},
       price = ${price},
-      created_at = ${createdAt}
+      created_at = ${createdAt},
+      creator = ${quote(creator)}
   `)
 }
 
@@ -127,7 +131,7 @@ export async function deleteSearchableCollection(
 export async function rebuildSearchWords(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
   const client = await dbComponent.dappsDatabase.getPool().connect()
   try {
-    await rebuildItemSearchWords(client)
+    await rebuildSearchTables(client)
   } finally {
     client.release()
   }
@@ -266,4 +270,75 @@ export async function clearBuilderTags(
     await builder.end()
   }
   await dappsDatabase.query('REFRESH MATERIALIZED VIEW marketplace.mv_builder_server_items')
+}
+
+export type CreatorProfileFixture = {
+  address: string
+  /** The Catalyst profile name; null for a creator Catalyst has no profile for. */
+  name: string | null
+  names?: string[]
+  items?: number
+  collections?: number
+  face?: string | null
+}
+
+/**
+ * A creator as the profiles job would have written them, without going through Catalyst: the search
+ * reads the table, and the table is what these specs are about. The words tables see the row after the
+ * next rebuildSearchWords.
+ */
+export async function setCreatorProfile(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, fixture: CreatorProfileFixture): Promise<void> {
+  const { address, name, names = [], items = 0, collections = 0, face = null } = fixture
+  const namesLiteral = names.length ? `ARRAY[${names.map(quote).join(', ')}]::text[]` : "'{}'::text[]"
+  await dbComponent.dappsDatabase.query(`
+    INSERT INTO marketplace.creator_profiles (address, name, has_claimed_name, face, names, items, collections)
+    VALUES (${quote(address.toLowerCase())}, ${name === null ? 'NULL' : quote(name)}, ${name === null ? 'false' : 'true'},
+            ${face === null ? 'NULL' : quote(face)}, ${namesLiteral}, ${items}, ${collections})
+    ON CONFLICT (address) DO UPDATE SET
+      name = EXCLUDED.name, has_claimed_name = EXCLUDED.has_claimed_name, face = EXCLUDED.face,
+      names = EXCLUDED.names, items = EXCLUDED.items, collections = EXCLUDED.collections, updated_at = now()
+  `)
+}
+
+export async function clearCreatorProfiles(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
+  await dbComponent.dappsDatabase.query('DELETE FROM marketplace.creator_profiles')
+}
+
+export type CreateSearchableNameOptions = {
+  tokenId: string
+  owner: string
+  name: string
+  /** Squid epoch seconds. The profiles refresh keeps a creator's OLDEST names, so the order matters. */
+  createdAt?: number
+}
+
+const NAMES_CONTRACT = '0x2a187453064356c898cae034eaed119e1663acb8'
+
+/** A NAME (an ENS nft plus its ens row) owned by an address, the way the squid records one. */
+export async function createSearchableName(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: CreateSearchableNameOptions
+): Promise<void> {
+  const { tokenId, owner, name, createdAt = 1000000 + Number(tokenId) } = options
+  const ensId = `${NAMES_CONTRACT}-${tokenId}-ens`
+  const nftId = `${NAMES_CONTRACT}-${tokenId}`
+  await dbComponent.dappsDatabase.query(`
+    INSERT INTO squid_marketplace."ens" (id, token_id, subdomain, created_at, owner_id)
+    VALUES ('${ensId}', ${tokenId}, ${quote(name)}, ${createdAt}, '${owner.toLowerCase()}-ETHEREUM')
+    ON CONFLICT (id) DO UPDATE SET subdomain = ${quote(name)}, created_at = ${createdAt}
+  `)
+  await dbComponent.dappsDatabase.query(`
+    INSERT INTO squid_marketplace."nft" (
+      id, token_id, contract_address, category, name, created_at, updated_at, transferred_at, sales, volume,
+      search_text, network, owner_address, owner_id, ens_id
+    ) VALUES (
+      '${nftId}', ${tokenId}, '${NAMES_CONTRACT}', 'ens', ${quote(name)}, ${createdAt}, ${createdAt}, ${createdAt}, 0, 0,
+      ${quote(name.toLowerCase())}, 'ethereum', '${owner.toLowerCase()}', '${owner.toLowerCase()}-ETHEREUM', '${ensId}'
+    ) ON CONFLICT (id) DO UPDATE SET name = ${quote(name)}, owner_address = '${owner.toLowerCase()}', created_at = ${createdAt}
+  `)
+}
+
+export async function deleteSearchableName(dbComponent: Pick<BaseComponents, 'dappsDatabase'>, tokenId: string): Promise<void> {
+  await dbComponent.dappsDatabase.query(`DELETE FROM squid_marketplace."nft" WHERE id = '${NAMES_CONTRACT}-${tokenId}'`)
+  await dbComponent.dappsDatabase.query(`DELETE FROM squid_marketplace."ens" WHERE id = '${NAMES_CONTRACT}-${tokenId}-ens'`)
 }

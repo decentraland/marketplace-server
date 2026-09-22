@@ -14,6 +14,19 @@ export const SEARCH_STOPWORDS = ['the', 'a', 'an', 'of', 'and', 'x', 'de', 'la',
 /** A query longer than this is truncated: every extra term is another index probe, and nobody types seven. */
 export const SEARCH_MAX_TERMS = 6
 
+/**
+ * How alike a query term and a creator's name must be for the name to count.
+ *
+ * An item's own words match on containment — "duck" finds "Starducks Cup" — and that is right for a
+ * name that describes one item. A creator's name hangs on their WHOLE catalogue, so containment would
+ * hang forty unrelated items on "duck" because their creator owns the NAME "STARDUCKS", and so would a
+ * prefix, through a creator called "Duckiez". In the item feeds a creator's name counts only when the
+ * term is most of it — a typo away: "metatinger" and "metatiger" are 0.62 alike, "duck" and "starducks"
+ * 0.4. The creator suggestions also take a term that STARTS the name, because they answer while someone
+ * is still typing it.
+ */
+export const CREATOR_NAME_MIN_SIMILARITY = 0.5
+
 // Every name is schema-qualified because migrations and the rebuild job run with search_path set to the
 // marketplace schema alone: an unqualified `unaccent` would neither find the function nor its dictionary.
 const UNACCENT_DICTIONARY = "'public.unaccent'::regdictionary"

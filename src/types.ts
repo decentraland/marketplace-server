@@ -11,6 +11,7 @@ import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { ICouponsComponent } from './ports/coupons/types'
+import { ICreatorProfilesComponent } from './ports/creator-profiles/types'
 import { IPgComponent } from './ports/db/types'
 import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
@@ -57,6 +58,7 @@ export type BaseComponents = {
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
+  creatorProfiles: ICreatorProfilesComponent
   suggestions: ISuggestionsComponent
   shopNotifier: IShopNotifierComponent
   manaUsdRate: IManaUsdRateComponent
@@ -67,6 +69,7 @@ export type BaseComponents = {
   flushTradesMaterializedViewJob: IJobComponent
   refreshCouponStateJob: IJobComponent
   rebuildItemNeighborsJob: IJobComponent
+  refreshCreatorProfilesJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent

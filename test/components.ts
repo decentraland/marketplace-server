@@ -20,6 +20,7 @@ import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
 import { createCouponsComponent } from '../src/ports/coupons'
+import { createCreatorProfilesComponent } from '../src/ports/creator-profiles/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { IEventPublisherComponent } from '../src/ports/events'
@@ -117,6 +118,13 @@ async function initComponents(): Promise<TestComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const creatorProfiles = await createCreatorProfilesComponent({
+    config,
+    logs,
+    fetch,
+    dappsDatabase: dappsReadDatabase,
+    dappsWriteDatabase
+  })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const schemaValidator = await createSchemaValidatorComponent()
@@ -170,6 +178,11 @@ async function initComponents(): Promise<TestComponents> {
   const refreshCouponStateJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
     startupDelay: 30
   })
+  // The profiles refresh calls Catalyst; the search specs fill the table directly and drive the refresh with a stub.
+  const refreshCreatorProfilesJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, {
+    repeat: false,
+    startupDelay: 60 * 60 * 1000
+  })
 
   const transak = createTransakComponent(
     { fetch, logs, cache },
@@ -203,6 +216,7 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    creatorProfiles,
     suggestions,
     shopNotifier,
     manaUsdRate,
@@ -213,6 +227,7 @@ async function initComponents(): Promise<TestComponents> {
     coupons,
     refreshCouponStateJob,
     rebuildItemNeighborsJob,
+    refreshCreatorProfilesJob,
     access,
     lists,
     picks,

@@ -1,22 +1,39 @@
 import SQL from 'sql-template-strings'
+import { createCreatorProfilesComponent } from '../../src/ports/creator-profiles/component'
 import { test } from '../components'
 import { createEstateNFT } from './utils/dbItems'
 import {
   clearBuilderTags,
+  clearCreatorProfiles,
+  createSearchableName,
   createSearchableWearable,
   CreateSearchableWearableOptions,
   createSearchNativeTrade,
   deleteSearchableCollection,
+  deleteSearchableName,
   deleteSearchableWearable,
   deleteSearchTrade,
   rebuildSearchWords,
-  setBuilderTags
+  setBuilderTags,
+  setCreatorProfile
 } from './utils/dbSearch'
 
 const CONTRACT = '0x5ea4c4e5f0a7b2f2e5d1c2b3a4f5e6d7c8b9a0f1'
 const HAT_CLUB = '0x6fb5d5f6a1b8c3a3f6e2d3c4b5a6f7e8d9c0b1a2'
 const LAND = '0x7ac6e6a7b2c9d4b4a7f3e4d5c6b7a8f9e0d1c2b3'
 const ESTATE_TOKEN = '77'
+// Creators. GALAXY has a profile and two NAMEs; NAMELESS has no Catalyst profile, only a NAME; CREW is a
+// bigger creator with a similar profile name, for the ranking between creators.
+const GALAXY = '0x8bd7f7b8c3d0e1a2b3c4d5e6f7a8b9c0d1e2f3a4'
+const NAMELESS = '0x9ce8a8c9d4e1f2b3c4d5e6f7a8b9c0d1e2f3a4b5'
+const CREW = '0xadf9b9dae5f203c4d5e6f7a8b9c0d1e2f3a4b5c6'
+// FANS has GALAXY's NAME as part of a longer profile name; the TWINs share one profile name.
+const FANS = '0xbe0acaebf6a314d5e6f7a8b9c0d1e2f3a4b5c6d7'
+const TWIN_A = '0xcf1bdbfc07b425e6f7a8b9c0d1e2f3a4b5c6d7e8'
+const TWIN_B = '0xd02cec0d18c536f7a8b9c0d1e2f3a4b5c6d7e8f9'
+// ELEVEN holds eleven NAMEs; only the last one is anything like "zebrafinch".
+const ELEVEN = '0xe13dfd1e29d647a8b9c0d1e2f3a4b5c6d7e8f9a0'
+const ELEVEN_NAMES = [...Array.from({ length: 10 }, (_, i) => `Alias${String(i + 1).padStart(2, '0')}`), 'Zebrafinch']
 
 // Every fixture is a wearable in the catalogue: a name, a category, and whether it is on sale.
 const FIXTURES: CreateSearchableWearableOptions[] = [
@@ -32,7 +49,13 @@ const FIXTURES: CreateSearchableWearableOptions[] = [
   { itemId: '910', contractAddress: CONTRACT, name: 'Golf Craft Shoes', category: 'feet' },
   // Two items that tie on every sort key but their id, for the paging cases.
   { itemId: '912', contractAddress: CONTRACT, name: 'Twin Sock A', category: 'feet', createdAt: 1999999 },
-  { itemId: '913', contractAddress: CONTRACT, name: 'Twin Sock B', category: 'feet', createdAt: 1999999 }
+  { itemId: '913', contractAddress: CONTRACT, name: 'Twin Sock B', category: 'feet', createdAt: 1999999 },
+  // Two items by GALAXY, one by NAMELESS, and an item NAMED after GALAXY's profile by someone else.
+  { itemId: '914', contractAddress: CONTRACT, name: 'Nebula Cape', category: 'upper_body', creator: GALAXY },
+  { itemId: '915', contractAddress: CONTRACT, name: 'Comet Boots', category: 'feet', creator: GALAXY },
+  { itemId: '916', contractAddress: CONTRACT, name: 'Plain Tee', category: 'upper_body', creator: NAMELESS },
+  { itemId: '917', contractAddress: CONTRACT, name: 'Galaxy Visor', category: 'eyewear' },
+  { itemId: '918', contractAddress: CONTRACT, name: 'Plain Scarf', category: 'upper_body', creator: ELEVEN }
 ]
 
 test('when searching the catalogue', function ({ components }) {
@@ -58,6 +81,19 @@ test('when searching the catalogue', function ({ components }) {
     for (const fixture of FIXTURES) await createSearchableWearable(components, fixture)
     // The beanie is also TAGGED with a phrase: the tag path and the word path must fold into one row.
     tagIds = await setBuilderTags(components, { contractAddress: HAT_CLUB, itemId: '909', tags: ['Hat Club Merch'] })
+    await setCreatorProfile(components, {
+      address: GALAXY,
+      name: 'Galaxy Studio',
+      names: ['GalaxyOne', 'StarForge'],
+      items: 2,
+      collections: 1
+    })
+    await setCreatorProfile(components, { address: NAMELESS, name: null, names: ['Wonderbot'], items: 1, collections: 1 })
+    await setCreatorProfile(components, { address: CREW, name: 'Galaxy Crew', items: 5, collections: 3 })
+    await setCreatorProfile(components, { address: FANS, name: 'Galaxy One Fans', items: 9, collections: 2 })
+    await setCreatorProfile(components, { address: TWIN_A, name: 'Twin Maker', items: 3, collections: 1 })
+    await setCreatorProfile(components, { address: TWIN_B, name: 'Twin Maker', items: 7, collections: 2 })
+    await setCreatorProfile(components, { address: ELEVEN, name: null, names: ELEVEN_NAMES, items: 1, collections: 1 })
     await rebuildSearchWords(components)
     // The unified feed lists open trades: the pirate hat as a native primary listing, and an ESTATE — a
     // row that is not a collection item, which the search reaches through its substring fallback on the
@@ -75,6 +111,7 @@ test('when searching the catalogue', function ({ components }) {
     for (const fixture of FIXTURES) await deleteSearchableWearable(components, fixture.itemId, fixture.contractAddress)
     await deleteSearchableCollection(components, CONTRACT)
     await deleteSearchableCollection(components, HAT_CLUB)
+    await clearCreatorProfiles(components)
     await rebuildSearchWords(components)
   })
 
@@ -302,6 +339,286 @@ test('when searching the catalogue', function ({ components }) {
       expect(first.total).toEqual(2)
       expect(second.total).toEqual(2)
       expect([...first.names, ...second.names].sort()).toEqual(['Twin Sock A', 'Twin Sock B'])
+    })
+  })
+
+  describe('and searching by a creator', () => {
+    it('should find an item by the name of the profile that created it', async () => {
+      const result = await fetchCatalog('search=galaxystudio')
+
+      expect(result.names.slice().sort()).toEqual(['Comet Boots', 'Nebula Cape'])
+      expect(result.total).toEqual(2)
+    })
+
+    it('should find an item by a NAME its creator holds, whether or not the profile has a name', async () => {
+      expect((await fetchCatalog('search=starforge')).names.slice().sort()).toEqual(['Comet Boots', 'Nebula Cape'])
+      expect(await fetchCatalog('search=wonderbot')).toEqual({ names: ['Plain Tee'], total: 1 })
+    })
+
+    it('should rank an item that carries the word in its own name above the ones that inherit it from their creator', async () => {
+      const result = await fetchCatalog('search=galaxy')
+
+      expect(result.names[0]).toEqual('Galaxy Visor')
+      expect(result.names.slice(1).sort()).toEqual(['Comet Boots', 'Nebula Cape'])
+      expect(result.total).toEqual(3)
+    })
+
+    it('should forgive a typo in the creator name', async () => {
+      expect((await fetchCatalog('search=galaxi')).names.slice().sort()).toEqual(['Comet Boots', 'Galaxy Visor', 'Nebula Cape'])
+    })
+
+    it("should give an item its creator's first ten NAMEs only, however many they hold", async () => {
+      expect(await fetchCatalog('search=alias03')).toEqual({ names: ['Plain Scarf'], total: 1 })
+      expect((await fetchCatalog('search=zebrafinch')).total).toEqual(0)
+    })
+
+    it('should keep answering from its own words table while the previous release rebuilds its own', async () => {
+      // What a rebuild by the previous release leaves behind: its table, without creator words. The two
+      // releases run side by side for as long as a roll-out or a rollback lasts; neither reads the other's.
+      await components.dappsDatabase.query('DROP TABLE IF EXISTS marketplace.item_search_words_v2')
+      await components.dappsDatabase.query(
+        "CREATE TABLE marketplace.item_search_words_v2 AS SELECT item_id, word, source, original_word FROM marketplace.item_search_words_v3 WHERE source <> 'creator'"
+      )
+
+      expect((await fetchCatalog('search=galaxystudio')).total).toEqual(2)
+      expect((await fetchCatalog('search=starforge')).total).toEqual(2)
+      const { rows } = await components.dappsDatabase.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM marketplace.item_search_words_v2 WHERE source = 'creator'"
+      )
+      expect(rows[0].n).toEqual('0')
+    })
+  })
+
+  describe('and suggesting creators', () => {
+    type Hit = { address: string; name: string; items: number; collections: number }
+    async function fetchCreators(query: string): Promise<{ status: number; data: Hit[] }> {
+      const response = await components.localFetch.fetch(`/v3/catalog/creators/search?${query}`)
+      const body = (await response.json()) as { data?: (Hit & { face: string | null })[] }
+      return {
+        status: response.status,
+        data: (body.data ?? []).map(({ address, name, items, collections }) => ({ address, name, items, collections }))
+      }
+    }
+    const fans = { address: FANS, name: 'Galaxy One Fans', items: 9, collections: 2 }
+    const crew = { address: CREW, name: 'Galaxy Crew', items: 5, collections: 3 }
+    const galaxy = { address: GALAXY, name: 'Galaxy Studio', items: 2, collections: 1 }
+    const nameless = { address: NAMELESS, name: 'Wonderbot', items: 1, collections: 1 }
+
+    it('should list the creators whose profile name or NAME matches, with their counts, the bigger catalogue first on a tie', async () => {
+      expect(await fetchCreators('search=galaxy')).toEqual({ status: 200, data: [fans, crew, galaxy] })
+    })
+
+    it('should put the creator whose profile name IS the query first, whatever the sizes', async () => {
+      expect((await fetchCreators('search=galaxy%20studio')).data).toEqual([galaxy])
+    })
+
+    it('should treat a NAME that IS the query as exact too, above a bigger creator whose name only contains it', async () => {
+      const { data } = await fetchCreators('search=galaxyone')
+
+      // GALAXY holds the NAME "GalaxyOne"; FANS only has the words run together; CREW trails on "galaxy" alone.
+      expect(data.slice(0, 2)).toEqual([galaxy, fans])
+      expect(data.map(hit => hit.address)).toEqual([GALAXY, FANS, CREW])
+    })
+
+    it('should order two creators with the same name by their catalogue', async () => {
+      expect((await fetchCreators('search=twin%20maker')).data.map(hit => hit.address)).toEqual([TWIN_B, TWIN_A])
+    })
+
+    it('should require every term, and show a creator with no profile under their NAME', async () => {
+      expect((await fetchCreators('search=galaxy%20crew')).data).toEqual([crew])
+      expect((await fetchCreators('search=wonderbot')).data).toEqual([nameless])
+    })
+
+    it('should find a creator by any NAME they hold, past the ten their items inherit', async () => {
+      expect((await fetchCreators('search=zebrafinch')).data).toEqual([{ address: ELEVEN, name: 'Alias01', items: 1, collections: 1 }])
+    })
+
+    it('should fall back to the creators matching the most terms when none matches them all', async () => {
+      expect((await fetchCreators('search=galaxy%20wonderbot&first=10')).data).toEqual([fans, crew, galaxy, nameless])
+    })
+
+    it('should cap the page and answer an empty query with nothing', async () => {
+      expect((await fetchCreators('search=galaxy&first=1')).data).toHaveLength(1)
+      expect(await fetchCreators('search=%20')).toEqual({ status: 200, data: [] })
+      expect(await fetchCreators('search=%21%21%21')).toEqual({ status: 200, data: [] })
+    })
+  })
+
+  describe('and refreshing the creator profiles', () => {
+    const lookups: string[][] = []
+    let catalyst: (ids: string[]) => unknown
+
+    function creatorProfiles(fetchImpl: (ids: string[]) => unknown) {
+      catalyst = fetchImpl
+      return createCreatorProfilesComponent({
+        config: components.config,
+        logs: components.logs,
+        dappsDatabase: components.dappsDatabase,
+        dappsWriteDatabase: components.dappsWriteDatabase,
+        fetch: {
+          fetch: async (_url, init) => {
+            const ids = (JSON.parse(String(init?.body)) as { ids: string[] }).ids
+            lookups.push(ids)
+            const answer = catalyst(ids)
+            if (answer instanceof Error) throw answer
+            return new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } })
+          }
+        }
+      })
+    }
+
+    async function storedProfiles() {
+      const { rows } = await components.dappsDatabase.query<{
+        address: string
+        name: string | null
+        names: string[]
+        items: number
+        collections: number
+        face: string | null
+      }>(
+        SQL`SELECT address, name, names, items, collections, face FROM marketplace.creator_profiles WHERE address = ANY(${[
+          GALAXY,
+          NAMELESS,
+          CREW
+        ]}) ORDER BY address`
+      )
+      return rows
+    }
+
+    const galaxyProfile = {
+      timestamp: 1,
+      avatars: [
+        {
+          name: 'Galaxy Studio',
+          hasClaimedName: true,
+          ethAddress: GALAXY,
+          avatar: { snapshots: { face256: 'https://img.example/galaxy.png' } }
+        }
+      ]
+    }
+
+    beforeAll(async () => {
+      // NAMEs the way the squid records them; the oldest come first in the profile.
+      await createSearchableName(components, { tokenId: '5001', owner: GALAXY, name: 'StarForge', createdAt: 1500000 })
+      await createSearchableName(components, { tokenId: '5002', owner: GALAXY, name: 'GalaxyOne', createdAt: 1400000 })
+      await createSearchableName(components, { tokenId: '5003', owner: NAMELESS, name: 'Wonderbot' })
+    })
+
+    afterAll(async () => {
+      for (const tokenId of ['5001', '5002', '5003']) await deleteSearchableName(components, tokenId)
+    })
+
+    it('should write every creator of an approved collection with their profile, their NAMEs oldest first and their item count, and drop the rest', async () => {
+      const component = await creatorProfiles(ids => (ids.includes(GALAXY) ? [galaxyProfile] : []))
+
+      const result = await component.refresh()
+
+      expect(result.outcome).toEqual('refreshed')
+      expect(lookups.flat()).toEqual(expect.arrayContaining([GALAXY, NAMELESS, CONTRACT]))
+      const rows = await storedProfiles()
+      expect(rows).toEqual([
+        {
+          address: GALAXY,
+          name: 'Galaxy Studio',
+          names: ['GalaxyOne', 'StarForge'],
+          items: 2,
+          collections: 1,
+          face: 'https://img.example/galaxy.png'
+        },
+        { address: NAMELESS, name: null, names: ['Wonderbot'], items: 1, collections: 1, face: null }
+      ])
+      // CREW has published nothing, so it is no longer a creator the search should know.
+      expect(rows.some(row => row.address === CREW)).toBe(false)
+    })
+
+    it('should keep the names it has when Catalyst cannot be reached, and still refresh the rest', async () => {
+      const component = await creatorProfiles(() => new Error('Catalyst is down'))
+      await createSearchableName(components, { tokenId: '5004', owner: NAMELESS, name: 'Wonderbot2', createdAt: 1700000 })
+
+      const result = await component.refresh()
+
+      expect(result).toEqual(expect.objectContaining({ outcome: 'refreshed', lookedUp: 0 }))
+      expect((result as { failedBatches: number }).failedBatches).toBeGreaterThan(0)
+      const rows = await storedProfiles()
+      expect(rows.find(row => row.address === GALAXY)?.name).toEqual('Galaxy Studio')
+      expect(rows.find(row => row.address === NAMELESS)?.names).toEqual(['Wonderbot', 'Wonderbot2'])
+      await deleteSearchableName(components, '5004')
+    })
+
+    it('should keep the names it has when Catalyst answers nonsense behind an HTTP 200', async () => {
+      // An error object, then a list whose entry has no avatar: neither is an answer about any address.
+      for (const nonsense of [{ error: 'upstream temporary failure' }, [{ avatars: [] }]]) {
+        const component = await creatorProfiles(() => nonsense)
+
+        const result = await component.refresh()
+
+        expect(result).toEqual(expect.objectContaining({ outcome: 'refreshed', lookedUp: 0 }))
+        expect((await storedProfiles()).find(row => row.address === GALAXY)?.name).toEqual('Galaxy Studio')
+      }
+    })
+
+    it('should blank a name Catalyst no longer knows, once it has answered', async () => {
+      const component = await creatorProfiles(() => [])
+
+      await component.refresh()
+
+      expect((await storedProfiles()).find(row => row.address === GALAXY)?.name).toBeNull()
+    })
+  })
+
+  describe('and searching names through /v1/nfts', () => {
+    const FAN_TOKENS = Array.from({ length: 24 }, (_, i) => String(6001 + i))
+    const TIGER_TOKEN = '6100'
+
+    async function fetchNames(query: string): Promise<{ names: string[]; total: number }> {
+      const response = await components.localFetch.fetch(`/v1/nfts?category=ens&${query}`)
+      expect(response.status).toEqual(200)
+      const body = (await response.json()) as { data: { nft: { name: string } }[]; total: number }
+      return { names: body.data.map(row => row.nft.name), total: body.total }
+    }
+
+    beforeAll(async () => {
+      // Twenty-four names a trigram search for "metatiger" also matches, all newer than the exact one, so a
+      // scan in any natural order fills a page of twenty before it reaches METATIGER.
+      for (const [i, tokenId] of FAN_TOKENS.entries()) {
+        await createSearchableName(components, {
+          tokenId,
+          owner: CREW,
+          name: `MetaTigerFan${String(i + 1).padStart(2, '0')}`,
+          createdAt: 2000000 + i
+        })
+      }
+      await createSearchableName(components, { tokenId: TIGER_TOKEN, owner: GALAXY, name: 'METATIGER', createdAt: 1000000 })
+    })
+
+    afterAll(async () => {
+      for (const tokenId of [...FAN_TOKENS, TIGER_TOKEN]) await deleteSearchableName(components, tokenId)
+    })
+
+    it('should put the name that matches best first when no sort is asked for, however many partial matches precede it', async () => {
+      const { names, total } = await fetchNames('search=metatiger&first=20')
+
+      expect(names[0]).toEqual('METATIGER')
+      expect(names).toHaveLength(20)
+      expect(total).toEqual(25)
+    })
+
+    it('should forgive a typo', async () => {
+      expect((await fetchNames('search=metatinger&first=5')).names[0]).toEqual('METATIGER')
+    })
+
+    it('should hand out each name once across consecutive pages', async () => {
+      const first = await fetchNames('search=metatiger&first=10&skip=0')
+      const second = await fetchNames('search=metatiger&first=10&skip=10')
+
+      expect(new Set([...first.names, ...second.names]).size).toEqual(20)
+    })
+
+    it('should keep an explicit sort', async () => {
+      const { names } = await fetchNames('search=metatiger&sortBy=newest&first=5')
+
+      expect(names[0]).toEqual('MetaTigerFan24')
+      expect(names).not.toContain('METATIGER')
     })
   })
 

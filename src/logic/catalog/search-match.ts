@@ -1,7 +1,12 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { ShopSortBy } from '../../ports/shop-catalog/types'
-import { SEARCH_PHRASE_FUNCTION, SEARCH_QUERY_TERMS_FUNCTION, SEARCH_TOKENS_FUNCTION } from './search-normalization'
+import {
+  CREATOR_NAME_MIN_SIMILARITY,
+  SEARCH_PHRASE_FUNCTION,
+  SEARCH_QUERY_TERMS_FUNCTION,
+  SEARCH_TOKENS_FUNCTION
+} from './search-normalization'
 import { SEARCH_NAMES_TABLE, SEARCH_WORDS_TABLE } from './search-words-table'
 
 /** The CTE a searching statement joins: one row per matching item, with `matched` terms and a `score`. */
@@ -14,6 +19,10 @@ export const SEARCH_LEVEL_ALIAS = 'f'
 // A word taken from the collection's name counts less than one from the item's own: "MVFW" names the show,
 // not the garment, so an item that carries the term in its own name should outrank one that inherits it.
 const COLLECTION_WORD_WEIGHT = 0.7
+// A creator's name on an item: below the item's own name, above its collection's. "metatiger" should rank
+// an item actually named that over METATIGER's other work, but a creator's name is a closer identity than
+// the collection an item happens to sit in, and most of the queries that used to return nothing were one.
+const CREATOR_WORD_WEIGHT = 0.8
 // A tag equal to the whole query is a deliberate label, but the item's name still says nothing about it.
 const TAG_MATCH_SCORE = 0.8
 // Well above any term score, so a name that IS the query heads the list whatever the terms weigh.
@@ -71,9 +80,11 @@ export function getSearchCteDefinitions(search: string): SQLStatement {
       SELECT
         w.item_id,
         t.term,
-        MAX(word_similarity(t.term, w.word) * CASE w.source WHEN 'name' THEN 1.0 ELSE ${COLLECTION_WORD_WEIGHT} END)::float8 AS best
+        MAX(word_similarity(t.term, w.word) * CASE w.source WHEN 'name' THEN 1.0 WHEN 'creator' THEN ${CREATOR_WORD_WEIGHT} WHEN 'collection' THEN ${COLLECTION_WORD_WEIGHT} ELSE 0 END)::float8 AS best
       FROM ${SEARCH_WORDS_TABLE} AS w
-      JOIN search_terms AS t ON t.term <% w.word
+      JOIN search_terms AS t
+        ON t.term <% w.word
+       AND (w.source <> 'creator' OR similarity(t.term, w.word) >= ${CREATOR_NAME_MIN_SIMILARITY})
       GROUP BY w.item_id, t.term
     ), search_term_weights AS (
       SELECT term, (1.0 / ln(1.0 + COUNT(*)))::float8 AS weight
