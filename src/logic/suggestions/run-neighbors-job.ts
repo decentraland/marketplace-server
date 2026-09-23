@@ -1,4 +1,5 @@
-import type { Client, Pool, PoolClient } from 'pg'
+import type { Client } from 'pg'
+import type { IWornNeighborsComponent } from '../../ports/worn-neighbors'
 import { asCursorClient, produceNeighborRows, type BuildTimings } from './build-neighbors'
 import { ACQUISITION_SCAN_DEADLINE_MS, NEIGHBORS_JOB_STATEMENT_TIMEOUT_MS } from './constants'
 import { swapNeighborsTable, type QueryableClient, type RebuildOutcome } from './neighbors-table'
@@ -17,9 +18,9 @@ export type NeighborsJobDeps = {
   /** Opens a connection OUTSIDE the request pool. The pool caps statements at 40s; the acquisition
    * scan alone runs to 80. */
   connect: (role: 'read' | 'write') => Promise<Client>
-  /** The asset-bundle-registry database's pool, where the co-wear source is computed. Its 40s statement
-   * cap is ample: the co-wear query reads only the profiles its partial index covers. */
-  profilesPool: Pick<Pool, 'connect'>
+  /** Computes the co-wear source in the asset-bundle-registry database. Its failures cost only that
+   * source, never the rebuild. */
+  wornNeighbors: IWornNeighborsComponent
   logger: NeighborsJobLogger
   metrics?: NeighborsJobMetrics
   blockWidth?: number
@@ -46,7 +47,7 @@ export type NeighborsJobOutcome = RebuildOutcome | 'failed'
  * connections back.
  */
 export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<NeighborsJobOutcome> {
-  const { connect, profilesPool, logger, metrics } = deps
+  const { connect, wornNeighbors, logger, metrics } = deps
   const started = Date.now()
   let peakRss = process.memoryUsage().rss
   const sampler = setInterval(() => {
@@ -56,7 +57,6 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
 
   let readClient: Client | undefined
   let writeClient: Client | undefined
-  let profilesClient: PoolClient | undefined
   // Set by a connection-level error. The run is abandoned at the next checkpoint rather than carried
   // on with a client that is no longer talking to anything.
   let fatal: unknown
@@ -86,8 +86,6 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     })
     await readClient.query('SET default_transaction_read_only = on')
 
-    profilesClient = await openProfilesClient(profilesPool, logger)
-
     // The rows are generated INSIDE the swap transaction and inserted in chunks as they appear, so the
     // job never holds the whole ~940k-row set in memory and the live table stays untouched until the
     // rename at the end.
@@ -105,10 +103,7 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
         {
           blockWidth: deps.blockWidth,
           acquisitionDeadlineMs: ACQUISITION_SCAN_DEADLINE_MS,
-          worn: profilesClient && {
-            client: asCursorClient(profilesClient as unknown as QueryableClient),
-            discard: () => discard('worn')
-          }
+          worn: { neighbors: wornNeighbors, discard: () => discard('worn') }
         },
         t => {
           timings = t
@@ -137,45 +132,8 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     return 'failed'
   } finally {
     clearInterval(sampler)
-    await Promise.all([close(readClient, logger), close(writeClient, logger), releaseProfilesClient(profilesClient)])
+    await Promise.all([close(readClient, logger), close(writeClient, logger)])
   }
-}
-
-/**
- * The registry connection is the one connection whose loss is NOT fatal: without it the rebuild still
- * swaps in co-ownership and content, so a failure to check it out, or its dropping later, only costs the
- * co-wear source.
- *
- * It is borrowed from the shared pool for the run, inside a read-only transaction so nothing on it can
- * write. Unlike the job's own clients it needs no error listener: the pool keeps one on every client it
- * owns, checked out or not.
- */
-async function openProfilesClient(pool: Pick<Pool, 'connect'>, logger: NeighborsJobLogger): Promise<PoolClient | undefined> {
-  let client: PoolClient | undefined
-  try {
-    client = await pool.connect()
-    await client.query('BEGIN TRANSACTION READ ONLY')
-    return client
-  } catch (error) {
-    logger.warn(`could not open the co-wear connection, building without it: ${message(error)}`)
-    await releaseProfilesClient(client, error)
-    return undefined
-  }
-}
-
-/** Ends the read-only transaction and hands the client back, destroying it if it failed. */
-async function releaseProfilesClient(client: PoolClient | undefined, failure?: unknown): Promise<void> {
-  if (!client) return
-  let broken = failure
-  if (!broken) {
-    try {
-      await client.query('ROLLBACK')
-    } catch (error) {
-      broken = error
-    }
-  }
-  // A client whose transaction could not be closed is destroyed rather than handed to the next borrower
-  client.release(broken !== undefined)
 }
 
 /**

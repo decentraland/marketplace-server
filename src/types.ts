@@ -40,6 +40,7 @@ import { IUserAssetsComponent } from './ports/user-assets/types'
 import { IVolumeComponent } from './ports/volume/types'
 import { IWertApiComponent } from './ports/wert/api/types'
 import { IWertSignerComponent } from './ports/wert/signer/types'
+import { IWornNeighborsComponent } from './ports/worn-neighbors'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -58,6 +59,7 @@ export type BaseComponents = {
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
   assetBundleRegistryDatabase: IPgComponent
+  wornNeighbors: IWornNeighborsComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
   creatorProfiles: ICreatorProfilesComponent

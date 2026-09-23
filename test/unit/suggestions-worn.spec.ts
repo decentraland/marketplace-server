@@ -1,157 +1,67 @@
 import type Cursor from 'pg-cursor'
-import {
-  produceNeighborRows,
-  streamWornNeighbors,
-  type BuildTimings,
-  type CursorClient,
-  type LoadedCatalogue
-} from '../../src/logic/suggestions/build-neighbors'
-import { SELECT_CO_WORN, type NeighborInsertRow, type NeighborsMeta } from '../../src/logic/suggestions/neighbors-table'
+import { produceNeighborRows, type BuildTimings, type CursorClient } from '../../src/logic/suggestions/build-neighbors'
+import type { NeighborInsertRow, NeighborsMeta } from '../../src/logic/suggestions/neighbors-table'
+import { WornNeighborsUnavailableError, type IWornNeighborsComponent } from '../../src/ports/worn-neighbors'
 
-type OpenedCursor = { text: string; values: unknown[] }
-
-/** A client whose cursors hand out `batches` in order, or fail on the read given by `failOnRead`. */
-function makeCursorClient(options: {
-  batches?: unknown[][][]
-  failOnRead?: number
-  itemRows?: Record<string, unknown>[]
-}): CursorClient & { opened: OpenedCursor[]; closed: number } {
-  const opened: OpenedCursor[] = []
-  const client = {
-    opened,
-    closed: 0,
-    query: jest.fn(async (sql: string) => (sql.includes('squid_marketplace.item') ? { rows: options.itemRows ?? [] } : { rows: [] })),
-    openCursor: (cursor: Cursor) => {
-      const { text, values } = cursor as unknown as OpenedCursor
-      opened.push({ text, values })
-      const batches = text === SELECT_CO_WORN ? [...(options.batches ?? [])] : []
-      let reads = 0
-      return {
-        read: (_count: number, callback: (error: Error | null, rows: unknown[][]) => void) => {
-          reads += 1
-          if (text === SELECT_CO_WORN && options.failOnRead === reads) {
-            callback(new Error('terminating connection due to administrator command'), [])
-            return
-          }
-          callback(null, batches.shift() ?? [])
-        },
-        close: (callback: () => void) => {
-          client.closed += 1
-          callback()
-        }
-      } as unknown as Cursor
-    }
+/** The marketplace side of the build: a catalogue of three items and no acquisitions or tags. */
+function makeMarketplaceClient(): CursorClient {
+  const items = [
+    { item_id: '0xaaa-0', is_candidate: true },
+    { item_id: '0xaaa-1', is_candidate: true },
+    { item_id: '0xbbb-0', is_candidate: false }
+  ]
+  return {
+    query: jest.fn(async (sql: string) => (sql.includes('squid_marketplace.item') ? { rows: items } : { rows: [] })),
+    openCursor: () =>
+      ({
+        read: (_count: number, callback: (error: Error | null, rows: unknown[][]) => void) => callback(null, []),
+        close: (callback: () => void) => callback()
+      } as unknown as Cursor)
   }
-  return client
 }
 
-const CATALOGUE: LoadedCatalogue = {
-  items: [
-    { index: 0, id: '0xaaa-0', creator: '', collection: '', subCategory: '', rarityTier: -1, price: 0, isCandidate: true },
-    { index: 1, id: '0xaaa-1', creator: '', collection: '', subCategory: '', rarityTier: -1, price: 0, isCandidate: true },
-    { index: 2, id: '0xbbb-0', creator: '', collection: '', subCategory: '', rarityTier: -1, price: 0, isCandidate: false }
-  ],
-  indexById: new Map([
-    ['0xaaa-0', 0],
-    ['0xaaa-1', 1],
-    ['0xbbb-0', 2]
-  ])
-}
-
-const ITEM_ROWS = CATALOGUE.items.map(item => ({ item_id: item.id, is_candidate: item.isCandidate }))
-
-describe('when streaming the co-wear neighbours out of the registry', () => {
-  let client: ReturnType<typeof makeCursorClient>
-  let inserted: NeighborInsertRow[][]
-  let insert: jest.Mock
-
-  beforeEach(() => {
-    inserted = []
-    insert = jest.fn(async (rows: NeighborInsertRow[]) => {
-      inserted.push(rows)
-    })
-  })
-
-  describe('and the registry returns its rows over several reads', () => {
-    let written: number
-
-    beforeEach(async () => {
-      client = makeCursorClient({
-        batches: [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]], [['0xaaa-1', '0xaaa-0', 0.8, 6, 0]]]
-      })
-      written = await streamWornNeighbors(client, CATALOGUE, insert)
-    })
-
-    it('should send every catalogued item as an anchor and only the candidates as neighbours', () => {
-      expect(client.opened[0].values).toEqual(['{"0xaaa-0","0xaaa-1","0xbbb-0"}', '{"0xaaa-0","0xaaa-1"}'])
-    })
-
-    it('should insert each read as it arrives, as worn rows', () => {
-      expect(inserted).toEqual([
-        [{ itemId: '0xaaa-0', source: 'worn', neighborId: '0xaaa-1', sim: 0.8, support: 6, rank: 0 }],
-        [{ itemId: '0xaaa-1', source: 'worn', neighborId: '0xaaa-0', sim: 0.8, support: 6, rank: 0 }]
-      ])
-    })
-
-    it('should report how many rows it wrote', () => {
-      expect(written).toBe(2)
-    })
-
-    it('should close the cursor', () => {
-      expect(client.closed).toBe(1)
-    })
-  })
-
-  describe('and a read fails', () => {
-    let error: unknown
-
-    beforeEach(async () => {
-      client = makeCursorClient({ batches: [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]]], failOnRead: 2 })
-      error = await streamWornNeighbors(client, CATALOGUE, insert).catch(caught => caught)
-    })
-
-    it('should reject with the read error', () => {
-      expect(error).toEqual(new Error('terminating connection due to administrator command'))
-    })
-
-    it('should still close the cursor', () => {
-      expect(client.closed).toBe(1)
-    })
-  })
-})
+const WORN_ROW: NeighborInsertRow = { itemId: '0xbbb-0', source: 'worn', neighborId: '0xaaa-0', sim: 0.5, support: 5, rank: 0 }
 
 describe('when building the neighbour sets with the co-wear source', () => {
-  let marketplace: ReturnType<typeof makeCursorClient>
-  let registry: ReturnType<typeof makeCursorClient>
   let inserted: NeighborInsertRow[]
   let insert: jest.Mock
   let discard: jest.Mock
+  let streamNeighbors: jest.Mock
+  let wornNeighbors: IWornNeighborsComponent
   let timings: BuildTimings | undefined
 
   beforeEach(() => {
     inserted = []
     timings = undefined
-    marketplace = makeCursorClient({ itemRows: ITEM_ROWS })
     insert = jest.fn(async (rows: NeighborInsertRow[]) => {
       inserted.push(...rows)
     })
     discard = jest.fn(async () => undefined)
+    streamNeighbors = jest.fn(async (_catalogue: unknown, write: (rows: NeighborInsertRow[]) => Promise<void>) => {
+      await write([WORN_ROW])
+      return 1
+    })
+    wornNeighbors = { streamNeighbors }
   })
 
   describe('and the registry answers', () => {
     let meta: NeighborsMeta
 
     beforeEach(async () => {
-      registry = makeCursorClient({ batches: [[['0xbbb-0', '0xaaa-0', 0.5, 5, 0]]] })
-      meta = await produceNeighborRows(marketplace, insert, { worn: { client: registry, discard } }, t => {
+      meta = await produceNeighborRows(makeMarketplaceClient(), insert, { worn: { neighbors: wornNeighbors, discard } }, t => {
         timings = t
       })
     })
 
+    it('should ask for every catalogued item as an anchor and only the candidates as neighbours', () => {
+      expect(streamNeighbors.mock.calls[0][0]).toEqual({
+        anchorIds: ['0xaaa-0', '0xaaa-1', '0xbbb-0'],
+        candidateIds: ['0xaaa-0', '0xaaa-1']
+      })
+    })
+
     it('should insert the co-wear rows alongside the other sources', () => {
-      expect(inserted.filter(row => row.source === 'worn')).toEqual([
-        { itemId: '0xbbb-0', source: 'worn', neighborId: '0xaaa-0', sim: 0.5, support: 5, rank: 0 }
-      ])
+      expect(inserted.filter(row => row.source === 'worn')).toEqual([WORN_ROW])
     })
 
     it('should record them in the metadata', () => {
@@ -167,12 +77,17 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
   })
 
-  describe('and the registry fails midway', () => {
+  describe('and the registry becomes unavailable midway', () => {
+    let unavailable: WornNeighborsUnavailableError
     let meta: NeighborsMeta
 
     beforeEach(async () => {
-      registry = makeCursorClient({ batches: [[['0xbbb-0', '0xaaa-0', 0.5, 5, 0]]], failOnRead: 2 })
-      meta = await produceNeighborRows(marketplace, insert, { worn: { client: registry, discard } }, t => {
+      unavailable = new WornNeighborsUnavailableError(new Error('terminating connection due to administrator command'))
+      streamNeighbors.mockImplementation(async (_catalogue: unknown, write: (rows: NeighborInsertRow[]) => Promise<void>) => {
+        await write([WORN_ROW])
+        throw unavailable
+      })
+      meta = await produceNeighborRows(makeMarketplaceClient(), insert, { worn: { neighbors: wornNeighbors, discard } }, t => {
         timings = t
       })
     })
@@ -186,23 +101,26 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
 
     it('should report the registry error rather than throw it', () => {
-      expect(timings?.wornError).toEqual(new Error('terminating connection due to administrator command'))
+      expect(timings?.wornError).toBe(unavailable)
     })
   })
 
   describe('and writing a co-wear row fails', () => {
+    let failure: Error
     let error: unknown
 
     beforeEach(async () => {
-      registry = makeCursorClient({ batches: [[['0xbbb-0', '0xaaa-0', 0.5, 5, 0]]] })
+      failure = new Error('current transaction is aborted')
       insert.mockImplementation(async (rows: NeighborInsertRow[]) => {
-        if (rows.some(row => row.source === 'worn')) throw new Error('current transaction is aborted')
+        if (rows.some(row => row.source === 'worn')) throw failure
       })
-      error = await produceNeighborRows(marketplace, insert, { worn: { client: registry, discard } }).catch(caught => caught)
+      error = await produceNeighborRows(makeMarketplaceClient(), insert, { worn: { neighbors: wornNeighbors, discard } }).catch(
+        (caught: unknown) => caught
+      )
     })
 
     it('should fail the build, since the swap itself is lost', () => {
-      expect(error).toEqual(new Error('current transaction is aborted'))
+      expect(error).toBe(failure)
     })
 
     it('should not try to discard on a transaction that is gone', () => {
@@ -210,15 +128,15 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
   })
 
-  describe('and no registry is configured', () => {
+  describe('and no co-wear source is given', () => {
     let meta: NeighborsMeta
 
     beforeEach(async () => {
-      meta = await produceNeighborRows(marketplace, insert)
+      meta = await produceNeighborRows(makeMarketplaceClient(), insert)
     })
 
-    it('should never run the co-wear query', () => {
-      expect(marketplace.opened.map(cursor => cursor.text)).not.toContain(SELECT_CO_WORN)
+    it('should never ask the registry', () => {
+      expect(streamNeighbors).not.toHaveBeenCalled()
     })
 
     it('should record no co-wear rows', () => {

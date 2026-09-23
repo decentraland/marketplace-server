@@ -1,7 +1,7 @@
-import { SELECT_CO_WORN } from '../../src/logic/suggestions/neighbors-table'
+import type { NeighborInsertRow } from '../../src/logic/suggestions/neighbors-table'
+import { SELECT_CO_WORN } from '../../src/ports/worn-neighbors/queries'
 import { test } from '../components'
 
-type WornRow = { item_id: string; neighbor_id: string; sim: number; support: string; rank: string }
 type Profile = { pointer: string; timestamp: number; metadata: unknown }
 
 function urn(contract: string, itemId: number, tokenId?: number): string {
@@ -9,7 +9,7 @@ function urn(contract: string, itemId: number, tokenId?: number): string {
 }
 
 /**
- * Runs the co-wear query against the asset-bundle-registry schema it reads in production (see
+ * Runs the co-wear component against the asset-bundle-registry schema it reads in production (see
  * test/db/init-asset-bundle-registry-schema.sh), since nothing else here exercises the JSON, the URN
  * handling, the ranking or the partial index the query leans on.
  */
@@ -82,27 +82,30 @@ test('co-wear neighbours query', function ({ components }) {
       .query('DELETE FROM profiles WHERE pointer = ANY($1::text[])', [profiles.map(profile => profile.pointer)])
   })
 
-  describe('when computing the co-wear neighbours', () => {
-    let hatRows: WornRow[]
-    let shoeRows: WornRow[]
+  describe('when streaming the co-wear neighbours', () => {
+    let hatRows: NeighborInsertRow[]
+    let shoeRows: NeighborInsertRow[]
 
     beforeEach(async () => {
-      const { rows } = await components.assetBundleRegistryDatabase.getPool().query<WornRow>(SELECT_CO_WORN, [CATALOGUE, CANDIDATES])
-      hatRows = rows.filter(row => row.item_id.startsWith(HATS))
-      shoeRows = rows.filter(row => row.item_id.startsWith(SHOES))
+      const rows: NeighborInsertRow[] = []
+      await components.wornNeighbors.streamNeighbors({ anchorIds: CATALOGUE, candidateIds: CANDIDATES }, async batch => {
+        rows.push(...batch)
+      })
+      hatRows = rows.filter(row => row.itemId.startsWith(HATS))
+      shoeRows = rows.filter(row => row.itemId.startsWith(SHOES))
     })
 
     it('should pair the items worn together in both directions, whenever the profiles were deployed', () => {
       expect(hatRows).toEqual([
-        { item_id: hat, neighbor_id: jacket, sim: 1, support: '5', rank: '0' },
-        { item_id: jacket, neighbor_id: hat, sim: 1, support: '5', rank: '0' },
-        { item_id: mask, neighbor_id: cape, sim: 1, support: '5', rank: '0' },
-        { item_id: cape, neighbor_id: mask, sim: 1, support: '5', rank: '0' }
+        { itemId: hat, source: 'worn', neighborId: jacket, sim: 1, support: 5, rank: 0 },
+        { itemId: jacket, source: 'worn', neighborId: hat, sim: 1, support: 5, rank: 0 },
+        { itemId: mask, source: 'worn', neighborId: cape, sim: 1, support: 5, rank: 0 },
+        { itemId: cape, source: 'worn', neighborId: mask, sim: 1, support: 5, rank: 0 }
       ])
     })
 
     it('should keep a non-candidate as an anchor but never as a neighbour, and skip what is not catalogued', () => {
-      expect(shoeRows).toEqual([{ item_id: unlisted, neighbor_id: tie, sim: 1, support: '5', rank: '0' }])
+      expect(shoeRows).toEqual([{ itemId: unlisted, source: 'worn', neighborId: tie, sim: 1, support: 5, rank: 0 }])
     })
   })
 

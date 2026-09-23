@@ -1,12 +1,12 @@
 import Cursor from 'pg-cursor'
 import { Rarity } from '@dcl/schemas'
+import { WornNeighborsUnavailableError, type IWornNeighborsComponent } from '../../ports/worn-neighbors'
 import { buildCoOwnershipNeighbors, type AcquisitionMatrix, type NeighborRow } from './co-ownership'
 import { NEIGHBORS_PER_ITEM } from './constants'
 import { assignPriceBands, buildTagVectors, contentNeighborsByAnchor, type ContentItem } from './content'
 import { YIELD_EVERY_STEPS, yieldToEventLoop } from './cooperative'
 import {
   SELECT_ACQUISITIONS,
-  SELECT_CO_WORN,
   SELECT_ITEMS,
   SELECT_TAGS,
   type NeighborInsertRow,
@@ -215,48 +215,6 @@ export async function loadContentItems(client: QueryableClient, catalogue: Loade
 const EMPTY_TAGS = new Uint32Array(0)
 const EMPTY_WEIGHTS = new Float32Array(0)
 
-/** Rows read per cursor fetch, and so per insert. */
-const WORN_BATCH_SIZE = 20_000
-
-/**
- * Co-wear neighbours, streamed into `insert` as they arrive so the full set never exists in memory at
- * once. The maths runs in the registry database (see SELECT_CO_WORN); this only relays its rows.
- * Returns how many were written.
- */
-export async function streamWornNeighbors(
-  client: CursorClient,
-  catalogue: LoadedCatalogue,
-  insert: (rows: NeighborInsertRow[]) => Promise<void>
-): Promise<number> {
-  const catalogueIds = catalogue.items.map(item => item.id)
-  const candidateIds = catalogue.items.filter(item => item.isCandidate).map(item => item.id)
-  const cursor = client.openCursor(new Cursor(SELECT_CO_WORN, [catalogueIds, candidateIds], { rowMode: 'array' }))
-
-  let written = 0
-  try {
-    for (;;) {
-      const rows: unknown[][] = await new Promise((resolve, reject) => {
-        cursor.read(WORN_BATCH_SIZE, (error, batch) => (error ? reject(error) : resolve(batch)))
-      })
-      if (rows.length === 0) break
-      await insert(
-        rows.map(row => ({
-          itemId: String(row[0]),
-          source: 'worn',
-          neighborId: String(row[1]),
-          sim: Number(row[2]),
-          support: Number(row[3]),
-          rank: Number(row[4])
-        }))
-      )
-      written += rows.length
-    }
-  } finally {
-    await new Promise<void>(resolve => cursor.close(() => resolve()))
-  }
-  return written
-}
-
 /** Neighbour rows -> insertable rows, numbering each anchor's list so the endpoint can cut by rank. */
 /**
  * Async only so it can yield: the conversion is a single pass whose rank counter depends on the rows
@@ -311,7 +269,7 @@ export type BuildOptions = {
   acquisitionDeadlineMs?: number
   /** Where the co-wear source is read from. Absent, the source is not built. */
   worn?: {
-    client: CursorClient
+    neighbors: IWornNeighborsComponent
     discard: () => Promise<void>
   }
 }
@@ -412,21 +370,19 @@ export async function produceNeighborRows(
   if (options.worn) {
     started = Date.now()
     const wornCovered = new Set<string>()
-    // Only the registry's failures are the source's own; a failed write means the whole swap is lost.
-    let insertError: unknown
     try {
-      wornCount = await streamWornNeighbors(options.worn.client, catalogue, async rows => {
+      const wornCatalogue = {
+        anchorIds: catalogue.items.map(item => item.id),
+        candidateIds: catalogue.items.filter(item => item.isCandidate).map(item => item.id)
+      }
+      wornCount = await options.worn.neighbors.streamNeighbors(wornCatalogue, async rows => {
         for (const row of rows) wornCovered.add(row.itemId)
-        try {
-          await insert(rows)
-        } catch (error) {
-          insertError = error
-          throw error
-        }
+        await insert(rows)
       })
       for (const itemId of wornCovered) covered.add(itemId)
     } catch (error) {
-      if (insertError) throw insertError
+      // Only the registry's failures are the source's own; a failed write means the whole swap is lost.
+      if (!(error instanceof WornNeighborsUnavailableError)) throw error
       timings.wornError = error
       wornCount = 0
       await options.worn.discard()

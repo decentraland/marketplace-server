@@ -50,6 +50,7 @@ import { createUserAssetsComponent } from '../src/ports/user-assets/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
 import { createWertApi } from '../src/ports/wert/api/component'
 import { createWertSigner } from '../src/ports/wert/signer/component'
+import { createWornNeighborsComponent } from '../src/ports/worn-neighbors'
 import { main } from '../src/service'
 import { GlobalContext, TestComponents } from '../src/types'
 
@@ -224,6 +225,7 @@ async function initComponents(): Promise<TestComponents> {
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
     assetBundleRegistryDatabase,
+    wornNeighbors: createWornNeighborsComponent({ assetBundleRegistryDatabase }),
     favoritesDatabase,
     catalog,
     shopCatalog,

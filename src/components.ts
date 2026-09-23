@@ -58,6 +58,7 @@ import { createUserAssetsComponent } from './ports/user-assets/component'
 import { createVolumeComponent } from './ports/volume/component'
 import { createWertApi } from './ports/wert/api/component'
 import { createWertSigner } from './ports/wert/signer/component'
+import { createWornNeighborsComponent } from './ports/worn-neighbors'
 import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
@@ -142,6 +143,7 @@ export async function initComponents(): Promise<AppComponents> {
       migrations: false
     }
   )
+  const wornNeighbors = createWornNeighborsComponent({ assetBundleRegistryDatabase })
 
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
@@ -237,7 +239,7 @@ export async function initComponents(): Promise<AppComponents> {
                 await client.connect()
                 return client
               },
-              profilesPool: assetBundleRegistryDatabase.getPool(),
+              wornNeighbors,
               logger: rebuildNeighborsLogger,
               metrics: {
                 observe: ({ durationMs, rows, peakRssBytes }) => {
@@ -328,6 +330,7 @@ export async function initComponents(): Promise<AppComponents> {
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
     assetBundleRegistryDatabase,
+    wornNeighbors,
     catalog,
     shopCatalog,
     creatorProfiles,
