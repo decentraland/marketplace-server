@@ -1,7 +1,7 @@
 import type Cursor from 'pg-cursor'
 import { produceNeighborRows, type BuildTimings, type CursorClient } from '../../src/logic/suggestions/build-neighbors'
 import type { NeighborInsertRow, NeighborsMeta } from '../../src/logic/suggestions/neighbors-table'
-import { WornNeighborsUnavailableError, type IWornNeighborsComponent } from '../../src/ports/worn-neighbors'
+import { WornNeighborsUnavailableError, type IWornNeighborsComponent, type WornNeighbor } from '../../src/ports/worn-neighbors'
 
 /** The marketplace side of the build: a catalogue of three items and no acquisitions or tags. */
 function makeMarketplaceClient(): CursorClient {
@@ -20,7 +20,7 @@ function makeMarketplaceClient(): CursorClient {
   }
 }
 
-const WORN_ROW: NeighborInsertRow = { itemId: '0xbbb-0', source: 'worn', neighborId: '0xaaa-0', sim: 0.5, support: 5, rank: 0 }
+const NEIGHBOR: WornNeighbor = { itemId: '0xbbb-0', neighborId: '0xaaa-0', sim: 0.5, support: 5, rank: 0 }
 
 describe('when building the neighbour sets with the co-wear source', () => {
   let inserted: NeighborInsertRow[]
@@ -38,7 +38,7 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
     discard = jest.fn(async () => undefined)
     getNeighbors = jest.fn(async function* () {
-      yield [WORN_ROW]
+      yield [NEIGHBOR]
     })
     wornNeighbors = { getNeighbors }
   })
@@ -59,8 +59,8 @@ describe('when building the neighbour sets with the co-wear source', () => {
       })
     })
 
-    it('should insert the co-wear rows alongside the other sources', () => {
-      expect(inserted.filter(row => row.source === 'worn')).toEqual([WORN_ROW])
+    it('should insert the neighbours as worn rows alongside the other sources', () => {
+      expect(inserted.filter(row => row.source === 'worn')).toEqual([{ ...NEIGHBOR, source: 'worn' }])
     })
 
     it('should count them in the metadata', () => {
@@ -87,7 +87,7 @@ describe('when building the neighbour sets with the co-wear source', () => {
     beforeEach(async () => {
       unavailable = new WornNeighborsUnavailableError(new Error('terminating connection due to administrator command'))
       getNeighbors.mockImplementation(async function* () {
-        yield [WORN_ROW]
+        yield [NEIGHBOR]
         throw unavailable
       })
       meta = await produceNeighborRows(makeMarketplaceClient(), insert, { worn: { neighbors: wornNeighbors, discard } }, t => {

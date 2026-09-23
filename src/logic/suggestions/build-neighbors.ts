@@ -375,7 +375,8 @@ export async function produceNeighborRows(
         anchorIds: catalogue.items.map(item => item.id),
         candidateIds: catalogue.items.filter(item => item.isCandidate).map(item => item.id)
       }
-      for await (const rows of options.worn.neighbors.getNeighbors(wornCatalogue)) {
+      for await (const neighbors of options.worn.neighbors.getNeighbors(wornCatalogue)) {
+        const rows = neighbors.map(neighbor => ({ ...neighbor, source: 'worn' }))
         for (const row of rows) wornCovered.add(row.itemId)
         await insert(rows)
         wornCount += rows.length

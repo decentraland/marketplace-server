@@ -1,6 +1,10 @@
 import type { IPgComponent } from '@dcl/pg-component'
-import type { NeighborInsertRow } from '../../src/logic/suggestions/neighbors-table'
-import { createWornNeighborsComponent, IWornNeighborsComponent, WornNeighborsUnavailableError } from '../../src/ports/worn-neighbors'
+import {
+  createWornNeighborsComponent,
+  IWornNeighborsComponent,
+  WornNeighbor,
+  WornNeighborsUnavailableError
+} from '../../src/ports/worn-neighbors'
 import { SELECT_CO_WORN } from '../../src/ports/worn-neighbors/queries'
 
 type FakeCursor = { text: string; values: unknown[]; read: jest.Mock; close: jest.Mock }
@@ -17,8 +21,8 @@ describe('when streaming co-wear neighbours out of the registry', () => {
   let wornNeighbors: IWornNeighborsComponent
 
   /** Reads every batch, as the build does. */
-  async function collect(): Promise<NeighborInsertRow[][]> {
-    const collected: NeighborInsertRow[][] = []
+  async function collect(): Promise<WornNeighbor[][]> {
+    const collected: WornNeighbor[][] = []
     for await (const rows of wornNeighbors.getNeighbors(CATALOGUE)) collected.push(rows)
     return collected
   }
@@ -56,7 +60,7 @@ describe('when streaming co-wear neighbours out of the registry', () => {
   })
 
   describe('and the registry returns its rows over several reads', () => {
-    let yielded: NeighborInsertRow[][]
+    let yielded: WornNeighbor[][]
 
     beforeEach(async () => {
       batches = [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]], [['0xaaa-1', '0xaaa-0', 0.8, 6, 0]]]
@@ -75,10 +79,10 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       expect(client.query.mock.calls[0][0]).toBe('BEGIN TRANSACTION READ ONLY')
     })
 
-    it('should yield each read as a batch of worn rows', () => {
+    it('should yield each read as a batch of neighbours', () => {
       expect(yielded).toEqual([
-        [{ itemId: '0xaaa-0', source: 'worn', neighborId: '0xaaa-1', sim: 0.8, support: 6, rank: 0 }],
-        [{ itemId: '0xaaa-1', source: 'worn', neighborId: '0xaaa-0', sim: 0.8, support: 6, rank: 0 }]
+        [{ itemId: '0xaaa-0', neighborId: '0xaaa-1', sim: 0.8, support: 6, rank: 0 }],
+        [{ itemId: '0xaaa-1', neighborId: '0xaaa-0', sim: 0.8, support: 6, rank: 0 }]
       ])
     })
 

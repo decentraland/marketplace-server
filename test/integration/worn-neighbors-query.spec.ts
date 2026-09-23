@@ -1,4 +1,4 @@
-import type { NeighborInsertRow } from '../../src/logic/suggestions/neighbors-table'
+import type { WornNeighbor } from '../../src/ports/worn-neighbors'
 import { SELECT_CO_WORN } from '../../src/ports/worn-neighbors/queries'
 import { test } from '../components'
 
@@ -83,11 +83,11 @@ test('co-wear neighbours query', function ({ components }) {
   })
 
   describe('when reading the co-wear neighbours', () => {
-    let hatRows: NeighborInsertRow[]
-    let shoeRows: NeighborInsertRow[]
+    let hatRows: WornNeighbor[]
+    let shoeRows: WornNeighbor[]
 
     beforeEach(async () => {
-      const rows: NeighborInsertRow[] = []
+      const rows: WornNeighbor[] = []
       for await (const batch of components.wornNeighbors.getNeighbors({ anchorIds: CATALOGUE, candidateIds: CANDIDATES })) {
         rows.push(...batch)
       }
@@ -97,15 +97,15 @@ test('co-wear neighbours query', function ({ components }) {
 
     it('should pair the items worn together in both directions, whenever the profiles were deployed', () => {
       expect(hatRows).toEqual([
-        { itemId: hat, source: 'worn', neighborId: jacket, sim: 1, support: 5, rank: 0 },
-        { itemId: jacket, source: 'worn', neighborId: hat, sim: 1, support: 5, rank: 0 },
-        { itemId: mask, source: 'worn', neighborId: cape, sim: 1, support: 5, rank: 0 },
-        { itemId: cape, source: 'worn', neighborId: mask, sim: 1, support: 5, rank: 0 }
+        { itemId: hat, neighborId: jacket, sim: 1, support: 5, rank: 0 },
+        { itemId: jacket, neighborId: hat, sim: 1, support: 5, rank: 0 },
+        { itemId: mask, neighborId: cape, sim: 1, support: 5, rank: 0 },
+        { itemId: cape, neighborId: mask, sim: 1, support: 5, rank: 0 }
       ])
     })
 
     it('should keep a non-candidate as an anchor but never as a neighbour, and skip what is not catalogued', () => {
-      expect(shoeRows).toEqual([{ itemId: unlisted, source: 'worn', neighborId: tie, sim: 1, support: 5, rank: 0 }])
+      expect(shoeRows).toEqual([{ itemId: unlisted, neighborId: tie, sim: 1, support: 5, rank: 0 }])
     })
   })
 
