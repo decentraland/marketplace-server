@@ -178,9 +178,10 @@ export function buildCandidateScoresQuery(opts: {
         SUM(CASE WHEN n.source = 'cf' THEN p.weight * n.sim ELSE 0 END) AS cf,
         SUM(CASE WHEN n.source = 'content' THEN p.weight * n.sim ELSE 0 END) AS content,
         SUM(CASE WHEN n.source = 'worn' THEN p.weight * n.sim ELSE 0 END) AS worn,
-        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC))[1] AS trigger_item_id,
-        (array_agg(p.source ORDER BY p.weight * n.sim DESC))[1] AS trigger_source,
-        -- "Worn with X" has to name the item the co-wear edge came from, not the strongest edge overall
+        -- Each explanation names the item behind its own source's edges: a strong co-wear edge must not
+        -- become the trigger of a co-ownership or content reason, nor the other way round
+        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source <> 'worn'))[1] AS trigger_item_id,
+        (array_agg(p.source ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source <> 'worn'))[1] AS trigger_source,
         (array_agg(p.item_id ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source = 'worn'))[1] AS worn_trigger_item_id
       FROM `
     )

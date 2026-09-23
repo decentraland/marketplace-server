@@ -188,6 +188,16 @@ describe('when building the candidate scores query', () => {
     })
   })
 
+  describe('and the explanation needs the item behind a co-ownership or content edge', () => {
+    it('should pick it among those edges only, so a stronger co-wear edge cannot take its place', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source <> 'worn'))[1] AS trigger_item_id")
+    })
+
+    it('should take the trigger source from the same edges', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source <> 'worn'))[1] AS trigger_source")
+    })
+  })
+
   describe('and a neighbour source carries no weight yet', () => {
     it('should read only the weighted sources, so the unweighted one does not widen the candidates', () => {
       expect(build().values).toContainEqual(['cf', 'content'])

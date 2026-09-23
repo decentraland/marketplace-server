@@ -16,6 +16,7 @@ function urn(contract: string, itemId: number, tokenId?: number): string {
 test('co-wear neighbours query', function ({ components }) {
   const HATS = '0x' + 'a'.repeat(40)
   const SHOES = '0x' + 'b'.repeat(40)
+  const MAINNET = '0x' + 'c'.repeat(40)
   const hat = `${HATS}-0`
   const jacket = `${HATS}-1`
   const boots = `${HATS}-2`
@@ -24,8 +25,10 @@ test('co-wear neighbours query', function ({ components }) {
   const cape = `${HATS}-5`
   const tie = `${SHOES}-0`
   const unlisted = `${SHOES}-1`
-  const CATALOGUE = [hat, jacket, boots, gloves, mask, cape, tie, unlisted]
-  const CANDIDATES = [hat, jacket, boots, gloves, mask, cape, tie]
+  const mainnetHat = `${MAINNET}-0`
+  const mainnetJacket = `${MAINNET}-1`
+  const CATALOGUE = [hat, jacket, boots, gloves, mask, cape, tie, unlisted, mainnetHat, mainnetJacket]
+  const CANDIDATES = [hat, jacket, boots, gloves, mask, cape, tie, mainnetHat, mainnetJacket]
 
   let profiles: Profile[]
 
@@ -69,6 +72,13 @@ test('co-wear neighbours query', function ({ components }) {
       ...wearing(5, () => [urn(HATS, 4), urn(HATS, 5)], Date.parse('2022-01-01'), 200),
       // One side is not a candidate, the other is not catalogued at all.
       ...wearing(5, () => [urn(SHOES, 0), urn(SHOES, 1), urn(SHOES, 2)], Date.now(), 300),
+      // Ethereum collections-v2, which the pipeline keys on Polygon only (see urnToItemId).
+      ...wearing(
+        5,
+        () => [`urn:decentraland:ethereum:collections-v2:${MAINNET}:0`, `urn:decentraland:ethereum:collections-v2:${MAINNET}:1`],
+        Date.now(),
+        600
+      ),
       // Base wearables only, and wearables that are not an array: neither may break the scan.
       ...wearing(1, () => ['urn:decentraland:off-chain:base-avatars:eyebrows_00'], Date.now(), 400),
       ...wearing(1, () => 'oops', Date.now(), 500)
@@ -85,6 +95,7 @@ test('co-wear neighbours query', function ({ components }) {
   describe('when reading the co-wear neighbours', () => {
     let hatRows: WornNeighbor[]
     let shoeRows: WornNeighbor[]
+    let mainnetRows: WornNeighbor[]
 
     beforeEach(async () => {
       const rows: WornNeighbor[] = []
@@ -93,6 +104,7 @@ test('co-wear neighbours query', function ({ components }) {
       }
       hatRows = rows.filter(row => row.itemId.startsWith(HATS))
       shoeRows = rows.filter(row => row.itemId.startsWith(SHOES))
+      mainnetRows = rows.filter(row => row.itemId.startsWith(MAINNET) || row.neighborId.startsWith(MAINNET))
     })
 
     it('should pair the items worn together in both directions, whenever the profiles were deployed', () => {
@@ -102,6 +114,10 @@ test('co-wear neighbours query', function ({ components }) {
         { itemId: mask, neighborId: cape, sim: 1, support: 5, rank: 0 },
         { itemId: cape, neighborId: mask, sim: 1, support: 5, rank: 0 }
       ])
+    })
+
+    it('should leave Ethereum collections out, as the rest of the suggestions pipeline does', () => {
+      expect(mainnetRows).toEqual([])
     })
 
     it('should keep a non-candidate as an anchor but never as a neighbour, and skip what is not catalogued', () => {
