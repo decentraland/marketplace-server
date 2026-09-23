@@ -32,8 +32,11 @@ export const SELECT_CO_WORN = `WITH catalogue AS (
                     THEN p.metadata -> 'avatars' -> 0 -> 'avatar' -> 'wearables'
                     ELSE '[]'::jsonb END
              ) AS w
-       -- Rejects the base wearables, over 99% of what is worn, before the regex runs
-       WHERE lower(w) LIKE 'urn:decentraland:%:collections-v2:%'
+       -- Matches idx_profiles_wearing_collections_v2 in asset-bundle-registry, so only the ~2% of
+       -- profiles wearing a collections-v2 item are read; keep the two in step
+       WHERE lower((p.metadata -> 'avatars' -> 0 -> 'avatar' -> 'wearables')::text) LIKE '%collections-v2%'
+         -- Rejects the base wearables, over 99% of what is worn, before the regex runs
+         AND lower(w) LIKE 'urn:decentraland:%:collections-v2:%'
          AND lower(w) ~ '^urn:decentraland:(matic|amoy):collections-v2:0x[0-9a-f]{40}:[0-9]+(:[0-9]+)?$'
     ), catalogued AS (
       SELECT worn.pointer, worn.item_id FROM worn JOIN catalogue USING (item_id)
