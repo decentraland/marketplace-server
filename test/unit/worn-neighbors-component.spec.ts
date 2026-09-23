@@ -14,16 +14,20 @@ describe('when streaming co-wear neighbours out of the registry', () => {
   let cursor: FakeCursor | undefined
   let client: { query: jest.Mock; release: jest.Mock }
   let connect: jest.Mock
-  let inserted: NeighborInsertRow[][]
-  let insert: jest.Mock
   let wornNeighbors: IWornNeighborsComponent
+
+  /** Reads every batch, as the build does. */
+  async function collect(): Promise<NeighborInsertRow[][]> {
+    const collected: NeighborInsertRow[][] = []
+    for await (const rows of wornNeighbors.getNeighbors(CATALOGUE)) collected.push(rows)
+    return collected
+  }
 
   beforeEach(() => {
     batches = []
     readError = undefined
     rollbackError = undefined
     cursor = undefined
-    inserted = []
     client = {
       // Synchronous like node-postgres: a submittable comes straight back, a statement as a promise.
       query: jest.fn((statement: unknown) => {
@@ -46,20 +50,17 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       release: jest.fn()
     }
     connect = jest.fn(async () => client)
-    insert = jest.fn(async (rows: NeighborInsertRow[]) => {
-      inserted.push(rows)
-    })
     wornNeighbors = createWornNeighborsComponent({
       assetBundleRegistryDatabase: { getPool: () => ({ connect }) } as unknown as IPgComponent
     })
   })
 
   describe('and the registry returns its rows over several reads', () => {
-    let written: number
+    let yielded: NeighborInsertRow[][]
 
     beforeEach(async () => {
       batches = [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]], [['0xaaa-1', '0xaaa-0', 0.8, 6, 0]]]
-      written = await wornNeighbors.streamNeighbors(CATALOGUE, insert)
+      yielded = await collect()
     })
 
     it('should run the co-wear query with the anchors and the candidates', () => {
@@ -70,15 +71,11 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       expect(client.query.mock.calls[0][0]).toBe('BEGIN TRANSACTION READ ONLY')
     })
 
-    it('should insert each read as it arrives, as worn rows', () => {
-      expect(inserted).toEqual([
+    it('should yield each read as a batch of worn rows', () => {
+      expect(yielded).toEqual([
         [{ itemId: '0xaaa-0', source: 'worn', neighborId: '0xaaa-1', sim: 0.8, support: 6, rank: 0 }],
         [{ itemId: '0xaaa-1', source: 'worn', neighborId: '0xaaa-0', sim: 0.8, support: 6, rank: 0 }]
       ])
-    })
-
-    it('should report how many rows it wrote', () => {
-      expect(written).toBe(2)
     })
 
     it('should close the cursor and the transaction, and hand the client back intact', () => {
@@ -95,7 +92,7 @@ describe('when streaming co-wear neighbours out of the registry', () => {
 
     beforeEach(async () => {
       connect.mockRejectedValue(Object.assign(new Error('connection refused'), { code: 'ECONNREFUSED' }))
-      error = await wornNeighbors.streamNeighbors(CATALOGUE, insert).catch((caught: unknown) => caught)
+      error = await collect().catch((caught: unknown) => caught)
     })
 
     it('should throw the registry as unavailable', () => {
@@ -115,7 +112,7 @@ describe('when streaming co-wear neighbours out of the registry', () => {
     beforeEach(async () => {
       batches = [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]]]
       readError = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' })
-      error = await wornNeighbors.streamNeighbors(CATALOGUE, insert).catch((caught: unknown) => caught)
+      error = await collect().catch((caught: unknown) => caught)
     })
 
     it('should throw the registry as unavailable', () => {
@@ -127,26 +124,50 @@ describe('when streaming co-wear neighbours out of the registry', () => {
     })
   })
 
-  describe('and inserting a batch fails', () => {
+  describe('and the caller stops after the first batch', () => {
+    beforeEach(async () => {
+      batches = [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]], [['0xaaa-1', '0xaaa-0', 0.8, 6, 0]]]
+      for await (const rows of wornNeighbors.getNeighbors(CATALOGUE)) {
+        if (rows.length > 0) break
+      }
+    })
+
+    it('should not read further than it was asked to', () => {
+      expect(cursor?.read).toHaveBeenCalledTimes(1)
+    })
+
+    it('should still close the cursor and hand the client back', () => {
+      expect([cursor?.close.mock.calls.length, client.release.mock.calls]).toEqual([1, [[false]]])
+    })
+  })
+
+  describe('and the caller throws while handling a batch', () => {
     let failure: Error
     let error: unknown
 
     beforeEach(async () => {
       batches = [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]]]
       failure = new Error('current transaction is aborted')
-      insert.mockRejectedValue(failure)
-      error = await wornNeighbors.streamNeighbors(CATALOGUE, insert).catch((caught: unknown) => caught)
+      error = await (async () => {
+        for await (const rows of wornNeighbors.getNeighbors(CATALOGUE)) {
+          if (rows.length > 0) throw failure
+        }
+      })().catch((caught: unknown) => caught)
     })
 
-    it('should rethrow the caller’s own error as is, so it is not mistaken for the registry’s', () => {
+    it('should leave the caller’s error as it is', () => {
       expect(error).toBe(failure)
+    })
+
+    it('should still hand the client back', () => {
+      expect(client.release).toHaveBeenCalledWith(false)
     })
   })
 
   describe('and the transaction cannot be closed', () => {
     beforeEach(async () => {
       rollbackError = new Error('Connection terminated unexpectedly')
-      await wornNeighbors.streamNeighbors(CATALOGUE, insert)
+      await collect()
     })
 
     it('should destroy the client rather than lend it out again', () => {

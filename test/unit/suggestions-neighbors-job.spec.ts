@@ -33,7 +33,11 @@ describe('when running the item neighbours job', () => {
     logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
     clients = { read: makeClient(), write: makeClient() }
     connect = jest.fn(async (role: 'read' | 'write') => clients[role])
-    wornNeighbors = { streamNeighbors: jest.fn(async () => 0) }
+    wornNeighbors = {
+      getNeighbors: jest.fn(async function* () {
+        yield* []
+      })
+    }
     buildSpy = jest.spyOn(buildNeighbors, 'produceNeighborRows').mockImplementation(async (_client, insert, _options, onTimings) => {
       await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
       onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, wornMs: 0, walletsSeen: 10, rowsRead: 20 })

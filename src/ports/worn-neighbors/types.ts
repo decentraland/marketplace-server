@@ -8,12 +8,11 @@ export type WornNeighborsCatalogue = {
 
 export interface IWornNeighborsComponent {
   /**
-   * Computes the co-wear neighbours in the asset-bundle-registry database and streams them into
-   * `insert` as they arrive, so the full set never exists in memory at once. Returns how many rows were
-   * written.
+   * Computes the co-wear neighbours in the asset-bundle-registry database and yields them in batches
+   * as the cursor reads them, so the full set never exists in memory at once. The next batch is only
+   * read once the caller asks for it.
    *
-   * @throws WornNeighborsUnavailableError when the registry cannot be read. An error thrown by `insert`
-   * is rethrown as is.
+   * @throws WornNeighborsUnavailableError when the registry cannot be read.
    */
-  streamNeighbors(catalogue: WornNeighborsCatalogue, insert: (rows: NeighborInsertRow[]) => Promise<void>): Promise<number>
+  getNeighbors(catalogue: WornNeighborsCatalogue): AsyncGenerator<NeighborInsertRow[], void, undefined>
 }

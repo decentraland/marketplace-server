@@ -375,10 +375,11 @@ export async function produceNeighborRows(
         anchorIds: catalogue.items.map(item => item.id),
         candidateIds: catalogue.items.filter(item => item.isCandidate).map(item => item.id)
       }
-      wornCount = await options.worn.neighbors.streamNeighbors(wornCatalogue, async rows => {
+      for await (const rows of options.worn.neighbors.getNeighbors(wornCatalogue)) {
         for (const row of rows) wornCovered.add(row.itemId)
         await insert(rows)
-      })
+        wornCount += rows.length
+      }
       for (const itemId of wornCovered) covered.add(itemId)
     } catch (error) {
       // Only the registry's failures are the source's own; a failed write means the whole swap is lost.

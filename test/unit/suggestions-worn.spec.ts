@@ -26,7 +26,7 @@ describe('when building the neighbour sets with the co-wear source', () => {
   let inserted: NeighborInsertRow[]
   let insert: jest.Mock
   let discard: jest.Mock
-  let streamNeighbors: jest.Mock
+  let getNeighbors: jest.Mock
   let wornNeighbors: IWornNeighborsComponent
   let timings: BuildTimings | undefined
 
@@ -37,11 +37,10 @@ describe('when building the neighbour sets with the co-wear source', () => {
       inserted.push(...rows)
     })
     discard = jest.fn(async () => undefined)
-    streamNeighbors = jest.fn(async (_catalogue: unknown, write: (rows: NeighborInsertRow[]) => Promise<void>) => {
-      await write([WORN_ROW])
-      return 1
+    getNeighbors = jest.fn(async function* () {
+      yield [WORN_ROW]
     })
-    wornNeighbors = { streamNeighbors }
+    wornNeighbors = { getNeighbors }
   })
 
   describe('and the registry answers', () => {
@@ -54,7 +53,7 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
 
     it('should ask for every catalogued item as an anchor and only the candidates as neighbours', () => {
-      expect(streamNeighbors.mock.calls[0][0]).toEqual({
+      expect(getNeighbors.mock.calls[0][0]).toEqual({
         anchorIds: ['0xaaa-0', '0xaaa-1', '0xbbb-0'],
         candidateIds: ['0xaaa-0', '0xaaa-1']
       })
@@ -83,8 +82,8 @@ describe('when building the neighbour sets with the co-wear source', () => {
 
     beforeEach(async () => {
       unavailable = new WornNeighborsUnavailableError(new Error('terminating connection due to administrator command'))
-      streamNeighbors.mockImplementation(async (_catalogue: unknown, write: (rows: NeighborInsertRow[]) => Promise<void>) => {
-        await write([WORN_ROW])
+      getNeighbors.mockImplementation(async function* () {
+        yield [WORN_ROW]
         throw unavailable
       })
       meta = await produceNeighborRows(makeMarketplaceClient(), insert, { worn: { neighbors: wornNeighbors, discard } }, t => {
@@ -136,7 +135,7 @@ describe('when building the neighbour sets with the co-wear source', () => {
     })
 
     it('should never ask the registry', () => {
-      expect(streamNeighbors).not.toHaveBeenCalled()
+      expect(getNeighbors).not.toHaveBeenCalled()
     })
 
     it('should record no co-wear rows', () => {

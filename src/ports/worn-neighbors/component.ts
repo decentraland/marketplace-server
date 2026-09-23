@@ -13,11 +13,12 @@ export function createWornNeighborsComponent(components: Pick<AppComponents, 'as
   const { assetBundleRegistryDatabase } = components
 
   /**
-   * One client is borrowed for the whole stream, inside a read-only transaction so nothing on it can
+   * One client is borrowed for the whole iteration, inside a read-only transaction so nothing on it can
    * write. The pool keeps its own error listener on every client, so a dropped connection surfaces as a
-   * failed read rather than an unhandled event.
+   * failed read rather than an unhandled event. A caller that stops early, by breaking or throwing,
+   * runs the `finally` blocks below all the same.
    */
-  async function streamNeighbors(catalogue: WornNeighborsCatalogue, insert: (rows: NeighborInsertRow[]) => Promise<void>): Promise<number> {
+  async function* getNeighbors(catalogue: WornNeighborsCatalogue): AsyncGenerator<NeighborInsertRow[], void, undefined> {
     let client: PoolClient
     try {
       client = await assetBundleRegistryDatabase.getPool().connect()
@@ -32,7 +33,6 @@ export function createWornNeighborsComponent(components: Pick<AppComponents, 'as
         new Cursor(SELECT_CO_WORN, [catalogue.anchorIds, catalogue.candidateIds], { rowMode: 'array' })
       )
       try {
-        let written = 0
         for (;;) {
           const rows = await registryRead(
             () =>
@@ -40,9 +40,8 @@ export function createWornNeighborsComponent(components: Pick<AppComponents, 'as
                 cursor.read(BATCH_SIZE, (error, batch) => (error ? reject(error) : resolve(batch)))
               })
           )
-          if (rows.length === 0) return written
-          await insert(rows.map(toInsertRow))
-          written += rows.length
+          if (rows.length === 0) return
+          yield rows.map(toInsertRow)
         }
       } finally {
         await new Promise<void>(resolve => cursor.close(() => resolve()))
@@ -52,10 +51,10 @@ export function createWornNeighborsComponent(components: Pick<AppComponents, 'as
     }
   }
 
-  return { streamNeighbors }
+  return { getNeighbors }
 }
 
-/** Marks a failure as the registry's, so the caller can tell it from one raised by its own `insert`. */
+/** Marks a failure as the registry's, so the caller can tell it from its own. */
 async function registryRead<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read()

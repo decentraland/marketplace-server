@@ -82,15 +82,15 @@ test('co-wear neighbours query', function ({ components }) {
       .query('DELETE FROM profiles WHERE pointer = ANY($1::text[])', [profiles.map(profile => profile.pointer)])
   })
 
-  describe('when streaming the co-wear neighbours', () => {
+  describe('when reading the co-wear neighbours', () => {
     let hatRows: NeighborInsertRow[]
     let shoeRows: NeighborInsertRow[]
 
     beforeEach(async () => {
       const rows: NeighborInsertRow[] = []
-      await components.wornNeighbors.streamNeighbors({ anchorIds: CATALOGUE, candidateIds: CANDIDATES }, async batch => {
+      for await (const batch of components.wornNeighbors.getNeighbors({ anchorIds: CATALOGUE, candidateIds: CANDIDATES })) {
         rows.push(...batch)
-      })
+      }
       hatRows = rows.filter(row => row.itemId.startsWith(HATS))
       shoeRows = rows.filter(row => row.itemId.startsWith(SHOES))
     })
