@@ -44,6 +44,7 @@ type CandidateRow = RelatedItemRow & {
   gender: string | null
   trigger_item_id: string | null
   trigger_source: string | null
+  worn_trigger_item_id: string | null
 }
 
 type OwnedRow = { item_id: string; acquired_at: string }
@@ -323,7 +324,8 @@ export async function createSuggestionsComponent(
         worn: Number(row.worn),
         popularity: maxPopularity > 0 ? Number(row.popularity) / maxPopularity : 0,
         topTriggerItemId: row.trigger_item_id ?? undefined,
-        topTriggerSource: (row.trigger_source as ScoredCandidate['topTriggerSource']) ?? undefined
+        topTriggerSource: (row.trigger_source as ScoredCandidate['topTriggerSource']) ?? undefined,
+        topWornTriggerItemId: row.worn_trigger_item_id ?? undefined
       }))
 
       // How many profile items each creator accounts for, which is what lets a row claim the wallet

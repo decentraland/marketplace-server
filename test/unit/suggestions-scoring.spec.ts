@@ -122,11 +122,11 @@ describe('when blending a candidate reached only through co-wear', () => {
 })
 
 describe('when choosing the reason for a row', () => {
-  describe('and co-wear contributed most', () => {
+  describe('and co-wear contributed most while a different profile item had the strongest edge overall', () => {
     let reason: ReturnType<typeof pickReason>
 
     beforeEach(() => {
-      reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'equipped' }), {
+      reason = pickReason(candidate({ topTriggerItemId: '0xccc-3', topTriggerSource: 'owned', topWornTriggerItemId: '0xbbb-2' }), {
         cf: 0.1,
         content: 0.1,
         worn: 0.4,
@@ -135,19 +135,25 @@ describe('when choosing the reason for a row', () => {
       })
     })
 
-    it('should say it is worn together with the item that pulled it', () => {
+    it('should say it is worn together with the item behind the co-wear edge', () => {
       expect(reason).toEqual({ kind: 'worn_together', itemId: '0xbbb-2' })
     })
   })
 
-  describe('and co-wear contributed most but no profile item is recorded as pulling it', () => {
+  describe('and co-wear contributed most but no co-wear edge is recorded as pulling it', () => {
     let reason: ReturnType<typeof pickReason>
 
     beforeEach(() => {
-      reason = pickReason(candidate(), { cf: 0, content: 0, worn: 0.4, taste: 0, popularity: 0 })
+      reason = pickReason(candidate({ topTriggerItemId: '0xccc-3', topTriggerSource: 'owned' }), {
+        cf: 0,
+        content: 0,
+        worn: 0.4,
+        taste: 0,
+        popularity: 0
+      })
     })
 
-    it('should fall back to trending rather than name nothing', () => {
+    it('should fall back to trending rather than name an item it is not worn with', () => {
       expect(reason).toEqual({ kind: 'trending' })
     })
   })

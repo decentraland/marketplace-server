@@ -179,7 +179,9 @@ export function buildCandidateScoresQuery(opts: {
         SUM(CASE WHEN n.source = 'content' THEN p.weight * n.sim ELSE 0 END) AS content,
         SUM(CASE WHEN n.source = 'worn' THEN p.weight * n.sim ELSE 0 END) AS worn,
         (array_agg(p.item_id ORDER BY p.weight * n.sim DESC))[1] AS trigger_item_id,
-        (array_agg(p.source ORDER BY p.weight * n.sim DESC))[1] AS trigger_source
+        (array_agg(p.source ORDER BY p.weight * n.sim DESC))[1] AS trigger_source,
+        -- "Worn with X" has to name the item the co-wear edge came from, not the strongest edge overall
+        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source = 'worn'))[1] AS worn_trigger_item_id
       FROM `
     )
     .append(NEIGHBORS_TABLE)
@@ -214,6 +216,7 @@ export function buildCandidateScoresQuery(opts: {
         COALESCE(pop.popularity, 0)::float8 AS popularity,
         nb.trigger_item_id,
         nb.trigger_source,
+        nb.worn_trigger_item_id,
         (nb.neighbour_item_id IS NOT NULL) AS from_neighbours,
         row_number() OVER (PARTITION BY lower(core.creator) ORDER BY core.created_at DESC) AS creator_rank
       FROM core

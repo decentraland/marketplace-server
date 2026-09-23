@@ -37,6 +37,8 @@ export type ScoredCandidate = {
   /** The profile item that contributed most of `cf` + `content` + `worn`, for the explanation. */
   topTriggerItemId?: string
   topTriggerSource?: 'owned' | 'favorite' | 'equipped' | 'seed'
+  /** The profile item behind the strongest co-wear edge, which is what `worn_together` names. */
+  topWornTriggerItemId?: string
 }
 
 /**
@@ -150,7 +152,7 @@ export function pickReason(
   }
   if (winner === 'popularity') return { kind: 'trending' }
   if (winner === 'worn') {
-    return candidate.topTriggerItemId ? { kind: 'worn_together', itemId: candidate.topTriggerItemId } : { kind: 'trending' }
+    return candidate.topWornTriggerItemId ? { kind: 'worn_together', itemId: candidate.topWornTriggerItemId } : { kind: 'trending' }
   }
 
   return reasonFromTrigger(candidate)

@@ -182,6 +182,12 @@ describe('when building the candidate scores query', () => {
     })
   })
 
+  describe('and the explanation needs the item behind the co-wear edge', () => {
+    it('should pick it among the co-wear edges only', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source = 'worn'))[1] AS worn_trigger_item_id")
+    })
+  })
+
   describe('and a neighbour source carries no weight yet', () => {
     it('should read only the weighted sources, so the unweighted one does not widen the candidates', () => {
       expect(build().values).toContainEqual(['cf', 'content'])
