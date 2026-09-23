@@ -1,6 +1,7 @@
 import * as buildNeighbors from '../../src/logic/suggestions/build-neighbors'
 import * as neighborsTable from '../../src/logic/suggestions/neighbors-table'
 import { runNeighborsJob, type NeighborsJobLogger } from '../../src/logic/suggestions/run-neighbors-job'
+import type { IWornNeighborsComponent } from '../../src/ports/worn-neighbors'
 
 type FakeClient = { query: jest.Mock; end: jest.Mock; on: jest.Mock; emit: (event: string, payload: unknown) => void }
 
@@ -8,6 +9,7 @@ describe('when running the item neighbours job', () => {
   let logger: NeighborsJobLogger
   let clients: Record<'read' | 'write', FakeClient>
   let connect: jest.Mock
+  let wornNeighbors: IWornNeighborsComponent
   let lockAcquired: boolean
   let buildSpy: jest.SpyInstance
 
@@ -31,14 +33,22 @@ describe('when running the item neighbours job', () => {
     logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
     clients = { read: makeClient(), write: makeClient() }
     connect = jest.fn(async (role: 'read' | 'write') => clients[role])
+    wornNeighbors = {
+      getNeighbors: jest.fn(async function* () {
+        yield* []
+      })
+    }
     buildSpy = jest.spyOn(buildNeighbors, 'produceNeighborRows').mockImplementation(async (_client, insert, _options, onTimings) => {
       await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
-      onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, walletsSeen: 10, rowsRead: 20 })
-      return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+      onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, wornMs: 0, walletsSeen: 10, rowsRead: 20 })
+      return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
     })
     // The real swap is what drives the producer, so it is stubbed to run it and report success.
     jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
-      await produce(async () => undefined)
+      await produce(
+        async () => undefined,
+        async () => undefined
+      )
       return 'rebuilt'
     })
   })
@@ -51,7 +61,7 @@ describe('when running the item neighbours job', () => {
     let outcome: string
 
     beforeEach(async () => {
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should report that it rebuilt the table', () => {
@@ -88,7 +98,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       lockAcquired = false
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should report that it skipped the rebuild', () => {
@@ -113,7 +123,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       buildSpy.mockRejectedValue(new Error('acquisition scan exceeded 240000 ms'))
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should report the failure rather than throwing into the job runner', () => {
@@ -136,7 +146,7 @@ describe('when running the item neighbours job', () => {
   describe('and the database rejects the very first statement', () => {
     beforeEach(async () => {
       clients.write.query.mockRejectedValue(Object.assign(new Error('password authentication failed'), { code: '28P01' }))
-      await runNeighborsJob({ connect, logger })
+      await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should log only the error code and message, never anything carrying a connection string', () => {
@@ -150,9 +160,9 @@ describe('when running the item neighbours job', () => {
     beforeEach(async () => {
       buildSpy.mockImplementation(async () => {
         clients.read.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
-        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should report the failure rather than letting the error reach the process as an unhandled event', () => {
@@ -181,18 +191,21 @@ describe('when running the item neighbours job', () => {
       // That the transaction then rolls back is the swap's own behaviour, covered against real Postgres
       // in the integration spec -- nothing here proves it.
       jest.spyOn(neighborsTable, 'swapNeighborsTable').mockImplementation(async (_client, produce) => {
-        await produce(async rows => {
-          inserted += rows.length
-        })
+        await produce(
+          async rows => {
+            inserted += rows.length
+          },
+          async () => undefined
+        )
         committed = true
         return 'rebuilt'
       })
       buildSpy.mockImplementation(async (_client, insert) => {
         clients.write.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
         await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
-        return { cfRows: 1, contentRows: 0, itemsCovered: 1, durationMs: 5 }
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
     })
 
     it('should report the failure', () => {
@@ -213,7 +226,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       observe = jest.fn()
-      await runNeighborsJob({ connect, logger, metrics: { observe } })
+      await runNeighborsJob({ connect, wornNeighbors, logger, metrics: { observe } })
     })
 
     it('should report the row count of the build', () => {
@@ -222,6 +235,48 @@ describe('when running the item neighbours job', () => {
 
     it('should report a peak memory reading', () => {
       expect(observe.mock.calls[0][0].peakRssBytes).toBeGreaterThan(0)
+    })
+  })
+
+  describe('and the rebuild is handed the co-wear component', () => {
+    beforeEach(async () => {
+      await runNeighborsJob({ connect, wornNeighbors, logger })
+    })
+
+    it('should pass it to the build as the co-wear source', () => {
+      expect(buildSpy.mock.calls[0][2]?.worn).toEqual({ neighbors: wornNeighbors, discard: expect.any(Function) })
+    })
+  })
+
+  describe('and the co-wear source fails during the build', () => {
+    let outcome: string
+
+    beforeEach(async () => {
+      buildSpy.mockImplementation(async (_client, insert, _options, onTimings) => {
+        await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
+        onTimings?.({
+          catalogueMs: 1,
+          acquisitionsMs: 2,
+          coOwnershipMs: 3,
+          contentMs: 4,
+          wornMs: 5,
+          wornError: Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }),
+          walletsSeen: 10,
+          rowsRead: 20
+        })
+        return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
+      })
+      outcome = await runNeighborsJob({ connect, wornNeighbors, logger })
+    })
+
+    it('should still report the rebuild', () => {
+      expect(outcome).toBe('rebuilt')
+    })
+
+    it('should warn with the registry error', () => {
+      expect(logger.warn).toHaveBeenCalledWith(
+        'neighbours rebuild went ahead without the co-wear source: 57014: canceling statement due to statement timeout'
+      )
     })
   })
 })

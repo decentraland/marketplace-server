@@ -1,4 +1,5 @@
-import { Client } from 'pg'
+import type { Client } from 'pg'
+import type { IWornNeighborsComponent } from '../../ports/worn-neighbors'
 import { asCursorClient, produceNeighborRows, type BuildTimings } from './build-neighbors'
 import { ACQUISITION_SCAN_DEADLINE_MS, NEIGHBORS_JOB_STATEMENT_TIMEOUT_MS } from './constants'
 import { swapNeighborsTable, type QueryableClient, type RebuildOutcome } from './neighbors-table'
@@ -17,6 +18,9 @@ export type NeighborsJobDeps = {
   /** Opens a connection OUTSIDE the request pool. The pool caps statements at 40s; the acquisition
    * scan alone runs to 80. */
   connect: (role: 'read' | 'write') => Promise<Client>
+  /** Computes the co-wear source in the asset-bundle-registry database. Its failures cost only that
+   * source, never the rebuild. */
+  wornNeighbors: IWornNeighborsComponent
   logger: NeighborsJobLogger
   metrics?: NeighborsJobMetrics
   blockWidth?: number
@@ -43,7 +47,7 @@ export type NeighborsJobOutcome = RebuildOutcome | 'failed'
  * connections back.
  */
 export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<NeighborsJobOutcome> {
-  const { connect, logger, metrics } = deps
+  const { connect, wornNeighbors, logger, metrics } = deps
   const started = Date.now()
   let peakRss = process.memoryUsage().rss
   const sampler = setInterval(() => {
@@ -88,7 +92,7 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
     let timings: BuildTimings | undefined
     let rowsWritten = 0
     abortIfFatal()
-    const outcome = await swapNeighborsTable(writeClient as unknown as QueryableClient, async insert =>
+    const outcome = await swapNeighborsTable(writeClient as unknown as QueryableClient, async (insert, discard) =>
       produceNeighborRows(
         asCursorClient(readClient as unknown as QueryableClient),
         async rows => {
@@ -96,7 +100,11 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
           rowsWritten += rows.length
           await insert(rows)
         },
-        { blockWidth: deps.blockWidth, acquisitionDeadlineMs: ACQUISITION_SCAN_DEADLINE_MS },
+        {
+          blockWidth: deps.blockWidth,
+          acquisitionDeadlineMs: ACQUISITION_SCAN_DEADLINE_MS,
+          worn: { neighbors: wornNeighbors, discard: () => discard('worn') }
+        },
         t => {
           timings = t
         }
@@ -105,12 +113,16 @@ export async function runNeighborsJob(deps: NeighborsJobDeps): Promise<Neighbors
 
     abortIfFatal()
 
+    if (timings?.wornError) {
+      logger.warn(`neighbours rebuild went ahead without the co-wear source: ${message(timings.wornError)}`)
+    }
+
     const durationMs = Date.now() - started
     logger.info(
       `neighbours rebuild ${outcome}: ${rowsWritten} rows over ${timings?.walletsSeen ?? 0} wallets ` +
         `and ${timings?.rowsRead ?? 0} acquisitions in ${durationMs} ms ` +
         `[catalogue ${timings?.catalogueMs ?? 0} ms, acquisitions ${timings?.acquisitionsMs ?? 0} ms, ` +
-        `co-ownership ${timings?.coOwnershipMs ?? 0} ms, content ${timings?.contentMs ?? 0} ms, ` +
+        `co-ownership ${timings?.coOwnershipMs ?? 0} ms, content ${timings?.contentMs ?? 0} ms, worn ${timings?.wornMs ?? 0} ms, ` +
         `peak rss ${Math.round(peakRss / 1048576)} MB]`
     )
     metrics?.observe({ durationMs, rows: rowsWritten, peakRssBytes: peakRss })

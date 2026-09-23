@@ -40,6 +40,7 @@ import { IUserAssetsComponent } from './ports/user-assets/types'
 import { IVolumeComponent } from './ports/volume/types'
 import { IWertApiComponent } from './ports/wert/api/types'
 import { IWertSignerComponent } from './ports/wert/signer/types'
+import { IWornNeighborsComponent } from './ports/worn-neighbors'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -57,6 +58,9 @@ export type BaseComponents = {
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
+  /** Only when the neighbours rebuild job is enabled: nothing else reads the asset-bundle-registry. */
+  assetBundleRegistryDatabase?: IPgComponent
+  wornNeighbors?: IWornNeighborsComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
   creatorProfiles: ICreatorProfilesComponent
@@ -109,6 +113,9 @@ export type AppComponents = BaseComponents & {
 export type TestComponents = BaseComponents & {
   // A fetch component that only hits the test server
   localFetch: IFetchComponent
+  // Always created for the tests, whatever the job switch, so the co-wear source can be exercised
+  assetBundleRegistryDatabase: IPgComponent
+  wornNeighbors: IWornNeighborsComponent
 }
 
 // this type simplifies the typings of http handlers

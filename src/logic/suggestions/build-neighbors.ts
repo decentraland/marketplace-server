@@ -1,5 +1,6 @@
 import Cursor from 'pg-cursor'
 import { Rarity } from '@dcl/schemas'
+import { WornNeighborsUnavailableError, type IWornNeighborsComponent } from '../../ports/worn-neighbors'
 import { buildCoOwnershipNeighbors, type AcquisitionMatrix, type NeighborRow } from './co-ownership'
 import { NEIGHBORS_PER_ITEM } from './constants'
 import { assignPriceBands, buildTagVectors, contentNeighborsByAnchor, type ContentItem } from './content'
@@ -266,6 +267,11 @@ export type BuildOptions = {
   blockWidth?: number
   /** Abort the acquisition scan past this, leaving the previous neighbours serving. */
   acquisitionDeadlineMs?: number
+  /** Where the co-wear source is read from. Absent, the source is not built. */
+  worn?: {
+    neighbors: IWornNeighborsComponent
+    discard: () => Promise<void>
+  }
 }
 
 export type BuildTimings = {
@@ -273,6 +279,9 @@ export type BuildTimings = {
   acquisitionsMs: number
   coOwnershipMs: number
   contentMs: number
+  wornMs: number
+  /** Set when the co-wear source failed; the other two sources are still swapped in. */
+  wornError?: unknown
   walletsSeen: number
   rowsRead: number
 }
@@ -297,6 +306,7 @@ export async function produceNeighborRows(
     acquisitionsMs: 0,
     coOwnershipMs: 0,
     contentMs: 0,
+    wornMs: 0,
     walletsSeen: 0,
     rowsRead: 0
   }
@@ -355,11 +365,39 @@ export async function produceNeighborRows(
   if (buffer.length > 0) await insert(buffer)
   timings.contentMs = Date.now() - started
 
+  // A registry that is down or slow costs the rail its co-wear rows for one cycle, never the rebuild.
+  let wornCount = 0
+  if (options.worn) {
+    started = Date.now()
+    const wornCovered = new Set<string>()
+    try {
+      const wornCatalogue = {
+        anchorIds: catalogue.items.map(item => item.id),
+        candidateIds: catalogue.items.filter(item => item.isCandidate).map(item => item.id)
+      }
+      for await (const neighbors of options.worn.neighbors.getNeighbors(wornCatalogue)) {
+        const rows = neighbors.map(neighbor => ({ ...neighbor, source: 'worn' }))
+        for (const row of rows) wornCovered.add(row.itemId)
+        await insert(rows)
+        wornCount += rows.length
+      }
+      for (const itemId of wornCovered) covered.add(itemId)
+    } catch (error) {
+      // Only the registry's failures are the source's own; a failed write means the whole swap is lost.
+      if (!(error instanceof WornNeighborsUnavailableError)) throw error
+      timings.wornError = error
+      wornCount = 0
+      await options.worn.discard()
+    }
+    timings.wornMs = Date.now() - started
+  }
+
   onTimings?.(timings)
 
   return {
     cfRows: cfCount,
     contentRows: contentCount,
+    wornRows: wornCount,
     itemsCovered: covered.size,
     durationMs: Date.now() - jobStarted
   }

@@ -20,7 +20,7 @@ test('item neighbours table', function ({ components }) {
     { itemId: '0xaaa-1', source: 'cf', neighborId: '0xbbb-2', sim: 0.5, support: 7, rank: 0 },
     { itemId: '0xaaa-1', source: 'content', neighborId: '0xccc-3', sim: 0.35, support: 0, rank: 0 }
   ]
-  const META = { cfRows: 1, contentRows: 1, itemsCovered: 1, durationMs: 42 }
+  const META = { cfRows: 1, contentRows: 1, wornRows: 0, itemsCovered: 1, durationMs: 42 }
 
   /** Feeds a fixed set of rows through the producer contract the swap expects. */
   function producing(rows: typeof ROWS, meta = META) {
@@ -96,6 +96,55 @@ test('item neighbours table', function ({ components }) {
         const rows = await withClient(client => client.query('SELECT count(*)::int AS n FROM marketplace.item_neighbors_meta'))
         expect(rows.rows[0].n).toBe(1)
       })
+    })
+  })
+
+  describe('when a source fails midway and discards what it had written', () => {
+    const WORN_ROWS = [
+      { itemId: '0xaaa-1', source: 'worn', neighborId: '0xfff-4', sim: 0.4, support: 5, rank: 0 },
+      { itemId: '0xfff-4', source: 'worn', neighborId: '0xaaa-1', sim: 0.4, support: 5, rank: 0 }
+    ]
+    let rowsBySource: Record<string, number>
+
+    beforeEach(async () => {
+      await withClient(client =>
+        swapNeighborsTable(client, async (insert, discard) => {
+          await insert(ROWS)
+          await insert(WORN_ROWS)
+          await discard('worn')
+          return META
+        })
+      )
+      const { rows } = await withClient(client =>
+        client.query('SELECT source, count(*)::int AS n FROM marketplace.item_neighbors GROUP BY source')
+      )
+      rowsBySource = Object.fromEntries(rows.map((row: { source: string; n: number }) => [row.source, row.n]))
+    })
+
+    it('should leave none of its rows in the swapped-in table, and every row of the other sources', () => {
+      expect(rowsBySource).toEqual({ cf: 1, content: 1 })
+    })
+  })
+
+  describe('when the co-wear source wrote rows', () => {
+    let wornRows: number
+
+    beforeEach(async () => {
+      await withClient(client =>
+        swapNeighborsTable(
+          client,
+          producing([...ROWS, { itemId: '0xaaa-1', source: 'worn', neighborId: '0xfff-4', sim: 0.4, support: 5, rank: 0 }], {
+            ...META,
+            wornRows: 1
+          })
+        )
+      )
+      const { rows } = await withClient(client => client.query('SELECT worn_rows FROM marketplace.item_neighbors_meta'))
+      wornRows = rows[0].worn_rows
+    })
+
+    it('should record their count next to the other sources', () => {
+      expect(wornRows).toBe(1)
     })
   })
 

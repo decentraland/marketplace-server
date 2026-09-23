@@ -47,6 +47,10 @@ describe('when resolving which collections the candidates live in', () => {
     expect(buildCandidateContractsQuery(profile, []).values).toContainEqual(['0xaaa-1'])
   })
 
+  it('should only follow the weighted neighbour sources', () => {
+    expect(buildCandidateContractsQuery(profile, []).values).toContainEqual(['cf', 'content'])
+  })
+
   describe('and the profile leans on particular creators', () => {
     it('should include their collections too, so narrowing the core cannot delete the creator branch', () => {
       expect(buildCandidateContractsQuery(profile, ['0xcreator']).text).toContain('UNION')
@@ -169,12 +173,34 @@ describe('when building the candidate scores query', () => {
   })
 
   describe('and the neighbour branch is ranked', () => {
-    it('should weight co-ownership above content, matching the published blend', () => {
-      expect(build().text).toContain('(cf * 0.45 + content * 0.25)')
+    it('should weight co-ownership above content and co-wear, matching the published blend', () => {
+      expect(build().text).toContain('(cf * 0.45 + content * 0.25 + worn * 0)')
     })
 
     it('should limit it, so the creator branch cannot be starved by neighbours', () => {
       expect(build({ limit: 36 }).values).toContain(36)
+    })
+  })
+
+  describe('and the explanation needs the item behind the co-wear edge', () => {
+    it('should pick it among the co-wear edges only', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source = 'worn'))[1] AS worn_trigger_item_id")
+    })
+  })
+
+  describe('and the explanation needs the item behind a co-ownership or content edge', () => {
+    it('should pick it among those edges only, so a stronger co-wear edge cannot take its place', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source <> 'worn'))[1] AS trigger_item_id")
+    })
+
+    it('should take the trigger source from the same edges', () => {
+      expect(build().text).toContain("FILTER (WHERE n.source <> 'worn'))[1] AS trigger_source")
+    })
+  })
+
+  describe('and a neighbour source carries no weight yet', () => {
+    it('should read only the weighted sources, so the unweighted one does not widen the candidates', () => {
+      expect(build().values).toContainEqual(['cf', 'content'])
     })
   })
 

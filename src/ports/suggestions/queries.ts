@@ -1,6 +1,12 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { NEIGHBORS_TABLE, RECENCY_DECAY_DAYS, TASTE_ITEMS_PER_CREATOR } from '../../logic/suggestions/constants'
+import {
+  ACTIVE_NEIGHBOR_SOURCES,
+  NEIGHBORS_TABLE,
+  RECENCY_DECAY_DAYS,
+  SCORE_WEIGHTS,
+  TASTE_ITEMS_PER_CREATOR
+} from '../../logic/suggestions/constants'
 import type { ProfileEntry } from '../../logic/suggestions/profile'
 
 const THIRTY_DAYS_IN_SECONDS = 2592000
@@ -91,7 +97,9 @@ export function buildCandidateContractsQuery(profile: ProfileEntry[], topCreator
     SELECT DISTINCT split_part(n.neighbor_id, '-', 1) AS contract
       FROM `
     .append(NEIGHBORS_TABLE)
-    .append(SQL` n WHERE n.item_id = ANY(${profile.map(entry => entry.itemId)}::text[])`)
+    .append(
+      SQL` n WHERE n.item_id = ANY(${profile.map(entry => entry.itemId)}::text[]) AND n.source = ANY(${ACTIVE_NEIGHBOR_SOURCES}::text[])`
+    )
 
   if (topCreators.length > 0) {
     query
@@ -169,14 +177,19 @@ export function buildCandidateScoresQuery(opts: {
         n.neighbor_id AS neighbour_item_id,
         SUM(CASE WHEN n.source = 'cf' THEN p.weight * n.sim ELSE 0 END) AS cf,
         SUM(CASE WHEN n.source = 'content' THEN p.weight * n.sim ELSE 0 END) AS content,
-        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC))[1] AS trigger_item_id,
-        (array_agg(p.source ORDER BY p.weight * n.sim DESC))[1] AS trigger_source
+        SUM(CASE WHEN n.source = 'worn' THEN p.weight * n.sim ELSE 0 END) AS worn,
+        -- Each explanation names the item behind its own source's edges: a strong co-wear edge must not
+        -- become the trigger of a co-ownership or content reason, nor the other way round
+        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source <> 'worn'))[1] AS trigger_item_id,
+        (array_agg(p.source ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source <> 'worn'))[1] AS trigger_source,
+        (array_agg(p.item_id ORDER BY p.weight * n.sim DESC) FILTER (WHERE n.source = 'worn'))[1] AS worn_trigger_item_id
       FROM `
     )
     .append(NEIGHBORS_TABLE)
     .append(
       SQL` n
       JOIN profile p ON p.item_id = n.item_id
+      WHERE n.source = ANY(${ACTIVE_NEIGHBOR_SOURCES}::text[])
       GROUP BY n.neighbor_id
     ),
     popularity AS (
@@ -200,9 +213,11 @@ export function buildCandidateScoresQuery(opts: {
         core.*,
         COALESCE(nb.cf, 0)::float8 AS cf,
         COALESCE(nb.content, 0)::float8 AS content,
+        COALESCE(nb.worn, 0)::float8 AS worn,
         COALESCE(pop.popularity, 0)::float8 AS popularity,
         nb.trigger_item_id,
         nb.trigger_source,
+        nb.worn_trigger_item_id,
         (nb.neighbour_item_id IS NOT NULL) AS from_neighbours,
         row_number() OVER (PARTITION BY lower(core.creator) ORDER BY core.created_at DESC) AS creator_rank
       FROM core
@@ -229,14 +244,20 @@ export function buildCandidateScoresQuery(opts: {
   // at all, so ranking the union by that score would cut every one of them before the blend in
   // TypeScript ever saw it -- and those are exactly the rows that produce "more from a creator you
   // collect", which no neighbour list can reach for a drop nobody owns yet.
-  query.append(SQL`
+  query
+    .append(
+      `
     )
     (
       SELECT * FROM scored
        WHERE from_neighbours
-       ORDER BY (cf * 0.45 + content * 0.25) DESC, created_at DESC
+       ORDER BY (cf * ${SCORE_WEIGHTS.cf} + content * ${SCORE_WEIGHTS.content} + worn * ${SCORE_WEIGHTS.worn}) DESC, created_at DESC`
+    )
+    .append(
+      SQL`
        LIMIT ${limit}
-    )`)
+    )`
+    )
 
   if (topCreators.length > 0) {
     query.append(SQL`

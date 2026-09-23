@@ -4,7 +4,14 @@ import type { ProfileAggregates } from './profile'
 
 const RARITY_TIERS = Rarity.getRarities().map(rarity => rarity.toLowerCase())
 
-export type SuggestionReasonKind = 'co_owned' | 'creator_affinity' | 'favorite_similar' | 'equipped_similar' | 'seed_similar' | 'trending'
+export type SuggestionReasonKind =
+  | 'co_owned'
+  | 'worn_together'
+  | 'creator_affinity'
+  | 'favorite_similar'
+  | 'equipped_similar'
+  | 'seed_similar'
+  | 'trending'
 
 export type SuggestionReason = {
   kind: SuggestionReasonKind
@@ -24,10 +31,14 @@ export type ScoredCandidate = {
   isWearable: boolean
   cf: number
   content: number
+  /** Co-wear: how often the candidate is worn together with the profile's items. */
+  worn: number
   popularity: number
-  /** The profile item that contributed most of `cf` + `content`, for the explanation. */
+  /** The profile item that contributed most of `cf` + `content` + `worn`, for the explanation. */
   topTriggerItemId?: string
   topTriggerSource?: 'owned' | 'favorite' | 'equipped' | 'seed'
+  /** The profile item behind the strongest co-wear edge, which is what `worn_together` names. */
+  topWornTriggerItemId?: string
 }
 
 /**
@@ -68,7 +79,7 @@ export type BlendedCandidate = ScoredCandidate & {
 }
 
 /**
- * Blends the four components into one score.
+ * Blends the five components into one score.
  *
  * Each wallet-dependent component is divided by its own largest value across this wallet's candidates
  * first. Phase 0 fixed this: raw co-ownership sums run an order of magnitude above taste affinities,
@@ -85,27 +96,31 @@ export function blendCandidates(
 
   let maxCf = 0
   let maxContent = 0
+  let maxWorn = 0
   let maxTaste = 0
   for (let i = 0; i < candidates.length; i++) {
     if (candidates[i].cf > maxCf) maxCf = candidates[i].cf
     if (candidates[i].content > maxContent) maxContent = candidates[i].content
+    if (candidates[i].worn > maxWorn) maxWorn = candidates[i].worn
     if (tastes[i] > maxTaste) maxTaste = tastes[i]
   }
 
   return candidates.map((candidate, i) => {
     const cf = maxCf > 0 ? candidate.cf / maxCf : 0
     const content = maxContent > 0 ? candidate.content / maxContent : 0
+    const worn = maxWorn > 0 ? candidate.worn / maxWorn : 0
     const taste = maxTaste > 0 ? tastes[i] / maxTaste : 0
     const contributions = {
       cf: SCORE_WEIGHTS.cf * cf,
       content: SCORE_WEIGHTS.content * content,
+      worn: SCORE_WEIGHTS.worn * worn,
       taste: SCORE_WEIGHTS.taste * taste,
       popularity: SCORE_WEIGHTS.popularity * candidate.popularity
     }
     return {
       ...candidate,
       taste: tastes[i],
-      score: contributions.cf + contributions.content + contributions.taste + contributions.popularity,
+      score: contributions.cf + contributions.content + contributions.worn + contributions.taste + contributions.popularity,
       reason: pickReason(candidate, contributions, collectsCreator(candidate.creator, profileCreatorCounts))
     }
   })
@@ -119,7 +134,7 @@ export function blendCandidates(
  */
 export function pickReason(
   candidate: ScoredCandidate,
-  contributions: { cf: number; content: number; taste: number; popularity: number },
+  contributions: { cf: number; content: number; worn: number; taste: number; popularity: number },
   collectsCreator = false
 ): SuggestionReason {
   const ranked = (Object.entries(contributions) as Array<[keyof typeof contributions, number]>).sort((a, b) => b[1] - a[1])
@@ -136,11 +151,14 @@ export function pickReason(
     return reasonFromTrigger(candidate)
   }
   if (winner === 'popularity') return { kind: 'trending' }
+  if (winner === 'worn') {
+    return candidate.topWornTriggerItemId ? { kind: 'worn_together', itemId: candidate.topWornTriggerItemId } : { kind: 'trending' }
+  }
 
   return reasonFromTrigger(candidate)
 }
 
-/** cf and content are both driven by a specific profile item, so the explanation names it -- and names
+/** cf, content and worn are all driven by a specific profile item, so the explanation names it -- and names
  * it for what it was: something worn, favourited, browsed, or owned. */
 function reasonFromTrigger(candidate: ScoredCandidate): SuggestionReason {
   const trigger = candidate.topTriggerItemId

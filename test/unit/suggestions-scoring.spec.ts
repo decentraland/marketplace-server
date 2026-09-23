@@ -21,6 +21,7 @@ function candidate(overrides: Partial<ScoredCandidate> = {}): ScoredCandidate {
     isWearable: true,
     cf: 0,
     content: 0,
+    worn: 0,
     popularity: 0,
     ...overrides
   }
@@ -108,12 +109,61 @@ describe('when blending candidate components', () => {
   })
 })
 
+describe('when blending a candidate reached only through co-wear', () => {
+  let blended: BlendedCandidate[]
+
+  beforeEach(() => {
+    blended = blendCandidates([candidate({ itemId: 'worn-led', worn: 1 }), candidate({ itemId: 'plain' })], emptyAggregates())
+  })
+
+  it('should score it by the co-wear weight', () => {
+    expect(scoreOf(blended, 'worn-led') - scoreOf(blended, 'plain')).toBeCloseTo(SCORE_WEIGHTS.worn, 6)
+  })
+})
+
 describe('when choosing the reason for a row', () => {
+  describe('and co-wear contributed most while a different profile item had the strongest edge overall', () => {
+    let reason: ReturnType<typeof pickReason>
+
+    beforeEach(() => {
+      reason = pickReason(candidate({ topTriggerItemId: '0xccc-3', topTriggerSource: 'owned', topWornTriggerItemId: '0xbbb-2' }), {
+        cf: 0.1,
+        content: 0.1,
+        worn: 0.4,
+        taste: 0,
+        popularity: 0
+      })
+    })
+
+    it('should say it is worn together with the item behind the co-wear edge', () => {
+      expect(reason).toEqual({ kind: 'worn_together', itemId: '0xbbb-2' })
+    })
+  })
+
+  describe('and co-wear contributed most but no co-wear edge is recorded as pulling it', () => {
+    let reason: ReturnType<typeof pickReason>
+
+    beforeEach(() => {
+      reason = pickReason(candidate({ topTriggerItemId: '0xccc-3', topTriggerSource: 'owned' }), {
+        cf: 0,
+        content: 0,
+        worn: 0.4,
+        taste: 0,
+        popularity: 0
+      })
+    })
+
+    it('should fall back to trending rather than name an item it is not worn with', () => {
+      expect(reason).toEqual({ kind: 'trending' })
+    })
+  })
+
   describe('and co-ownership contributed most', () => {
     it('should name the profile item that pulled it', () => {
       const reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'owned' }), {
         cf: 0.4,
         content: 0.1,
+        worn: 0,
         taste: 0.05,
         popularity: 0.01
       })
@@ -126,6 +176,7 @@ describe('when choosing the reason for a row', () => {
       const reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'favorite' }), {
         cf: 0.4,
         content: 0.1,
+        worn: 0,
         taste: 0,
         popularity: 0
       })
@@ -138,6 +189,7 @@ describe('when choosing the reason for a row', () => {
       const reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'equipped' }), {
         cf: 0,
         content: 0.3,
+        worn: 0,
         taste: 0,
         popularity: 0
       })
@@ -148,7 +200,11 @@ describe('when choosing the reason for a row', () => {
   describe('and aggregate taste contributed most', () => {
     describe('and the wallet really does collect that creator', () => {
       it('should attribute the row to the creator', () => {
-        const reason = pickReason(candidate({ creator: '0xcreator' }), { cf: 0.05, content: 0.02, taste: 0.19, popularity: 0.01 }, true)
+        const reason = pickReason(
+          candidate({ creator: '0xcreator' }),
+          { cf: 0.05, content: 0.02, worn: 0, taste: 0.19, popularity: 0.01 },
+          true
+        )
         expect(reason).toEqual({ kind: 'creator_affinity', creator: '0xcreator' })
       })
     })
@@ -157,14 +213,14 @@ describe('when choosing the reason for a row', () => {
       it('should fall back to the trigger rather than claim a creator the wallet never bought from', () => {
         const reason = pickReason(
           candidate({ creator: '0xstranger', topTriggerItemId: '0xbbb-2', topTriggerSource: 'owned' }),
-          { cf: 0.05, content: 0.02, taste: 0.19, popularity: 0.01 },
+          { cf: 0.05, content: 0.02, worn: 0, taste: 0.19, popularity: 0.01 },
           false
         )
         expect(reason).toEqual({ kind: 'co_owned', itemId: '0xbbb-2' })
       })
 
       it('should fall back to trending when there is no trigger to name either', () => {
-        const reason = pickReason(candidate({ creator: '0xstranger' }), { cf: 0, content: 0, taste: 0.19, popularity: 0 }, false)
+        const reason = pickReason(candidate({ creator: '0xstranger' }), { cf: 0, content: 0, worn: 0, taste: 0.19, popularity: 0 }, false)
         expect(reason).toEqual({ kind: 'trending' })
       })
     })
@@ -175,6 +231,7 @@ describe('when choosing the reason for a row', () => {
       const reason = pickReason(candidate({ topTriggerItemId: '0xbbb-2', topTriggerSource: 'seed' }), {
         cf: 0.4,
         content: 0.1,
+        worn: 0,
         taste: 0,
         popularity: 0
       })
@@ -184,13 +241,13 @@ describe('when choosing the reason for a row', () => {
 
   describe('and only popularity contributed', () => {
     it('should report the row as trending so it is not counted as personalised', () => {
-      expect(pickReason(candidate(), { cf: 0, content: 0, taste: 0, popularity: 0.1 })).toEqual({ kind: 'trending' })
+      expect(pickReason(candidate(), { cf: 0, content: 0, worn: 0, taste: 0, popularity: 0.1 })).toEqual({ kind: 'trending' })
     })
   })
 
   describe('and co-ownership won but no trigger item was recorded', () => {
     it('should fall back to trending rather than claim an explanation it cannot name', () => {
-      expect(pickReason(candidate(), { cf: 0.4, content: 0, taste: 0, popularity: 0 })).toEqual({ kind: 'trending' })
+      expect(pickReason(candidate(), { cf: 0.4, content: 0, worn: 0, taste: 0, popularity: 0 })).toEqual({ kind: 'trending' })
     })
   })
 })

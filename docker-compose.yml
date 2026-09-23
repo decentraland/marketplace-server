@@ -43,7 +43,21 @@ services:
       - builder_data:/var/lib/postgresql/data
       - ./test/db/init-builder-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
 
+  asset_bundle_registry_db:
+    image: postgres:17
+    restart: always
+    environment:
+      - POSTGRES_USER=asset_bundle_registry_admin
+      - POSTGRES_PASSWORD=asset_bundle_registry_password
+      - POSTGRES_DB=asset_bundle_registry
+    ports:
+      - 5435:5432
+    volumes:
+      - asset_bundle_registry_data:/var/lib/postgresql/data
+      - ./test/db/init-asset-bundle-registry-schema.sh:/docker-entrypoint-initdb.d/init-schema.sh
+
 volumes:
   marketplace_data:
   dapps_data:
   builder_data:
+  asset_bundle_registry_data:
