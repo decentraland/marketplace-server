@@ -1,11 +1,14 @@
 import Cursor from 'pg-cursor'
 import type { CursorClient, LoadedCatalogue } from './build-neighbors'
-import { CO_WEAR_ACTIVE_DAYS, MIN_CO_WEARERS, NEIGHBORS_PER_ITEM } from './constants'
+import { MIN_CO_WEARERS, NEIGHBORS_PER_ITEM } from './constants'
 import type { NeighborInsertRow } from './neighbors-table'
 
 /**
  * Item-item co-wear neighbours, computed inside the asset-bundle-registry database, which keeps one
  * row per profile with the wearables it has on.
+ *
+ * Every profile counts, however long ago it was deployed. Nearly all recent deployments wear base
+ * wearables only, so a recency window would keep the new accounts and drop the collectors.
  *
  * Only collections-v2 URNs match, so base wearables in either spelling (`urn:…:base-avatars:…` and
  * `dcl://base-avatars/…`) never enter a pair; the token id, when present, is dropped so every copy of
@@ -29,8 +32,9 @@ export const SELECT_CO_WORN = `WITH catalogue AS (
                     THEN p.metadata -> 'avatars' -> 0 -> 'avatar' -> 'wearables'
                     ELSE '[]'::jsonb END
              ) AS w
-       WHERE lower(w) ~ '^urn:decentraland:(matic|amoy):collections-v2:0x[0-9a-f]{40}:[0-9]+(:[0-9]+)?$'
-         AND p.timestamp > (extract(epoch FROM now() - interval '${CO_WEAR_ACTIVE_DAYS} days') * 1000)::bigint
+       -- Rejects the base wearables, over 99% of what is worn, before the regex runs
+       WHERE lower(w) LIKE 'urn:decentraland:%:collections-v2:%'
+         AND lower(w) ~ '^urn:decentraland:(matic|amoy):collections-v2:0x[0-9a-f]{40}:[0-9]+(:[0-9]+)?$'
     ), catalogued AS (
       SELECT worn.pointer, worn.item_id FROM worn JOIN catalogue USING (item_id)
     ), wearers AS (

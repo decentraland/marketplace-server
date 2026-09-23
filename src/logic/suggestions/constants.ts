@@ -80,8 +80,6 @@ export const ACTIVE_NEIGHBOR_SOURCES: NeighborSource[] = (['cf', 'content', 'wor
 
 /** A co-wear pair needs this many profiles wearing both before it is trusted at all. */
 export const MIN_CO_WEARERS = 5
-/** Only profiles deployed this recently count towards co-wear: what an avatar wears NOW. */
-export const CO_WEAR_ACTIVE_DAYS = 90
 
 /**
  * How much each signal about a wallet is worth, relative to a purchase.

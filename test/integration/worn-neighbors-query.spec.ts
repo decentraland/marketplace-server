@@ -3,8 +3,6 @@ import { test } from '../components'
 
 type WornRow = { item_id: string; neighbor_id: string; sim: number; support: string; rank: string }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 function urn(contract: string, itemId: number, tokenId?: number): string {
   return `urn:decentraland:matic:collections-v2:${contract}:${itemId}${tokenId === undefined ? '' : `:${tokenId}`}`
 }
@@ -76,8 +74,8 @@ test('co-wear neighbours query', function ({ components }) {
         ),
         // Below the support floor.
         ...wearing(4, () => [urn(HATS, 2), urn(HATS, 3)], Date.now(), 100),
-        // Outside the active window.
-        ...wearing(5, () => [urn(HATS, 4), urn(HATS, 5)], Date.now() - 91 * DAY_MS, 200),
+        // Deployed long ago, which still counts.
+        ...wearing(5, () => [urn(HATS, 4), urn(HATS, 5)], Date.parse('2022-01-01'), 200),
         // One side is not a candidate, the other is not catalogued at all.
         ...wearing(5, () => [urn(SHOES, 0), urn(SHOES, 1), urn(SHOES, 2)], Date.now(), 300),
         // A profile whose wearables are not an array must not break the scan.
@@ -90,10 +88,12 @@ test('co-wear neighbours query', function ({ components }) {
     shoeRows = rows.filter(row => row.item_id.startsWith(SHOES))
   })
 
-  it('should pair the items worn together in both directions, as the same item across token ids and case', () => {
+  it('should pair the items worn together in both directions, whenever the profiles were deployed', () => {
     expect(hatRows).toEqual([
       { item_id: hat, neighbor_id: jacket, sim: 1, support: '5', rank: '0' },
-      { item_id: jacket, neighbor_id: hat, sim: 1, support: '5', rank: '0' }
+      { item_id: jacket, neighbor_id: hat, sim: 1, support: '5', rank: '0' },
+      { item_id: mask, neighbor_id: cape, sim: 1, support: '5', rank: '0' },
+      { item_id: cape, neighbor_id: mask, sim: 1, support: '5', rank: '0' }
     ])
   })
 
