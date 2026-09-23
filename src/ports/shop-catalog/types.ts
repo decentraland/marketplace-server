@@ -294,6 +294,25 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    */
   contractAddresses?: string[]
   /**
+   * Restrict the feed to INDIVIDUAL items, as `<contract>-<itemId>` composite ids — the same id shape the
+   * catalogue already reports as an item's `id`.
+   *
+   * UNIONED with `contractAddresses`, not intersected. A campaign selects whole collections AND a handful
+   * of loose items from collections it does not want entirely, so the two have to read as "in these
+   * collections OR one of these items". Intersecting them would mean "only these items, and only if their
+   * collection is also listed", which is never what a caller naming both wants.
+   *
+   * The empty-array distinction is the same as above, with one difference that matters: the selection is
+   * empty only when BOTH sets are empty. `contractAddresses: []` alongside a non-empty `itemIds` is a
+   * caller whose collection lookup found nothing and whose loose items still stand, and it must return
+   * those items rather than an empty page.
+   *
+   * The singular `itemId` is untouched and still INTERSECTS, because it exists to address one item inside
+   * one collection (the product page). Sending it together with this set narrows the union rather than
+   * widening it.
+   */
+  itemIds?: string[]
+  /**
    * Restrict the feed to primary (mint) or secondary (resale) listings. Omitted = both, which is the
    * pre-existing behaviour.
    *
