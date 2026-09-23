@@ -1,4 +1,6 @@
+import SQL, { SQLStatement } from 'sql-template-strings'
 import { MIN_CO_WEARERS, NEIGHBORS_PER_ITEM } from '../../logic/suggestions/constants'
+import type { WornNeighborsCatalogue } from './types'
 
 /**
  * Item-item co-wear neighbours, computed inside the asset-bundle-registry database, which keeps one
@@ -14,12 +16,19 @@ import { MIN_CO_WEARERS, NEIGHBORS_PER_ITEM } from '../../logic/suggestions/cons
  * joins rather than a scan of a twelve-thousand element array per row.
  *
  * `sim` is the cosine `n_ab / sqrt(n_a * n_b)` and `support` the number of profiles wearing both.
+ *
+ * Only the two lists are bound; the rest is literal, since the profiles predicate has to read exactly
+ * like the partial index's for the planner to use it.
  */
-export const SELECT_CO_WORN = `WITH catalogue AS (
-      SELECT unnest($1::text[]) AS item_id
+export function buildCoWornQuery({ anchorIds, candidateIds }: WornNeighborsCatalogue): SQLStatement {
+  return SQL`WITH catalogue AS (
+      SELECT unnest(${anchorIds}::text[]) AS item_id
     ), candidates AS (
-      SELECT unnest($2::text[]) AS item_id
-    ), worn AS (
+      SELECT unnest(${candidateIds}::text[]) AS item_id
+    ), `.append(CO_WORN_PAIRS)
+}
+
+const CO_WORN_PAIRS = `worn AS (
       SELECT DISTINCT
              p.pointer,
              regexp_replace(lower(w), '^urn:decentraland:(?:matic|amoy):collections-v2:(0x[0-9a-f]{40}):([0-9]+)(?::[0-9]+)?$', '\\1-\\2') AS item_id

@@ -1,5 +1,5 @@
 import type { WornNeighbor } from '../../src/ports/worn-neighbors'
-import { SELECT_CO_WORN } from '../../src/ports/worn-neighbors/queries'
+import { buildCoWornQuery } from '../../src/ports/worn-neighbors/queries'
 import { test } from '../components'
 
 type Profile = { pointer: string; timestamp: number; metadata: unknown }
@@ -117,7 +117,8 @@ test('co-wear neighbours query', function ({ components }) {
       const client = await components.assetBundleRegistryDatabase.getPool().connect()
       try {
         await client.query('SET enable_seqscan = off')
-        const { rows } = await client.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${SELECT_CO_WORN}`, [CATALOGUE, CANDIDATES])
+        const statement = buildCoWornQuery({ anchorIds: CATALOGUE, candidateIds: CANDIDATES })
+        const { rows } = await client.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${statement.text}`, statement.values)
         plan = rows.map(row => row['QUERY PLAN']).join('\n')
       } finally {
         await client.query('RESET enable_seqscan')
