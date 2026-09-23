@@ -889,6 +889,115 @@ describe('Shop Catalog Component', () => {
       })
     })
 
+    /**
+     * A SET of INDIVIDUAL items, unioned with the collection set above.
+     *
+     * The case that makes this worth its own block is the MIXED one: a campaign names whole collections
+     * AND a handful of loose items from collections it does not want entirely, so the two predicates have
+     * to read as OR. Written as AND -- the shape every other filter here has -- the feed would return only
+     * the loose items whose collection was also listed, which for a curated list is usually nothing at all.
+     */
+    describe('and filtering by a set of individual items', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const ANY_SET = 'mv.sent_contract_address = ANY('
+      const COMPOSITE = "mv.sent_contract_address || '-' || mv.sent_item_id::text = ANY("
+      const EMPTY_SET = 'AND FALSE'
+      const A = '0xabc0000000000000000000000000000000000001'
+      const B = '0xdef0000000000000000000000000000000000002'
+      const UNION_BRANCHES = 3
+
+      async function sqlFor(filters: Record<string, unknown>) {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0]
+      }
+
+      it('should match the composite ids, in every union branch', async () => {
+        const sql = await sqlFor({ itemIds: [`${A}-3`, `${B}-7`] })
+
+        expect(occurrences(sql.text, COMPOSITE)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual([`${A}-3`, `${B}-7`])
+      })
+
+      it('should narrow by contract first, so the composite never scans on its own', async () => {
+        // The composite is a computed expression and cannot use the index on sent_contract_address. The
+        // contract test carries the selectivity; without it this filter reads every row of every branch.
+        const sql = await sqlFor({ itemIds: [`${A}-3`, `${A}-4`, `${B}-7`] })
+
+        expect(occurrences(sql.text, ANY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual([A, B])
+      })
+
+      it('should UNION with the collections rather than intersect them', async () => {
+        const sql = await sqlFor({ contractAddresses: [A], itemIds: [`${B}-7`] })
+
+        expect(sql.text).toContain(' OR ')
+        expect(sql.values).toContainEqual([A])
+        expect(sql.values).toContainEqual([`${B}-7`])
+      })
+
+      it('should bracket the union so the OR cannot escape into the surrounding ANDs', async () => {
+        /**
+         * Pinned as a SHAPE, not as a behaviour, because this is the one mistake here that fails silently
+         * and catastrophically. `AND a OR b` parses as `(AND a) OR b` in SQL: the OR would then escape the
+         * selection and disjoin with every other filter in the branch, serving the whole catalogue to a
+         * caller who asked for a curated list — and looking like a working campaign while it did.
+         *
+         * The bound placeholders are part of the assertion: values reaching the text instead of the
+         * parameter list would be an injection, and the composite ids come from a CMS field an editor
+         * types by hand.
+         */
+        const sql = await sqlFor({ contractAddresses: [A], itemIds: [`${B}-7`] })
+
+        expect(sql.text).toMatch(
+          /AND \(mv\.sent_contract_address = ANY\(\$\d+\) OR \(mv\.sent_contract_address = ANY\(\$\d+\) AND mv\.sent_contract_address \|\| '-' \|\| mv\.sent_item_id::text = ANY\(\$\d+\)\)\)/
+        )
+      })
+
+      it('should still show the loose items when the collection lookup resolved to nothing', async () => {
+        // The half of the fail-closed rule that is easy to get wrong: `[]` collections alone means an empty
+        // page, but alongside named items it means only that the collection half found nothing.
+        const sql = await sqlFor({ contractAddresses: [], itemIds: [`${A}-3`] })
+
+        expect(sql.text).not.toContain(EMPTY_SET)
+        expect(occurrences(sql.text, COMPOSITE)).toBe(UNION_BRANCHES)
+      })
+
+      it('should return nothing when BOTH sets are empty', async () => {
+        const sql = await sqlFor({ contractAddresses: [], itemIds: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.text).not.toContain(COMPOSITE)
+      })
+
+      it('should return nothing for an empty item set on its own', async () => {
+        const sql = await sqlFor({ itemIds: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(UNION_BRANCHES)
+      })
+
+      it('should lowercase the contract half, since the column is stored lowercased', async () => {
+        const sql = await sqlFor({ itemIds: [`${A.toUpperCase().replace('0X', '0x')}-3`] })
+
+        expect(sql.values).toContainEqual([`${A}-3`])
+        expect(sql.values).toContainEqual([A])
+      })
+
+      it('should apply no item filter when the set is absent', async () => {
+        const sql = await sqlFor({})
+
+        expect(sql.text).not.toContain(COMPOSITE)
+        expect(sql.text).not.toContain(EMPTY_SET)
+      })
+
+      it('should reach every branch of the item-unified query through the same shared block', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({ itemIds: [`${A}-3`] }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, COMPOSITE)).toBe(UNION_BRANCHES)
+      })
+    })
+
     // The body-shape filter a client needs to hide what its player cannot wear. Same reasoning as
     // listingType above: the feed is paginated and reports a total, so dropping rows client-side yields
     // short pages and an overstated count.

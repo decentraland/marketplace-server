@@ -410,21 +410,57 @@ export function rateToNumericString(rate: number): string {
 
 // The shared browse filters (category, contract/item, rarity, category, search) applied identically to
 // each branch of the unified feed. Mirrors the expressions used by getShopListings.
+/**
+ * The campaign SELECTION: a set of whole collections, a set of individual items, or both UNIONED.
+ *
+ * Both fail CLOSED, and that is the point of the whole block: a set that resolved to nothing must yield an
+ * empty page, never the unfiltered catalogue — the worst answer this endpoint can give, because it looks
+ * like a working event rather than like an error. The union is empty only when BOTH sets are, so a
+ * campaign whose collection lookup came back empty still shows the loose items it named.
+ *
+ * The item branch is written as a contract test AND a composite-id test rather than the composite alone.
+ * The composite is a computed expression and cannot use the index on `sent_contract_address`, so on its
+ * own it would force a scan of every branch of the union; leading with the contracts narrows by index
+ * first and leaves the composite to do the exact matching on what survives.
+ *
+ * `::text` on the item id is not decoration: the column arrives as text from one branch of the union and
+ * as a numeric from another (see the `blockchain_id` casts above), so concatenating it raw would fail on
+ * whichever branch disagreed.
+ */
+function appendUnifiedSelection(query: SQLStatement, filters: UnifiedCatalogFilters): void {
+  const collections = filters.contractAddresses
+  const items = filters.itemIds
+  if (!collections && !items) return
+
+  const selectedCollections = collections ?? []
+  const selectedItems = items ?? []
+  if (selectedCollections.length === 0 && selectedItems.length === 0) {
+    query.append(SQL` AND FALSE`)
+    return
+  }
+
+  // Every contract the loose items belong to, de-duplicated, purely so the index can be used.
+  const itemContracts = [...new Set(selectedItems.map(id => id.slice(0, id.lastIndexOf('-')).toLowerCase()))]
+
+  query.append(SQL` AND (`)
+  if (selectedCollections.length > 0) {
+    query.append(SQL`mv.sent_contract_address = ANY(${selectedCollections.map(address => address.toLowerCase())})`)
+  }
+  if (selectedItems.length > 0) {
+    if (selectedCollections.length > 0) query.append(SQL` OR `)
+    query
+      .append(SQL`(mv.sent_contract_address = ANY(${itemContracts})`)
+      .append(SQL` AND mv.sent_contract_address || '-' || mv.sent_item_id::text = ANY(${selectedItems.map(id => id.toLowerCase())}))`)
+  }
+  query.append(SQL`)`)
+}
+
 function appendUnifiedFilters(query: SQLStatement, filters: UnifiedCatalogFilters): void {
   query.append(SQL` AND `).append(APPROVED_COLLECTION_PREDICATE)
   if (filters.contractAddress) {
     query.append(SQL` AND mv.sent_contract_address = ${filters.contractAddress.toLowerCase()}`)
   }
-  // A SET of collections (the Shop's seasonal events). Fails CLOSED: an empty array means the caller asked
-  // for a set that resolved to nothing, and must yield an empty page — never the unfiltered catalogue. The
-  // predicate has to reach EVERY union branch for that to hold; see UnifiedCatalogFilters.contractAddresses.
-  if (filters.contractAddresses) {
-    query.append(
-      filters.contractAddresses.length > 0
-        ? SQL` AND mv.sent_contract_address = ANY(${filters.contractAddresses.map(address => address.toLowerCase())})`
-        : SQL` AND FALSE`
-    )
-  }
+  appendUnifiedSelection(query, filters)
   if (filters.itemId != null) {
     query.append(SQL` AND mv.sent_item_id = ${filters.itemId}`)
   }
