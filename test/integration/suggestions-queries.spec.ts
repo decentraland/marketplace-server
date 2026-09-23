@@ -1,5 +1,7 @@
 import SQL from 'sql-template-strings'
 import { PROFILE_SQL_LIMIT } from '../../src/logic/suggestions/constants'
+import { NEIGHBORS_TABLE } from '../../src/logic/suggestions/constants'
+import { CREATE_NEIGHBORS_TABLE } from '../../src/logic/suggestions/neighbors-table'
 import type { ProfileEntry } from '../../src/logic/suggestions/profile'
 import {
   buildCandidateContractsQuery,
@@ -68,6 +70,30 @@ test('suggestions queries', function ({ components }) {
   })
 
   describe('when scoring the candidates', () => {
+    /** Scores the candidates with one neighbour row, from `source`, linking the profile to the core's only item. */
+    async function scoreWithNeighbour(source: string): Promise<unknown[]> {
+      const client = await components.dappsDatabase.getPool().connect()
+      try {
+        await client.query(`${CREATE_NEIGHBORS_TABLE}`)
+        await client.query(
+          `INSERT INTO ${NEIGHBORS_TABLE} (item_id, source, neighbor_id, sim, support, rank) VALUES ($1, $2, $3, 0.5, 5, 0)`,
+          ['0xaaa-1', source, '0xc-1']
+        )
+        const { text, values } = buildCandidateScoresQuery({
+          profile: [{ itemId: '0xaaa-1', weight: 1, source: 'owned' }],
+          core,
+          excludeItemIds: [],
+          topCreators: [],
+          limit: 36
+        })
+        const result = await client.query({ text, values })
+        return result.rows
+      } finally {
+        await client.query(`DELETE FROM ${NEIGHBORS_TABLE} WHERE item_id = '0xaaa-1' AND neighbor_id = '0xc-1'`)
+        client.release()
+      }
+    }
+
     const core = SQL`SELECT
         'native'::text AS source, 'trade'::text AS acquisition, 't'::text AS trade_id,
         'public_item_order'::text AS trade_type, '0xc'::text AS contract_address, '1'::text AS item_id,
@@ -92,6 +118,30 @@ test('suggestions queries', function ({ components }) {
             })
           )
         ).resolves.toBeUndefined()
+      })
+    })
+
+    describe('and the only neighbour pointing at a candidate comes from a source with no weight yet', () => {
+      let rows: unknown[]
+
+      beforeEach(async () => {
+        rows = await scoreWithNeighbour('worn')
+      })
+
+      it('should not reach that candidate, so the unweighted source changes nothing', () => {
+        expect(rows).toEqual([])
+      })
+    })
+
+    describe('and a weighted source points at the same candidate', () => {
+      let rows: { cf: number }[]
+
+      beforeEach(async () => {
+        rows = (await scoreWithNeighbour('cf')) as { cf: number }[]
+      })
+
+      it('should reach it through that source', () => {
+        expect(rows).toEqual([expect.objectContaining({ contract_address: '0xc', item_id: '1', cf: 0.5 })])
       })
     })
 

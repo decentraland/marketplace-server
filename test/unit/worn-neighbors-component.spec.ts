@@ -63,8 +63,12 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       yielded = await collect()
     })
 
-    it('should run the co-wear query with the anchors and the candidates', () => {
-      expect([cursor?.text, cursor?.values]).toEqual([SELECT_CO_WORN, ['{"0xaaa-0","0xaaa-1","0xbbb-0"}', '{"0xaaa-0","0xaaa-1"}']])
+    it('should run the co-wear query', () => {
+      expect(cursor?.text).toBe(SELECT_CO_WORN)
+    })
+
+    it('should bind the anchors and the candidates', () => {
+      expect(cursor?.values).toEqual(['{"0xaaa-0","0xaaa-1","0xbbb-0"}', '{"0xaaa-0","0xaaa-1"}'])
     })
 
     it('should read inside a read-only transaction', () => {
@@ -78,12 +82,16 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       ])
     })
 
-    it('should close the cursor and the transaction, and hand the client back intact', () => {
-      expect([cursor?.close.mock.calls.length, client.query.mock.calls.at(-1)?.[0], client.release.mock.calls]).toEqual([
-        1,
-        'ROLLBACK',
-        [[false]]
-      ])
+    it('should close the cursor', () => {
+      expect(cursor?.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should end the read-only transaction', () => {
+      expect(client.query).toHaveBeenLastCalledWith('ROLLBACK')
+    })
+
+    it('should hand the client back to the pool intact', () => {
+      expect(client.release).toHaveBeenCalledWith(false)
     })
   })
 
@@ -119,8 +127,12 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       expect(error).toBeInstanceOf(WornNeighborsUnavailableError)
     })
 
-    it('should still close the cursor and hand the client back, since the transaction still rolls back', () => {
-      expect([cursor?.close.mock.calls.length, client.release.mock.calls]).toEqual([1, [[false]]])
+    it('should still close the cursor', () => {
+      expect(cursor?.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should hand the client back intact, since the transaction still rolls back', () => {
+      expect(client.release).toHaveBeenCalledWith(false)
     })
   })
 
@@ -136,8 +148,12 @@ describe('when streaming co-wear neighbours out of the registry', () => {
       expect(cursor?.read).toHaveBeenCalledTimes(1)
     })
 
-    it('should still close the cursor and hand the client back', () => {
-      expect([cursor?.close.mock.calls.length, client.release.mock.calls]).toEqual([1, [[false]]])
+    it('should still close the cursor', () => {
+      expect(cursor?.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should still hand the client back intact', () => {
+      expect(client.release).toHaveBeenCalledWith(false)
     })
   })
 

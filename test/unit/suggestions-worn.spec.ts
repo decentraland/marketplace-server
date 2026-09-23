@@ -63,8 +63,12 @@ describe('when building the neighbour sets with the co-wear source', () => {
       expect(inserted.filter(row => row.source === 'worn')).toEqual([WORN_ROW])
     })
 
-    it('should record them in the metadata', () => {
-      expect([meta.wornRows, meta.itemsCovered]).toEqual([1, 1])
+    it('should count them in the metadata', () => {
+      expect(meta.wornRows).toBe(1)
+    })
+
+    it('should count the items they cover', () => {
+      expect(meta.itemsCovered).toBe(1)
     })
 
     it('should not discard anything', () => {
@@ -95,8 +99,12 @@ describe('when building the neighbour sets with the co-wear source', () => {
       expect(discard).toHaveBeenCalledTimes(1)
     })
 
-    it('should record no co-wear rows and no covered items from them', () => {
-      expect([meta.wornRows, meta.itemsCovered]).toEqual([0, 0])
+    it('should record no co-wear rows', () => {
+      expect(meta.wornRows).toBe(0)
+    })
+
+    it('should count no covered items from the discarded rows', () => {
+      expect(meta.itemsCovered).toBe(0)
     })
 
     it('should report the registry error rather than throw it', () => {
