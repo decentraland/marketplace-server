@@ -8,7 +8,9 @@ const BATCH_SIZE = 20_000
 
 type CoWornRow = { item_id: string; neighbor_id: string; sim: number; support: string; rank: string }
 
-export function createWornNeighborsComponent(components: Pick<AppComponents, 'assetBundleRegistryDatabase'>): IWornNeighborsComponent {
+export function createWornNeighborsComponent(
+  components: Required<Pick<AppComponents, 'assetBundleRegistryDatabase'>>
+): IWornNeighborsComponent {
   const { assetBundleRegistryDatabase } = components
 
   function toNeighbor(row: CoWornRow): WornNeighbor {

@@ -58,8 +58,9 @@ export type BaseComponents = {
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
-  assetBundleRegistryDatabase: IPgComponent
-  wornNeighbors: IWornNeighborsComponent
+  /** Only when the neighbours rebuild job is enabled: nothing else reads the asset-bundle-registry. */
+  assetBundleRegistryDatabase?: IPgComponent
+  wornNeighbors?: IWornNeighborsComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
   creatorProfiles: ICreatorProfilesComponent
@@ -112,6 +113,9 @@ export type AppComponents = BaseComponents & {
 export type TestComponents = BaseComponents & {
   // A fetch component that only hits the test server
   localFetch: IFetchComponent
+  // Always created for the tests, whatever the job switch, so the co-wear source can be exercised
+  assetBundleRegistryDatabase: IPgComponent
+  wornNeighbors: IWornNeighborsComponent
 }
 
 // this type simplifies the typings of http handlers

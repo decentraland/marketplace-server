@@ -1,6 +1,5 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
-import { Client as PgClient } from 'pg'
 import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'
@@ -12,8 +11,7 @@ import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
 import { withRetries } from './logic/retry'
-import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './logic/suggestions/constants'
-import { runNeighborsJob } from './logic/suggestions/run-neighbors-job'
+import { createNeighborsJobComponents } from './logic/suggestions/neighbors-job-components'
 import { metricDeclarations } from './metrics'
 import { createAccountsComponent } from './ports/accounts/component'
 import { createActivityComponent } from './ports/activity'
@@ -30,14 +28,14 @@ import {
   CREATOR_PROFILES_REFRESH_STARTUP_DELAY_MS,
   CREATOR_PROFILES_RUN_RETRY_DELAYS_MS
 } from './ports/creator-profiles/types'
-import { createPgComponent, resolveConnectionString } from './ports/db/component'
+import { createPgComponent } from './ports/db/component'
 import { createEventPublisher } from './ports/events/publisher'
 import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
-import { createDisabledJobComponent, createJobComponent } from './ports/job'
+import { createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
@@ -58,7 +56,6 @@ import { createUserAssetsComponent } from './ports/user-assets/component'
 import { createVolumeComponent } from './ports/volume/component'
 import { createWertApi } from './ports/wert/api/component'
 import { createWertSigner } from './ports/wert/signer/component'
-import { createWornNeighborsComponent } from './ports/worn-neighbors'
 import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
@@ -134,17 +131,6 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
-  // The asset-bundle-registry database, read for what avatars wear. Owned by that service, so this one
-  // never migrates it.
-  const assetBundleRegistryDatabase = await createPgComponent(
-    { config, logs, metrics },
-    {
-      dbPrefix: 'ASSET_BUNDLE_REGISTRY',
-      migrations: false
-    }
-  )
-  const wornNeighbors = createWornNeighborsComponent({ assetBundleRegistryDatabase })
-
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
 
@@ -208,55 +194,11 @@ export async function initComponents(): Promise<AppComponents> {
       refreshCouponStateLogger.error(`Failed to refresh coupon state: ${error instanceof Error ? error.message : String(error)}`)
   })
 
-  // Rebuilds the item-neighbours table behind /v3/catalog/suggested. It runs in this process but on its
-  // own short-lived connections: the pooled clients cap every statement at 40 seconds and the acquisition
-  // scan alone runs past 80. All three replicas fire on the same schedule; the advisory lock inside the
-  // job is what stops them duplicating the work.
-  //
-  // OFF unless SUGGESTIONS_NEIGHBORS_JOB_ENABLED says otherwise, and off is the default on purpose. The
-  // Shop's feature flag hides the RAIL; it has no bearing on this, which would otherwise start rebuilding
-  // in production the moment the service deploys, whether or not anyone can see a suggestion. Separating
-  // the two is what lets the endpoint ship and be smoke-tested before the heaviest part of the feature is
-  // allowed to run. When off, nothing is scheduled and no connection is opened.
-  const rebuildNeighborsLogger = logs.getLogger('rebuild-item-neighbors-job')
-  const neighborsJobEnabled = (await config.getString('SUGGESTIONS_NEIGHBORS_JOB_ENABLED')) === 'true'
-  const rebuildItemNeighborsJob = !neighborsJobEnabled
-    ? createDisabledJobComponent(rebuildNeighborsLogger, 'item neighbours rebuild')
-    : await (async () => {
-        const neighborsConnectionStrings = {
-          read: await resolveConnectionString(config, 'DAPPS_READ'),
-          write: await resolveConnectionString(config, 'DAPPS')
-        }
-        return createJobComponent(
-          { logs },
-          () =>
-            runNeighborsJob({
-              connect: async role => {
-                const client = new PgClient({
-                  connectionString: neighborsConnectionStrings[role],
-                  application_name: `marketplace-server-neighbors-${role}`
-                })
-                await client.connect()
-                return client
-              },
-              wornNeighbors,
-              logger: rebuildNeighborsLogger,
-              metrics: {
-                observe: ({ durationMs, rows, peakRssBytes }) => {
-                  metrics.observe('suggestions_neighbors_build_duration_seconds', {}, durationMs / 1000)
-                  metrics.observe('suggestions_neighbors_rows', {}, rows)
-                  metrics.observe('suggestions_neighbors_peak_rss_bytes', {}, peakRssBytes)
-                }
-              }
-            }),
-          NEIGHBORS_REBUILD_INTERVAL_MS,
-          {
-            startupDelay: NEIGHBORS_REBUILD_STARTUP_DELAY_MS,
-            onError: error =>
-              rebuildNeighborsLogger.error(`Failed to rebuild item neighbours: ${error instanceof Error ? error.message : String(error)}`)
-          }
-        )
-      })()
+  const { rebuildItemNeighborsJob, assetBundleRegistryDatabase, wornNeighbors } = await createNeighborsJobComponents({
+    config,
+    logs,
+    metrics
+  })
 
   // Keeps the creator profiles table — what the search knows creators as — in step with Catalyst and the
   // squid. Cheap: sixteen profile lookups and one upsert every few hours, on a pooled connection.
