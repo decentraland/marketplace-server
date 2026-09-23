@@ -7,6 +7,11 @@ import { AppComponents } from '../../types'
 import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './constants'
 import { runNeighborsJob } from './run-neighbors-job'
 
+/**
+ * Spread as is into the component map. The lifecycle rejects a key whose value is missing, so the
+ * registry database and the co-wear source are left out entirely, never set to `undefined`, when the
+ * job is disabled.
+ */
 export type NeighborsJobComponents = {
   rebuildItemNeighborsJob: IJobComponent
   /** Only when the job is enabled: nothing else reads the asset-bundle-registry database. */

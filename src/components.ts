@@ -194,7 +194,9 @@ export async function initComponents(): Promise<AppComponents> {
       refreshCouponStateLogger.error(`Failed to refresh coupon state: ${error instanceof Error ? error.message : String(error)}`)
   })
 
-  const { rebuildItemNeighborsJob, assetBundleRegistryDatabase, wornNeighbors } = await createNeighborsJobComponents({
+  // Spread into the component map as returned: the lifecycle rejects keys whose value is missing, and the
+  // registry database and co-wear source are only there when the job is enabled.
+  const neighborsJobComponents = await createNeighborsJobComponents({
     config,
     logs,
     metrics
@@ -271,8 +273,6 @@ export async function initComponents(): Promise<AppComponents> {
     favoritesDatabase,
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
-    assetBundleRegistryDatabase,
-    wornNeighbors,
     catalog,
     shopCatalog,
     creatorProfiles,
@@ -286,7 +286,7 @@ export async function initComponents(): Promise<AppComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
-    rebuildItemNeighborsJob,
+    ...neighborsJobComponents,
     refreshCreatorProfilesJob,
     schemaValidator,
     snapshot,

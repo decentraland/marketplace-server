@@ -1,4 +1,5 @@
 import { createConfigComponent } from '@well-known-components/env-config-provider'
+import { Lifecycle } from '@well-known-components/interfaces'
 import type { IPgComponent } from '@dcl/pg-component'
 import { createNeighborsJobComponents, type NeighborsJobComponents } from '../../src/logic/suggestions/neighbors-job-components'
 import * as dbComponent from '../../src/ports/db/component'
@@ -38,6 +39,28 @@ describe('when wiring the item neighbours rebuild', () => {
 
     it('should leave the registry database and the co-wear source out of the component tree', () => {
       expect(wired).toEqual({ rebuildItemNeighborsJob: expect.anything() })
+    })
+
+    describe('and the component tree is started and stopped with them', () => {
+      let lifecycle: Promise<void>
+
+      beforeEach(() => {
+        // The lifecycle refuses a key whose value is missing, which is how an `undefined` entry here
+        // would fail the service at startup.
+        lifecycle = (async () => {
+          const program = await Lifecycle.run({
+            initComponents: async () => ({ ...wired }),
+            main: async ({ startComponents }) => {
+              await startComponents()
+            }
+          })
+          await program.stop()
+        })()
+      })
+
+      it('should start and stop without complaint', async () => {
+        await expect(lifecycle).resolves.toBeUndefined()
+      })
     })
   })
 
