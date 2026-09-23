@@ -100,6 +100,14 @@ async function initComponents(): Promise<TestComponents> {
     }
   )
 
+  const assetBundleRegistryDatabase = await createPgComponent(
+    { config, logs, metrics },
+    {
+      dbPrefix: 'ASSET_BUNDLE_REGISTRY',
+      migrations: false
+    }
+  )
+
   const SEGMENT_WRITE_KEY = await config.requireString('SEGMENT_WRITE_KEY')
   const WERT_PRIVATE_KEY = await config.requireString('WERT_PRIVATE_KEY')
   const WERT_PUBLICATION_FEES_PRIVATE_KEY = await config.requireString('WERT_PUBLICATION_FEES_PRIVATE_KEY')
@@ -215,6 +223,7 @@ async function initComponents(): Promise<TestComponents> {
     metrics,
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase,
+    assetBundleRegistryDatabase,
     favoritesDatabase,
     catalog,
     shopCatalog,

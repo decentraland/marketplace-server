@@ -6,13 +6,13 @@ import { assignPriceBands, buildTagVectors, contentNeighborsByAnchor, type Conte
 import { YIELD_EVERY_STEPS, yieldToEventLoop } from './cooperative'
 import {
   SELECT_ACQUISITIONS,
+  SELECT_CO_WORN,
   SELECT_ITEMS,
   SELECT_TAGS,
   type NeighborInsertRow,
   type NeighborsMeta,
   type QueryableClient
 } from './neighbors-table'
-import { produceWornRows } from './worn'
 
 const RARITY_TIERS = Rarity.getRarities().map(rarity => rarity.toLowerCase())
 
@@ -215,6 +215,48 @@ export async function loadContentItems(client: QueryableClient, catalogue: Loade
 const EMPTY_TAGS = new Uint32Array(0)
 const EMPTY_WEIGHTS = new Float32Array(0)
 
+/** Rows read per cursor fetch, and so per insert. */
+const WORN_BATCH_SIZE = 20_000
+
+/**
+ * Co-wear neighbours, streamed into `insert` as they arrive so the full set never exists in memory at
+ * once. The maths runs in the registry database (see SELECT_CO_WORN); this only relays its rows.
+ * Returns how many were written.
+ */
+export async function streamWornNeighbors(
+  client: CursorClient,
+  catalogue: LoadedCatalogue,
+  insert: (rows: NeighborInsertRow[]) => Promise<void>
+): Promise<number> {
+  const catalogueIds = catalogue.items.map(item => item.id)
+  const candidateIds = catalogue.items.filter(item => item.isCandidate).map(item => item.id)
+  const cursor = client.openCursor(new Cursor(SELECT_CO_WORN, [catalogueIds, candidateIds], { rowMode: 'array' }))
+
+  let written = 0
+  try {
+    for (;;) {
+      const rows: unknown[][] = await new Promise((resolve, reject) => {
+        cursor.read(WORN_BATCH_SIZE, (error, batch) => (error ? reject(error) : resolve(batch)))
+      })
+      if (rows.length === 0) break
+      await insert(
+        rows.map(row => ({
+          itemId: String(row[0]),
+          source: 'worn',
+          neighborId: String(row[1]),
+          sim: Number(row[2]),
+          support: Number(row[3]),
+          rank: Number(row[4])
+        }))
+      )
+      written += rows.length
+    }
+  } finally {
+    await new Promise<void>(resolve => cursor.close(() => resolve()))
+  }
+  return written
+}
+
 /** Neighbour rows -> insertable rows, numbering each anchor's list so the endpoint can cut by rank. */
 /**
  * Async only so it can yield: the conversion is a single pass whose rank counter depends on the rows
@@ -373,7 +415,7 @@ export async function produceNeighborRows(
     // Only the registry's failures are the source's own; a failed write means the whole swap is lost.
     let insertError: unknown
     try {
-      wornCount = await produceWornRows(options.worn.client, catalogue, async rows => {
+      wornCount = await streamWornNeighbors(options.worn.client, catalogue, async rows => {
         for (const row of rows) wornCovered.add(row.itemId)
         try {
           await insert(rows)

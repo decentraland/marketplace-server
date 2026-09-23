@@ -11,7 +11,7 @@ jobs:
         run: docker compose up -d --renew-anon-volumes
       - name: Wait for databases to be ready
         run: |
-          for port in 5432 5433 5434; do
+          for port in 5432 5433 5434 5435; do
             echo "Waiting for postgres on port $port..."
             for i in $(seq 1 30); do
               if pg_isready -h localhost -p $port -q 2>/dev/null; then

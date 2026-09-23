@@ -57,6 +57,7 @@ export type BaseComponents = {
   favoritesDatabase: IPgComponent
   dappsDatabase: IPgComponent
   dappsWriteDatabase: IPgComponent
+  assetBundleRegistryDatabase: IPgComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
   creatorProfiles: ICreatorProfilesComponent

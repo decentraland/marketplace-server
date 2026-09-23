@@ -14,6 +14,8 @@ DAPPS_PG_COMPONENT_PSQL_SCHEMA=marketplace
 DAPPS_READ_PG_COMPONENT_PSQL_CONNECTION_STRING=postgres://dapps_admin:dapps_password@localhost:5433/dapps_test
 DAPPS_READ_PG_COMPONENT_PSQL_SCHEMA=marketplace
 
+ASSET_BUNDLE_REGISTRY_PG_COMPONENT_PSQL_CONNECTION_STRING=postgres://asset_bundle_registry_admin:asset_bundle_registry_password@localhost:5435/asset_bundle_registry
+
 # The builder database as the TESTS reach it from the host (docker-compose publishes it on 5434). Distinct from
 # BUILDER_SERVER_DB_HOST, which is how the dapps Postgres reaches the same database over the compose network for
 # its foreign tables — a name the test process cannot resolve.

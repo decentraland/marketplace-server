@@ -1,12 +1,12 @@
 import type Cursor from 'pg-cursor'
 import {
   produceNeighborRows,
+  streamWornNeighbors,
   type BuildTimings,
   type CursorClient,
   type LoadedCatalogue
 } from '../../src/logic/suggestions/build-neighbors'
-import type { NeighborInsertRow, NeighborsMeta } from '../../src/logic/suggestions/neighbors-table'
-import { SELECT_CO_WORN, produceWornRows } from '../../src/logic/suggestions/worn'
+import { SELECT_CO_WORN, type NeighborInsertRow, type NeighborsMeta } from '../../src/logic/suggestions/neighbors-table'
 
 type OpenedCursor = { text: string; values: unknown[] }
 
@@ -79,7 +79,7 @@ describe('when streaming the co-wear neighbours out of the registry', () => {
       client = makeCursorClient({
         batches: [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]], [['0xaaa-1', '0xaaa-0', 0.8, 6, 0]]]
       })
-      written = await produceWornRows(client, CATALOGUE, insert)
+      written = await streamWornNeighbors(client, CATALOGUE, insert)
     })
 
     it('should send every catalogued item as an anchor and only the candidates as neighbours', () => {
@@ -107,7 +107,7 @@ describe('when streaming the co-wear neighbours out of the registry', () => {
 
     beforeEach(async () => {
       client = makeCursorClient({ batches: [[['0xaaa-0', '0xaaa-1', 0.8, 6, 0]]], failOnRead: 2 })
-      error = await produceWornRows(client, CATALOGUE, insert).catch(caught => caught)
+      error = await streamWornNeighbors(client, CATALOGUE, insert).catch(caught => caught)
     })
 
     it('should reject with the read error', () => {

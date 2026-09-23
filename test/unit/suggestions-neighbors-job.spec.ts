@@ -8,6 +8,8 @@ describe('when running the item neighbours job', () => {
   let logger: NeighborsJobLogger
   let clients: Record<'read' | 'write', FakeClient>
   let connect: jest.Mock
+  let profilesClient: { query: jest.Mock; release: jest.Mock }
+  let profilesPool: { connect: jest.Mock }
   let lockAcquired: boolean
   let buildSpy: jest.SpyInstance
 
@@ -31,6 +33,8 @@ describe('when running the item neighbours job', () => {
     logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
     clients = { read: makeClient(), write: makeClient() }
     connect = jest.fn(async (role: 'read' | 'write') => clients[role])
+    profilesClient = { query: jest.fn(async () => ({ rows: [] })), release: jest.fn() }
+    profilesPool = { connect: jest.fn(async () => profilesClient) }
     buildSpy = jest.spyOn(buildNeighbors, 'produceNeighborRows').mockImplementation(async (_client, insert, _options, onTimings) => {
       await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
       onTimings?.({ catalogueMs: 1, acquisitionsMs: 2, coOwnershipMs: 3, contentMs: 4, wornMs: 0, walletsSeen: 10, rowsRead: 20 })
@@ -54,7 +58,7 @@ describe('when running the item neighbours job', () => {
     let outcome: string
 
     beforeEach(async () => {
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report that it rebuilt the table', () => {
@@ -91,7 +95,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       lockAcquired = false
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report that it skipped the rebuild', () => {
@@ -116,7 +120,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       buildSpy.mockRejectedValue(new Error('acquisition scan exceeded 240000 ms'))
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report the failure rather than throwing into the job runner', () => {
@@ -139,7 +143,7 @@ describe('when running the item neighbours job', () => {
   describe('and the database rejects the very first statement', () => {
     beforeEach(async () => {
       clients.write.query.mockRejectedValue(Object.assign(new Error('password authentication failed'), { code: '28P01' }))
-      await runNeighborsJob({ connect, logger })
+      await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should log only the error code and message, never anything carrying a connection string', () => {
@@ -155,7 +159,7 @@ describe('when running the item neighbours job', () => {
         clients.read.emit('error', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }))
         return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report the failure rather than letting the error reach the process as an unhandled event', () => {
@@ -198,7 +202,7 @@ describe('when running the item neighbours job', () => {
         await insert([{ itemId: '0xa-1', source: 'cf', neighborId: '0xb-2', sim: 0.5, support: 7, rank: 0 }])
         return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
-      outcome = await runNeighborsJob({ connect, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report the failure', () => {
@@ -219,7 +223,7 @@ describe('when running the item neighbours job', () => {
 
     beforeEach(async () => {
       observe = jest.fn()
-      await runNeighborsJob({ connect, logger, metrics: { observe } })
+      await runNeighborsJob({ connect, profilesPool, logger, metrics: { observe } })
     })
 
     it('should report the row count of the build', () => {
@@ -231,42 +235,36 @@ describe('when running the item neighbours job', () => {
     })
   })
 
-  describe('and a registry connection is configured', () => {
-    let profilesClient: FakeClient
-    let connectProfiles: jest.Mock
+  describe('and the registry pool hands out a connection', () => {
     let outcome: string
 
     beforeEach(async () => {
-      profilesClient = makeClient()
-      connectProfiles = jest.fn(async () => profilesClient)
-      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should report that it rebuilt the table', () => {
       expect(outcome).toBe('rebuilt')
     })
 
-    it('should open the registry connection read-only', () => {
-      expect(profilesClient.query).toHaveBeenCalledWith('SET default_transaction_read_only = on')
+    it('should read the registry inside a read-only transaction', () => {
+      expect(profilesClient.query).toHaveBeenCalledWith('BEGIN TRANSACTION READ ONLY')
     })
 
     it('should hand the build a co-wear source', () => {
       expect(buildSpy.mock.calls[0][2]?.worn).toEqual(expect.objectContaining({ client: expect.anything(), discard: expect.any(Function) }))
     })
 
-    it('should close the registry connection with the others', () => {
-      expect(profilesClient.end).toHaveBeenCalledTimes(1)
+    it('should close the transaction and hand the connection back to the pool intact', () => {
+      expect([profilesClient.query.mock.calls.at(-1)?.[0], profilesClient.release.mock.calls]).toEqual(['ROLLBACK', [[false]]])
     })
   })
 
-  describe('and the registry connection cannot be opened', () => {
+  describe('and the registry pool cannot hand out a connection', () => {
     let outcome: string
 
     beforeEach(async () => {
-      const connectProfiles = jest.fn(async () => {
-        throw Object.assign(new Error('connection refused'), { code: 'ECONNREFUSED' })
-      })
-      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+      profilesPool.connect.mockRejectedValue(Object.assign(new Error('connection refused'), { code: 'ECONNREFUSED' }))
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should still rebuild the table from the other sources', () => {
@@ -279,6 +277,20 @@ describe('when running the item neighbours job', () => {
 
     it('should warn that it went without it', () => {
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('could not open the co-wear connection'))
+    })
+  })
+
+  describe('and the registry connection cannot close its transaction', () => {
+    beforeEach(async () => {
+      profilesClient.query.mockImplementation(async (sql: string) => {
+        if (sql === 'ROLLBACK') throw new Error('Connection terminated unexpectedly')
+        return { rows: [] }
+      })
+      await runNeighborsJob({ connect, profilesPool, logger })
+    })
+
+    it('should destroy the connection rather than hand it to the next borrower', () => {
+      expect(profilesClient.release).toHaveBeenCalledWith(true)
     })
   })
 
@@ -300,8 +312,7 @@ describe('when running the item neighbours job', () => {
         })
         return { cfRows: 1, contentRows: 0, wornRows: 0, itemsCovered: 1, durationMs: 5 }
       })
-      const connectProfiles: jest.Mock = jest.fn(async () => makeClient())
-      outcome = await runNeighborsJob({ connect, connectProfiles, logger })
+      outcome = await runNeighborsJob({ connect, profilesPool, logger })
     })
 
     it('should still report the rebuild', () => {
