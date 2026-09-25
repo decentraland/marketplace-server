@@ -29,3 +29,26 @@ describe('when a job is disabled by configuration', () => {
     })
   })
 })
+
+describe('when reading the neighbours job switch', () => {
+  /** The exact expression `initComponents` uses, pinned here so the default cannot drift unnoticed. */
+  const enabled = (value: string | undefined) => value !== 'false'
+
+  describe('and nothing is configured', () => {
+    it('should run the job, because a rebuild that never runs is the broken state, not the safe one', () => {
+      expect(enabled(undefined)).toBe(true)
+    })
+  })
+
+  describe('and it is switched off explicitly', () => {
+    it('should stop the job, which is the whole point of having the switch', () => {
+      expect(enabled('false')).toBe(false)
+    })
+  })
+
+  describe('and it carries anything else', () => {
+    it('should run the job rather than let a typo silently disable the feature', () => {
+      expect([enabled('true'), enabled('yes'), enabled(''), enabled('FALSE')]).toEqual([true, true, true, true])
+    })
+  })
+})
