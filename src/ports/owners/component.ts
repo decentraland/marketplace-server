@@ -1,4 +1,5 @@
 import { PoolClient } from 'pg'
+import SQL from 'sql-template-strings'
 import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { TopOwnersTimeoutError } from './errors'
@@ -23,6 +24,10 @@ export const TOP_OWNERS_CACHE_TTL_SECONDS = 600
 // fails fast instead of holding a pooled connection for the pool's full statement timeout.
 export const TOP_OWNERS_STATEMENT_TIMEOUT_MS = 5000
 const QUERY_CANCELED = '57014'
+
+function hasPgCode(e: unknown): e is { code: string } {
+  return typeof e === 'object' && e !== null && typeof (e as { code?: unknown }).code === 'string'
+}
 
 /**
  * Creates the owners component: who holds a given item, and who holds a creator's items overall.
@@ -88,7 +93,8 @@ export function createOwnersComponent(options: {
     let broken: Error | undefined
     try {
       await client.query('BEGIN')
-      await client.query(`SET LOCAL statement_timeout = ${TOP_OWNERS_STATEMENT_TIMEOUT_MS}`)
+      // set_config(..., true) is SET LOCAL with a bound parameter, so the value never reaches the SQL text.
+      await client.query(SQL`SELECT set_config('statement_timeout', ${String(TOP_OWNERS_STATEMENT_TIMEOUT_MS)}, true)`)
       const result = await client.query<TopOwnerDBRow>(getTopOwnersQuery(creator))
       await client.query('COMMIT')
       return result.rows.map(fromTopOwnerDBRow)
@@ -98,7 +104,7 @@ export function createOwnersComponent(options: {
       } catch (rollbackError) {
         broken = rollbackError instanceof Error ? rollbackError : new Error('ROLLBACK failed')
       }
-      if ((e as { code?: string }).code === QUERY_CANCELED) throw new TopOwnersTimeoutError(creator)
+      if (hasPgCode(e) && e.code === QUERY_CANCELED) throw new TopOwnersTimeoutError(creator)
       throw e
     } finally {
       client.release(broken)

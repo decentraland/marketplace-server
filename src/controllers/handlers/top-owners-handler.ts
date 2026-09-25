@@ -29,7 +29,7 @@ export async function getTopOwnersHandler(context: Pick<HandlerContextWithPath<'
   if (rawDirection !== undefined && rawDirection !== 'asc' && rawDirection !== 'desc') {
     return { status: StatusCode.BAD_REQUEST, body: { ok: false, message: 'orderDirection must be asc or desc' } }
   }
-  const orderDirection = rawDirection === 'asc' || rawDirection === 'desc' ? rawDirection : undefined
+  const orderDirection = rawDirection
 
   try {
     const { data, total } = await context.components.owners.fetchTopOwners({

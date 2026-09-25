@@ -46,7 +46,9 @@ describe('when fetching the top owners of a creator', () => {
         data: [{ address: '0xa', nfts: 2, items: 1, collections: 1, lastAcquiredAt: 1_700_000_000_000, spentWei: '5' }],
         total: 1
       })
-      expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('SET LOCAL statement_timeout'))
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.objectContaining({ text: expect.stringContaining("set_config('statement_timeout'") as unknown })
+      )
       expect(cacheSet).toHaveBeenCalledWith(`top-owners:${CREATOR}`, result.data, TOP_OWNERS_CACHE_TTL_SECONDS)
       expect(releaseMock).toHaveBeenCalled()
     })

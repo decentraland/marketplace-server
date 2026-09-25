@@ -30,8 +30,12 @@ function valueOf(owner: TopOwner, sortBy: TopOwnersSortBy): number | bigint {
       return owner.lastAcquiredAt
     case TopOwnersSortBy.SPENT:
       return BigInt(owner.spentWei)
-    default:
+    case TopOwnersSortBy.NFTS:
       return owner.nfts
+    default: {
+      const unhandled: never = sortBy
+      return unhandled
+    }
   }
 }
 
