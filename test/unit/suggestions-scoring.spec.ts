@@ -251,6 +251,123 @@ describe('when re-ranking for diversity', () => {
     })
   })
 
+  describe('and one profile item explains most of the ranking', () => {
+    let ranked: BlendedCandidate[]
+
+    beforeEach(() => {
+      // The shape seen against real production data: co-ownership is strongest around one owned item, so
+      // the top of the ranking is several unrelated things that all trace back to it.
+      ranked = rerankForDiversity(
+        [
+          blended({
+            itemId: 'a-1',
+            collection: '0xa',
+            creator: '0xc1',
+            subCategory: 'wearable:hat',
+            score: 1.0,
+            topTriggerItemId: '0xowned-1'
+          }),
+          blended({
+            itemId: 'b-1',
+            collection: '0xb',
+            creator: '0xc2',
+            subCategory: 'wearable:feet',
+            score: 0.9,
+            topTriggerItemId: '0xowned-1'
+          }),
+          blended({
+            itemId: 'c-1',
+            collection: '0xc',
+            creator: '0xc3',
+            subCategory: 'wearable:hat',
+            score: 0.8,
+            topTriggerItemId: '0xowned-1'
+          }),
+          blended({
+            itemId: 'd-1',
+            collection: '0xd',
+            creator: '0xc4',
+            subCategory: 'wearable:feet',
+            score: 0.7,
+            topTriggerItemId: '0xowned-2'
+          })
+        ],
+        3,
+        1
+      )
+    })
+
+    it('should let it explain at most two rows, so the rail does not read as one recommendation repeated', () => {
+      expect(ranked.filter(row => row.topTriggerItemId === '0xowned-1')).toHaveLength(2)
+    })
+
+    it('should fill the freed slot from a different owned item rather than shorten the rail', () => {
+      expect(ranked.map(row => row.itemId)).toEqual(['a-1', 'b-1', 'd-1'])
+    })
+  })
+
+  describe('and there is nothing else to fill the rail with', () => {
+    let ranked: BlendedCandidate[]
+
+    beforeEach(() => {
+      ranked = rerankForDiversity(
+        [
+          blended({
+            itemId: 'a-1',
+            collection: '0xa',
+            creator: '0xc1',
+            subCategory: 'wearable:hat',
+            score: 1.0,
+            topTriggerItemId: '0xowned-1'
+          }),
+          blended({
+            itemId: 'b-1',
+            collection: '0xb',
+            creator: '0xc2',
+            subCategory: 'wearable:feet',
+            score: 0.9,
+            topTriggerItemId: '0xowned-1'
+          }),
+          blended({
+            itemId: 'c-1',
+            collection: '0xc',
+            creator: '0xc3',
+            subCategory: 'wearable:hat',
+            score: 0.8,
+            topTriggerItemId: '0xowned-1'
+          })
+        ],
+        3,
+        1
+      )
+    })
+
+    it('should still return a full rail, because a short rail is worse than a repetitive one', () => {
+      expect(ranked).toHaveLength(3)
+    })
+  })
+
+  describe('and candidates carry no trigger at all', () => {
+    let ranked: BlendedCandidate[]
+
+    beforeEach(() => {
+      // Creator-affinity rows have no neighbour behind them; the cap must not collapse them into one.
+      ranked = rerankForDiversity(
+        [
+          blended({ itemId: 'a-1', collection: '0xa', creator: '0xc1', subCategory: 'wearable:hat', score: 1.0 }),
+          blended({ itemId: 'b-1', collection: '0xb', creator: '0xc2', subCategory: 'wearable:feet', score: 0.9 }),
+          blended({ itemId: 'c-1', collection: '0xc', creator: '0xc3', subCategory: 'wearable:hat', score: 0.8 })
+        ],
+        3,
+        1
+      )
+    })
+
+    it('should treat an absent trigger as no constraint rather than as a shared one', () => {
+      expect(ranked).toHaveLength(3)
+    })
+  })
+
   describe('and consecutive rows share a sub-category', () => {
     let ranked: BlendedCandidate[]
 

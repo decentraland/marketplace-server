@@ -1,5 +1,5 @@
 import { Rarity } from '@dcl/schemas'
-import { DEFAULT_WEARABLE_RATIO, MAX_PER_COLLECTION, MAX_PER_CREATOR, SCORE_WEIGHTS } from './constants'
+import { DEFAULT_WEARABLE_RATIO, MAX_PER_COLLECTION, MAX_PER_CREATOR, MAX_PER_TRIGGER, SCORE_WEIGHTS } from './constants'
 import type { ProfileAggregates } from './profile'
 
 const RARITY_TIERS = Rarity.getRarities().map(rarity => rarity.toLowerCase())
@@ -175,6 +175,11 @@ const MIN_ITEMS_TO_COLLECT_CREATOR = 2
  * wearable/emote mix follows what the wallet actually collects so an emote collector does not get a
  * wall of hats.
  *
+ * One of the caps is on the REASON rather than on the item: a rail whose rows are all "because you have
+ * X" reads as repetitive even when the twelve items are unrelated to each other, because what the reader
+ * compares is the explanations, not the contract addresses. Diversity over the catalogue does not imply
+ * diversity over the sentence, and this rail shows the sentence.
+ *
  * The constraints are relaxed in tiers rather than all at once, because they are not equally
  * important. Never showing the same sub-category twice in a row is a presentation nicety; showing
  * eight items from one collection defeats the point of the rail. So a rail short on supply first
@@ -190,6 +195,7 @@ export function rerankForDiversity<T extends BlendedCandidate>(candidates: T[], 
   const taken = new Set<string>()
   const perCollection = new Map<string, number>()
   const perCreator = new Map<string, number>()
+  const perTrigger = new Map<string, number>()
   let wearables = 0
   let emotes = 0
   let lastSubCategory: string | undefined
@@ -199,6 +205,7 @@ export function rerankForDiversity<T extends BlendedCandidate>(candidates: T[], 
     taken.add(candidate.itemId)
     perCollection.set(candidate.collection, (perCollection.get(candidate.collection) ?? 0) + 1)
     perCreator.set(candidate.creator, (perCreator.get(candidate.creator) ?? 0) + 1)
+    if (candidate.topTriggerItemId) perTrigger.set(candidate.topTriggerItemId, (perTrigger.get(candidate.topTriggerItemId) ?? 0) + 1)
     if (candidate.isWearable) wearables += 1
     else emotes += 1
     lastSubCategory = candidate.subCategory || undefined
@@ -215,12 +222,14 @@ export function rerankForDiversity<T extends BlendedCandidate>(candidates: T[], 
 
       const collectionCount = perCollection.get(candidate.collection) ?? 0
       const creatorCount = perCreator.get(candidate.creator) ?? 0
+      const triggerCount = candidate.topTriggerItemId ? perTrigger.get(candidate.topTriggerItemId) ?? 0 : 0
       const wouldExceedMix = candidate.isWearable
         ? wearables >= wearableTarget && emotes < limit - wearableTarget
         : emotes >= limit - wearableTarget && wearables < wearableTarget
 
       if (candidate.collection && collectionCount >= MAX_PER_COLLECTION) continue
       if (candidate.creator && creatorCount >= MAX_PER_CREATOR) continue
+      if (candidate.topTriggerItemId && triggerCount >= MAX_PER_TRIGGER) continue
       if (wouldExceedMix) continue
       if (tier === 'all' && lastSubCategory !== undefined && candidate.subCategory !== '' && candidate.subCategory === lastSubCategory) {
         continue
