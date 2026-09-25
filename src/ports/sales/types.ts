@@ -2,6 +2,7 @@ import { Network, NFTCategory, Sale, SaleFilters, SaleType } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
 export interface ISalesComponent {
+  getSummary(filters: SalesSummaryFilters): Promise<SalesSummary>
   getSales(filters: SaleFilters): Promise<GetSalesResponse>
 }
 
@@ -24,4 +25,20 @@ export type DBSale = {
   tx_hash: string
   network: SquidNetwork | Network.MATIC | Network.ETHEREUM
   category: NFTCategory
+}
+
+export type SalesSummaryFilters = {
+  seller: string
+  from?: number
+  to?: number
+}
+
+export type SalesSummary = {
+  total: number
+  mints: number
+  resales: number
+  earnedWei: string
+  byCollection: { contractAddress: string; sold: number; earnedWei: string }[]
+  byItem: { contractAddress: string; itemId: string; soldLifetime: number }[]
+  royalties: { resales: number; volumeWei: string }
 }

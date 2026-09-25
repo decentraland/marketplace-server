@@ -26,7 +26,8 @@ const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
   cheapest: 'cheapest',
   most_expensive: 'most_expensive',
   name: 'name',
-  discount: 'discount'
+  discount: 'discount',
+  relevance: 'relevance'
 }
 
 // `discounted=true` keeps only listings a creator coupon discounts right now, `discounted=false` only the rest.
@@ -106,6 +107,39 @@ function contractAddressList(params: Params): string[] | undefined {
   return named.filter(isAddress).map(address => address.toLowerCase())
 }
 
+/** `<contract>-<itemId>`, the composite id the catalogue already reports as an item's `id`. */
+const COMPOSITE_ITEM_ID = /^(0x[0-9a-fA-F]{40})-(\d+)$/
+
+/**
+ * The INDIVIDUAL items the unified feed is restricted to, or `undefined` when the caller named none.
+ *
+ * A separate key from `itemId` rather than a plural reading of it: the singular addresses one item inside
+ * one collection and INTERSECTS, which the product page depends on, so teaching it a comma form would
+ * change what an existing caller gets. This one carries composite ids and unions with the collection set.
+ *
+ * Takes the same two encodings as `contractAddress` above, and drops malformed entries rather than
+ * rejecting the request — the same policy, and for the same reason: a typo costs one item, not the page.
+ * `undefined` and `[]` mean different things downstream; see `UnifiedCatalogFilters.itemIds`.
+ */
+function itemIdList(params: Params): string[] | undefined {
+  const named = params
+    .getList('items')
+    .flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(Boolean)
+
+  if (named.length === 0) return undefined
+  return named.flatMap(value => {
+    const match = COMPOSITE_ITEM_ID.exec(value)
+    if (!match) return []
+    // Leading zeros are stripped, not preserved: the column is numeric on two of the three union branches
+    // and reaches the comparison as `7`, so `…-007` would pass validation here and then silently match
+    // nothing. That is the one malformed shape that LOOKS correct to whoever typed it.
+    const itemId = match[2].replace(/^0+(?=\d)/, '')
+    return [`${match[1].toLowerCase()}-${itemId}`]
+  })
+}
+
 // GET /v3/catalog/shop -- curated feed of credit-buyable (USD-pegged) listings for the Shop.
 export function createShopCatalogHandler(
   components: Pick<AppComponents, 'shopCatalog'>
@@ -127,6 +161,11 @@ export function createShopCatalogHandler(
     const maxPriceCredits = params.getNumber('maxPriceCredits')
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
+    // Omitted = both, the pre-existing response. An unrecognized value DROPS the filter rather than being
+    // rejected — `getValue` falls back to its default — so a typo returns both kinds, which for a caller
+    // asking for `primary` is exactly the resales it meant to hide. The permissive direction, so it is
+    // worth knowing: the Shop sends a fixed literal, but a hand-written request gets no error to read.
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const discounted = discountedParam(params)
 
     return asJSON(async () => {
@@ -144,6 +183,7 @@ export function createShopCatalogHandler(
         maxPriceCredits,
         search,
         sortBy,
+        listingType,
         discounted
       })
       return { data, total }
@@ -208,6 +248,8 @@ export function createShopUnifiedHandler(
     // only the first, and the two filters would then AND together into "the first address only".
     const contractAddresses = contractAddressList(params)
     const contractAddress = contractAddresses ? undefined : params.getString('contractAddress')
+    // Individual items, unioned with the collections above rather than intersected — see itemIdList.
+    const itemIds = itemIdList(params)
     const itemId = params.getString('itemId')
     const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
@@ -219,15 +261,25 @@ export function createShopUnifiedHandler(
     const search = params.getString('search')
     const sortBy = params.getValue<ShopSortBy>('sortBy', SORT_VALUES)
     const source = params.getValue<UnifiedListingSource>('source', SOURCE_VALUES)
-    // Omitted = both, which is the pre-existing behaviour. `getValue` rejects anything outside the set,
-    // so a typo is a 400 rather than a silently unfiltered feed — the failure mode that matters here,
-    // since a caller asking for `primary` and getting everything would show resales it meant to hide.
+    // Omitted = both, which is the pre-existing behaviour. An unrecognized value DROPS the filter rather
+    // than being rejected (`getValue` falls back to its default), so a typo returns everything — and for a
+    // caller asking for `primary` that is the resales it meant to hide, with no error to notice.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
     const groupBy = params.getValue<UnifiedGroupBy>('groupBy', GROUP_BY_VALUES, 'listing')
     // Same contract as every other feed: included unless `includeSocialEmotes=false` is sent, so the default
     // is byte-for-byte the pre-existing response. Read as a string rather than through the presence-based
     // `getBoolean`, which would read `includeSocialEmotes=false` as `true`.
     const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
+    /**
+     * Opt-in to CLASSIC (MANA-priced) RESALES from the legacy branch, which is primary-only without it.
+     *
+     * Read as a STRING compared against the literal 'true', not through the presence-based `getBoolean`:
+     * that helper answers "was the key sent at all", so `includeLegacySecondary=false` would ENABLE the
+     * thing it plainly asks to disable. For an opt-in whose default is the pre-existing feed, only an
+     * explicit 'true' may change the answer -- an absent key, a 'false' or a typo all keep today's
+     * response. (`includeSocialEmotes` compares against 'false' for the mirror-image reason.)
+     */
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
     const discounted = discountedParam(params)
 
     const filters = {
@@ -236,6 +288,7 @@ export function createShopUnifiedHandler(
       category,
       contractAddress,
       contractAddresses,
+      itemIds,
       itemId,
       creator,
       rarities,
@@ -249,6 +302,7 @@ export function createShopUnifiedHandler(
       source,
       listingType,
       includeSocialEmotes,
+      includeLegacySecondary,
       discounted
     }
 
@@ -276,6 +330,12 @@ export function createShopRelatedHandler(
     const contractAddress = params.getAddress('contractAddress')
     const itemId = params.getString('itemId')
     const first = params.getNumber('first', RELATED_DEFAULT_LIMIT) ?? RELATED_DEFAULT_LIMIT
+    // Same opt-in as the grid this rail is meant to mirror — see the unified handler for why it is read as
+    // a literal 'true'. A rail that included a row the grid excludes would contradict the page around it.
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
+    // And the same narrowing, for the same reason: the opt-in above covers the LEGACY branch only, while
+    // native resales reach this rail unconditionally, so a caller that may not sell one has to say so.
+    const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
 
     return asJSON(async () => {
       // `itemId` is validated here, not just checked for presence, because the query casts it:
@@ -289,7 +349,7 @@ export function createShopRelatedHandler(
       // straight out of `/item/:contractAddress/:itemId`, so a malformed deep link would 500 the rail.
       // Blockchain ids are non-negative integers, so a digit check is the whole constraint.
       if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
-      return shopCatalog.getRelatedItems({ contractAddress, itemId, first }, manaUsdRate.getRate())
+      return shopCatalog.getRelatedItems({ contractAddress, itemId, first, includeLegacySecondary, listingType }, manaUsdRate.getRate())
     })
   }
 }
@@ -375,11 +435,24 @@ export function createShopTrendingHandler(
     // /v1/items, /v2/catalog and /v1/trendings. Read as a string rather than through `getBoolean`, which is
     // presence-based and would read `includeSocialEmotes=false` as `true`.
     const includeSocialEmotes = params.getString('includeSocialEmotes') !== 'false'
+    // Same opt-in as the grid — see the unified handler. Without it a Marketplace-listed copy can never
+    // rank into the row, however much it trades, because the row is drawn from the same universe.
+    const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
 
     return asJSON(
       async () =>
         shopCatalog.getTrendingItems(
-          { first, days, category, rarities, wearableCategories, listingType, source, includeSocialEmotes },
+          {
+            first,
+            days,
+            category,
+            rarities,
+            wearableCategories,
+            listingType,
+            source,
+            includeSocialEmotes,
+            includeLegacySecondary
+          },
           manaUsdRate.getRate()
         ),
       { 'Cache-Control': 'public,max-age=3600,s-maxage=3600' }

@@ -133,7 +133,7 @@ export type QueryableClient = {
 /**
  * Swaps a freshly computed neighbour set in.
  *
- * Mirrors rebuildItemSearchWords: one transaction, the live table untouched until the drop-and-rename
+ * Mirrors rebuildSearchTables: one transaction, the live table untouched until the drop-and-rename
  * at the end, so a failure (including the pool's statement timeout) rolls back and leaves the previous
  * neighbours serving. Readers block only for the rename.
  *
@@ -164,7 +164,7 @@ export type NeighborProducer = (insert: (rows: NeighborInsertRow[]) => Promise<v
 /**
  * Swaps a freshly computed neighbour set in.
  *
- * Mirrors rebuildItemSearchWords: one transaction, the live table untouched until the drop-and-rename
+ * Mirrors rebuildSearchTables: one transaction, the live table untouched until the drop-and-rename
  * at the end, so a failure (including a statement timeout) rolls back and leaves the previous
  * neighbours serving. Readers block only for the rename.
  *

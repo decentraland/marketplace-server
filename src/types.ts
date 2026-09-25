@@ -11,6 +11,7 @@ import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { ICouponsComponent } from './ports/coupons/types'
+import { ICreatorProfilesComponent } from './ports/creator-profiles/types'
 import { IPgComponent } from './ports/db/types'
 import { IEventPublisherComponent } from './ports/events/types'
 import { IAccessComponent } from './ports/favorites/access'
@@ -27,6 +28,7 @@ import { IPricesComponent } from './ports/prices'
 import { IItemsDayDataComponent } from './ports/rankings/types'
 import { IRentalsComponent } from './ports/rentals/types'
 import { ISalesComponent } from './ports/sales'
+import { ISearchSuggestComponent } from './ports/search-suggest/types'
 import { IShopCatalogComponent } from './ports/shop-catalog/types'
 import { IShopNotifierComponent } from './ports/shop-notifier/types'
 import { IStatsComponent } from './ports/stats/types'
@@ -57,6 +59,8 @@ export type BaseComponents = {
   dappsWriteDatabase: IPgComponent
   catalog: ICatalogComponent
   shopCatalog: IShopCatalogComponent
+  creatorProfiles: ICreatorProfilesComponent
+  searchSuggest: ISearchSuggestComponent
   suggestions: ISuggestionsComponent
   shopNotifier: IShopNotifierComponent
   manaUsdRate: IManaUsdRateComponent
@@ -67,6 +71,7 @@ export type BaseComponents = {
   flushTradesMaterializedViewJob: IJobComponent
   refreshCouponStateJob: IJobComponent
   rebuildItemNeighborsJob: IJobComponent
+  refreshCreatorProfilesJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent

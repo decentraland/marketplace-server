@@ -111,7 +111,16 @@ export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatem
             `
                     .append(isOnSale ? SQL`LEFT JOIN valid_orders orders ON orders.nft_id = nft.id` : SQL``)
                     .append(geENSWhereStatement(nftFilters))
-                    .append(sortBy ? getNFTsSortBy(sortBy) : SQL``)
+                    // A search with no sort asked for is ordered by how well the name matches. It used to come
+                    // back in whatever order the scan produced, so a client showing the first page could miss
+                    // the exact name behind fifty partial ones — "metatiger" did not show METATIGER.
+                    .append(
+                      sortBy
+                        ? getNFTsSortBy(sortBy)
+                        : nftFilters.search
+                        ? SQL` ORDER BY similarity(nft.search_text, ${nftFilters.search}) DESC, nft.name ASC, nft.id ASC `
+                        : SQL``
+                    )
                     .append(uncapped ? SQL`` : getNFTLimitAndOffsetStatement(nftFilters))
                 )
             )

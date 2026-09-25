@@ -1,6 +1,7 @@
 import { URL } from 'url'
 import {
   createCatalogItemsHandler,
+  createShopCatalogHandler,
   createShopRelatedHandler,
   createShopTrendingHandler,
   createShopUnifiedHandler
@@ -10,6 +11,39 @@ import { TRENDING_DEFAULT_DAYS, TRENDING_DEFAULT_LIMIT } from '../../src/ports/s
 // The unified handler is a factory: createShopUnifiedHandler(components) -> (context) => response. These
 // tests drive the `groupBy` dispatch (per-listing default vs item-unified) and confirm the parsed filters
 // reach the component unchanged.
+/**
+ * `/v3/catalog/shop` is NATIVE-only, which is not the same as primary-only: the native branch carries
+ * secondary rows and those are durable signed orders. A client that may not sell a resale has to be able
+ * to say so, which is what this parameter is for (the Shop's cart upsell reads this feed).
+ */
+describe('when handling the shop catalog endpoint and a listing type is provided', () => {
+  let getShopListings: jest.Mock
+  let handler: ReturnType<typeof createShopCatalogHandler>
+
+  const noop = jest.fn()
+  const invoke = (url: string) => handler({ url: new URL(url), request: {} } as any, noop)
+
+  beforeEach(() => {
+    getShopListings = jest.fn().mockResolvedValue({ data: [], total: 0 })
+    handler = createShopCatalogHandler({ shopCatalog: { getShopListings } } as any)
+  })
+
+  it('should forward it so a client that may not sell resales can exclude them server-side', async () => {
+    await invoke('http://localhost/v3/catalog/shop?listingType=primary')
+    expect(getShopListings.mock.calls[0][0].listingType).toBe('primary')
+  })
+
+  it('should leave it unset when absent, so the pre-existing response is unchanged', async () => {
+    await invoke('http://localhost/v3/catalog/shop')
+    expect(getShopListings.mock.calls[0][0].listingType).toBeUndefined()
+  })
+
+  it('should drop an unsupported value rather than reach the query with it', async () => {
+    await invoke('http://localhost/v3/catalog/shop?listingType=bogus')
+    expect(getShopListings.mock.calls[0][0].listingType).toBeUndefined()
+  })
+})
+
 describe('when handling the unified shop catalog endpoint', () => {
   let getUnifiedListings: jest.Mock
   let getShopItems: jest.Mock
@@ -203,6 +237,91 @@ describe('when handling the unified shop catalog endpoint', () => {
     })
   })
 
+  /**
+   * A SET of INDIVIDUAL items, for a campaign that curates a list rather than whole collections.
+   *
+   * Carried on its OWN key rather than as a plural reading of `itemId`: the singular addresses one item
+   * inside one collection and intersects, which the product page depends on, so teaching it a comma form
+   * would change what an existing caller gets back.
+   */
+  describe('and individual items are provided', () => {
+    const A = '0xabc0000000000000000000000000000000000001'
+    const B = '0xdef0000000000000000000000000000000000002'
+    const filtersOf = () => getUnifiedListings.mock.calls[0][0]
+
+    it('should parse the comma-separated form', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3,${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should parse the repeated and bracketed forms', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3&items[]=${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should lowercase the contract half, since the column is stored lowercased', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A.toUpperCase().replace('0X', '0x')}-3`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`])
+    })
+
+    it('should drop malformed entries and keep the rest, so a typo costs one item', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3,not-an-item,${B},${B}-x,${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should yield an empty set when every entry is malformed, not no filter at all', async () => {
+      // The distinction the collection set defends, on this key: a list that resolved to nothing must
+      // produce an empty page rather than the whole catalogue.
+      await invoke('http://localhost/v3/catalog/unified?items=nonsense')
+
+      expect(filtersOf().itemIds).toEqual([])
+    })
+
+    it('should strip leading zeros, which would otherwise validate and then match nothing', async () => {
+      // The column is numeric on two of the three union branches and reaches the comparison as `7`, so
+      // `-007` is the malformed shape that looks right to whoever typed it and fails without a trace.
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-007,${B}-0`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-7`, `${B}-0`])
+    })
+
+    it('should read a blank value as absent', async () => {
+      await invoke('http://localhost/v3/catalog/unified?items=')
+
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should leave the filter off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should travel alongside the collections rather than replace them', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}&items=${B}-7`)
+
+      expect(filtersOf().contractAddresses).toEqual([A])
+      expect(filtersOf().itemIds).toEqual([`${B}-7`])
+    })
+
+    it('should leave the singular itemId untouched', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}&itemId=3`)
+
+      expect(filtersOf().itemId).toBe('3')
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should reach the item-unified feed too', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?groupBy=item&items=${A}-3`)
+
+      expect(getShopItems.mock.calls[0][0].itemIds).toEqual([`${A}-3`])
+    })
+  })
+
   describe('and includeSocialEmotes is provided', () => {
     it('should exclude social emotes only on an explicit false', async () => {
       await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=false')
@@ -219,6 +338,41 @@ describe('when handling the unified shop catalog endpoint', () => {
       // `includeSocialEmotes=false` into `true` -- the exact inversion that matters.
       await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=true')
       expect(getShopItems.mock.calls[0][0].includeSocialEmotes).toBe(true)
+    })
+  })
+
+  /**
+   * `includeLegacySecondary` opens the legacy branch to CLASSIC (MANA-priced) resales, which is where a
+   * copy listed through the Marketplace lives. It is the mirror image of `includeSocialEmotes`: opt-IN, so
+   * only the literal 'true' may change the answer, and every other spelling -- absent, 'false', a typo --
+   * must leave the caller with exactly the feed it gets today.
+   */
+  describe('and includeLegacySecondary is provided', () => {
+    it('should stay off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should turn on only for the literal true', async () => {
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=true')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(true)
+    })
+
+    it('should stay off on an explicit false', async () => {
+      // Read through the presence-based `Params.getBoolean` this would come back TRUE, opening the branch
+      // for a caller that asked in plain words to keep it shut.
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=false')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should stay off for any other value', async () => {
+      await invoke('http://localhost/v3/catalog/unified?includeLegacySecondary=1')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should reach the grouped item feed the browse grid reads', async () => {
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeLegacySecondary=true')
+      expect(getShopItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
     })
   })
 })
@@ -276,6 +430,21 @@ describe('when handling the trending items endpoint', () => {
     await invoke('http://localhost/v3/catalog/trending?listingType=primary')
 
     expect(getTrendingItems.mock.calls[0][0].listingType).toBe('primary')
+  })
+
+  it('should forward includeLegacySecondary only for the literal true', async () => {
+    // The row is drawn from the same universe as the grid, so without this a Marketplace-listed copy can
+    // never rank into it however much it trades.
+    await invoke('http://localhost/v3/catalog/trending?includeLegacySecondary=true')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending?includeLegacySecondary=false')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
   })
 
   it('should reject an unknown listingType rather than silently returning resales too', async () => {
@@ -339,6 +508,38 @@ describe('when handling the related items endpoint', () => {
       await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&first=20`)
 
       expect(getRelatedItems.mock.calls[0][0].first).toBe(20)
+    })
+
+    it('should forward listingType so a rail that may not sell resales can exclude them', async () => {
+      // The opt-in alone is not enough here: it governs the legacy branch, while NATIVE resales reach this
+      // rail unconditionally and their orders are durable. Without this the rail kept showing them.
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&listingType=primary`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBe('primary')
+    })
+
+    it('should leave listingType unset when absent, so the pre-existing rail is unchanged', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBeUndefined()
+    })
+
+    it('should drop an unsupported listingType rather than reach the query with it', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&listingType=bogus`)
+      expect(getRelatedItems.mock.calls[0][0].listingType).toBeUndefined()
+    })
+
+    it('should forward includeLegacySecondary only for the literal true', async () => {
+      // The rail is meant to be indistinguishable from the grid; including a row the grid excludes would
+      // contradict the page around it.
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&includeLegacySecondary=true`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
+
+      getRelatedItems.mockClear()
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&includeLegacySecondary=false`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+
+      getRelatedItems.mockClear()
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
     })
   })
 

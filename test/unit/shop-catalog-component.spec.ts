@@ -211,8 +211,8 @@ describe('Shop Catalog Component', () => {
 
       const sql = query.mock.calls[0][0]
       expect(sql.text).toContain('marketplace.item_search_words')
-      expect(sql.text).toContain('search_words.word % lower(')
-      expect(sql.text).toContain('lower(search_tags.tag) = lower(')
+      expect(sql.text).toContain('t.term <% w.word')
+      expect(sql.text).toContain('lower(tags.tag) = lower(')
       // The old form matched the item NAME by substring, which is what missed multi-word terms. The only
       // ILIKE left is the fallback for rows that are not collection items, and it is guarded by IS NULL.
       expect(sql.text).not.toMatch(/COALESCE\(nft\.name, w_p\.name, e_p\.name\) ILIKE/)
@@ -224,7 +224,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ search: 'hat' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.item_id = COALESCE(item_p.id, item_s.id)::text')
+      expect(sql.text).toContain('LEFT JOIN search_matches AS search_match ON search_match.item_id = COALESCE(item_p.id, item_s.id)::text')
     })
 
     it('should select the seller and issued id from the sent asset JSON (no extra join)', async () => {
@@ -267,8 +267,42 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ search: 'Cool' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.text).toContain('t.term <% w.word')
       expect(sql.values).toContain('Cool')
+    })
+
+    it('should open with the search CTEs, keep the best-matching rows of the filtered set and count above that filter', async () => {
+      await shopCatalog.getShopListings({ search: 'Cool', category: 'emote' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text.trimStart().startsWith('WITH search_terms AS (')).toBe(true)
+      expect(sql.text).toContain('MAX(c.search_matched) OVER () AS search_required')
+      expect(sql.text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
+      expect(sql.text.indexOf('COUNT(*) OVER () AS total')).toBeLessThan(sql.text.indexOf('search_required'))
+      expect(sql.text).not.toContain('COUNT(*) OVER() AS total')
+    })
+
+    it('should default a search to relevance and read every sort key off the level-filtered relation, ending in the trade id', async () => {
+      await shopCatalog.getShopListings({ search: 'Cool' })
+      await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'cheapest' })
+      await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'discount' })
+
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
+      )
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY COALESCE(f.sale_price, f.price)::numeric ASC, f.trade_id')
+      expect(query.mock.calls[2][0].text).toContain(
+        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.created_at DESC, f.trade_id'
+      )
+    })
+
+    it('should leave a search-less statement in its plain shape, with relevance falling back to newest', async () => {
+      await shopCatalog.getShopListings({ sortBy: 'relevance' })
+
+      const sql = query.mock.calls[0][0]
+      expect(sql.text).not.toContain('search_matches')
+      expect(sql.text).toContain('COUNT(*) OVER() AS total')
+      expect(sql.text).toContain('ORDER BY mv.created_at DESC')
     })
 
     it('should lowercase rarities and bind them as an array', async () => {
@@ -432,8 +466,19 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getLegacyListings({ search: '50%_off' })
 
       const sql = query.mock.calls[0][0]
-      expect(sql.text).toContain('search_words.word % lower(')
+      expect(sql.text).toContain('t.term <% w.word')
       expect(sql.values).toContain('50%_off')
+    })
+
+    it('should rank a search by relevance over the level-filtered rows, and price a sort off the output columns', async () => {
+      await shopCatalog.getLegacyListings({ search: 'hat' })
+      await shopCatalog.getLegacyListings({ search: 'hat', sortBy: 'cheapest' })
+
+      expect(query.mock.calls[0][0].text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
+      )
+      expect(query.mock.calls[1][0].text).toContain('ORDER BY f.mana_wei::numeric ASC, f.trade_id')
     })
 
     it('should lowercase rarities and bind them as an array param', async () => {
@@ -476,6 +521,41 @@ describe('Shop Catalog Component', () => {
         network: 'MATIC',
         createdAt: 1700000000000
       })
+    })
+  })
+
+  /**
+   * `/v3/catalog/shop` is NATIVE-only, and that is NOT the same as primary-only: the native branch carries
+   * secondary rows, and those are durable signed orders that no flag cancels. A client that may not sell a
+   * resale therefore has to be able to ask, which is what this filter is for (the cart upsell reads it).
+   */
+  describe('and filtering the shop feed by listing type', () => {
+    const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+    const PRIMARY = "AND mv.type = 'public_item_order'"
+    const SECONDARY = "AND mv.type <> 'public_item_order'"
+
+    async function textFor(filters: Record<string, unknown>): Promise<string> {
+      query.mockClear()
+      query.mockResolvedValue({ rows: [] })
+      await shopCatalog.getShopListings(filters)
+      return query.mock.calls[0][0].text as string
+    }
+
+    it('should add a mint-only constraint when asked for primary', async () => {
+      const baseline = occurrences(await textFor({}), PRIMARY)
+
+      expect(occurrences(await textFor({ listingType: 'primary' }), PRIMARY)).toBe(baseline + 1)
+    })
+
+    it('should add a resale-only constraint when asked for secondary', async () => {
+      expect(await textFor({ listingType: 'secondary' })).toContain(SECONDARY)
+    })
+
+    it('should not constrain the type when omitted, so every existing caller is unchanged', async () => {
+      const text = await textFor({})
+
+      expect(text).not.toContain(SECONDARY)
+      expect(occurrences(text, PRIMARY)).toBe(occurrences(await textFor({}), PRIMARY))
     })
   })
 
@@ -617,6 +697,90 @@ describe('Shop Catalog Component', () => {
     })
 
     /**
+     * OPENING THE LEGACY BRANCH TO RESALES.
+     *
+     * Resale LISTING lives in the classic Marketplace, so a copy somebody put up for sale is a
+     * `public_nft_order` priced in MANA -- and that is precisely the combination the legacy branch pinned
+     * out with its own `mv.type = 'public_item_order'`. Until this opt-in existed, the only resales this
+     * feed could return were native (USD-pegged) ones, which is an empty set for a Shop that takes no
+     * resale listings of its own.
+     *
+     * Counted, not matched, for the same reason the listingType block above counts: the predicate also
+     * appears in the query's own joins, so `toContain` would pass with the branch still shut.
+     */
+    describe('and opting in to classic (MANA-priced) resales', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const PRIMARY = "AND mv.type = 'public_item_order'"
+
+      async function textFor(filters: Record<string, unknown>): Promise<string> {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0].text as string
+      }
+
+      it('should pin the legacy branch to mints by default', async () => {
+        // The pre-existing feed, which every current caller is built on.
+        const baseline = await textFor({})
+        const opened = await textFor({ includeLegacySecondary: true })
+
+        // Exactly one constraint disappears: the legacy TRADE branch's. The native branch never had one,
+        // and the two store branches are primary by construction rather than by predicate.
+        expect(occurrences(baseline, PRIMARY)).toBe(occurrences(opened, PRIMARY) + 1)
+      })
+
+      it('should leave the request otherwise byte-for-byte unchanged', async () => {
+        const baseline = await textFor({})
+        const opened = await textFor({ includeLegacySecondary: true })
+
+        // The opt-in is a REMOVAL, not a rewrite: strip every copy of the predicate from both and the two
+        // queries must be identical. Nothing about the SELECT list, the joins, the price conversion or the
+        // ordering may move, or every existing response shifts along with the new rows.
+        // Whitespace-normalised because the predicate is appended as its own indented fragment, so removing
+        // it leaves the surrounding blanks arranged differently — which is not a difference in the query.
+        const shape = (text: string) => text.split(PRIMARY).join('').replace(/\s+/g, ' ').trim()
+        expect(shape(opened)).toBe(shape(baseline))
+      })
+
+      it('should treat an explicit false exactly like omitting it', async () => {
+        expect(await textFor({ includeLegacySecondary: false })).toBe(await textFor({}))
+      })
+
+      it('should still ask the legacy branch for the classic ERC20 asset type', async () => {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings({ includeLegacySecondary: true }, RATE)
+        const sql = query.mock.calls[0][0]
+
+        // Opening the branch must not change WHAT it is priced in — a resale listed on the Marketplace is
+        // MANA-denominated, so it still needs the rate multiply the legacy branch applies.
+        expect(sql.values).toContain(1)
+        expect(sql.text).toContain('mv.amount_received::text AS mana_wei')
+      })
+
+      it('should reach the grouped item feed the browse grid reads', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({}, RATE)
+        const baseline = occurrences(query.mock.calls[0][0].text as string, PRIMARY)
+
+        query.mockClear()
+        await shopCatalog.getShopItems({ includeLegacySecondary: true }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, PRIMARY)).toBe(baseline - 1)
+      })
+
+      it('should combine with listingType=secondary to mean "every resale, both sources"', async () => {
+        // Orthogonal filters: listingType narrows the RESULT, this decides whether one SOURCE may
+        // contribute resales. Asked together, the legacy branch keeps only its resale constraint.
+        const text = await textFor({ listingType: 'secondary', includeLegacySecondary: true })
+
+        expect(occurrences(text, "AND mv.type <> 'public_item_order'")).toBe(3)
+        // And without the opt-in the same request contradicts itself on that branch, yielding native-only
+        // resales — which is the pre-existing behaviour and must stay that way.
+        const shut = await textFor({ listingType: 'secondary' })
+        expect(occurrences(shut, PRIMARY)).toBe(occurrences(text, PRIMARY) + 1)
+      })
+    })
+
+    /**
      * A SET of collections, which is how the Shop's seasonal events select their items -- an event tags
      * whole collections in the builder and routinely names ~100 of them at once, where the pre-existing
      * `contractAddress` filter names exactly one.
@@ -722,6 +886,115 @@ describe('Shop Catalog Component', () => {
         await shopCatalog.getShopItems({ contractAddresses: [] }, RATE)
 
         expect(occurrences(query.mock.calls[0][0].text as string, EMPTY_SET)).toBe(UNION_BRANCHES)
+      })
+    })
+
+    /**
+     * A SET of INDIVIDUAL items, unioned with the collection set above.
+     *
+     * The case that makes this worth its own block is the MIXED one: a campaign names whole collections
+     * AND a handful of loose items from collections it does not want entirely, so the two predicates have
+     * to read as OR. Written as AND -- the shape every other filter here has -- the feed would return only
+     * the loose items whose collection was also listed, which for a curated list is usually nothing at all.
+     */
+    describe('and filtering by a set of individual items', () => {
+      const occurrences = (text: string, needle: string) => text.split(needle).length - 1
+      const ANY_SET = 'mv.sent_contract_address = ANY('
+      const COMPOSITE = "mv.sent_contract_address || '-' || mv.sent_item_id::text = ANY("
+      const EMPTY_SET = 'AND FALSE'
+      const A = '0xabc0000000000000000000000000000000000001'
+      const B = '0xdef0000000000000000000000000000000000002'
+      const UNION_BRANCHES = 3
+
+      async function sqlFor(filters: Record<string, unknown>) {
+        query.mockClear()
+        await shopCatalog.getUnifiedListings(filters, RATE)
+        return query.mock.calls[0][0]
+      }
+
+      it('should match the composite ids, in every union branch', async () => {
+        const sql = await sqlFor({ itemIds: [`${A}-3`, `${B}-7`] })
+
+        expect(occurrences(sql.text, COMPOSITE)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual([`${A}-3`, `${B}-7`])
+      })
+
+      it('should narrow by contract first, so the composite never scans on its own', async () => {
+        // The composite is a computed expression and cannot use the index on sent_contract_address. The
+        // contract test carries the selectivity; without it this filter reads every row of every branch.
+        const sql = await sqlFor({ itemIds: [`${A}-3`, `${A}-4`, `${B}-7`] })
+
+        expect(occurrences(sql.text, ANY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.values).toContainEqual([A, B])
+      })
+
+      it('should UNION with the collections rather than intersect them', async () => {
+        const sql = await sqlFor({ contractAddresses: [A], itemIds: [`${B}-7`] })
+
+        expect(sql.text).toContain(' OR ')
+        expect(sql.values).toContainEqual([A])
+        expect(sql.values).toContainEqual([`${B}-7`])
+      })
+
+      it('should bracket the union so the OR cannot escape into the surrounding ANDs', async () => {
+        /**
+         * Pinned as a SHAPE, not as a behaviour, because this is the one mistake here that fails silently
+         * and catastrophically. `AND a OR b` parses as `(AND a) OR b` in SQL: the OR would then escape the
+         * selection and disjoin with every other filter in the branch, serving the whole catalogue to a
+         * caller who asked for a curated list — and looking like a working campaign while it did.
+         *
+         * The bound placeholders are part of the assertion: values reaching the text instead of the
+         * parameter list would be an injection, and the composite ids come from a CMS field an editor
+         * types by hand.
+         */
+        const sql = await sqlFor({ contractAddresses: [A], itemIds: [`${B}-7`] })
+
+        expect(sql.text).toMatch(
+          /AND \(mv\.sent_contract_address = ANY\(\$\d+\) OR \(mv\.sent_contract_address = ANY\(\$\d+\) AND mv\.sent_contract_address \|\| '-' \|\| mv\.sent_item_id::text = ANY\(\$\d+\)\)\)/
+        )
+      })
+
+      it('should still show the loose items when the collection lookup resolved to nothing', async () => {
+        // The half of the fail-closed rule that is easy to get wrong: `[]` collections alone means an empty
+        // page, but alongside named items it means only that the collection half found nothing.
+        const sql = await sqlFor({ contractAddresses: [], itemIds: [`${A}-3`] })
+
+        expect(sql.text).not.toContain(EMPTY_SET)
+        expect(occurrences(sql.text, COMPOSITE)).toBe(UNION_BRANCHES)
+      })
+
+      it('should return nothing when BOTH sets are empty', async () => {
+        const sql = await sqlFor({ contractAddresses: [], itemIds: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(UNION_BRANCHES)
+        expect(sql.text).not.toContain(COMPOSITE)
+      })
+
+      it('should return nothing for an empty item set on its own', async () => {
+        const sql = await sqlFor({ itemIds: [] })
+
+        expect(occurrences(sql.text, EMPTY_SET)).toBe(UNION_BRANCHES)
+      })
+
+      it('should lowercase the contract half, since the column is stored lowercased', async () => {
+        const sql = await sqlFor({ itemIds: [`${A.toUpperCase().replace('0X', '0x')}-3`] })
+
+        expect(sql.values).toContainEqual([`${A}-3`])
+        expect(sql.values).toContainEqual([A])
+      })
+
+      it('should apply no item filter when the set is absent', async () => {
+        const sql = await sqlFor({})
+
+        expect(sql.text).not.toContain(COMPOSITE)
+        expect(sql.text).not.toContain(EMPTY_SET)
+      })
+
+      it('should reach every branch of the item-unified query through the same shared block', async () => {
+        query.mockClear()
+        await shopCatalog.getShopItems({ itemIds: [`${A}-3`] }, RATE)
+
+        expect(occurrences(query.mock.calls[0][0].text as string, COMPOSITE)).toBe(UNION_BRANCHES)
       })
     })
 
@@ -1119,8 +1392,11 @@ describe('Shop Catalog Component', () => {
       // One occurrence per branch — the point of reusing the join chain is that this holds by construction.
       expect(text.match(/ILIKE 'emote%'/g)).toHaveLength(3)
       expect(values.filter((v: unknown) => v === '0xabc')).toHaveLength(3)
-      // two bindings per branch now: one for the word match, one for the tag match
-      expect(values.filter((v: unknown) => v === 'hat')).toHaveLength(6)
+      // the term is bound four times, all in the CTEs (terms, phrase, sorted words, tag); the branches bind nothing
+      expect(values.filter((v: unknown) => v === 'hat')).toHaveLength(4)
+      // the search columns and the join reach every branch, so the level filter can read them off the union
+      expect(text.match(/AS search_matched/g)).toHaveLength(3)
+      expect(text.match(/LEFT JOIN search_matches AS search_match/g)).toHaveLength(3)
     })
 
     it('should not apply trade-only predicates to the store branch', async () => {

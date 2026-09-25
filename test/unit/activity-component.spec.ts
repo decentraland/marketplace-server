@@ -107,7 +107,7 @@ describe('createActivityComponent', () => {
   let logWarn: jest.Mock
 
   beforeEach(() => {
-    sales = { getSales: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
+    sales = { getSummary: jest.fn(), getSales: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
     bids = { getBids: jest.fn().mockResolvedValue({ data: [], count: 0 }) }
     orders = { getOrders: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
     trades = { getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }) }

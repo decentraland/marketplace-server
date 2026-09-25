@@ -113,7 +113,9 @@ export type ShopListing = {
   createdAt: number
 }
 
-export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name' | 'discount'
+// `relevance` is the default of a search and only meaningful with one: without a search every row ties, so
+// a feed given it falls back to `newest` (see resolveShopSortBy).
+export type ShopSortBy = 'newest' | 'cheapest' | 'most_expensive' | 'name' | 'discount' | 'relevance'
 
 export type ShopCatalogFilters = {
   first?: number
@@ -151,6 +153,14 @@ export type ShopCatalogFilters = {
    * status), so reusing that name would have turned the whole grid into the deals rail.
    */
   discounted?: boolean
+  /**
+   * Restrict to primary (mint) listings or to resales. Omitted = both, the pre-existing behaviour.
+   *
+   * This feed is NATIVE (USD-pegged) only, and its secondary rows are real, durable orders — a shop that
+   * stops offering resales does not cancel a single one. So "the feed is effectively primary" is a fact
+   * about today, not a property, and a client that may not sell a resale has to be able to say so.
+   */
+  listingType?: ShopListingType
 }
 
 // A seller's OLD classic (ERC20-MANA) listing that can be re-listed into the Shop as credit-buyable.
@@ -284,6 +294,25 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    */
   contractAddresses?: string[]
   /**
+   * Restrict the feed to INDIVIDUAL items, as `<contract>-<itemId>` composite ids — the same id shape the
+   * catalogue already reports as an item's `id`.
+   *
+   * UNIONED with `contractAddresses`, not intersected. A campaign selects whole collections AND a handful
+   * of loose items from collections it does not want entirely, so the two have to read as "in these
+   * collections OR one of these items". Intersecting them would mean "only these items, and only if their
+   * collection is also listed", which is never what a caller naming both wants.
+   *
+   * The empty-array distinction is the same as above, with one difference that matters: the selection is
+   * empty only when BOTH sets are empty. `contractAddresses: []` alongside a non-empty `itemIds` is a
+   * caller whose collection lookup found nothing and whose loose items still stand, and it must return
+   * those items rather than an empty page.
+   *
+   * The singular `itemId` is untouched and still INTERSECTS, because it exists to address one item inside
+   * one collection (the product page). Sending it together with this set narrows the union rather than
+   * widening it.
+   */
+  itemIds?: string[]
+  /**
    * Restrict the feed to primary (mint) or secondary (resale) listings. Omitted = both, which is the
    * pre-existing behaviour.
    *
@@ -301,6 +330,22 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    * That is exactly the hole a client-side filter cannot close on a paginated feed, hence the server flag.
    */
   includeSocialEmotes?: boolean
+  /**
+   * Whether the LEGACY (classic MANA-priced) branch may contribute SECONDARY listings -- resales.
+   *
+   * Omitted/false keeps that branch primary-only, which is this feed's pre-existing behaviour and what
+   * every current response is built on. Opt-in rather than on-by-default for the same reason
+   * `includeSocialEmotes` is opt-OUT: a client that has not asked must get byte-for-byte the feed it gets
+   * today, and here the stakes are a shop surfacing listings it is not prepared to sell.
+   *
+   * It exists because resale LISTING lives in the classic Marketplace, so a copy somebody put up for sale
+   * is a `public_nft_order` priced in MANA -- exactly the combination the legacy branch excluded. The
+   * native (USD-pegged) branch has always carried secondary rows and is unaffected.
+   *
+   * Orthogonal to `listingType`: that narrows the result to one kind, this decides whether one SOURCE may
+   * contribute resales at all. Asking for `listingType=secondary` without this yields native resales only.
+   */
+  includeLegacySecondary?: boolean
 }
 
 // The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the
@@ -319,6 +364,16 @@ export type RelatedItemsFilters = {
   contractAddress: string
   itemId: string
   first?: number
+  /** See UnifiedCatalogFilters. The rail is drawn from the same universe as the grid, so it takes the same opt-in. */
+  includeLegacySecondary?: boolean
+  /**
+   * Restrict the rail to primary (mint) listings or to resales. Omitted = both.
+   *
+   * Needed for the SAME reason as on the other feeds, and it is the one people forget here: the opt-in
+   * above governs only the legacy branch, while NATIVE resales reach this rail unconditionally and their
+   * orders are durable. Without this, a client that may not sell a resale is still shown them.
+   */
+  listingType?: ShopListingType
 }
 
 /**

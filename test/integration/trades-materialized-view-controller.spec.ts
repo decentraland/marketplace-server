@@ -103,6 +103,56 @@ test('trades materialized view controller', function ({ components }) {
         expect(result.rows).toHaveLength(1)
       })
 
+      /**
+       * The one test that can tell a working grant-preservation from a no-op.
+       *
+       * Recreating the view is a DROP followed by a CREATE, and the new object carries no grants, so every
+       * reader that is not the owner loses SELECT without anything failing: the view still refreshes and the
+       * triggers still fire, and only whatever reads it from outside goes quiet. That is how the warehouse
+       * tap lost this view and the sales mart went stale for weeks.
+       *
+       * It has to run against real Postgres. The unit specs assert on the SQL that gets emitted, so they
+       * pass just as happily when the capture reads a catalogue that does not list materialized views at all
+       * and therefore restores nothing.
+       */
+      describe('and a role could read the view before it was recreated', () => {
+        const PROBE_ROLE = 'mv_trades_grant_probe'
+
+        beforeEach(async () => {
+          const { dappsDatabase, localFetch } = components
+
+          await dappsDatabase.query(`DO $$ BEGIN
+            CREATE ROLE ${PROBE_ROLE} NOLOGIN;
+          EXCEPTION WHEN duplicate_object THEN NULL; END $$`)
+          await dappsDatabase.query(`GRANT SELECT ON marketplace.mv_trades TO ${PROBE_ROLE}`)
+
+          const response = await localFetch.fetch(RECREATE_PATH, {
+            method: 'POST',
+            headers: { 'x-api-token': API_TOKEN }
+          })
+          expect(response.status).toBe(200)
+        })
+
+        afterEach(async () => {
+          const { dappsDatabase } = components
+
+          await dappsDatabase.query(`DO $$ BEGIN
+            REVOKE ALL ON marketplace.mv_trades FROM ${PROBE_ROLE};
+            DROP ROLE ${PROBE_ROLE};
+          EXCEPTION WHEN undefined_object THEN NULL; END $$`)
+        })
+
+        it('should still be able to read it afterwards', async () => {
+          const { dappsDatabase } = components
+
+          const result = await dappsDatabase.query<{ can_read: boolean }>(
+            `SELECT has_table_privilege('${PROBE_ROLE}', 'marketplace.mv_trades', 'SELECT') AS can_read`
+          )
+
+          expect(result.rows[0].can_read).toBe(true)
+        })
+      })
+
       it('should create the unique index the concurrent refresh depends on', async () => {
         const { dappsDatabase } = components
 
