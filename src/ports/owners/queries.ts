@@ -81,7 +81,8 @@ export const getTopOwnersQuery = (creator: string) => {
   ), owners AS (
     SELECT n.owner_address AS owner, COUNT(*) AS nfts, COUNT(DISTINCT n.item_id) AS items,
       COUNT(DISTINCT n.contract_address) AS collections,
-      COALESCE(MAX(n.transferred_at), MAX(n.created_at), 0) AS last_at
+      -- Per NFT first: an issued copy that never moved has no transfer, and its mint is when it arrived.
+      MAX(COALESCE(n.transferred_at, n.created_at, 0)) AS last_at
     FROM `
     )
     .append(MARKETPLACE_SQUID_SCHEMA)
@@ -99,6 +100,7 @@ export const getTopOwnersQuery = (creator: string) => {
     .append(
       SQL`.sale s
     WHERE s.item_id IN (SELECT id FROM creator_items)
+      AND s.buyer IN (SELECT owner FROM owners)
     GROUP BY s.buyer
   )
   SELECT o.owner, o.nfts::text, o.items::text, o.collections::text, o.last_at::text, COALESCE(sp.spent, 0)::text AS spent

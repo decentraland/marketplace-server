@@ -42,7 +42,10 @@ export async function getTopOwnersHandler(context: Pick<HandlerContextWithPath<'
     return { status: StatusCode.OK, body: { data, total } }
   } catch (e) {
     if (e instanceof TopOwnersTimeoutError) {
-      return { status: StatusCode.SERVICE_UNAVAILABLE, body: { ok: false, message: e.message } }
+      return {
+        status: StatusCode.SERVICE_UNAVAILABLE,
+        body: { ok: false, message: 'This creator holds too many items to rank right now' }
+      }
     }
     throw e
   }
