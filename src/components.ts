@@ -272,7 +272,7 @@ export async function initComponents(): Promise<AppComponents> {
   const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
-  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })

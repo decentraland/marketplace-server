@@ -62,3 +62,46 @@ export const getOwnersQuery = (
 
   return query
 }
+
+/**
+ * Every account holding NFTs of a creator's items, with what it holds and what it paid for them.
+ *
+ * Unpaged on purpose: the result is cached per creator and sorted and paged in memory, so every sort order
+ * costs one aggregate rather than one per page. The creator is matched lowercased, like every other creator
+ * filter here, because the indexer stores addresses as it finds them. The creator's own holdings and the
+ * zero address are left out: neither is a customer.
+ */
+export const getTopOwnersQuery = (creator: string) => {
+  const address = creator.toLowerCase()
+  return SQL`WITH creator_items AS (
+    SELECT id FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item WHERE LOWER(creator) = ${address}
+  ), owners AS (
+    SELECT n.owner_address AS owner, COUNT(*) AS nfts, COUNT(DISTINCT n.item_id) AS items,
+      COUNT(DISTINCT n.contract_address) AS collections,
+      COALESCE(MAX(n.transferred_at), MAX(n.created_at), 0) AS last_at
+    FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.nft n
+    WHERE n.item_id IN (SELECT id FROM creator_items)
+      AND n.owner_address <> ${address}
+      AND n.owner_address <> '0x0000000000000000000000000000000000000000'
+    GROUP BY n.owner_address
+  ), spent AS (
+    SELECT s.buyer AS owner, SUM(s.price) AS spent
+    FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale s
+    WHERE s.item_id IN (SELECT id FROM creator_items)
+    GROUP BY s.buyer
+  )
+  SELECT o.owner, o.nfts::text, o.items::text, o.collections::text, o.last_at::text, COALESCE(sp.spent, 0)::text AS spent
+  FROM owners o LEFT JOIN spent sp ON sp.owner = o.owner`
+    )
+}
