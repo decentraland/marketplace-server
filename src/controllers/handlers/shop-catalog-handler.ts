@@ -26,7 +26,8 @@ const SORT_VALUES: Record<ShopSortBy, ShopSortBy> = {
   cheapest: 'cheapest',
   most_expensive: 'most_expensive',
   name: 'name',
-  discount: 'discount'
+  discount: 'discount',
+  relevance: 'relevance'
 }
 
 // `discounted=true` keeps only listings a creator coupon discounts right now, `discounted=false` only the rest.
@@ -104,6 +105,39 @@ function contractAddressList(params: Params): string[] | undefined {
 
   if (named.length === 0) return undefined
   return named.filter(isAddress).map(address => address.toLowerCase())
+}
+
+/** `<contract>-<itemId>`, the composite id the catalogue already reports as an item's `id`. */
+const COMPOSITE_ITEM_ID = /^(0x[0-9a-fA-F]{40})-(\d+)$/
+
+/**
+ * The INDIVIDUAL items the unified feed is restricted to, or `undefined` when the caller named none.
+ *
+ * A separate key from `itemId` rather than a plural reading of it: the singular addresses one item inside
+ * one collection and INTERSECTS, which the product page depends on, so teaching it a comma form would
+ * change what an existing caller gets. This one carries composite ids and unions with the collection set.
+ *
+ * Takes the same two encodings as `contractAddress` above, and drops malformed entries rather than
+ * rejecting the request — the same policy, and for the same reason: a typo costs one item, not the page.
+ * `undefined` and `[]` mean different things downstream; see `UnifiedCatalogFilters.itemIds`.
+ */
+function itemIdList(params: Params): string[] | undefined {
+  const named = params
+    .getList('items')
+    .flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(Boolean)
+
+  if (named.length === 0) return undefined
+  return named.flatMap(value => {
+    const match = COMPOSITE_ITEM_ID.exec(value)
+    if (!match) return []
+    // Leading zeros are stripped, not preserved: the column is numeric on two of the three union branches
+    // and reaches the comparison as `7`, so `…-007` would pass validation here and then silently match
+    // nothing. That is the one malformed shape that LOOKS correct to whoever typed it.
+    const itemId = match[2].replace(/^0+(?=\d)/, '')
+    return [`${match[1].toLowerCase()}-${itemId}`]
+  })
 }
 
 // GET /v3/catalog/shop -- curated feed of credit-buyable (USD-pegged) listings for the Shop.
@@ -214,6 +248,8 @@ export function createShopUnifiedHandler(
     // only the first, and the two filters would then AND together into "the first address only".
     const contractAddresses = contractAddressList(params)
     const contractAddress = contractAddresses ? undefined : params.getString('contractAddress')
+    // Individual items, unioned with the collections above rather than intersected — see itemIdList.
+    const itemIds = itemIdList(params)
     const itemId = params.getString('itemId')
     const creator = params.getString('creator')
     const rarities = csv(params.getString('rarity'))
@@ -252,6 +288,7 @@ export function createShopUnifiedHandler(
       category,
       contractAddress,
       contractAddresses,
+      itemIds,
       itemId,
       creator,
       rarities,

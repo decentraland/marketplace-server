@@ -28,6 +28,12 @@ export class InvalidCouponAddressError extends Error {
   }
 }
 
+export class CouponNotAllowedError extends Error {
+  constructor() {
+    super('The coupon manager the signature was made against does not accept this coupon contract')
+  }
+}
+
 export class InvalidCouponDiscountError extends Error {
   constructor(message: string) {
     super(message)

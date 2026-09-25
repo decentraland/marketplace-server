@@ -3,7 +3,7 @@ import SQL from 'sql-template-strings'
 import { Item } from '@dcl/schemas'
 import { fromDBPickStatsToPickStats } from '../../adapters/picks'
 import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
-import { rebuildItemSearchWords, SEARCH_WORDS_TABLE } from '../../logic/catalog/search-words-table'
+import { rebuildSearchTables, SEARCH_WORDS_TABLE } from '../../logic/catalog/search-words-table'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
 import { AppComponents } from '../../types'
@@ -132,9 +132,9 @@ export async function createCatalogComponent(
     // unfinished statement on it, so the two must not share one.
     const searchWordsClient = await dappsWriteDatabase.getPool().connect()
     try {
-      await rebuildItemSearchWords(searchWordsClient)
+      await rebuildSearchTables(searchWordsClient)
     } catch (e) {
-      console.error(`Failed to rebuild ${SEARCH_WORDS_TABLE}`, e)
+      console.error(`Failed to rebuild the search tables (${SEARCH_WORDS_TABLE} and companions)`, e)
     } finally {
       searchWordsClient.release()
     }

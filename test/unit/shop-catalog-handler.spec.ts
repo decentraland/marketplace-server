@@ -237,6 +237,91 @@ describe('when handling the unified shop catalog endpoint', () => {
     })
   })
 
+  /**
+   * A SET of INDIVIDUAL items, for a campaign that curates a list rather than whole collections.
+   *
+   * Carried on its OWN key rather than as a plural reading of `itemId`: the singular addresses one item
+   * inside one collection and intersects, which the product page depends on, so teaching it a comma form
+   * would change what an existing caller gets back.
+   */
+  describe('and individual items are provided', () => {
+    const A = '0xabc0000000000000000000000000000000000001'
+    const B = '0xdef0000000000000000000000000000000000002'
+    const filtersOf = () => getUnifiedListings.mock.calls[0][0]
+
+    it('should parse the comma-separated form', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3,${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should parse the repeated and bracketed forms', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3&items[]=${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should lowercase the contract half, since the column is stored lowercased', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A.toUpperCase().replace('0X', '0x')}-3`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`])
+    })
+
+    it('should drop malformed entries and keep the rest, so a typo costs one item', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-3,not-an-item,${B},${B}-x,${B}-7`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-3`, `${B}-7`])
+    })
+
+    it('should yield an empty set when every entry is malformed, not no filter at all', async () => {
+      // The distinction the collection set defends, on this key: a list that resolved to nothing must
+      // produce an empty page rather than the whole catalogue.
+      await invoke('http://localhost/v3/catalog/unified?items=nonsense')
+
+      expect(filtersOf().itemIds).toEqual([])
+    })
+
+    it('should strip leading zeros, which would otherwise validate and then match nothing', async () => {
+      // The column is numeric on two of the three union branches and reaches the comparison as `7`, so
+      // `-007` is the malformed shape that looks right to whoever typed it and fails without a trace.
+      await invoke(`http://localhost/v3/catalog/unified?items=${A}-007,${B}-0`)
+
+      expect(filtersOf().itemIds).toEqual([`${A}-7`, `${B}-0`])
+    })
+
+    it('should read a blank value as absent', async () => {
+      await invoke('http://localhost/v3/catalog/unified?items=')
+
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should leave the filter off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should travel alongside the collections rather than replace them', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}&items=${B}-7`)
+
+      expect(filtersOf().contractAddresses).toEqual([A])
+      expect(filtersOf().itemIds).toEqual([`${B}-7`])
+    })
+
+    it('should leave the singular itemId untouched', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?contractAddress=${A}&itemId=3`)
+
+      expect(filtersOf().itemId).toBe('3')
+      expect(filtersOf().itemIds).toBeUndefined()
+    })
+
+    it('should reach the item-unified feed too', async () => {
+      await invoke(`http://localhost/v3/catalog/unified?groupBy=item&items=${A}-3`)
+
+      expect(getShopItems.mock.calls[0][0].itemIds).toEqual([`${A}-3`])
+    })
+  })
+
   describe('and includeSocialEmotes is provided', () => {
     it('should exclude social emotes only on an explicit false', async () => {
       await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeSocialEmotes=false')

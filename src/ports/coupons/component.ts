@@ -1,13 +1,17 @@
 import { Signature } from 'ethers'
 import { ChainId, Network } from '@dcl/schemas'
+import { ContractName } from 'decentraland-transactions'
 import { getNetworkChainId } from '../../logic/chainIds'
 import { collectionsRoot, uniqueCollections } from '../../logic/coupons/merkle'
 import {
-  couponStateKey,
+  couponDigest,
+  digestCouponStateKey,
   DISCOUNT_TYPE_RATE,
   encodeCouponData,
+  findCouponContracts,
   getCouponContracts,
-  verifyCouponSignature
+  legacyCouponStateKey,
+  resolveCouponSignature
 } from '../../logic/coupons/signature'
 import { isErrorWithMessage } from '../../logic/errors'
 import { hasECDSASignatureAValidV } from '../../logic/signatures'
@@ -15,6 +19,7 @@ import { AppComponents } from '../../types'
 import { createCouponChainReader } from './chain'
 import {
   CouponAlreadyUnusableError,
+  CouponNotAllowedError,
   CouponNotFoundError,
   DuplicateCouponError,
   InvalidCouponAddressError,
@@ -72,8 +77,12 @@ function isUniqueViolation(e: unknown): boolean {
  * Creator-signed discount coupons for the Shop.
  *
  * A coupon is validated the way a trade is: the caller must be its signer, the EIP-712 signature must
- * verify against the chain's CouponManager, and everything the contract will check at purchase time
- * (creator, indexes, window) is checked here first so a coupon that can never settle is never shown.
+ * verify against one of the chain's CouponManagers, and everything the contract will check at purchase
+ * time (creator, coupon allow-list, indexes, window) is checked here first so a coupon that can never
+ * settle is never shown.
+ *
+ * Each off-chain marketplace version has its own manager and only redeems coupons signed against it, so
+ * the coupon is stored with the manager that verified it and reports that marketplace.
  */
 export function createCouponsComponent(
   components: Pick<AppComponents, 'dappsDatabase' | 'logs'>,
@@ -82,6 +91,11 @@ export function createCouponsComponent(
   const { dappsDatabase: pg, logs } = components
   const logger = logs.getLogger('Coupons component')
   const chain = options.chain ?? createCouponChainReader()
+
+  /** The marketplace version paired with the manager a stored coupon was signed against. */
+  function marketplaceOf(row: DBCoupon): ContractName | null {
+    return findCouponContracts(row.chain_id as ChainId, row.coupon_manager)?.marketplace ?? null
+  }
 
   function toCoupon(row: DBCouponWithState, now = Date.now()): Coupon {
     const state =
@@ -109,6 +123,7 @@ export function createCouponsComponent(
       network: row.network,
       checks: row.checks,
       couponManager: row.coupon_manager,
+      marketplace: marketplaceOf(row),
       couponAddress: row.coupon_address,
       discountType: row.discount_type,
       discount: row.discount_ppm,
@@ -179,11 +194,12 @@ export function createCouponsComponent(
       throw new InvalidCouponSignerError()
     }
 
-    const contracts = getCouponContracts(coupon.chainId)
-    if (!contracts) {
+    const candidates = getCouponContracts(coupon.chainId)
+    if (candidates.length === 0) {
       throw new UnsupportedCouponChainError(coupon.chainId)
     }
-    if (coupon.couponAddress.toLowerCase() !== contracts.collectionDiscountCoupon.toLowerCase()) {
+    // One CollectionDiscountCoupon per chain, whichever manager the coupon is for.
+    if (coupon.couponAddress.toLowerCase() !== candidates[0].collectionDiscountCoupon.toLowerCase()) {
       throw new InvalidCouponAddressError()
     }
 
@@ -227,11 +243,19 @@ export function createCouponsComponent(
 
     const root = collectionsRoot(collections)
     const data = encodeCouponData(coupon.discountType, coupon.discount, root)
-    if (!verifyCouponSignature(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data, signature, signer)) {
+    // Whichever manager the creator signed against is the one the coupon belongs to.
+    const contracts = resolveCouponSignature(coupon.chainId, candidates, coupon.checks, coupon.couponAddress, data, signature, signer)
+    if (!contracts) {
       throw new InvalidCouponSignatureError()
     }
 
     await validateCreator(signer, collections, coupon.chainId)
+
+    // Each manager keeps its own allow-list of coupon contracts, and an older one may never have learnt the
+    // current CollectionDiscountCoupon, so `applyCoupon` would revert on a coupon that verifies here.
+    if (!(await chain.readCouponAllowed(coupon.chainId, contracts.couponManager.address, coupon.couponAddress))) {
+      throw new CouponNotAllowedError()
+    }
 
     // The contract rejects a coupon whose indexes lag the manager's, so a stale one is refused now rather
     // than shown to buyers and failing at checkout.
@@ -243,8 +267,12 @@ export function createCouponsComponent(
       throw new InvalidCouponSignatureIndexError()
     }
 
-    const stateKey = couponStateKey(signer, signature)
-    const chainState = await chain.readState(coupon.chainId, contracts.couponManager.address, stateKey)
+    const stateKey = legacyCouponStateKey(signer, signature)
+    const digest = couponDigest(coupon.chainId, contracts, coupon.checks, coupon.couponAddress, data)
+    const chainState = await chain.readState(coupon.chainId, contracts.couponManager.address, [
+      digestCouponStateKey(signer, digest),
+      stateKey
+    ])
     if (chainState.cancelled) {
       throw new CouponAlreadyUnusableError('This coupon was already cancelled on chain')
     }
@@ -307,6 +335,24 @@ export function createCouponsComponent(
     return toCoupon(result.rows[0])
   }
 
+  /**
+   * Both slots this coupon could live in. `state_key` is the stored one, for the managers that key on the
+   * signature bytes; the digest slot is rebuilt here, which the row can afford because it names the manager
+   * it was signed against and so carries that EIP-712 domain by reference. A manager the transactions
+   * library has stopped listing leaves nothing to rebuild from — and could not have taken the coupon in
+   * the first place — so the read is refused and the row keeps its last known state.
+   */
+  function stateKeysOf(row: DBCoupon): string[] {
+    const chainId = row.chain_id as ChainId
+    const contracts = findCouponContracts(chainId, row.coupon_manager)
+    if (!contracts) {
+      throw new Error(`No coupon deployment on chain ${chainId} matches the manager ${row.coupon_manager}`)
+    }
+    const data = encodeCouponData(row.discount_type, row.discount_ppm, row.root)
+    const digest = couponDigest(chainId, contracts, row.checks, row.coupon_address, data)
+    return [digestCouponStateKey(row.signer, digest), row.state_key]
+  }
+
   async function refreshState(): Promise<number> {
     const result = await pg.query<DBCouponWithState>(getCouponsToRefreshQuery(REFRESH_BATCH))
     // Every coupon of one creator shares a signer, so the indexes cost roughly one read per creator per
@@ -332,7 +378,7 @@ export function createCouponsComponent(
     }
 
     async function refreshOne(row: DBCouponWithState): Promise<void> {
-      const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, row.state_key)
+      const chainState = await chain.readState(row.chain_id as ChainId, row.coupon_manager, stateKeysOf(row))
       const indexes = await readIndexesOnce(row)
       // `cancelSignature` takes a coupon's whole calldata, so a creator ending every sale at once reaches
       // for `increaseSignerSignatureIndex()` instead. That leaves `cancelled` false while the contract

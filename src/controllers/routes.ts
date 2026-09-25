@@ -13,6 +13,7 @@ import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
 import { getContractsHandler } from './handlers/contracts-handler'
 import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handlers/coupons-handler'
+import { createCreatorSearchHandler } from './handlers/creator-search-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
@@ -23,6 +24,7 @@ import { getPricesHandler } from './handlers/prices-handler'
 import { getRankingsHandler } from './handlers/rankings-handler'
 import { getSalesHandler } from './handlers/sales-handler'
 import { getSalesSummaryHandler } from './handlers/sales-summary-handler'
+import { createSearchSuggestHandler } from './handlers/search-suggest-handler'
 import {
   createCatalogItemsHandler,
   createShopCatalogHandler,
@@ -126,6 +128,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
     createShopSuggestedHandler(components)
   )
   router.get('/v3/catalog/creators', createShopTopCreatorsHandler(components))
+  router.get('/v3/catalog/creators/search', createCreatorSearchHandler(components))
+  router.get('/v3/catalog/suggest', createSearchSuggestHandler(components))
   router.get('/v3/catalog/importable', createShopImportableHandler(components))
 
   router.get('/v1/trades', getTradesHandler)

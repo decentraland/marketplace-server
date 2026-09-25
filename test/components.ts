@@ -20,6 +20,7 @@ import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
 import { createCouponsComponent } from '../src/ports/coupons'
+import { createCreatorProfilesComponent } from '../src/ports/creator-profiles/component'
 import { createPgComponent } from '../src/ports/db/component'
 import { IPgComponent } from '../src/ports/db/types'
 import { IEventPublisherComponent } from '../src/ports/events'
@@ -37,6 +38,7 @@ import { createPricesComponents } from '../src/ports/prices'
 import { createRankingsComponent } from '../src/ports/rankings/component'
 import { createRentalsComponent } from '../src/ports/rentals/components'
 import { createSalesComponents } from '../src/ports/sales'
+import { createSearchSuggestComponent } from '../src/ports/search-suggest/component'
 import { createShopCatalogComponent } from '../src/ports/shop-catalog/component'
 import { createShopNotifierComponent } from '../src/ports/shop-notifier/component'
 import { createStatsComponent } from '../src/ports/stats/component'
@@ -117,8 +119,16 @@ async function initComponents(): Promise<TestComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
   const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
   const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const creatorProfiles = await createCreatorProfilesComponent({
+    config,
+    logs,
+    fetch,
+    dappsDatabase: dappsReadDatabase,
+    dappsWriteDatabase
+  })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
+  const searchSuggest = createSearchSuggestComponent({ dappsDatabase: dappsReadDatabase, items, creatorProfiles, manaUsdRate })
   const schemaValidator = await createSchemaValidatorComponent()
   const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
   // The shared harness must never reach the chain: jest.setup disables outbound connections, so a real
@@ -127,6 +137,7 @@ async function initComponents(): Promise<TestComponents> {
     { dappsDatabase: dappsWriteDatabase, logs },
     {
       chain: {
+        readCouponAllowed: () => Promise.resolve(true),
         readIndexes: () => Promise.resolve({ contractSignatureIndex: 0, signerSignatureIndex: 0 }),
         readState: () => Promise.resolve({ uses: 0, cancelled: false })
       }
@@ -169,6 +180,11 @@ async function initComponents(): Promise<TestComponents> {
   const refreshCouponStateJob = createJobComponent({ logs }, () => undefined, 60 * 1000, {
     startupDelay: 30
   })
+  // The profiles refresh calls Catalyst; the search specs fill the table directly and drive the refresh with a stub.
+  const refreshCreatorProfilesJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, {
+    repeat: false,
+    startupDelay: 60 * 60 * 1000
+  })
 
   const transak = createTransakComponent(
     { fetch, logs, cache },
@@ -202,6 +218,8 @@ async function initComponents(): Promise<TestComponents> {
     favoritesDatabase,
     catalog,
     shopCatalog,
+    creatorProfiles,
+    searchSuggest,
     suggestions,
     shopNotifier,
     manaUsdRate,
@@ -212,6 +230,7 @@ async function initComponents(): Promise<TestComponents> {
     coupons,
     refreshCouponStateJob,
     rebuildItemNeighborsJob,
+    refreshCreatorProfilesJob,
     access,
     lists,
     picks,

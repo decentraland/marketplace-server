@@ -114,8 +114,8 @@ export function getOffChainMarketplaceContracts(chainId: ChainId): { contractNam
       try {
         contracts.push({ contractName, contract: getContract(contractName, chainId) })
       } catch (e) {
-        // Not every version exists on every chain — V3 is testnet-only for now, so getContract throws
-        // for it on mainnet. A version that is not deployed is simply not a candidate.
+        // Not every version exists on every chain, and getContract throws for one that does not. A version
+        // that is not deployed is simply not a candidate.
       }
       return contracts
     },

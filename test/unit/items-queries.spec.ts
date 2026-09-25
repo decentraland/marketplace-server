@@ -17,17 +17,50 @@ describe('when building the items queries', () => {
   })
 
   describe('and filtering by search text', () => {
-    it('should match the item name word by word, so a term is found wherever it sits in the name', () => {
+    it('should match the item name term by term against the word table, so a term is found wherever it sits in the name', () => {
       const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
       expect(query.text).toContain('marketplace.item_search_words')
-      expect(query.text).toContain('search_words.word % lower(')
+      expect(query.text).toContain('t.term <% w.word')
+      expect(query.text).toContain('LEFT JOIN search_matches AS search_match ON search_match.item_id = item.id::text')
+      expect(query.text).toContain('(item.id::text IN (SELECT item_id FROM search_matches))')
       expect(query.text).not.toContain('search_text')
       expect(query.values).toContain('chapeau')
     })
 
     it('should also match the item tags, which is where brand and collab names live', () => {
       const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
-      expect(query.text).toContain('lower(search_tags.tag) = lower(')
+      expect(query.text).toContain('lower(tags.tag) = lower(')
+    })
+
+    it('should open the search CTEs alongside the trades one, since a statement has a single WITH', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      expect(query.text).toMatch(/WITH \w+ AS \([\s\S]*\), search_terms AS \(/)
+    })
+
+    it('should keep the best-matching rows of the FILTERED set and count above that filter', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', category: NFTCategory.WEARABLE })
+      expect(query.text).toContain('MAX(c.search_matched) OVER () AS search_required')
+      expect(query.text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
+      // the count is no longer inside the core SELECT, where it would count rows the level then drops
+      expect(query.text.indexOf('COUNT(*) OVER () AS count')).toBeLessThan(query.text.indexOf('search_required'))
+      expect(query.text).not.toContain('COUNT(*) OVER() as count')
+    })
+
+    it('should default a search to relevance, reading the sort keys off the level-filtered relation', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      expect(query.text).toContain('ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.id ASC')
+    })
+
+    it('should honour an explicit sort on a search, spelled on the output columns the wrapper exposes', () => {
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', sortBy: 'cheapest' })
+      expect(query.text).toContain('ORDER BY NULLIF(f.price_credits, 0) ASC NULLS LAST, f.id ASC')
+    })
+
+    it('should treat relevance without a search as newest, since every row would tie', () => {
+      const query = getCatalogItemsQuery({ ...filters, sortBy: 'relevance' })
+      expect(query.text).toContain('ORDER BY item.created_at DESC, item.id ASC')
+      expect(query.text).not.toContain('search_matches')
+      expect(query.text).toContain('COUNT(*) OVER() as count')
     })
 
     it('should not match a literal substring of the whole name: that returned nothing for multi-word terms', () => {

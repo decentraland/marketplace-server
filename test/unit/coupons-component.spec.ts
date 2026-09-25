@@ -1,10 +1,13 @@
 import { concat, Signature, toBeHex, Wallet } from 'ethers'
 import { ChainId, Network, TradeChecks } from '@dcl/schemas'
+import { ContractName } from 'decentraland-transactions'
 import { collectionsRoot } from '../../src/logic/coupons/merkle'
 import {
   COUPON_TYPES,
   CouponContracts,
   DISCOUNT_TYPE_RATE,
+  couponDigest,
+  digestCouponStateKey,
   encodeCouponData,
   getCouponContracts,
   getCouponManagerDomain,
@@ -13,6 +16,7 @@ import {
 import { createCouponsComponent } from '../../src/ports/coupons/component'
 import {
   CouponAlreadyUnusableError,
+  CouponNotAllowedError,
   DuplicateCouponError,
   InvalidCouponAddressError,
   InvalidCouponChecksError,
@@ -32,15 +36,16 @@ import { createTestLogsComponent, createTestPgComponent } from '../components'
 const CHAIN_ID = ChainId.MATIC_MAINNET
 
 /** Non-null by construction, so every case below reads as coupon logic rather than as null handling. */
-function requireCouponContracts(): CouponContracts {
-  const contracts = getCouponContracts(CHAIN_ID)
-  if (!contracts) {
-    throw new Error('Polygon mainnet must resolve a coupon pair for these tests to mean anything')
+function requireCouponContracts(): [CouponContracts, CouponContracts] {
+  const [current, previous] = getCouponContracts(CHAIN_ID)
+  if (!current || !previous) {
+    throw new Error('Polygon mainnet must resolve a coupon pair per live marketplace version for these tests to mean anything')
   }
-  return contracts
+  return [current, previous]
 }
 
-const CONTRACTS = requireCouponContracts()
+/** The V3 pair, which a new coupon is signed against, and the V2 pair still live beside it. */
+const [CONTRACTS, PREVIOUS_CONTRACTS] = requireCouponContracts()
 
 const COLLECTION = '0x4c09495cd2d4e3d3fa2808eb655d013de426157b'
 const DAY = 24 * 60 * 60 * 1000
@@ -48,6 +53,7 @@ const DAY = 24 * 60 * 60 * 1000
 let creator: Wallet
 let pg: IPgComponent
 let chain: ICouponChainReader
+let readCouponAllowedMock: jest.Mock
 let readIndexesMock: jest.Mock
 let readStateMock: jest.Mock
 let dbQueryMock: jest.Mock
@@ -70,7 +76,7 @@ function buildChecks(overrides: Partial<TradeChecks> = {}): TradeChecks {
 }
 
 /** A coupon signed for real, so only the field under test is ever what makes a case fail. */
-async function buildCoupon(overrides: Partial<CouponCreation> = {}): Promise<CouponCreation> {
+async function buildCoupon(overrides: Partial<CouponCreation> = {}, contracts: CouponContracts = CONTRACTS): Promise<CouponCreation> {
   const base: Omit<CouponCreation, 'signature'> = {
     signer: creator.address,
     chainId: CHAIN_ID,
@@ -84,14 +90,14 @@ async function buildCoupon(overrides: Partial<CouponCreation> = {}): Promise<Cou
   }
   const data = encodeCouponData(base.discountType, base.discount, collectionsRoot(base.collections))
   const signature = await creator.signTypedData(
-    getCouponManagerDomain(CHAIN_ID, CONTRACTS),
+    getCouponManagerDomain(CHAIN_ID, contracts),
     COUPON_TYPES,
     getCouponTypedValues(base.checks, base.couponAddress, data)
   )
   return { ...base, signature, ...(overrides.signature ? { signature: overrides.signature } : {}) }
 }
 
-function buildRow(coupon: CouponCreation): DBCoupon {
+function buildRow(coupon: CouponCreation, couponManager: string = CONTRACTS.couponManager.address): DBCoupon {
   return {
     id: 'b9c0d1e2-0000-4000-8000-000000000001',
     network: coupon.network,
@@ -100,7 +106,7 @@ function buildRow(coupon: CouponCreation): DBCoupon {
     signature: coupon.signature,
     hashed_signature: '0x' + 'aa'.repeat(32),
     state_key: '0x' + 'bb'.repeat(32),
-    coupon_manager: CONTRACTS.couponManager.address,
+    coupon_manager: couponManager,
     coupon_address: coupon.couponAddress.toLowerCase(),
     checks: coupon.checks,
     discount_type: coupon.discountType,
@@ -128,9 +134,10 @@ beforeEach(() => {
       }
     })
   })
+  readCouponAllowedMock = jest.fn().mockResolvedValue(true)
   readIndexesMock = jest.fn().mockResolvedValue({ contractSignatureIndex: 0, signerSignatureIndex: 0 })
   readStateMock = jest.fn().mockResolvedValue({ uses: 0, cancelled: false })
-  chain = { readIndexes: readIndexesMock, readState: readStateMock }
+  chain = { readCouponAllowed: readCouponAllowedMock, readIndexes: readIndexesMock, readState: readStateMock }
   coupons = createCouponsComponent(
     {
       dappsDatabase: pg,
@@ -283,6 +290,26 @@ describe('when adding a coupon', () => {
     })
   })
 
+  describe('and the manager the coupon was signed against does not accept the coupon contract', () => {
+    let coupon: CouponCreation
+
+    beforeEach(async () => {
+      coupon = await buildCoupon()
+      dbQueryMock.mockResolvedValueOnce({ rows: [{ id: COLLECTION, creator: creator.address }], rowCount: 1 })
+      readCouponAllowedMock.mockResolvedValueOnce(false)
+    })
+
+    // Each manager has its own allow-list, and an older one may never have learnt the current coupon contract.
+    it('should reject it rather than advertise a sale that reverts at checkout', async () => {
+      await expect(coupons.addCoupon(coupon, creator.address)).rejects.toThrow(CouponNotAllowedError)
+    })
+
+    it('should ask the manager the coupon was signed against, not another one', async () => {
+      await coupons.addCoupon(coupon, creator.address).catch(() => undefined)
+      expect(readCouponAllowedMock).toHaveBeenCalledWith(CHAIN_ID, CONTRACTS.couponManager.address, coupon.couponAddress)
+    })
+  })
+
   describe('and the signature indexes no longer match the manager', () => {
     it('should reject it rather than advertise a sale that would fail at checkout', async () => {
       dbQueryMock.mockResolvedValueOnce({ rows: [{ id: COLLECTION, creator: creator.address }], rowCount: 1 })
@@ -347,6 +374,40 @@ describe('when adding a coupon', () => {
       expect(readStateMock).toHaveBeenCalled()
       expect(dbClientQueryMock).toHaveBeenCalledTimes(2)
     })
+
+    it('should report the marketplace whose manager signed it', async () => {
+      const stored = await coupons.addCoupon(coupon, creator.address)
+      expect(stored.marketplace).toEqual(ContractName.OffChainMarketplaceV3)
+    })
+  })
+
+  describe('and the coupon was signed against the manager of the previous marketplace version', () => {
+    let coupon: CouponCreation
+
+    beforeEach(async () => {
+      coupon = await buildCoupon({}, PREVIOUS_CONTRACTS)
+      dbQueryMock.mockResolvedValueOnce({ rows: [{ id: COLLECTION, creator: creator.address }], rowCount: 1 })
+      dbClientQueryMock
+        .mockResolvedValueOnce({ rows: [buildRow(coupon, PREVIOUS_CONTRACTS.couponManager.address)], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+    })
+
+    // Both versions are live on Polygon mainnet, and a V2 listing can only be discounted by a coupon its own
+    // manager signed, so the server has to keep accepting these for as long as V2 trades exist.
+    it('should accept it and report the previous marketplace', async () => {
+      const stored = await coupons.addCoupon(coupon, creator.address)
+      expect(stored.marketplace).toEqual(ContractName.OffChainMarketplaceV2)
+    })
+
+    it('should read the indexes and state from that manager, which keeps its own', async () => {
+      await coupons.addCoupon(coupon, creator.address)
+      expect(readIndexesMock).toHaveBeenCalledWith(CHAIN_ID, PREVIOUS_CONTRACTS.couponManager.address, creator.address)
+    })
+
+    it('should store it against that manager', async () => {
+      await coupons.addCoupon(coupon, creator.address)
+      expect(dbClientQueryMock.mock.calls[0][0].values).toContain(PREVIOUS_CONTRACTS.couponManager.address.toLowerCase())
+    })
   })
 
   describe('and the same signature was already stored', () => {
@@ -363,27 +424,15 @@ describe('when adding a coupon', () => {
 })
 
 describe('when refreshing the on-chain state of the live coupons', () => {
-  const SIGNER = '0x1111111111111111111111111111111111111111'
-  let rows: Record<string, unknown>[]
+  // Whole rows rather than the handful of columns the poller used to touch: rebuilding a coupon's digest
+  // reads the same fields the creator signed, so a stub row would exercise none of it.
+  let rows: DBCoupon[]
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const coupon = await buildCoupon()
     rows = [
-      {
-        id: 'a',
-        chain_id: CHAIN_ID,
-        coupon_manager: CONTRACTS.couponManager.address,
-        state_key: '0x01',
-        signer: SIGNER,
-        checks: { ...buildChecks(), contractSignatureIndex: 0, signerSignatureIndex: 0 }
-      },
-      {
-        id: 'b',
-        chain_id: CHAIN_ID,
-        coupon_manager: CONTRACTS.couponManager.address,
-        state_key: '0x02',
-        signer: SIGNER,
-        checks: { ...buildChecks(), contractSignatureIndex: 0, signerSignatureIndex: 0 }
-      }
+      { ...buildRow(coupon), id: 'a', state_key: '0x01' },
+      { ...buildRow(coupon), id: 'b', state_key: '0x02' }
     ]
     dbQueryMock.mockResolvedValueOnce({ rows, rowCount: rows.length }).mockResolvedValue({ rows: [], rowCount: 0 })
   })
@@ -394,6 +443,40 @@ describe('when refreshing the on-chain state of the live coupons', () => {
       expect(await coupons.refreshState()).toEqual(2)
     })
 
+    it('should ask for both slots a manager generation could have written, stored one included', async () => {
+      readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
+      await coupons.refreshState()
+      const [, , stateKeys] = readStateMock.mock.calls[0]
+      const digest = couponDigest(
+        CHAIN_ID,
+        CONTRACTS,
+        rows[0].checks,
+        rows[0].coupon_address,
+        encodeCouponData(rows[0].discount_type, rows[0].discount_ppm, rows[0].root)
+      )
+      expect(stateKeys).toEqual([digestCouponStateKey(rows[0].signer, digest), '0x01'])
+    })
+  })
+
+  describe('and the coupon names a manager no longer deployed', () => {
+    it('should leave the row with its last known state rather than read an invented slot', async () => {
+      rows[0].coupon_manager = '0x' + '99'.repeat(20)
+      readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
+      expect(await coupons.refreshState()).toEqual(1)
+      expect(readStateMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('and only one of the two slots holds anything', () => {
+    it('should write back whichever one does, because a coupon lives in exactly one', async () => {
+      readStateMock.mockResolvedValue({ uses: 3, cancelled: false })
+      await coupons.refreshState()
+      const written = dbQueryMock.mock.calls.slice(1).map(call => call[0].values)
+      expect(written.every(values => values.includes(3))).toBe(true)
+    })
+  })
+
+  describe('and several coupons share a signer', () => {
     it('should read the signature indexes once per signer rather than once per coupon', async () => {
       readStateMock.mockResolvedValue({ uses: 0, cancelled: false })
       await coupons.refreshState()
