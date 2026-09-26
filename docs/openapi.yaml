@@ -1911,6 +1911,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/rates/mana-usd:
+    get:
+      tags:
+        - Sales
+      summary: Daily closing MANA/USD rates
+      operationId: getManaUsdRates
+      security: []
+      description: |
+        The closing MANA/USD rate of each UTC day between two instants, read from the Chainlink MANA/USD feed
+        on Polygon (the last round written that day) and stored by a background job. The feed starts on
+        2021-07-08, so earlier days are never returned. Days not yet stored are simply absent.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Inclusive start in epoch milliseconds; its UTC day is the first day returned.
+          schema:
+            type: integer
+            minimum: 0
+        - name: to
+          in: query
+          required: true
+          description: Inclusive end in epoch milliseconds; at most 15 years after from.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: One rate per stored day, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [day, usd]
+                      properties:
+                        day:
+                          type: string
+                          format: date
+                          example: '2026-09-25'
+                        usd:
+                          type: string
+                          description: USD per MANA at the oracle's precision.
+                          example: '0.09302823'
+        '400':
+          description: Missing, malformed or reversed bounds, or a range over 15 years.
+
   /v1/sales/summary:
     get:
       tags:
@@ -1961,7 +2013,7 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [total, mints, resales, earnedWei, byCollection, byItem, royalties]
+                    required: [total, mints, resales, earnedWei, earnedUsd, unpricedSales, byCollection, byItem, royalties]
                     properties:
                       total:
                         type: integer
@@ -1972,17 +2024,26 @@ paths:
                       earnedWei:
                         type: string
                         example: '115026000000000000000'
+                      earnedUsd:
+                        type: string
+                        description: Earnings in USD, each sale at the closing MANA/USD rate of its UTC day (see /v1/rates/mana-usd). Sales on a day with no stored rate add nothing.
+                        example: '10.720981'
+                      unpricedSales:
+                        type: integer
+                        description: Sales in the window on a day with no stored rate, which earnedUsd leaves out.
                       byCollection:
                         type: array
                         items:
                           type: object
-                          required: [contractAddress, sold, earnedWei]
+                          required: [contractAddress, sold, earnedWei, earnedUsd]
                           properties:
                             contractAddress:
                               type: string
                             sold:
                               type: integer
                             earnedWei:
+                              type: string
+                            earnedUsd:
                               type: string
                       byItem:
                         type: array

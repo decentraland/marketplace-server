@@ -21,6 +21,7 @@ import { ISnapshotComponent } from './ports/favorites/snapshot'
 import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { IManaUsdRateComponent } from './ports/mana-rate/types'
+import type { IManaUsdHistoryComponent } from './ports/mana-usd-history/types'
 import { INFTsComponent } from './ports/nfts/types'
 import { IOrdersComponent } from './ports/orders/types'
 import { IOwnersComponent } from './ports/owners/types'
@@ -70,6 +71,8 @@ export type BaseComponents = {
   updateBuilderServerItemsViewJob: IJobComponent
   flushTradesMaterializedViewJob: IJobComponent
   refreshCouponStateJob: IJobComponent
+  manaUsdHistory: IManaUsdHistoryComponent
+  fillManaUsdHistoryJob: IJobComponent
   rebuildItemNeighborsJob: IJobComponent
   refreshCreatorProfilesJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>

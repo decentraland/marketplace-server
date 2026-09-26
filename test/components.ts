@@ -31,6 +31,7 @@ import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favori
 import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createManaUsdRateComponent } from '../src/ports/mana-rate/component'
+import { createManaUsdHistoryComponent } from '../src/ports/mana-usd-history/component'
 import { createNFTsComponent } from '../src/ports/nfts/component'
 import { createOrdersComponent } from '../src/ports/orders/component'
 import { createOwnersComponent } from '../src/ports/owners/component'
@@ -181,6 +182,8 @@ async function initComponents(): Promise<TestComponents> {
     startupDelay: 30
   })
   // The profiles refresh calls Catalyst; the search specs fill the table directly and drive the refresh with a stub.
+  const manaUsdHistory = createManaUsdHistoryComponent({ dappsDatabase: dappsWriteDatabase, logs, reader: null })
+  const fillManaUsdHistoryJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, { repeat: false })
   const refreshCreatorProfilesJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, {
     repeat: false,
     startupDelay: 60 * 60 * 1000
@@ -226,6 +229,8 @@ async function initComponents(): Promise<TestComponents> {
     wertSigner,
     wertApi,
     updateBuilderServerItemsViewJob,
+    manaUsdHistory,
+    fillManaUsdHistoryJob,
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
