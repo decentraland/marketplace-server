@@ -16,6 +16,7 @@ import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handler
 import { createCreatorSearchHandler } from './handlers/creator-search-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
+import { getManaUsdRatesHandler } from './handlers/mana-usd-rates-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
 import { getOrdersHandler } from './handlers/orders-handler'
 import { getOwnersHandler } from './handlers/owners-handler'
@@ -185,6 +186,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/sales/summary', getSalesSummaryHandler)
+  router.get('/v1/rates/mana-usd', getManaUsdRatesHandler)
   router.get('/v1/sales', getSalesHandler)
   router.get(
     '/v1/activity',

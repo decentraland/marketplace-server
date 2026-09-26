@@ -38,7 +38,13 @@ export type SalesSummary = {
   mints: number
   resales: number
   earnedWei: string
-  byCollection: { contractAddress: string; sold: number; earnedWei: string }[]
+  /**
+   * Earnings in USD at each sale's day rate, as a decimal string. Sales on a day with no stored rate (before
+   * the feed started, or not yet backfilled) add nothing here and are counted in `unpricedSales`.
+   */
+  earnedUsd: string
+  unpricedSales: number
+  byCollection: { contractAddress: string; sold: number; earnedWei: string; earnedUsd: string }[]
   byItem: { contractAddress: string; itemId: string; soldLifetime: number }[]
   royalties: { resales: number; volumeWei: string }
 }
