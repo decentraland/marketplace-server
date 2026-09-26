@@ -68,6 +68,8 @@ export function createManaUsdHistoryComponent(components: {
   async function fillMissingDays(maxDays: number): Promise<number | null> {
     if (!reader) return 0
     const client = await dappsDatabase.getPool().connect()
+    // A session lock outlives a failed unlock; handing the connection back with an error destroys it instead.
+    let broken: Error | undefined
     try {
       const lock = await client.query<{ acquired: boolean }>(SQL`SELECT pg_try_advisory_lock(${FILL_LOCK_KEY}) AS acquired`)
       if (lock.rows[0]?.acquired !== true) return null
@@ -84,7 +86,8 @@ export function createManaUsdHistoryComponent(components: {
         let resume: { phase: number; index: bigint } | undefined
         for (let day = start; day <= lastClosed && closes.length < maxDays; day += DAY_MS) {
           const close = await roundAtOrBefore(reader, phases, Math.floor((day + DAY_MS - 1) / 1000), resume)
-          if (!close) continue
+          // A non-positive rate is not a price; the day stays empty and the summary counts it as unpriced.
+          if (!close || close.answer <= 0n) continue
           resume = { phase: Number(close.id >> 64n), index: indexOf(close.id) }
           closes.push({ day: dayOf(day), usd: toDecimal(close.answer, decimals), roundId: close.id.toString() })
         }
@@ -98,13 +101,14 @@ export function createManaUsdHistoryComponent(components: {
       } finally {
         await client.query(SQL`SELECT pg_advisory_unlock(${FILL_LOCK_KEY})`).catch((e: unknown) => {
           logger.warn(`Couldn't release the MANA/USD history lock: ${isErrorWithMessage(e) ? e.message : 'Unknown'}`)
+          broken = e instanceof Error ? e : new Error('unlock failed')
         })
       }
     } catch (e) {
       logger.error(`Couldn't fill the MANA/USD history: ${isErrorWithMessage(e) ? e.message : 'Unknown'}`)
       throw e
     } finally {
-      client.release()
+      client.release(broken)
     }
   }
 

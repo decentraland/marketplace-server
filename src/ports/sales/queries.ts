@@ -118,7 +118,7 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
       SQL`
   ), collections AS (
     SELECT search_contract_address, COUNT(*) AS sold, SUM(price)::text AS earned,
-      ROUND(COALESCE(SUM(price * usd), 0) / 1e18, 6)::text AS earned_usd
+      ROUND(COALESCE(SUM(price * usd), 0) / 1e18::numeric, 6)::text AS earned_usd
     FROM window_sales GROUP BY search_contract_address
   ), items AS (
     SELECT search_contract_address, search_item_id, COUNT(*) AS sold
@@ -149,7 +149,7 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     'mints', COUNT(*) FILTER (WHERE type = 'mint'),
     'resales', COUNT(*) FILTER (WHERE type IN ('order', 'bid')),
     'earnedWei', COALESCE(SUM(price), 0)::text,
-    'earnedUsd', ROUND(COALESCE(SUM(price * usd), 0) / 1e18, 6)::text,
+    'earnedUsd', ROUND(COALESCE(SUM(price * usd), 0) / 1e18::numeric, 6)::text,
     'unpricedSales', COUNT(*) FILTER (WHERE usd IS NULL),
     'byCollection', (SELECT COALESCE(json_agg(json_build_object(
       'contractAddress', search_contract_address, 'sold', sold, 'earnedWei', earned, 'earnedUsd', earned_usd

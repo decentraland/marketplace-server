@@ -6,14 +6,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE SCHEMA squid_marketplace;
     CREATE SCHEMA squid_trades;
 
-    -- Created by the dapps migrations in production; the test database is built without them.
-    CREATE TABLE marketplace.mana_usd_daily (
-        "day" date PRIMARY KEY,
-        "usd" numeric NOT NULL,
-        "round_id" numeric NOT NULL,
-        "created_at" timestamptz(3) NOT NULL DEFAULT now()
-    );
-
     -- SET UP EXTENSIONS
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "postgres_fdw";
