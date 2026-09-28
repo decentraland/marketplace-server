@@ -2,6 +2,8 @@ import { Params } from '../../logic/http/params'
 import { HandlerContextWithPath, StatusCode } from '../../types'
 
 const MAX_SPAN_MS = 15 * 366 * 86_400_000
+// The latest instant a JavaScript Date can hold; past it the day of a bound cannot even be computed.
+const MAX_DATE_MS = 8.64e15
 
 /**
  * GET /v1/rates/mana-usd — the closing MANA/USD rate of each UTC day between two instants.
@@ -16,10 +18,11 @@ export async function getManaUsdRatesHandler(
   const bounds: { from?: number; to?: number } = {}
   for (const key of ['from', 'to'] as const) {
     const value = params.getString(key)
-    if (value === undefined || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    const ms = value !== undefined && /^\d+$/.test(value) ? Number(value) : NaN
+    if (!Number.isSafeInteger(ms) || ms > MAX_DATE_MS) {
       return { status: StatusCode.BAD_REQUEST, body: { ok: false, message: `${key} must be an epoch timestamp in milliseconds` } }
     }
-    bounds[key] = Number(value)
+    bounds[key] = ms
   }
   const { from, to } = bounds as { from: number; to: number }
   if (from > to) {

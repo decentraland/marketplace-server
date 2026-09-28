@@ -44,7 +44,7 @@ export type SalesSummary = {
    */
   earnedUsd: string
   unpricedSales: number
-  byCollection: { contractAddress: string; sold: number; earnedWei: string; earnedUsd: string }[]
+  byCollection: { contractAddress: string; sold: number; earnedWei: string; earnedUsd: string; unpricedSales: number }[]
   byItem: { contractAddress: string; itemId: string; soldLifetime: number }[]
   royalties: { resales: number; volumeWei: string }
 }

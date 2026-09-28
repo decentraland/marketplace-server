@@ -2011,10 +2011,11 @@ paths:
         - name: from
           in: query
           required: true
-          description: Inclusive start in epoch milliseconds; its UTC day is the first day returned.
+          description: Inclusive start in epoch milliseconds; its UTC day is the first day returned. At most 8640000000000000.
           schema:
             type: integer
             minimum: 0
+            maximum: 8640000000000000
         - name: to
           in: query
           required: true
@@ -2022,6 +2023,7 @@ paths:
           schema:
             type: integer
             minimum: 0
+            maximum: 8640000000000000
       responses:
         '200':
           description: One rate per stored day, oldest first
@@ -2120,7 +2122,7 @@ paths:
                         type: array
                         items:
                           type: object
-                          required: [contractAddress, sold, earnedWei, earnedUsd]
+                          required: [contractAddress, sold, earnedWei, earnedUsd, unpricedSales]
                           properties:
                             contractAddress:
                               type: string
@@ -2130,6 +2132,9 @@ paths:
                               type: string
                             earnedUsd:
                               type: string
+                            unpricedSales:
+                              type: integer
+                              description: This collection's sales on a day with no stored rate, which its earnedUsd leaves out.
                       byItem:
                         type: array
                         items:
