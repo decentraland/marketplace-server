@@ -38,6 +38,7 @@ import {
   createShopUnifiedHandler
 } from './handlers/shop-catalog-handler'
 import { getStatsHandler } from './handlers/stats-handler'
+import { getTopOwnersHandler } from './handlers/top-owners-handler'
 import {
   addTradeHandler,
   getTradeAcceptedEventHandler,
@@ -174,6 +175,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/accounts', getAccountsHandler)
   router.get('/v1/owners', getOwnersHandler)
+  router.get('/v1/owners/top', getTopOwnersHandler)
 
   router.get(
     '/v1/items',

@@ -11,7 +11,8 @@ describe('getOwnersHandler', () => {
       context = {
         components: {
           owners: {
-            fetchAndCount: jest.fn().mockResolvedValueOnce({ data: [], total: 0 })
+            fetchAndCount: jest.fn().mockResolvedValueOnce({ data: [], total: 0 }),
+            fetchTopOwners: jest.fn()
           }
         },
         url: new URL('http://example.com/v1/owners?contractAddress=0x123&itemId=0')
@@ -44,7 +45,8 @@ describe('getOwnersHandler', () => {
       context = {
         components: {
           owners: {
-            fetchAndCount: jest.fn().mockRejectedValue(new Error('Test error'))
+            fetchAndCount: jest.fn().mockRejectedValue(new Error('Test error')),
+            fetchTopOwners: jest.fn()
           }
         },
         url: new URL('http://example.com/v1/owners?contractAddress=0x123&itemId=0')
@@ -77,7 +79,8 @@ describe('getOwnersHandler', () => {
       context = {
         components: {
           owners: {
-            fetchAndCount: jest.fn().mockRejectedValue(new Error('itemId and contractAddress are necessary params.'))
+            fetchAndCount: jest.fn().mockRejectedValue(new Error('itemId and contractAddress are necessary params.')),
+            fetchTopOwners: jest.fn()
           }
         },
         url: new URL('http://example.com/v1/owners')
@@ -108,7 +111,8 @@ describe('getOwnersHandler', () => {
                 { issuedId: '2', ownerId: '0xdef', tokenId: '101' }
               ],
               total: 2
-            })
+            }),
+            fetchTopOwners: jest.fn()
           }
         },
         url: new URL('http://example.com/v1/owners?contractAddress=0x123&itemId=0&sortBy=issuedId&orderDirection=asc&first=10&skip=0')
