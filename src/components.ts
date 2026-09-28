@@ -39,6 +39,7 @@ import { createSnapshotComponent } from './ports/favorites/snapshot'
 import { createItemsComponent } from './ports/items'
 import { createDisabledJobComponent, createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
+import { createEthersOracleReader, createManaUsdHistoryComponent } from './ports/mana-usd-history/component'
 import { createNFTsComponent } from './ports/nfts/component'
 import { createOrdersComponent } from './ports/orders/component'
 import { createOwnersComponent } from './ports/owners/component'
@@ -62,6 +63,10 @@ import { AppComponents, GlobalContext } from './types'
 
 const thirtySeconds = 30 * 1000
 const fiveMinutes = 5 * 60 * 1000
+const tenMinutes = 10 * 60 * 1000
+// Small enough that one run holds its pooled connection for about a minute; a backfill from 2021 then
+// takes roughly half a day of runs, and a caught-up table needs one day per run.
+const MANA_USD_HISTORY_DAYS_PER_RUN = 30
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -187,6 +192,27 @@ export async function initComponents(): Promise<AppComponents> {
       )
   })
   const coupons = createCouponsComponent({ dappsDatabase: dappsWriteDatabase, logs })
+
+  // The closing MANA/USD rate of every day since the feed started, so the Shop can show a sale in what it
+  // was worth that day. Unconfigured (no RPC or oracle), the table stays as it is and reads still answer.
+  const historyRpcUrl = await config.getString('RPC_ENDPOINT_POLYGON')
+  const historyOracle = await config.getString('MANA_USD_ORACLE_ADDRESS')
+  const manaUsdHistory = createManaUsdHistoryComponent({
+    dappsDatabase: dappsWriteDatabase,
+    logs,
+    reader: historyRpcUrl && historyOracle ? createEthersOracleReader(historyRpcUrl, historyOracle) : null
+  })
+  // A backfill from 2021 is about 1,900 days at ~20 oracle reads each, so it is spread over runs; once
+  // caught up, each run stores the day that just closed. Kill switch: MANA_USD_HISTORY_JOB_ENABLED=false.
+  const manaUsdHistoryLogger = logs.getLogger('mana-usd-history-job')
+  const fillManaUsdHistoryJob =
+    (await config.getString('MANA_USD_HISTORY_JOB_ENABLED')) === 'false'
+      ? createDisabledJobComponent(manaUsdHistoryLogger, 'fill-mana-usd-history')
+      : createJobComponent({ logs }, () => manaUsdHistory.fillMissingDays(MANA_USD_HISTORY_DAYS_PER_RUN), tenMinutes, {
+          startupDelay: thirtySeconds,
+          onError: error =>
+            manaUsdHistoryLogger.error(`Failed to fill the MANA/USD history: ${error instanceof Error ? error.message : String(error)}`)
+        })
   // Mirrors what the CouponManager knows about each live coupon (uses consumed, cancelled) so the catalogue
   // never advertises a sale the chain would refuse. The chain is the truth; this is a cache of it.
   const refreshCouponStateLogger = logs.getLogger('refresh-coupon-state-job')
@@ -330,6 +356,8 @@ export async function initComponents(): Promise<AppComponents> {
     flushTradesMaterializedViewJob,
     coupons,
     refreshCouponStateJob,
+    manaUsdHistory,
+    fillManaUsdHistoryJob,
     rebuildItemNeighborsJob,
     refreshCreatorProfilesJob,
     schemaValidator,

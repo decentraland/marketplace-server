@@ -13,6 +13,8 @@ test('sales summary', ({ components }) => {
     mints: 0,
     resales: 0,
     earnedWei: '0',
+    earnedUsd: '0.000000',
+    unpricedSales: 0,
     byCollection: [],
     byItem: [],
     royalties: { resales: 0, volumeWei: '0' }
@@ -90,9 +92,11 @@ test('sales summary', ({ components }) => {
       mints: 2,
       resales: 1,
       earnedWei: (BigInt(price) * 3n).toString(),
+      earnedUsd: '0.000000',
+      unpricedSales: 3,
       byCollection: [
-        { contractAddress: contract, sold: 2, earnedWei: (BigInt(price) * 2n).toString() },
-        { contractAddress: secondContract, sold: 1, earnedWei: price }
+        { contractAddress: contract, sold: 2, earnedWei: (BigInt(price) * 2n).toString(), earnedUsd: '0.000000' },
+        { contractAddress: secondContract, sold: 1, earnedWei: price, earnedUsd: '0.000000' }
       ],
       byItem: lifetimeItems,
       royalties: { resales: 3, volumeWei: (BigInt(price) * 3n).toString() }
@@ -101,6 +105,18 @@ test('sales summary', ({ components }) => {
     expect(await summary(`seller=${seller}&from=5000`)).toEqual({ ...empty, byItem: lifetimeItems })
     expect(await summary(`seller=${seller}&to=0`)).toEqual({ ...empty, byItem: lifetimeItems })
     expect(await summary(`seller=${seller}&from=2001&to=2999`)).toEqual({ ...empty, byItem: lifetimeItems })
+  })
+
+  it('prices each sale at the rate of its own UTC day, and counts the ones with no rate', async () => {
+    // 1970-01-01 has a rate and 1970-01-02 does not.
+    await components.dappsDatabase.query(SQL`INSERT INTO marketplace.mana_usd_daily (day, usd, round_id) VALUES ('1970-01-01', 0.5, 1)`)
+    try {
+      await addSale('priced', 'mint', seller, 2)
+      await addSale('unpriced', 'mint', seller, 86_400 + 2)
+      expect(await summary()).toMatchObject({ total: 2, earnedUsd: '450.359963', unpricedSales: 1 })
+    } finally {
+      await components.dappsDatabase.query(SQL`DELETE FROM marketplace.mana_usd_daily`)
+    }
   })
 
   it('returns creator resales even when the creator has never sold directly', async () => {
@@ -122,7 +138,9 @@ test('sales summary', ({ components }) => {
       mints: 5001,
       resales: 0,
       earnedWei: (BigInt(price) * 5001n).toString(),
-      byCollection: [{ contractAddress: contract, sold: 5001, earnedWei: (BigInt(price) * 5001n).toString() }],
+      earnedUsd: '0.000000',
+      unpricedSales: 5001,
+      byCollection: [{ contractAddress: contract, sold: 5001, earnedWei: (BigInt(price) * 5001n).toString(), earnedUsd: '0.000000' }],
       byItem: [{ contractAddress: contract, itemId: '0', soldLifetime: 5001 }],
       royalties: empty.royalties
     })
