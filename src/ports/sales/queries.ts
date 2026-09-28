@@ -118,7 +118,8 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
       SQL`
   ), collections AS (
     SELECT search_contract_address, COUNT(*) AS sold, SUM(price)::text AS earned,
-      ROUND(COALESCE(SUM(price * usd), 0) / 1e18::numeric, 6)::text AS earned_usd
+      ROUND(COALESCE(SUM(price * usd), 0) / 1e18::numeric, 6)::text AS earned_usd,
+      COUNT(*) FILTER (WHERE usd IS NULL) AS unpriced
     FROM window_sales GROUP BY search_contract_address
   ), items AS (
     SELECT search_contract_address, search_item_id, COUNT(*) AS sold
@@ -152,7 +153,8 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     'earnedUsd', ROUND(COALESCE(SUM(price * usd), 0) / 1e18::numeric, 6)::text,
     'unpricedSales', COUNT(*) FILTER (WHERE usd IS NULL),
     'byCollection', (SELECT COALESCE(json_agg(json_build_object(
-      'contractAddress', search_contract_address, 'sold', sold, 'earnedWei', earned, 'earnedUsd', earned_usd
+      'contractAddress', search_contract_address, 'sold', sold, 'earnedWei', earned, 'earnedUsd', earned_usd,
+      'unpricedSales', unpriced
     ) ORDER BY search_contract_address), '[]'::json) FROM collections),
     'byItem', (SELECT COALESCE(json_agg(json_build_object(
       'contractAddress', search_contract_address, 'itemId', search_item_id::text, 'soldLifetime', sold

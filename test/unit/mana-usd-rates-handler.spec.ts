@@ -30,17 +30,22 @@ describe('when getting the daily MANA/USD rates', () => {
     })
   })
 
-  describe.each(['', 'from=1000', 'from=abc&to=2000', 'from=2000&to=1000', `from=0&to=${16 * 366 * 86_400_000}`])(
-    'and the query is %s',
-    query => {
-      beforeEach(() => {
-        withQuery(query)
-      })
+  describe.each([
+    '',
+    'from=1000',
+    'from=abc&to=2000',
+    'from=2000&to=1000',
+    `from=0&to=${16 * 366 * 86_400_000}`,
+    // A safe integer, but past what a Date can hold: it used to reach the day computation and throw a 500.
+    'from=9007199254740990&to=9007199254740991'
+  ])('and the query is %s', query => {
+    beforeEach(() => {
+      withQuery(query)
+    })
 
-      it('should respond with a bad request without reading', async () => {
-        expect((await getManaUsdRatesHandler(context)).status).toBe(StatusCode.BAD_REQUEST)
-        expect(getDailyRates).not.toHaveBeenCalled()
-      })
-    }
-  )
+    it('should respond with a bad request without reading', async () => {
+      expect((await getManaUsdRatesHandler(context)).status).toBe(StatusCode.BAD_REQUEST)
+      expect(getDailyRates).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -95,8 +95,8 @@ test('sales summary', ({ components }) => {
       earnedUsd: '0.000000',
       unpricedSales: 3,
       byCollection: [
-        { contractAddress: contract, sold: 2, earnedWei: (BigInt(price) * 2n).toString(), earnedUsd: '0.000000' },
-        { contractAddress: secondContract, sold: 1, earnedWei: price, earnedUsd: '0.000000' }
+        { contractAddress: contract, sold: 2, earnedWei: (BigInt(price) * 2n).toString(), earnedUsd: '0.000000', unpricedSales: 2 },
+        { contractAddress: secondContract, sold: 1, earnedWei: price, earnedUsd: '0.000000', unpricedSales: 1 }
       ],
       byItem: lifetimeItems,
       royalties: { resales: 3, volumeWei: (BigInt(price) * 3n).toString() }
@@ -113,7 +113,12 @@ test('sales summary', ({ components }) => {
     try {
       await addSale('priced', 'mint', seller, 2)
       await addSale('unpriced', 'mint', seller, 86_400 + 2)
-      expect(await summary()).toMatchObject({ total: 2, earnedUsd: '450.359963', unpricedSales: 1 })
+      expect(await summary()).toMatchObject({
+        total: 2,
+        earnedUsd: '450.359963',
+        unpricedSales: 1,
+        byCollection: [{ contractAddress: contract, sold: 2, earnedUsd: '450.359963', unpricedSales: 1 }]
+      })
     } finally {
       await components.dappsDatabase.query(SQL`DELETE FROM marketplace.mana_usd_daily`)
     }
@@ -140,7 +145,9 @@ test('sales summary', ({ components }) => {
       earnedWei: (BigInt(price) * 5001n).toString(),
       earnedUsd: '0.000000',
       unpricedSales: 5001,
-      byCollection: [{ contractAddress: contract, sold: 5001, earnedWei: (BigInt(price) * 5001n).toString(), earnedUsd: '0.000000' }],
+      byCollection: [
+        { contractAddress: contract, sold: 5001, earnedWei: (BigInt(price) * 5001n).toString(), earnedUsd: '0.000000', unpricedSales: 5001 }
+      ],
       byItem: [{ contractAddress: contract, itemId: '0', soldLifetime: 5001 }],
       royalties: empty.royalties
     })
