@@ -35,7 +35,7 @@ export function createSalesComponents(components: Pick<AppComponents, 'dappsData
     const first = result.rows[0]
     return {
       data: result.rows
-        .filter(row => row.id !== null)
+        .filter((row): row is DBCreatorRoyalty & { id: string } => row.id !== null)
         .map(row => ({
           id: row.id,
           timestamp: Number(row.timestamp),
