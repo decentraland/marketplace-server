@@ -30,6 +30,16 @@ describe('when getting the daily MANA/USD rates', () => {
     })
   })
 
+  describe('and both bounds sit exactly on the latest instant a date can hold', () => {
+    beforeEach(() => {
+      withQuery('from=8640000000000000&to=8640000000000000')
+    })
+
+    it('should accept them', async () => {
+      expect((await getManaUsdRatesHandler(context)).status).toBe(StatusCode.OK)
+    })
+  })
+
   describe.each([
     '',
     'from=1000',

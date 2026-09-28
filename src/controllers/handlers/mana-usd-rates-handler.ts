@@ -18,10 +18,11 @@ export async function getManaUsdRatesHandler(
   const bounds: { from?: number; to?: number } = {}
   for (const key of ['from', 'to'] as const) {
     const value = params.getString(key)
-    if (value === undefined || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > MAX_DATE_MS) {
+    const ms = value !== undefined && /^\d+$/.test(value) ? Number(value) : NaN
+    if (!Number.isSafeInteger(ms) || ms > MAX_DATE_MS) {
       return { status: StatusCode.BAD_REQUEST, body: { ok: false, message: `${key} must be an epoch timestamp in milliseconds` } }
     }
-    bounds[key] = Number(value)
+    bounds[key] = ms
   }
   const { from, to } = bounds as { from: number; to: number }
   if (from > to) {
