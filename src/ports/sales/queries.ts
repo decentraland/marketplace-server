@@ -3,7 +3,7 @@ import { SaleFilters, SaleSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
-import { SalesSummaryFilters } from './types'
+import { CreatorRoyaltiesFilters, SalesSummaryFilters } from './types'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 1000
@@ -92,7 +92,7 @@ export function getSalesQuery(filters: SaleFilters = {}) {
 }
 
 // Keep the bounds in seconds so PostgreSQL can use the sale timestamp index.
-function getSummaryWindow({ from, to }: SalesSummaryFilters) {
+function getSummaryWindow({ from, to }: Pick<SalesSummaryFilters, 'from' | 'to'>) {
   const window = SQL``
   if (from !== undefined) window.append(SQL` AND timestamp >= ${from}::numeric / 1000 `)
   if (to !== undefined) window.append(SQL` AND timestamp <= ${to}::numeric / 1000 `)
@@ -127,7 +127,8 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     WHERE type = 'mint' AND search_item_id IS NOT NULL
     GROUP BY search_contract_address, search_item_id
   ), royalties AS (
-    SELECT COUNT(*) AS resales, COALESCE(SUM(price), 0)::text AS volume
+    SELECT COUNT(*) AS resales, COALESCE(SUM(price), 0)::text AS volume,
+      COALESCE(SUM(royalties_cut), 0)::text AS paid
     FROM `
     )
     .append(MARKETPLACE_SQUID_SCHEMA)
@@ -159,6 +160,50 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     'byItem', (SELECT COALESCE(json_agg(json_build_object(
       'contractAddress', search_contract_address, 'itemId', search_item_id::text, 'soldLifetime', sold
     ) ORDER BY search_contract_address, search_item_id), '[]'::json) FROM items),
-    'royalties', (SELECT json_build_object('resales', resales, 'volumeWei', volume) FROM royalties)
+    'royalties', (SELECT json_build_object('resales', resales, 'volumeWei', volume, 'royaltiesWei', paid) FROM royalties)
   ) AS summary FROM window_sales`)
+}
+
+/**
+ * The resales of a creator's items, newest first, with the royalty each one paid.
+ *
+ * A resale is any `order` or `bid` sale of an item the address created, whoever sold it; `royalties_cut` is
+ * what the marketplace sent to `royalties_collector` in that trade (the item's beneficiary when one is set,
+ * else the creator). The window's count and royalty total ride on every row so one query answers both.
+ */
+export function getCreatorRoyaltiesQuery(filters: CreatorRoyaltiesFilters) {
+  const creator = filters.creator.toLowerCase()
+  const query = SQL`WITH creator_items AS (
+    SELECT id FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.item WHERE LOWER(creator) = ${creator}
+  ), resales AS (
+    SELECT s.id, s.timestamp, s.price, s.royalties_cut, s.royalties_collector, s.buyer, s.seller,
+      s.search_contract_address, s.search_item_id, s.search_token_id, s.network
+    FROM `
+    )
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(
+      SQL`.sale s
+    WHERE s.item_id IN (SELECT id FROM creator_items) AND s.type IN ('order', 'bid')`
+    )
+    .append(getSummaryWindow(filters))
+    .append(
+      SQL`
+  ), page AS (
+    SELECT * FROM resales ORDER BY timestamp DESC, id LIMIT ${filters.first} OFFSET ${filters.skip}
+  )
+  -- The totals come from their own row, joined to the page, so a page past the end still answers them.
+  SELECT page.id, (page.timestamp * 1000)::text AS timestamp, page.price::text AS price,
+    COALESCE(page.royalties_cut, 0)::text AS royalty,
+    CASE WHEN page.royalties_collector IS NULL THEN NULL ELSE '0x' || encode(page.royalties_collector, 'hex') END AS collector,
+    page.buyer, page.seller, page.search_contract_address AS contract_address, page.search_item_id::text AS item_id,
+    page.search_token_id::text AS token_id, page.network,
+    totals.total, totals.royalties_total
+  FROM (SELECT COUNT(*) AS total, COALESCE(SUM(royalties_cut), 0)::text AS royalties_total FROM resales) totals
+  LEFT JOIN page ON TRUE
+  ORDER BY page.timestamp DESC, page.id`
+    )
+  return query
 }
