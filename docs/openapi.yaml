@@ -2050,6 +2050,102 @@ paths:
         '400':
           description: Missing, malformed or reversed bounds, or a range over 15 years.
 
+  /v1/sales/royalties:
+    get:
+      tags:
+        - Sales
+      summary: A creator's resales and the royalty each paid
+      operationId: getCreatorRoyalties
+      security: []
+      description: |
+        Every resale (order or bid sale) of an item the address created, whoever sold it, newest first. Each
+        row carries the royalty the marketplace sent in that trade and who received it: the item's beneficiary
+        when one is set, else the creator. Amounts are gross MANA wei as decimal strings. total and
+        royaltiesWei cover the whole window, not only the page.
+      parameters:
+        - name: creator
+          in: query
+          required: true
+          description: Creator wallet address (case insensitive).
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
+        - name: from
+          in: query
+          description: Inclusive start in epoch milliseconds; must not exceed to.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 8640000000000000
+        - name: to
+          in: query
+          description: Inclusive end in epoch milliseconds.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 8640000000000000
+        - name: first
+          in: query
+          description: Page size, capped at 100.
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of resales, the number in the window and their royalty total
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, royaltiesWei]
+                properties:
+                  total:
+                    type: integer
+                  royaltiesWei:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, timestamp, contractAddress, itemId, tokenId, priceWei, royaltyWei, collector, buyer, seller, network]
+                      properties:
+                        id:
+                          type: string
+                        timestamp:
+                          type: integer
+                          description: Epoch milliseconds.
+                        contractAddress:
+                          type: string
+                        itemId:
+                          type: string
+                          nullable: true
+                        tokenId:
+                          type: string
+                        priceWei:
+                          type: string
+                        royaltyWei:
+                          type: string
+                          description: Zero for trades that paid none, such as those before royalties were enforced.
+                        collector:
+                          type: string
+                          nullable: true
+                          description: Who received the royalty; null when the trade did not record one.
+                        buyer:
+                          type: string
+                        seller:
+                          type: string
+                        network:
+                          type: string
+        '400':
+          description: Missing or invalid creator, malformed or reversed bounds, or an invalid page.
+
   /v1/sales/summary:
     get:
       tags:
@@ -2149,12 +2245,15 @@ paths:
                               type: integer
                       royalties:
                         type: object
-                        required: [resales, volumeWei]
+                        required: [resales, volumeWei, royaltiesWei]
                         properties:
                           resales:
                             type: integer
                           volumeWei:
                             type: string
+                          royaltiesWei:
+                            type: string
+                            description: What those resales actually paid in royalties, from each trade's royalty cut.
         '400':
           description: Missing or invalid seller, invalid timestamps, or reversed time window.
 

@@ -13,6 +13,7 @@ import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
 import { getContractsHandler } from './handlers/contracts-handler'
 import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handlers/coupons-handler'
+import { getCreatorRoyaltiesHandler } from './handlers/creator-royalties-handler'
 import { createCreatorSearchHandler } from './handlers/creator-search-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
 import { getItemsHandler } from './handlers/items-handler'
@@ -188,6 +189,7 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/sales/summary', getSalesSummaryHandler)
+  router.get('/v1/sales/royalties', getCreatorRoyaltiesHandler)
   router.get('/v1/rates/mana-usd', getManaUsdRatesHandler)
   router.get('/v1/sales', getSalesHandler)
   router.get(

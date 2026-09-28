@@ -17,7 +17,7 @@ test('sales summary', ({ components }) => {
     unpricedSales: 0,
     byCollection: [],
     byItem: [],
-    royalties: { resales: 0, volumeWei: '0' }
+    royalties: { resales: 0, volumeWei: '0', royaltiesWei: '0' }
   }
 
   async function addSale(id: string, type: string, owner: string, timestamp: number, address = contract, itemId = '0') {
@@ -99,7 +99,7 @@ test('sales summary', ({ components }) => {
         { contractAddress: secondContract, sold: 1, earnedWei: price, earnedUsd: '0.000000', unpricedSales: 1 }
       ],
       byItem: lifetimeItems,
-      royalties: { resales: 3, volumeWei: (BigInt(price) * 3n).toString() }
+      royalties: { resales: 3, volumeWei: (BigInt(price) * 3n).toString(), royaltiesWei: '0' }
     })
     expect(await summary()).toMatchObject({ total: 5, mints: 3, resales: 2, earnedWei: (BigInt(price) * 5n).toString() })
     expect(await summary(`seller=${seller}&from=5000`)).toEqual({ ...empty, byItem: lifetimeItems })
@@ -126,7 +126,7 @@ test('sales summary', ({ components }) => {
 
   it('returns creator resales even when the creator has never sold directly', async () => {
     await addSale('third-party', 'bid', other, 2)
-    expect(await summary()).toEqual({ ...empty, royalties: { resales: 1, volumeWei: price } })
+    expect(await summary()).toEqual({ ...empty, royalties: { resales: 1, volumeWei: price, royaltiesWei: '0' } })
   })
 
   it('does not apply the sales feed pagination limit', async () => {
