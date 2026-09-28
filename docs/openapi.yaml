@@ -1911,6 +1911,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/owners/top:
+    get:
+      tags:
+        - Owners
+      summary: Rank the accounts holding a creator's items
+      operationId: getTopOwners
+      security: []
+      description: |
+        Every account holding NFTs of items whose creator is the given address, aggregated across all of
+        that creator's collections. The creator's own holdings and the zero address are excluded.
+        spentWei is what the account paid, in gross MANA wei, across every sale of the creator's items it
+        bought, first sales and resales alike. The aggregate is cached per creator for ten minutes, so a
+        transfer can take that long to show. A creator too large to aggregate in time gets a 503.
+      parameters:
+        - name: creator
+          in: query
+          required: true
+          description: Creator wallet address (case insensitive).
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
+        - name: sortBy
+          in: query
+          description: What to rank by. Ties fall back to NFTs held, then most recent acquisition, then address.
+          schema:
+            type: string
+            enum: [nfts, items, collections, recent, spent]
+            default: nfts
+        - name: orderDirection
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: first
+          in: query
+          description: Page size. Values outside 1-100 are clamped rather than rejected.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: skip
+          in: query
+          description: Owners to skip. A negative value is treated as 0.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of owners and the total number of owners
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [address, nfts, items, collections, lastAcquiredAt, spentWei]
+                      properties:
+                        address:
+                          type: string
+                        nfts:
+                          type: integer
+                        items:
+                          type: integer
+                        collections:
+                          type: integer
+                        lastAcquiredAt:
+                          type: integer
+                          description: When the most recent of these NFTs reached the account, in epoch milliseconds.
+                        spentWei:
+                          type: string
+                          example: '115026000000000000000'
+        '400':
+          description: Missing or invalid creator, sortBy or orderDirection.
+        '503':
+          description: The creator holds too many NFTs to aggregate within the time limit.
+
   /v1/sales/summary:
     get:
       tags:

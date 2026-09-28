@@ -160,7 +160,7 @@ async function initComponents(): Promise<TestComponents> {
   const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
-  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
