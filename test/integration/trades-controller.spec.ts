@@ -22,6 +22,7 @@ import { clearSquidTradesRows, createSquidContractStatusRow } from './utils/dbIt
 const MANA_MAINNET_ADDRESS = getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address
 // The version every trade below resolves to, unless a context says otherwise.
 const MARKETPLACE_V2 = getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET)
+const MARKETPLACE_V3 = getContract(ContractName.OffChainMarketplaceV3, ChainId.ETHEREUM_MAINNET)
 
 test('trades controller', function ({ components }) {
   beforeEach(() => {
@@ -418,6 +419,67 @@ test('trades controller', function ({ components }) {
     })
   })
 
+  describe('when the marketplace contract a new trade resolves to is paused', () => {
+    let bid: TradeCreation
+    let response: Response
+
+    beforeEach(async () => {
+      const { localFetch } = components
+      await createSquidContractStatusRow(components, { address: MARKETPLACE_V2.address, network: 'ETHEREUM', paused: true })
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      bid = {
+        signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [{ assetType: TradeAssetType.ERC20, contractAddress: MANA_MAINNET_ADDRESS, extra: '0x', amount: '100' }],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            tokenId: `${Date.now()}`,
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+      response = await localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify(bid),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+    })
+
+    afterEach(async () => {
+      await clearSquidTradesRows(components)
+    })
+
+    it('should respond with a 409 saying the marketplace contract is paused', async () => {
+      expect(response.status).toEqual(StatusCode.CONFLICT)
+      expect(await response.json()).toEqual({ ok: false, message: 'The marketplace contract is paused' })
+    })
+
+    it('should not store the trade', async () => {
+      const { dappsDatabase } = components
+      const queryResult = await dappsDatabase.query(SQL`SELECT 1 FROM marketplace.trades WHERE signature = ${bid.signature}`)
+      expect(queryResult.rowCount).toBe(0)
+    })
+  })
+
   describe('when getting a trade whose marketplace contract was paused after it was created', () => {
     let response: Response
     let createdTrade: { id: string }
@@ -472,6 +534,113 @@ test('trades controller', function ({ components }) {
     it('should report the trade as still open and paused', async () => {
       expect(response.status).toEqual(StatusCode.OK)
       expect((await response.json()).data).toMatchObject({ id: createdTrade.id, status: 'open', paused: true })
+    })
+  })
+
+  describe('when listing an nft that already has an open order', () => {
+    let firstListing: TradeCreation
+    let response: Response
+
+    async function postListing(listing: TradeCreation): Promise<Response> {
+      const { localFetch } = components
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      const signer = signedRequest.identity.realAccount.address.toLowerCase()
+      return localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify({
+          ...listing,
+          signer,
+          signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+        }),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+    }
+
+    beforeEach(async () => {
+      jest.spyOn(tradeUtils, 'validateAssetOwnership').mockResolvedValue(true)
+      firstListing = {
+        signature: '',
+        signer: '',
+        chainId: 1,
+        type: TradeType.PUBLIC_NFT_ORDER,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763c',
+            tokenId: `${Date.now()}`,
+            extra: '0x'
+          }
+        ],
+        received: [
+          {
+            assetType: TradeAssetType.ERC20,
+            contractAddress: MANA_MAINNET_ADDRESS,
+            amount: '100',
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763c'
+          }
+        ]
+      }
+      const created = await postListing(firstListing)
+      expect(created.status).toEqual(StatusCode.CREATED)
+    })
+
+    afterEach(async () => {
+      await clearSquidTradesRows(components)
+    })
+
+    describe('and the open order marketplace is not paused', () => {
+      beforeEach(async () => {
+        response = await postListing(firstListing)
+      })
+
+      it('should reject the new listing as a duplicate', async () => {
+        expect(response.status).toEqual(StatusCode.CONFLICT)
+        expect(await response.json()).toEqual({ ok: false, message: 'There is already an open order for this NFT' })
+      })
+    })
+
+    describe('and the open order marketplace is paused', () => {
+      beforeEach(async () => {
+        await createSquidContractStatusRow(components, { address: MARKETPLACE_V2.address, network: 'ETHEREUM', paused: true })
+      })
+
+      describe('and the seller relists on another marketplace version', () => {
+        beforeEach(async () => {
+          jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({ contract: MARKETPLACE_V3, cancellationDigest: null }))
+          response = await postListing(firstListing)
+        })
+
+        it('should accept the new listing, since the paused one cannot sell', async () => {
+          expect(response.status).toEqual(StatusCode.CREATED)
+          expect((await response.json()).data.contract).toEqual(MARKETPLACE_V3.address)
+        })
+      })
+
+      describe('and the seller relists on the same paused marketplace', () => {
+        beforeEach(async () => {
+          response = await postListing(firstListing)
+        })
+
+        it('should reject the new listing because the marketplace contract is paused', async () => {
+          expect(response.status).toEqual(StatusCode.CONFLICT)
+          expect(await response.json()).toEqual({ ok: false, message: 'The marketplace contract is paused' })
+        })
+      })
     })
   })
 })

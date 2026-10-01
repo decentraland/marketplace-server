@@ -240,23 +240,31 @@ export function getTradeStatusByIdQuery(type: TradeType, id: string): SQLStateme
 }
 
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
-    .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
-    .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
-    .append(SQL` AND item_order_trades.network = ${network}`)
-    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
-    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
-    .append(SQL` LIMIT 1`)
+  return (
+    SQL`SELECT 1 FROM (`
+      .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
+      .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
+      // A listing on a paused marketplace cannot sell, so it must not block relisting on another version.
+      .append(SQL` AND NOT item_order_trades.paused`)
+      .append(SQL` AND item_order_trades.network = ${network}`)
+      .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+      .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
+      .append(SQL` LIMIT 1`)
+  )
 }
 
 export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
-    .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
-    .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
-    .append(SQL` AND nft_order_trades.network = ${network}`)
-    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
-    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
-    .append(SQL` LIMIT 1`)
+  return (
+    SQL`SELECT 1 FROM (`
+      .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
+      .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
+      // A listing on a paused marketplace cannot sell, so it must not block relisting on another version.
+      .append(SQL` AND NOT nft_order_trades.paused`)
+      .append(SQL` AND nft_order_trades.network = ${network}`)
+      .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+      .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
+      .append(SQL` LIMIT 1`)
+  )
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
@@ -442,6 +450,15 @@ export function getOtherOpenListingForItemQuery(contractAddress: string, itemId:
       AND id <> ${excludeTradeId}
       LIMIT 1`
   )
+}
+
+// Whether the marketplace a new trade targets is paused. No row means it never was.
+export function getMarketplaceContractPausedQuery(contractAddress: string, network: string): SQLStatement {
+  return SQL`
+    SELECT paused FROM squid_trades.contract_status
+    WHERE address = ${contractAddress.toLowerCase()}
+      AND network = CASE WHEN ${network} = 'MATIC' THEN 'POLYGON' ELSE ${network} END
+    LIMIT 1`
 }
 
 export function getAllTradesQuery(): SQLStatement {

@@ -18,7 +18,8 @@ import {
   EventNotGeneratedError,
   TradeNotFoundBySignatureError,
   InvalidOwnerError,
-  InvalidEstateTrade
+  InvalidEstateTrade,
+  MarketplaceContractPausedError
 } from './errors'
 import {
   getAllTradesQuery,
@@ -26,6 +27,7 @@ import {
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
   getItemIdByTokenIdQuery,
+  getMarketplaceContractPausedQuery,
   getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
@@ -185,6 +187,14 @@ export function createTradesComponent(
     const signatureMatch = resolveTradeSignature(trade, signer)
     if (!signatureMatch) {
       throw new InvalidTradeSignatureError()
+    }
+
+    // A paused marketplace reverts every settlement, so a trade signed against it could never sell.
+    const contractStatus = await pg.query<{ paused: boolean }>(
+      getMarketplaceContractPausedQuery(signatureMatch.contract.address, trade.network)
+    )
+    if (contractStatus.rows[0]?.paused) {
+      throw new MarketplaceContractPausedError(signatureMatch.contract.address, trade.network)
     }
 
     // validate right ownership

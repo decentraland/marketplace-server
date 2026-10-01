@@ -1,4 +1,4 @@
-import { ChainId, Event, Events, ListingStatus, Trade, TradeCreation } from '@dcl/schemas'
+import { ChainId, Event, Events, ListingStatus, Network, Trade, TradeCreation } from '@dcl/schemas'
 import {
   addTradeHandler,
   getTradeAcceptedEventHandler,
@@ -14,6 +14,7 @@ import {
   InvalidEstateTrade,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
+  MarketplaceContractPausedError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
@@ -106,7 +107,12 @@ describe('when handling the creation of a new trade', () => {
       },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT },
       { errorName: 'DuplicateNFTOrderError', error: new DuplicateNFTOrderError(), code: StatusCode.CONFLICT },
-      { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT }
+      { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT },
+      {
+        errorName: 'MarketplaceContractPausedError',
+        error: new MarketplaceContractPausedError('0xmarketplace', Network.MATIC),
+        code: StatusCode.CONFLICT
+      }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
       beforeEach(() => {
         body = { type: 'bid' } as TradeCreation

@@ -7,6 +7,7 @@ import { IPgComponent } from '../../src/ports/db/types'
 import { IEventPublisherComponent } from '../../src/ports/events/types'
 import { IShopNotifierComponent } from '../../src/ports/shop-notifier/types'
 import { DBTrade, DBTradeAsset, ITradesComponent, createTradesComponent } from '../../src/ports/trades'
+import { getMarketplaceContractPausedQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
 
@@ -84,7 +85,8 @@ describe('when adding a listing trade', () => {
     forceFlushMock.mockResolvedValue(true)
     mockSigner = '0x1234567890'
     mockPgQuery = jest.fn()
-    mockTopLevelQuery = jest.fn()
+    // The marketplace pause lookup comes first: no contract_status row, so never paused.
+    mockTopLevelQuery = jest.fn().mockResolvedValueOnce({ rows: [], rowCount: 0 })
     mockPg = {
       getPool: jest.fn(),
       withTransaction: jest.fn().mockImplementation((fn, _onError) => fn({ query: mockPgQuery })),
@@ -337,7 +339,15 @@ describe('when adding a listing trade', () => {
       await tradesComponent.addTrade(bidTrade, mockSigner)
       await flushBackground()
       expect(notifyItemOnSaleMock).not.toHaveBeenCalled()
-      expect(mockTopLevelQuery).not.toHaveBeenCalled()
+      // Only the pause lookup, never the view.
+      expect(mockTopLevelQuery.mock.calls).toEqual([
+        [
+          getMarketplaceContractPausedQuery(
+            getContract(ContractName.OffChainMarketplaceV2, ChainId.MATIC_MAINNET).address,
+            bidTrade.network
+          )
+        ]
+      ])
     })
   })
 })

@@ -33,6 +33,7 @@ import {
 import {
   InvalidEstateTrade,
   InvalidTradeSignatureError,
+  MarketplaceContractPausedError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
@@ -42,6 +43,7 @@ import {
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
+  getMarketplaceContractPausedQuery,
   getTradeStatusByIdQuery
 } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
@@ -219,6 +221,51 @@ describe('when adding a new trade', () => {
     })
   })
 
+  describe('when the marketplace contract the trade resolves to is paused', () => {
+    let queryMock: jest.Mock
+    let withTransactionMock: jest.Mock
+
+    beforeEach(() => {
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      queryMock = jest.fn().mockResolvedValueOnce({ rows: [{ paused: true }], rowCount: 1 })
+      withTransactionMock = jest.fn()
+      mockPg.query = queryMock
+      mockPg.withTransaction = withTransactionMock
+    })
+
+    it('should reject the trade with a MarketplaceContractPausedError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
+        new MarketplaceContractPausedError(signatureMatch.contract.address, mockTrade.network)
+      )
+    })
+
+    it('should look the status up for the resolved contract and the trade network', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(queryMock).toHaveBeenCalledWith(getMarketplaceContractPausedQuery(signatureMatch.contract.address, mockTrade.network))
+    })
+
+    it('should not store the trade', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(withTransactionMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the marketplace contract the trade resolves to was unpaused', () => {
+    beforeEach(() => {
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      ;(mockPg.query as jest.Mock).mockResolvedValueOnce({ rows: [{ paused: false }], rowCount: 1 })
+      ;(mockPg.withTransaction as jest.Mock).mockRejectedValueOnce(new Error('stop after the pause check'))
+    })
+
+    it('should go on to store the trade', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow('stop after the pause check')
+    })
+  })
+
   describe('when the trade passes all validations', () => {
     let mockPgQuery: jest.Mock
     let insertedTrade: DBTrade
@@ -233,6 +280,8 @@ describe('when adding a new trade', () => {
       jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      // No contract_status row: the marketplace was never paused.
+      ;(mockPg.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 })
       mockPgQuery = jest.fn()
       ;(mockPg.withTransaction as jest.Mock).mockImplementation((fn, _onError) => fn({ query: mockPgQuery }))
 

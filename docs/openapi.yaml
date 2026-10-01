@@ -839,6 +839,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - a duplicate open bid or order exists, or the marketplace contract is paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/trades/{id}:
     get:
       tags:

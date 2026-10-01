@@ -1,5 +1,13 @@
-import { TradeType } from '@dcl/schemas'
-import { getAllTradesQuery, getTradesByAddressQuery, getTradesForTypeQuery, getTradeStatusByIdQuery } from '../../src/ports/trades/queries'
+import { Network, TradeType } from '@dcl/schemas'
+import {
+  getAllTradesQuery,
+  getMarketplaceContractPausedQuery,
+  getOpenItemOrderQuery,
+  getOpenNFTOrderQuery,
+  getTradesByAddressQuery,
+  getTradesForTypeQuery,
+  getTradeStatusByIdQuery
+} from '../../src/ports/trades/queries'
 
 const CONTRACT_STATUS_JOIN =
   /LEFT JOIN squid_trades\.contract_status AS trade_contract_status\s+ON trade_contract_status\.address = LOWER\(t\.contract\)\s+AND trade_contract_status\.network = CASE WHEN t\.network = 'MATIC' THEN 'POLYGON' ELSE t\.network END/
@@ -23,6 +31,32 @@ describe('when building the trades query for a type', () => {
     expect(text).toMatch(
       /GROUP BY t\.id, t\.created_at, t\.network, t\.chain_id, t\.signer, t\.checks, contract_signature_index\.index, signer_signature_index\.index\s*$/
     )
+  })
+})
+
+describe('when building the duplicate-order guards', () => {
+  describe('and the order is for an item', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = getOpenItemOrderQuery('0xcontract', '1', Network.MATIC).text
+    })
+
+    it('should ignore open orders on a paused marketplace', () => {
+      expect(text).toContain('AND NOT item_order_trades.paused')
+    })
+  })
+
+  describe('and the order is for an nft', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = getOpenNFTOrderQuery('0xcontract', '1', Network.MATIC).text
+    })
+
+    it('should ignore open orders on a paused marketplace', () => {
+      expect(text).toContain('AND NOT nft_order_trades.paused')
+    })
   })
 })
 
@@ -51,6 +85,25 @@ describe('when building the status query for a single trade', () => {
 
   it('should select the status and the paused flag', () => {
     expect(text).toMatch(/^SELECT trade_by_id\.status, trade_by_id\.paused FROM \(/)
+  })
+})
+
+describe('when building the marketplace pause lookup', () => {
+  let values: unknown[]
+  let text: string
+
+  beforeEach(() => {
+    const query = getMarketplaceContractPausedQuery('0xABCdef', Network.MATIC)
+    values = query.values
+    text = query.text
+  })
+
+  it('should match the lowercased contract address and the network', () => {
+    expect(values).toEqual(['0xabcdef', Network.MATIC, Network.MATIC])
+  })
+
+  it('should translate MATIC to the network name the indexer writes', () => {
+    expect(text).toContain("network = CASE WHEN $2 = 'MATIC' THEN 'POLYGON' ELSE $3 END")
   })
 })
 

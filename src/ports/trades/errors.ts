@@ -107,3 +107,9 @@ export class EventNotGeneratedError extends Error {
     super('Event could not be generated')
   }
 }
+
+export class MarketplaceContractPausedError extends Error {
+  constructor(public contractAddress: string, public network: Network) {
+    super('The marketplace contract is paused')
+  }
+}

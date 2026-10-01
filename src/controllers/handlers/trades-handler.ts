@@ -18,7 +18,8 @@ import {
   DuplicateNFTOrderError,
   DuplicateItemOrderError,
   InvalidEstateTrade,
-  EstateContractNotFoundForChainId
+  EstateContractNotFoundForChainId,
+  MarketplaceContractPausedError
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode, WithPaused } from '../../types'
 
@@ -97,7 +98,12 @@ export async function addTradeHandler(
       }
     }
 
-    if (e instanceof DuplicatedBidError || e instanceof DuplicateNFTOrderError || e instanceof DuplicateItemOrderError) {
+    if (
+      e instanceof DuplicatedBidError ||
+      e instanceof DuplicateNFTOrderError ||
+      e instanceof DuplicateItemOrderError ||
+      e instanceof MarketplaceContractPausedError
+    ) {
       return {
         status: StatusCode.CONFLICT,
         body: {
