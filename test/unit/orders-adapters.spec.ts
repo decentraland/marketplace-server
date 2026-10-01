@@ -2,11 +2,14 @@ import { ListingStatus, Network, NFTCategory, Order } from '@dcl/schemas'
 import { fromDBOrderToOrder } from '../../src/adapters/orders'
 import { fromSecondsToMilliseconds } from '../../src/logic/date'
 import { DBOrder } from '../../src/ports/orders/types'
-import { SquidNetwork } from '../../src/types'
+import { SquidNetwork, WithPaused } from '../../src/types'
 
-describe('fromDBOrderToOrder', () => {
-  it('should convert a DBOrder object to an Order object', () => {
-    const dbOrder: DBOrder = {
+describe('when converting a db order to an order', () => {
+  let dbOrder: DBOrder
+  let expectedOrder: WithPaused<Order>
+
+  beforeEach(() => {
+    dbOrder = {
       id: '123',
       marketplace_address: '0x123',
       nft_address: '0x456',
@@ -24,10 +27,11 @@ describe('fromDBOrderToOrder', () => {
       count: 1,
       category: NFTCategory.ENS,
       item_id: 'ghi789',
-      nft_id: 'jkl012'
+      nft_id: 'jkl012',
+      paused: false
     }
 
-    const expectedOrder: Order = {
+    expectedOrder = {
       id: '123',
       marketplaceAddress: '0x123',
       contractAddress: '0x456',
@@ -42,11 +46,25 @@ describe('fromDBOrderToOrder', () => {
       network: Network.ETHEREUM,
       chainId: 1,
       issuedId: 'abc123',
-      tradeId: 'def456'
+      tradeId: 'def456',
+      paused: false
     }
+  })
 
-    const result = fromDBOrderToOrder(dbOrder)
+  describe('and its marketplace contract is not paused', () => {
+    it('should convert it to an order flagged as not paused', () => {
+      expect(fromDBOrderToOrder(dbOrder)).toEqual(expectedOrder)
+    })
+  })
 
-    expect(result).toEqual(expectedOrder)
+  describe('and its marketplace contract is paused', () => {
+    beforeEach(() => {
+      dbOrder = { ...dbOrder, paused: true }
+      expectedOrder = { ...expectedOrder, paused: true }
+    })
+
+    it('should convert it to an open order flagged as paused', () => {
+      expect(fromDBOrderToOrder(dbOrder)).toEqual(expectedOrder)
+    })
   })
 })

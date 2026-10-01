@@ -12,7 +12,8 @@ import {
   Events,
   NFTCategory,
   Rarity,
-  Event
+  Event,
+  ListingStatus
 } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
@@ -37,7 +38,12 @@ import {
   TradeEffectiveAfterExpirationError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
-import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
+import {
+  getInsertTradeAssetQuery,
+  getInsertTradeAssetValueByTypeQuery,
+  getInsertTradeQuery,
+  getTradeStatusByIdQuery
+} from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
 
@@ -372,6 +378,7 @@ describe('when getting a trade', () => {
   describe('when there is a trade with the given id', () => {
     let assets: (DBTrade & DBTradeAssetWithValue)[]
     let trade: Trade
+    let mockQuery: jest.Mock
 
     beforeEach(() => {
       trade = {
@@ -462,7 +469,8 @@ describe('when getting a trade', () => {
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),
-        query: jest.fn().mockResolvedValue({ rows: assets, rowCount: 2 })
+        // Each context below sets mockQuery after this runs.
+        query: jest.fn((...args: unknown[]) => mockQuery(...args))
       }
       const mockEventPublisher = {
         publishMessage: jest.fn()
@@ -476,8 +484,128 @@ describe('when getting a trade', () => {
       })
     })
 
-    it('should return trade', async () => {
-      await expect(tradesComponent.getTrade('1')).resolves.toEqual(trade)
+    describe('and it is open on a marketplace that is not paused', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.OPEN, paused: false }], rowCount: 1 })
+      })
+
+      it('should return the trade with its status and not paused', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, paused: false })
+      })
+
+      it('should compute the status with the query for the trade type and id', async () => {
+        await tradesComponent.getTrade('1')
+        expect(mockQuery).toHaveBeenNthCalledWith(2, getTradeStatusByIdQuery(TradeType.BID, '1'))
+      })
     })
+
+    describe('and its marketplace contract is paused', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.OPEN, paused: true }], rowCount: 1 })
+      })
+
+      it('should return the trade as open and paused', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, paused: true })
+      })
+    })
+
+    describe('and it was cancelled', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.CANCELLED, paused: false }], rowCount: 1 })
+      })
+
+      it('should return the trade with the cancelled status', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.CANCELLED, paused: false })
+      })
+    })
+  })
+})
+
+describe('when getting the trades of an address', () => {
+  let tradesComponent: ITradesComponent
+  let mockQuery: jest.Mock
+  let result: Awaited<ReturnType<ITradesComponent['getTradesByAddress']>>
+
+  function assetRow(tradeId: string, paused: boolean) {
+    return {
+      trade_id: tradeId,
+      trade_chain_id: ChainId.MATIC_AMOY,
+      trade_checks: {},
+      trade_created_at: new Date(1000),
+      trade_effective_since: new Date(1000),
+      trade_expires_at: new Date(2000),
+      trade_network: Network.MATIC,
+      trade_signature: '0xsig',
+      trade_signer: '0xuser',
+      trade_type: TradeType.PUBLIC_ITEM_ORDER,
+      trade_contract: '0xmarketplace',
+      trade_paused: paused,
+      asset_id: `${tradeId}-asset`,
+      asset_type: TradeAssetType.ERC20,
+      asset_beneficiary: '0xuser',
+      asset_contract_address: '0xmana',
+      asset_direction: TradeAssetDirection.RECEIVED,
+      asset_extra: '0x',
+      asset_trade_id: tradeId,
+      asset_created_at: new Date(1000),
+      token_id: null,
+      amount: '10',
+      item_id: null
+    }
+  }
+
+  beforeEach(async () => {
+    mockQuery = jest.fn().mockResolvedValueOnce({ rows: [assetRow('paused-trade', true), assetRow('live-trade', false)], rowCount: 2 })
+    tradesComponent = createTradesComponent({
+      dappsDatabase: { query: mockQuery } as unknown as IPgComponent,
+      eventPublisher: { publishMessage: jest.fn() },
+      logs: createTestLogsComponent({
+        getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
+      }),
+      shopNotifier: { notifyItemOnSale: jest.fn() }
+    })
+    result = await tradesComponent.getTradesByAddress('0xuser')
+  })
+
+  it('should flag each trade with whether its marketplace is paused', () => {
+    expect(result.data.map(trade => [trade.id, trade.paused])).toEqual([
+      ['paused-trade', true],
+      ['live-trade', false]
+    ])
+  })
+})
+
+describe('when getting every trade', () => {
+  let tradesComponent: ITradesComponent
+  let rows: { id: string; paused: boolean }[]
+  let result: Awaited<ReturnType<ITradesComponent['getTrades']>>
+
+  beforeEach(async () => {
+    rows = [
+      { id: '1', paused: true },
+      { id: '2', paused: false }
+    ]
+    tradesComponent = createTradesComponent({
+      dappsDatabase: { query: jest.fn().mockResolvedValueOnce({ rows, rowCount: 2 }) } as unknown as IPgComponent,
+      eventPublisher: { publishMessage: jest.fn() },
+      logs: createTestLogsComponent({
+        getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
+      }),
+      shopNotifier: { notifyItemOnSale: jest.fn() }
+    })
+    result = await tradesComponent.getTrades()
+  })
+
+  it('should return the trades with their paused flag and the count', () => {
+    expect(result).toEqual({ data: rows, count: 2 })
   })
 })

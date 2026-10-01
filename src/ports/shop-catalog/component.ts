@@ -14,6 +14,7 @@ import {
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { collectionProof } from '../../logic/coupons/merkle'
 import { getCouponMarketplacePairings } from '../../logic/coupons/signature'
+import { getContractStatusJoin, getPausedColumn } from '../../logic/trades/contract-status'
 import { AppComponents } from '../../types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
 // two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
@@ -131,11 +132,20 @@ function metadataJoinsOn() {
     .append(SQL`.item item_s ON mv.type = 'public_nft_order' AND item_s.id = nft.item_id`)
 }
 
+const CONTRACT_STATUS_ALIAS = 'trade_contract_status'
+
 // The shared FROM + metadata joins used by the shop feed + the import feed. Resolves item metadata
-// for primary (item_p -> wearable/emote) and secondary (nft + item_s) listings.
+// for primary (item_p -> wearable/emote) and secondary (nft + item_s) listings, plus the listing's
+// marketplace pause state.
 function metadataJoins() {
-  return SQL`FROM marketplace.mv_trades mv
-      `.append(metadataJoinsOn())
+  return SQL`FROM marketplace.mv_trades mv`
+    .append(getContractStatusJoin(CONTRACT_STATUS_ALIAS, 'mv.trade_contract', 'mv.network'))
+    .append(metadataJoinsOn())
+}
+
+// The listing's marketplace pause flag, joined by metadataJoins.
+function pausedColumn(): SQLStatement {
+  return SQL``.append(getPausedColumn(CONTRACT_STATUS_ALIAS)).append(SQL` AS paused`)
 }
 
 /**
@@ -593,6 +603,9 @@ function unifiedBranch(opts: {
     .append(withCoupons ? couponColumns() : nullCouponColumns())
     .append(SQL`, `)
     .append(genderExpr())
+    // A store mint is not a trade, so no marketplace pause applies to it.
+    .append(SQL`, `)
+    .append(isStore ? SQL`false AS paused` : pausedColumn())
     // Search columns ride along on every branch alike, so the UNION lines up and the level filter above it
     // can read them off the merged set.
     .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -817,7 +830,8 @@ function mapUnifiedRow(
     available: r.available ? Number(r.available) : 1,
     network: isPolygon ? Network.MATIC : Network.ETHEREUM,
     chainId: isPolygon ? polygonChainId : ethereumChainId,
-    createdAt: Number(r.created_at)
+    createdAt: Number(r.created_at),
+    paused: !!r.paused
   }
 }
 
@@ -928,6 +942,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
+      .append(SQL`, `)
+      .append(pausedColumn())
       .append(SQL`, `)
       .append(couponColumns())
       .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -1085,7 +1101,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
+        createdAt: Number(r.created_at),
+        paused: !!r.paused
       })
     }
 
@@ -1114,8 +1131,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ) AS wearable_category,
         mv.amount_received::text AS mana_wei,
         mv.available::text AS available,
-        mv.network AS network
+        mv.network AS network,
       `
+      .append(pausedColumn())
+      .append(SQL` `)
       .append(metadataJoins())
       .append(
         SQL`
@@ -1150,7 +1169,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         manaWei: r.mana_wei,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
-        chainId: isPolygon ? polygonChainId : ethereumChainId
+        chainId: isPolygon ? polygonChainId : ethereumChainId,
+        paused: !!r.paused
       }
     })
   }
@@ -1185,6 +1205,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
+      .append(SQL`, `)
+      .append(pausedColumn())
       .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
       .append(SQL` `)
       .append(metadataJoins())
@@ -1271,7 +1293,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
+        createdAt: Number(r.created_at),
+        paused: !!r.paused
       }
     })
 

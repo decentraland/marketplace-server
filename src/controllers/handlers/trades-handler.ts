@@ -1,7 +1,7 @@
 import { Trade, TradeCreation, Event } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { getNumberParameter, getParameter } from '../../logic/http'
-import { DBTrade } from '../../ports/trades'
+import { DBTrade, TradeWithStatus } from '../../ports/trades'
 import {
   DuplicatedBidError,
   InvalidCollectionItemCreatorError,
@@ -20,11 +20,11 @@ import {
   InvalidEstateTrade,
   EstateContractNotFoundForChainId
 } from '../../ports/trades/errors'
-import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
+import { HTTPResponse, HandlerContextWithPath, StatusCode, WithPaused } from '../../types'
 
 export async function getTradesHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components'>
-): Promise<HTTPResponse<{ data: DBTrade[]; count: number }>> {
+): Promise<HTTPResponse<{ data: WithPaused<DBTrade>[]; count: number }>> {
   const {
     components: { trades }
   } = context
@@ -119,7 +119,7 @@ export async function addTradeHandler(
 
 export async function getTradeHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
-): Promise<HTTPResponse<Trade | null>> {
+): Promise<HTTPResponse<TradeWithStatus | null>> {
   try {
     const {
       components: { trades },

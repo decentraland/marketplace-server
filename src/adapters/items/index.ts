@@ -3,6 +3,7 @@ import { isAddressZero } from '../../logic/address'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { DBItem, ItemType } from '../../ports/items'
 import { fixUrn } from '../../ports/nfts/utils'
+import { WithPaused } from '../../types'
 
 export function getCategoryFromDBItem(dbItem: DBItem): NFTCategory {
   if (
@@ -46,7 +47,7 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
   }
 }
 
-export function fromDBItemToItem(dbItem: DBItem): Item {
+export function fromDBItemToItem(dbItem: DBItem): WithPaused<Item> {
   let price = '0'
   if (dbItem.available > 0) {
     if (dbItem.trade_id && dbItem.search_is_marketplace_v3_minter) {
@@ -85,6 +86,7 @@ export function fromDBItemToItem(dbItem: DBItem): Item {
     // trade fields
     tradeId: dbItem.trade_id,
     tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
-    tradeContractAddress: dbItem.trade_contract as string
+    tradeContractAddress: dbItem.trade_contract as string,
+    paused: !!dbItem.trade_paused
   }
 }

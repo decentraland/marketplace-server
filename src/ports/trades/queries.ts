@@ -2,6 +2,7 @@ import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getContractStatusJoin, getPausedColumn } from '../../logic/trades/contract-status'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
@@ -102,9 +103,17 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
 }
 
 export function getTradesForTypeQuery(type: TradeType) {
+  const { head, groupBy } = getTradesForTypeQueryParts(type)
+  return `${head}${groupBy}`
+}
+
+// Split at the GROUP BY so a caller can narrow the trades with a parameterized predicate (see
+// getTradeStatusByIdQuery) while the status rules stay defined once.
+function getTradesForTypeQueryParts(type: TradeType): { head: string; groupBy: string } {
+  const contractStatusJoin = getContractStatusJoin('trade_contract_status', 't.contract', 't.network')
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+  const head = `
     SELECT
       t.id,
       t.contract as trade_contract_address,
@@ -143,7 +152,9 @@ export function getTradesForTypeQuery(type: TradeType) {
         ) THEN '${ListingStatus.CANCELLED}'
         WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
       ELSE '${ListingStatus.OPEN}'
-      END AS status
+      END AS status,
+      -- Aggregated rather than grouped: at most one status row matches a trade.
+      COALESCE(bool_or(trade_contract_status.paused), false) AS paused
     FROM marketplace.trades as t
     JOIN (
       SELECT
@@ -189,7 +200,9 @@ export function getTradesForTypeQuery(type: TradeType) {
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
       AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
-    WHERE t.type = '${type}'
+    ${contractStatusJoin}
+    WHERE t.type = '${type}'`
+  const groupBy = `
     /**
      * NOT grouped by trade_status.caller.
      *
@@ -213,6 +226,17 @@ export function getTradesForTypeQuery(type: TradeType) {
      */
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
+  return { head, groupBy }
+}
+
+// Status and pause flag of a single trade, computed by the same rules as every trade list.
+export function getTradeStatusByIdQuery(type: TradeType, id: string): SQLStatement {
+  const { head, groupBy } = getTradesForTypeQueryParts(type)
+  return SQL`SELECT trade_by_id.status, trade_by_id.paused FROM (`
+    .append(head)
+    .append(SQL` AND t.id = ${id}`)
+    .append(groupBy)
+    .append(SQL`) AS trade_by_id`)
 }
 
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
@@ -350,7 +374,7 @@ export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: 
 export function getTradesByAddressQuery(address: string, options: { limit: number; offset?: number }) {
   const lowered = address.toLowerCase()
   const offset = options.offset ?? 0
-  return SQL`
+  const selectWithAssets = SQL`
     SELECT
       t.id           AS trade_id,
       t.chain_id     AS trade_chain_id,
@@ -363,6 +387,7 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       t.signer       AS trade_signer,
       t.type         AS trade_type,
       t.contract     AS trade_contract,
+      COALESCE(trade_contract_status.paused, false) AS trade_paused,
       ta.id              AS asset_id,
       ta.asset_type      AS asset_type,
       ta.beneficiary     AS asset_beneficiary,
@@ -378,7 +403,8 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
     JOIN marketplace.trade_assets AS ta ON t.id = ta.trade_id
     LEFT JOIN marketplace.trade_assets_erc721 AS erc721 ON ta.id = erc721.asset_id
     LEFT JOIN marketplace.trade_assets_erc20 AS erc20 ON ta.id = erc20.asset_id
-    LEFT JOIN marketplace.trade_assets_item AS item ON ta.id = item.asset_id
+    LEFT JOIN marketplace.trade_assets_item AS item ON ta.id = item.asset_id`
+  return selectWithAssets.append(getContractStatusJoin('trade_contract_status', 't.contract', 't.network')).append(SQL`
     WHERE t.id IN (
       SELECT t2.id FROM marketplace.trades AS t2
       WHERE t2.signer = ${lowered}
@@ -390,7 +416,7 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       LIMIT ${options.limit}
       OFFSET ${offset}
     )
-    ORDER BY t.created_at DESC, ta.direction ASC`
+    ORDER BY t.created_at DESC, ta.direction ASC`)
 }
 
 // Resolves the item id of an ERC721 (secondary listing) asset. Uses the same join the trade queries and
@@ -416,4 +442,11 @@ export function getOtherOpenListingForItemQuery(contractAddress: string, itemId:
       AND id <> ${excludeTradeId}
       LIMIT 1`
   )
+}
+
+export function getAllTradesQuery(): SQLStatement {
+  return SQL`SELECT t.*, `
+    .append(getPausedColumn('trade_contract_status'))
+    .append(SQL` AS paused FROM marketplace.trades AS t`)
+    .append(getContractStatusJoin('trade_contract_status', 't.contract', 't.network'))
 }

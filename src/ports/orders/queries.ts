@@ -67,7 +67,8 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM created_at) as created_at,
       EXTRACT(EPOCH FROM created_at) as updated_at,
       EXTRACT(EPOCH FROM expires_at) as expires_at,
-      network
+      network,
+      paused
     FROM (`
       .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
       // NOTE: broken-by-upgrade Estate orders are intentionally NOT filtered here.
@@ -80,6 +81,7 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
   )
 }
 
+// Legacy orders are on-chain and never pass through the off-chain marketplace, so they are never paused.
 export function getLegacyOrdersQuery(): string {
   return `
     SELECT
@@ -102,7 +104,8 @@ export function getLegacyOrdersQuery(): string {
       ord.created_at,
       ord.updated_at,
       ord.expires_at,
-      ord.network
+      ord.network,
+      false as paused
     FROM ${MARKETPLACE_SQUID_SCHEMA}."order" ord
     JOIN ${MARKETPLACE_SQUID_SCHEMA}."nft" nft ON ord.nft_id = nft.id AND nft.owner_address = ord.owner`
 }

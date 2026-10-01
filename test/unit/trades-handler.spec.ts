@@ -1,10 +1,11 @@
-import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
+import { ChainId, Event, Events, ListingStatus, Trade, TradeCreation } from '@dcl/schemas'
 import {
   addTradeHandler,
   getTradeAcceptedEventHandler,
   getTradeHandler,
   recreateTradesMaterializedViewHandler
 } from '../../src/controllers/handlers/trades-handler'
+import { TradeWithStatus } from '../../src/ports/trades'
 import {
   DuplicatedBidError,
   DuplicateNFTOrderError,
@@ -157,10 +158,10 @@ describe('when handling the retrieval of a trade', () => {
   let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
 
   describe('and the trade exists', () => {
-    let trade: Trade
+    let trade: TradeWithStatus
 
     beforeEach(() => {
-      trade = { id: 'trade-id' } as Trade
+      trade = { id: 'trade-id', status: ListingStatus.OPEN, paused: true } as TradeWithStatus
 
       context = {
         params: {
@@ -180,7 +181,7 @@ describe('when handling the retrieval of a trade', () => {
       }
     })
 
-    it('should return trade', async () => {
+    it('should return the trade with its status and paused flag', async () => {
       const result = await getTradeHandler(context)
       expect(result).toEqual({
         status: StatusCode.OK,

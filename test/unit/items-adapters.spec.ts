@@ -100,6 +100,16 @@ describe('fromDBItemToItem', () => {
         }
       })
 
+      describe('and the open trade is on a paused marketplace contract', () => {
+        beforeEach(() => {
+          dbItem = { ...dbItem, trade_paused: true }
+        })
+
+        it('should keep the item on sale at the trade price and flag it as paused', () => {
+          expect(fromDBItemToItem(dbItem)).toEqual(expect.objectContaining({ isOnSale: true, price: '123', paused: true }))
+        })
+      })
+
       it('should use trade price', () => {
         const result = fromDBItemToItem(dbItem)
 
@@ -124,6 +134,7 @@ describe('fromDBItemToItem', () => {
           tradeId: dbItem.trade_id,
           tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
           tradeContractAddress: dbItem.trade_contract as string,
+          paused: false,
           data: {
             wearable: {
               bodyShapes: dbItem.wearable_body_shapes,
@@ -245,6 +256,7 @@ describe('fromDBItemToItem', () => {
           soldAt: dbItem.sold_at,
           tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
           tradeContractAddress: dbItem.trade_contract as string,
+          paused: false,
           data: {
             emote: {
               bodyShapes: dbItem.emote_body_shapes,

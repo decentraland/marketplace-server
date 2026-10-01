@@ -24,6 +24,17 @@ describe('when building the orders queries', () => {
       expect(text).toContain('legacy_orders')
     })
 
+    it('should expose the paused flag on both union branches, false for legacy orders', () => {
+      const text = getOrdersQuery(filters).text
+      expect(text).toMatch(/network,\s+paused\s+FROM \(/)
+      expect(text).toMatch(/ord\.network,\s+false as paused/)
+    })
+
+    // Product decision: a paused listing stays open and visible.
+    it('should not exclude trades on a paused marketplace', () => {
+      expect(getOrdersQuery(filters).text).not.toMatch(/NOT\s+paused|paused\s*=\s*false/)
+    })
+
     it('should still apply the LIMIT/OFFSET pagination', () => {
       const text = getOrdersQuery(filters).text
       expect(text).toContain('LIMIT')

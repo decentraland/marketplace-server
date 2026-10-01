@@ -572,11 +572,12 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getUnifiedListings({}, RATE)
 
       const text = query.mock.calls[0][0].text as string
-      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM` / `genderFROM`, both
-      // SQL syntax errors. gender is the last SELECT column before FROM; mana_wei precedes it.
+      // Guards the SELECT→FROM boundary: a missing space would emit `mana_weiFROM` / `pausedFROM`, both
+      // SQL syntax errors. paused is the last SELECT column before FROM; gender and mana_wei precede it.
       expect(text).not.toMatch(/mana_weiFROM/)
       expect(text).not.toMatch(/genderFROM/)
-      expect(text).toContain('END AS gender FROM marketplace.mv_trades')
+      expect(text).not.toMatch(/pausedFROM/)
+      expect(text).toContain('AS paused FROM marketplace.mv_trades')
       // Both branches carry a mana_wei column, comma-separated from the gender expression that follows.
       expect(text).toContain('NULL::text AS mana_wei ,')
       expect(text).toContain('mv.amount_received::text AS mana_wei ,')
@@ -1284,6 +1285,114 @@ describe('Shop Catalog Component', () => {
    * mv_trades. The branch therefore brings its own base relation, and what these tests pin is that it stays
    * shaped like the others (so the shared filters keep applying) while carrying the facts that differ.
    */
+  describe('when mapping whether a listing marketplace is paused', () => {
+    describe('and the listing comes from the shop listings feed', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [shopRow({ trade_id: 'paused', paused: true }), shopRow({ trade_id: 'live', paused: false })] })
+      })
+
+      it('should carry each row paused flag', async () => {
+        const { data } = await shopCatalog.getShopListings({})
+        expect(data.map(d => [d.tradeId, d.paused])).toEqual([
+          ['paused', true],
+          ['live', false]
+        ])
+      })
+    })
+
+    describe('and the listing comes from the legacy listings feed', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [legacyRow({ paused: true })] })
+      })
+
+      it('should flag the listing as paused', async () => {
+        const { data } = await shopCatalog.getLegacyListings({})
+        expect(data[0].paused).toBe(true)
+      })
+    })
+
+    describe('and the listing comes from a seller importable listings', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [{ ...legacyRow(), old_trade_id: 'old-1', trade_type: 'public_item_order', paused: true }] })
+      })
+
+      it('should flag the listing as paused, so the seller can see why it no longer sells', async () => {
+        const data = await shopCatalog.getImportableListings('0xseller')
+        expect(data[0].paused).toBe(true)
+      })
+    })
+
+    describe('and the listing comes from the unified feed', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [unifiedRow({ paused: true })] })
+      })
+
+      it('should flag the listing as paused', async () => {
+        const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+        expect(data[0].paused).toBe(true)
+      })
+    })
+
+    describe('and the item comes from the item-unified feed', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [itemRow({ paused: true })] })
+      })
+
+      it('should flag the representative listing as paused', async () => {
+        const { data } = await shopCatalog.getShopItems({}, 0.5)
+        expect(data[0].paused).toBe(true)
+      })
+    })
+
+    describe('and the row carries no paused column', () => {
+      beforeEach(() => {
+        query.mockResolvedValueOnce({ rows: [unifiedRow()] })
+      })
+
+      it('should default to not paused', async () => {
+        const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
+        expect(data[0].paused).toBe(false)
+      })
+    })
+  })
+
+  describe('when building the paused flag of the shop feeds', () => {
+    const CONTRACT_STATUS_JOIN =
+      /FROM marketplace\.mv_trades mv\s+LEFT JOIN squid_trades\.contract_status AS trade_contract_status\s+ON trade_contract_status\.address = LOWER\(mv\.trade_contract\)\s+AND trade_contract_status\.network = CASE WHEN mv\.network = 'MATIC' THEN 'POLYGON' ELSE mv\.network END/
+
+    beforeEach(() => {
+      query.mockResolvedValue({ rows: [] })
+    })
+
+    it('should join each listing marketplace status in the shop listings feed', async () => {
+      await shopCatalog.getShopListings({})
+      const { text } = query.mock.calls[0][0]
+      expect(text).toMatch(CONTRACT_STATUS_JOIN)
+      expect(text).toContain('COALESCE(trade_contract_status.paused, false) AS paused')
+    })
+
+    it('should join each listing marketplace status in the legacy listings feed', async () => {
+      await shopCatalog.getLegacyListings({})
+      expect(query.mock.calls[0][0].text).toMatch(CONTRACT_STATUS_JOIN)
+    })
+
+    it('should join each listing marketplace status in the importable listings', async () => {
+      await shopCatalog.getImportableListings('0xseller')
+      expect(query.mock.calls[0][0].text).toMatch(CONTRACT_STATUS_JOIN)
+    })
+
+    it('should report a CollectionStore mint as never paused, since it is not a trade', async () => {
+      await shopCatalog.getUnifiedListings({ source: 'legacy' }, 0.5)
+      expect(query.mock.calls[0][0].text).toContain('false AS paused')
+    })
+
+    // Product decision: paused listings stay visible and keep counting.
+    it('should not filter paused listings out of the unified feed', async () => {
+      await shopCatalog.getUnifiedListings({}, 0.5)
+      expect(query.mock.calls[0][0].text).not.toMatch(/NOT\s+(trade_contract_status\.)?paused|paused\s*=\s*false/)
+    })
+  })
+
   describe('when building the CollectionStore branch of the unified feed', () => {
     const RATE = 0.5
 

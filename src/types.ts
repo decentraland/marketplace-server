@@ -187,3 +187,7 @@ export enum SquidNetwork {
   ETHEREUM = 'ETHEREUM',
   POLYGON = 'POLYGON'
 }
+
+// An off-chain trade representation plus whether its marketplace contract is paused.
+// Drop once @dcl/schemas ships `paused` on Order, Bid, Item and Trade.
+export type WithPaused<T> = T & { paused: boolean }

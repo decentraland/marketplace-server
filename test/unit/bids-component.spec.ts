@@ -46,6 +46,7 @@ describe('when fetching bids', () => {
           item_id: null,
           fingerprint: '123',
           seller: '0x1234',
+          paused: false,
           legacy_bid_id: null
         }
       ]

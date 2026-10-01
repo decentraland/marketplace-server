@@ -181,3 +181,25 @@ describe('when an item has more than one open primary listing', () => {
     })
   })
 })
+
+describe('when building an item feed with its open trade', () => {
+  describe.each([
+    ['the catalog items feed', getCatalogItemsQuery],
+    ['the v1 items feed', getItemsQuery]
+  ])('and building %s', (_name, buildQuery) => {
+    let text: string
+
+    beforeEach(() => {
+      text = buildQuery({ first: 20, skip: 0 }).text
+    })
+
+    it('should expose whether the joined trade marketplace is paused next to its contract', () => {
+      expect(text).toMatch(/unified_trades\.trade_contract as trade_contract,\s+unified_trades\.paused as trade_paused,/)
+    })
+
+    // Product decision: a paused listing stays on sale and keeps the item listed.
+    it('should not drop trades on a paused marketplace from the join', () => {
+      expect(text).not.toMatch(/NOT\s+paused|paused\s*=\s*false/)
+    })
+  })
+})

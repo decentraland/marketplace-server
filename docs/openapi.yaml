@@ -849,7 +849,8 @@ paths:
         - Trade participants (buyer and seller)
         - Item details and metadata
         - Trade price and currency
-        - Current status (pending, completed, or cancelled)
+        - Current status (open, sold or cancelled), computed by the same rules as every trade list
+        - Whether its marketplace contract is paused
         - Timestamps (creation, updates, completion)
       operationId: getTrade
       security: []
@@ -3505,6 +3506,9 @@ components:
         price:
           type: number
           description: Item price
+        paused:
+          type: boolean
+          description: Whether the marketplace contract of the trade that prices the item (tradeId) is paused. The item stays on sale and keeps counting in prices and listings. False when the price does not come from a trade.
         # TODO: align with precise source types - additional properties may exist
       additionalProperties: true
       required:
@@ -3591,12 +3595,15 @@ components:
           description: Trade price
         status:
           type: string
-          enum: [pending, completed, cancelled]
-          description: Trade status
+          enum: [open, sold, cancelled]
+          description: Trade status, returned by GET /v1/trades/{id}
         createdAt:
           type: string
           format: date-time
           description: Trade creation timestamp
+        paused:
+          type: boolean
+          description: Whether the off-chain marketplace contract the trade targets is paused. A paused trade stays open but cannot settle until the contract is unpaused.
       required:
         - id
         - buyer
@@ -3689,6 +3696,9 @@ components:
         chainId:
           type: number
           description: Chain ID
+        paused:
+          type: boolean
+          description: Whether the off-chain marketplace contract the bid targets is paused. A paused bid stays open but cannot settle until the contract is unpaused. Always false for legacy on-chain bids.
       required:
         - id
         - bidder
@@ -3745,6 +3755,9 @@ components:
           type: string
           format: date-time
           description: Order creation timestamp
+        paused:
+          type: boolean
+          description: Whether the off-chain marketplace contract the order targets is paused. A paused order stays open but cannot settle until the contract is unpaused. Always false for legacy on-chain orders.
       required:
         - id
         - maker
@@ -3777,6 +3790,9 @@ components:
         owner:
           type: string
           description: Item owner
+        paused:
+          type: boolean
+          description: Whether the marketplace contract of the item's open trade (tradeContractAddress) is paused. The item stays on sale. False when there is no open trade.
       required:
         - id
         - name

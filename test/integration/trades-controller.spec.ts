@@ -17,8 +17,11 @@ import * as tradeUtils from '../../src/logic/trades/utils'
 import { StatusCode } from '../../src/types'
 import { test } from '../components'
 import { getSignedFetchRequest } from '../utils'
+import { clearSquidTradesRows, createSquidContractStatusRow } from './utils/dbItems'
 
 const MANA_MAINNET_ADDRESS = getContract(ContractName.MANAToken, ChainId.ETHEREUM_MAINNET).address
+// The version every trade below resolves to, unless a context says otherwise.
+const MARKETPLACE_V2 = getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET)
 
 test('trades controller', function ({ components }) {
   beforeEach(() => {
@@ -398,13 +401,77 @@ test('trades controller', function ({ components }) {
       expect(response.status).toEqual(StatusCode.OK)
       const body = await response.json()
       expect(body).toEqual({
-        data: { ...trade, id: expect.any(String), createdAt: expect.any(Number), contract: expect.any(String) },
+        data: {
+          ...trade,
+          id: expect.any(String),
+          createdAt: expect.any(Number),
+          contract: expect.any(String),
+          status: 'open',
+          paused: false
+        },
         ok: true
       })
       // Regression guard: trades and trade_assets both have an `id` column, so a `SELECT t.*, ta.*`
       // let the asset's id clobber the trade's id — the endpoint returned the trade with its ASSET's
       // id. Assert the returned id is the trade's own id (matches the POST response + the URL param).
       expect(body.data.id).toEqual(createdTrade.id)
+    })
+  })
+
+  describe('when getting a trade whose marketplace contract was paused after it was created', () => {
+    let response: Response
+    let createdTrade: { id: string }
+
+    beforeEach(async () => {
+      const { localFetch } = components
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      const bid: TradeCreation = {
+        signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [{ assetType: TradeAssetType.ERC20, contractAddress: MANA_MAINNET_ADDRESS, extra: '0x', amount: '100' }],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            tokenId: `${Date.now()}`,
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+      const created = await localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify(bid),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+      createdTrade = (await created.json()).data
+      await createSquidContractStatusRow(components, { address: MARKETPLACE_V2.address, network: 'ETHEREUM', paused: true })
+      response = await localFetch.fetch(`/v1/trades/${createdTrade.id}`)
+    })
+
+    afterEach(async () => {
+      await clearSquidTradesRows(components)
+    })
+
+    it('should report the trade as still open and paused', async () => {
+      expect(response.status).toEqual(StatusCode.OK)
+      expect((await response.json()).data).toMatchObject({ id: createdTrade.id, status: 'open', paused: true })
     })
   })
 })

@@ -1,10 +1,14 @@
-import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event } from '@dcl/schemas'
+import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event, ListingStatus } from '@dcl/schemas'
+import { WithPaused } from '../../types'
+
+// A single trade with its status computed by the same rules as every trade list.
+export type TradeWithStatus = WithPaused<Trade> & { status: ListingStatus }
 
 export type ITradesComponent = {
-  getTrades(): Promise<{ data: DBTrade[]; count: number }>
-  getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: Trade[] }>
+  getTrades(): Promise<{ data: WithPaused<DBTrade>[]; count: number }>
+  getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: WithPaused<Trade>[] }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
-  getTrade(id: string): Promise<Trade>
+  getTrade(id: string): Promise<TradeWithStatus>
   getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>
   recreateMaterializedView(): Promise<void>
   flushMaterializedViewIfDirty(): Promise<boolean>

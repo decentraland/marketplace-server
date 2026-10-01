@@ -6,7 +6,7 @@ import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { rebuildSearchTables, SEARCH_WORDS_TABLE } from '../../logic/catalog/search-words-table'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
-import { AppComponents } from '../../types'
+import { AppComponents, WithPaused } from '../../types'
 import { formatQueryForLogging } from '../utils'
 import {
   getCollectionsItemsCatalogQuery,
@@ -31,9 +31,9 @@ export async function createCatalogComponent(
   async function fetch(
     filters: CatalogOptions,
     { searchId, anonId, isV2 = false }: { searchId: string; anonId: string; isV2: boolean }
-  ): Promise<{ data: Item[]; total: number }> {
+  ): Promise<{ data: WithPaused<Item>[]; total: number }> {
     const { network } = filters
-    let catalogItems: Item[] = []
+    let catalogItems: WithPaused<Item>[] = []
     let total = 0
     const client = await dataReadbase.getPool().connect()
     let query

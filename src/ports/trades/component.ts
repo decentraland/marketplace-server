@@ -1,5 +1,4 @@
-import SQL from 'sql-template-strings'
-import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { Event, ListingStatus, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import {
@@ -8,7 +7,7 @@ import {
   recreateTradesMaterializedView
 } from '../../logic/trades/materialized-view'
 import { resolveTradeSignature, validateAssetOwnership } from '../../logic/trades/utils'
-import { AppComponents } from '../../types'
+import { AppComponents, WithPaused } from '../../types'
 import {
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
@@ -22,6 +21,7 @@ import {
   InvalidEstateTrade
 } from './errors'
 import {
+  getAllTradesQuery,
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
@@ -29,9 +29,10 @@ import {
   getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
-  getTradesByAddressQuery
+  getTradesByAddressQuery,
+  getTradeStatusByIdQuery
 } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent, TradeWithStatus } from './types'
 import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
 
 type TradeWithAssetRow = {
@@ -46,6 +47,7 @@ type TradeWithAssetRow = {
   trade_signer: string
   trade_type: TradeType
   trade_contract: string
+  trade_paused: boolean
   asset_id: string
   asset_type: TradeAssetType
   asset_beneficiary: string | null
@@ -66,7 +68,7 @@ export function createTradesComponent(
   const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
-    const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
+    const result = await pg.query<WithPaused<DBTrade>>(getAllTradesQuery())
     return { data: result.rows, count: result.rowCount }
   }
 
@@ -84,7 +86,7 @@ export function createTradesComponent(
       }
     }
 
-    const trades: Trade[] = []
+    const trades: WithPaused<Trade>[] = []
     for (const rows of grouped.values()) {
       const head = rows[0]
       const dbTrade: DBTrade = {
@@ -101,7 +103,7 @@ export function createTradesComponent(
         contract: head.trade_contract
       }
       const assets = rows.map(toDBTradeAssetWithValue).filter((a): a is DBTradeAssetWithValue => a !== null)
-      trades.push(fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets))
+      trades.push({ ...fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets), paused: !!head.trade_paused })
     }
 
     return { data: trades }
@@ -306,7 +308,7 @@ export function createTradesComponent(
     await shopNotifier.notifyItemOnSale({ contractAddress, itemId })
   }
 
-  async function getTrade(id: string) {
+  async function getTrade(id: string): Promise<TradeWithStatus> {
     const query = getTradeAssetsWithValuesByIdQuery(id)
     const result = await pg.query<DBTrade & DBTradeAssetWithValue>(query)
 
@@ -314,7 +316,14 @@ export function createTradesComponent(
       throw new TradeNotFoundError(id)
     }
 
-    return fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+    const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
+    const statusResult = await pg.query<{ status: ListingStatus; paused: boolean }>(getTradeStatusByIdQuery(trade.type, id))
+    const statusRow = statusResult.rows[0]
+    if (!statusRow) {
+      throw new TradeNotFoundError(id)
+    }
+
+    return { ...trade, status: statusRow.status, paused: !!statusRow.paused }
   }
 
   async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number, caller: string): Promise<Event> {

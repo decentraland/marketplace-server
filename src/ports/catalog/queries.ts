@@ -12,6 +12,7 @@ import {
   WearableCategory
 } from '@dcl/schemas'
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getContractStatusJoin, getPausedColumn } from '../../logic/trades/contract-status'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
@@ -640,9 +641,15 @@ export const getTradesCTE = ({
   }
 
   const cte = SQL`
-      WITH `.append(cteName ?? 'unified_trades').append(SQL` AS (
-        SELECT * from marketplace.mv_trades
-        `)
+      WITH `
+    .append(cteName ?? 'unified_trades')
+    .append(
+      SQL` AS (
+        SELECT mv_trades.*, `
+    )
+    .append(getPausedColumn('trade_contract_status'))
+    .append(SQL` AS paused from marketplace.mv_trades`)
+    .append(getContractStatusJoin('trade_contract_status', 'mv_trades.trade_contract', 'mv_trades.network'))
 
   conditions.forEach((condition, index) => {
     cte.append(index === 0 ? SQL`WHERE ` : SQL` AND `).append(condition)
@@ -670,6 +677,8 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
               MAX(created_at) AS max_created_at,
               MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
               MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
+              -- Paused flag of the same trade open_item_trade_id picks (the greatest id::text).
+              (array_agg(paused ORDER BY id::text DESC) FILTER (WHERE status = 'open' and type = 'public_item_order'))[1] AS open_item_trade_paused,
               MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at
           FROM unified_trades
             WHERE status = 'open' and (available IS NULL OR available > 0)`
@@ -1081,6 +1090,7 @@ export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryF
               items.network,
               offchain_orders.open_item_trade_id,
               offchain_orders.open_item_trade_price,
+              offchain_orders.open_item_trade_paused,
               `
         .append(
           filters.isOnSale // When filtering for NOT on sale, calculating this from the offchain orders is very expensive, we just avoid it

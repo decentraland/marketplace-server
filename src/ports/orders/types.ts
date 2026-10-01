@@ -1,8 +1,8 @@
 import { ListingStatus, NFTCategory, Order, OrderFilters } from '@dcl/schemas'
-import { SquidNetwork } from '../../types'
+import { SquidNetwork, WithPaused } from '../../types'
 
 export type IOrdersComponent = {
-  getOrders(filters?: OrderFilters): Promise<{ data: Order[]; total: number }>
+  getOrders(filters?: OrderFilters): Promise<{ data: WithPaused<Order>[]; total: number }>
 }
 
 export type DBOrder = {
@@ -24,4 +24,5 @@ export type DBOrder = {
   item_id: string
   issued_id: string
   trade_id: string
+  paused: boolean
 }

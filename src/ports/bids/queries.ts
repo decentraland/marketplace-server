@@ -28,7 +28,8 @@ export const BID_COLUMNS = [
   'contract_address',
   'fingerprint',
   'seller',
-  'status'
+  'status',
+  'paused'
 ] as const
 
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
@@ -67,10 +68,12 @@ export function getBidTradesQuery(): string {
       assets -> 'received' ->> 'contract_address' as contract_address,
       assets -> 'received' ->> 'extra' as fingerprint,
 	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
-      status
+      status,
+      paused
     FROM (${getTradesForTypeQuery(TradeType.BID)}) as trades`
 }
 
+// Legacy bids are on-chain and never pass through the off-chain marketplace, so they are never paused.
 export function getLegacyBidsQuery(): string {
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
@@ -94,7 +97,8 @@ export function getLegacyBidsQuery(): string {
       nft_address as contract_address,
       '0x' || encode(fingerprint, 'hex') as fingerprint,
       '0x' || encode(seller, 'hex') as seller,
-      status
+      status,
+      false as paused
     FROM ${MARKETPLACE_SQUID_SCHEMA}.bid
   `
 }

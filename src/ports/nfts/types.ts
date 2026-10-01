@@ -11,7 +11,7 @@ import {
   EmoteCategory,
   EmoteOutcomeType
 } from '@dcl/schemas'
-import { SquidNetwork } from '../../types'
+import { SquidNetwork, WithPaused } from '../../types'
 import { ItemType } from '../items'
 
 export type INFTsComponent = {
@@ -24,7 +24,7 @@ export type GetNFTsFilters = NFTQueryFilters & { bannedNames?: string[] }
 
 export type NFTResult = {
   nft: NFT
-  order: Order | null
+  order: WithPaused<Order> | null
   rental: RentalListing | null
 }
 

@@ -3,6 +3,7 @@ import * as chainIdUtils from '../../src/logic/chainIds'
 import { test } from '../components'
 import {
   clearSquidTradesRows,
+  createSquidContractStatusRow,
   createSquidDBBidTrade,
   createSquidSignatureIndexRow,
   createSquidTradeActionRow,
@@ -142,6 +143,20 @@ test('trade status computed from indexer rows', function ({ components }) {
     // The trade signed contractSignatureIndex 0.
     it('should report the bid as cancelled', async () => {
       expect(await fetchStatus()).toBe('cancelled')
+    })
+  })
+
+  describe('and the marketplace the bid targets is paused', () => {
+    let bid: { status: string; paused: boolean } | undefined
+
+    beforeEach(async () => {
+      await createSquidContractStatusRow(components, { address: TRADE_CONTRACT, network: 'POLYGON', paused: true })
+      const response = await components.localFetch.fetch(`/v1/bids?contractAddress=${CONTRACT_ADDRESS}&tokenId=1&limit=10&offset=0`)
+      bid = (await response.json()).data?.results?.[0]
+    })
+
+    it('should keep the bid open and flag it as paused', () => {
+      expect(bid).toMatchObject({ status: 'open', paused: true })
     })
   })
 

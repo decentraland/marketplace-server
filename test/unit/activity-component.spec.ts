@@ -17,6 +17,7 @@ import { IBidsComponent } from '../../src/ports/bids'
 import { IOrdersComponent } from '../../src/ports/orders/types'
 import { ISalesComponent } from '../../src/ports/sales'
 import { ITradesComponent } from '../../src/ports/trades/types'
+import { WithPaused } from '../../src/types'
 
 const makeLogs = (logger: { warn: jest.Mock; error?: jest.Mock; info?: jest.Mock; debug?: jest.Mock; log?: jest.Mock }) => ({
   getLogger: jest.fn().mockReturnValue({
@@ -44,7 +45,7 @@ const makeSale = (overrides: Partial<Sale> = {}): Sale => ({
   ...overrides
 })
 
-const makeOrder = (overrides: Partial<Order> = {}): Order =>
+const makeOrder = (overrides: Partial<WithPaused<Order>> = {}): WithPaused<Order> =>
   ({
     id: 'o1',
     marketplaceAddress: '0xmarket',
@@ -60,10 +61,11 @@ const makeOrder = (overrides: Partial<Order> = {}): Order =>
     network: Network.MATIC,
     chainId: 137 as any,
     issuedId: '1',
+    paused: false,
     ...overrides
-  } as Order)
+  } as WithPaused<Order>)
 
-const makeBid = (overrides: Partial<LegacyBid> = {}): LegacyBid => ({
+const makeBid = (overrides: Partial<WithPaused<LegacyBid>> = {}): WithPaused<LegacyBid> => ({
   id: 'b1',
   bidder: '0xbidder',
   seller: '0xseller',
@@ -80,10 +82,11 @@ const makeBid = (overrides: Partial<LegacyBid> = {}): LegacyBid => ({
   bidAddress: '0xbid',
   blockchainId: '1',
   blockNumber: '1',
+  paused: false,
   ...overrides
 })
 
-const makeTrade = (overrides: Partial<Trade> = {}): Trade => ({
+const makeTrade = (overrides: Partial<WithPaused<Trade>> = {}): WithPaused<Trade> => ({
   id: 't1',
   signature: 'sig',
   signer: '0xuser',
@@ -95,6 +98,7 @@ const makeTrade = (overrides: Partial<Trade> = {}): Trade => ({
   sent: [],
   received: [],
   contract: '0xtrade',
+  paused: false,
   ...overrides
 })
 

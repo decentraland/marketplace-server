@@ -1,7 +1,7 @@
 import { Network, Bid, ChainId, ListingStatus } from '@dcl/schemas'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { DBBid, DBNetwork } from '../../ports/bids'
-import { SquidNetwork } from '../../types'
+import { SquidNetwork, WithPaused } from '../../types'
 
 export function getChainIdFromDBBid(dbBid: DBBid): ChainId {
   if (dbBid.chain_id) {
@@ -19,7 +19,7 @@ export function fromDBNetworkToNetwork(dbNetwork: DBNetwork): Network.ETHEREUM |
   return Network.MATIC
 }
 
-export function fromDBBidToBid(dbBid: DBBid): Bid {
+export function fromDBBidToBid(dbBid: DBBid): WithPaused<Bid> {
   return {
     bidder: dbBid.bidder,
     price: dbBid.price,
@@ -32,6 +32,7 @@ export function fromDBBidToBid(dbBid: DBBid): Bid {
     chainId: getChainIdFromDBBid(dbBid),
     contractAddress: dbBid.contract_address,
     expiresAt: dbBid.expires_at.getTime(),
+    paused: !!dbBid.paused,
     ...(dbBid.trade_id !== null
       ? {
           id: dbBid.trade_id,

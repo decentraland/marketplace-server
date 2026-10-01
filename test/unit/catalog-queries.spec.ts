@@ -30,6 +30,21 @@ describe('when building the catalog queries', () => {
       expect(text).toContain('open_item_trade_price')
       expect(text).toContain('item_first_listed_at')
     })
+
+    // Same ordering as open_item_trade_id's MAX(id::text), so the flag describes the trade the item surfaces.
+    it('should take the paused flag from the same open item trade whose id it surfaces', () => {
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters).text
+      expect(text).toContain(
+        "(array_agg(paused ORDER BY id::text DESC) FILTER (WHERE status = 'open' and type = 'public_item_order'))[1] AS open_item_trade_paused"
+      )
+      expect(text).toContain('offchain_orders.open_item_trade_paused')
+    })
+
+    // Product decision: a paused listing keeps counting towards the item's prices and listing counts.
+    it('should not exclude paused trades from the offchain order aggregates', () => {
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters).text
+      expect(text).not.toMatch(/NOT\s+paused|paused\s*=\s*false/)
+    })
   })
 
   describe('and building the v1 catalog query', () => {
@@ -92,6 +107,14 @@ describe('when building the trades CTE', () => {
     expect(query.values).toEqual([['0xabc-1', '0xabc-2']])
   })
 
+  it('should expose whether each trade marketplace is paused, read from the indexer at query time', () => {
+    const text = getTradesCTE().text
+    expect(text).toContain('SELECT mv_trades.*, COALESCE(trade_contract_status.paused, false) AS paused from marketplace.mv_trades')
+    expect(text).toMatch(
+      /LEFT JOIN squid_trades\.contract_status AS trade_contract_status\s+ON trade_contract_status\.address = LOWER\(mv_trades\.trade_contract\)\s+AND trade_contract_status\.network = CASE WHEN mv_trades\.network = 'MATIC' THEN 'POLYGON' ELSE mv_trades\.network END/
+    )
+  })
+
   it('should ignore an empty item id list rather than emitting an unsatisfiable condition', () => {
     expect(getTradesCTE({ itemIds: [] }).text).not.toContain('trade_items')
   })
@@ -99,8 +122,7 @@ describe('when building the trades CTE', () => {
   it('should keep the category filter and the recently-listed window working alongside an item restriction', () => {
     const text = getTradesCTE({ itemIds: ['0xabc-1'], category: 'wearable' as never }).text
 
-    expect(text).toContain('sent_nft_category')
-    expect(text.indexOf('WHERE')).toBeLessThan(text.indexOf('AND'))
+    expect(text).toMatch(/WHERE sent_nft_category = \$\d+\s+AND EXISTS/)
   })
 })
 

@@ -1,5 +1,5 @@
 import { BodyShape, EmoteCategory, Item, ItemFilters, Network, Rarity, WearableCategory, EmoteOutcomeType } from '@dcl/schemas'
-import { SquidNetwork } from '../../types'
+import { SquidNetwork, WithPaused } from '../../types'
 import { ShopSortBy } from '../shop-catalog/types'
 
 export type ItemQueryFilters = Omit<ItemFilters, 'sortBy'> & {
@@ -25,12 +25,12 @@ export interface IItemsComponent {
 }
 
 export type GetItemsResponse = {
-  data: Item[]
+  data: WithPaused<Item>[]
   total: number
 }
 
 // A catalog item is the same shape /v1/items returns plus a server-computed whole-credit price.
-export type CatalogItem = Item & { priceCredits: number }
+export type CatalogItem = WithPaused<Item> & { priceCredits: number }
 
 export type GetCatalogItemsResponse = {
   data: CatalogItem[]
@@ -81,6 +81,7 @@ export type DBItem = {
   trade_beneficiary?: string
   trade_expires_at?: Date
   trade_contract?: string
+  trade_paused?: boolean | null
   trade_price: string
   utility?: string
 }

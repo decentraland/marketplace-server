@@ -254,6 +254,7 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
       unified_trades.trade_contract as trade_contract,
+      unified_trades.paused as trade_paused,
       unified_trades.assets -> 'received' ->> 'amount' as trade_price`
     )
     .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -444,6 +445,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
       unified_trades.trade_contract as trade_contract,
+      unified_trades.paused as trade_paused,
       unified_trades.assets -> 'received' ->> 'amount' as trade_price,`
     )
     .append(getPriceCreditsSelect(rateNumericString))
