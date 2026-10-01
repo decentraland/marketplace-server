@@ -8,6 +8,8 @@ import {
   createSquidDBItemOrderTrade,
   createSquidDBNFT,
   createSquidDBTrade,
+  createSquidSignatureIndexRow,
+  createSquidTradeActionRow,
   deleteSquidDBItem,
   deleteSquidDBNFT,
   deleteSquidDBTrade,
@@ -229,6 +231,63 @@ test('paused marketplace contracts', function ({ components }) {
         })
       })
     })
+
+    describe('and its marketplace contract bumps its contract signature index', () => {
+      beforeEach(async () => {
+        await createSquidSignatureIndexRow(components, { address: MARKETPLACE, contract: MARKETPLACE, network: 'POLYGON', index: 1 })
+        await refreshTradesMaterializedView(components)
+      })
+
+      describe('and fetching it from /v1/items', () => {
+        let item: Row | undefined
+
+        beforeEach(async () => {
+          item = (await getJSON(`/v1/items?contractAddress=${COLLECTION}&itemId=${ITEM_ID}`)).data[0]
+        })
+
+        it('should no longer surface the trade nor put the item on sale', () => {
+          expect(item).toMatchObject({ tradeId: null, isOnSale: false, price: '0', paused: false })
+        })
+      })
+
+      describe('and fetching it from /v2/catalog', () => {
+        let item: Row | undefined
+
+        beforeEach(async () => {
+          item = (await getJSON(`/v2/catalog?contractAddress=${COLLECTION}`)).data.find((row: Row) => row.itemId === ITEM_ID)
+        })
+
+        // The catalogue omits tradeId unless a trade sets the price.
+        it('should no longer put the item on sale nor surface the trade', () => {
+          expect(item).toEqual(expect.objectContaining({ isOnSale: false, price: '0', paused: false }))
+          expect(item).not.toHaveProperty('tradeId')
+        })
+      })
+
+      describe('and fetching it from /v3/catalog/shop', () => {
+        let tradeIds: string[]
+
+        beforeEach(async () => {
+          tradeIds = (await getJSON(`/v3/catalog/shop?contractAddress=${COLLECTION}`)).data.map((row: Row) => row.tradeId as string)
+        })
+
+        it('should drop the listing from the feed', () => {
+          expect(tradeIds).not.toContain(tradeId)
+        })
+      })
+
+      describe('and fetching the trade from /v1/trades/:id', () => {
+        let trade: Row | undefined
+
+        beforeEach(async () => {
+          trade = (await getJSON<{ data: Row }>(`/v1/trades/${tradeId}`)).data
+        })
+
+        it('should report it cancelled', () => {
+          expect(trade).toMatchObject({ status: 'cancelled', paused: false })
+        })
+      })
+    })
   })
 
   describe('when an nft has an open secondary listing', () => {
@@ -305,6 +364,46 @@ test('paused marketplace contracts', function ({ components }) {
         it('should not flag it as paused', () => {
           expect(order).toMatchObject({ tradeId, status: 'open', paused: false })
         })
+      })
+    })
+
+    describe('and the signer cancelled it', () => {
+      let tradeIds: string[]
+
+      beforeEach(async () => {
+        await createSquidTradeActionRow(components, { signature, action: 'cancelled', caller: SELLER, network: 'POLYGON' })
+        await refreshTradesMaterializedView(components)
+        tradeIds = (await getJSON(`/v1/orders?contractAddress=${COLLECTION}&tokenId=${tokenId}&status=open`)).data.map(
+          (row: Row) => row.tradeId as string
+        )
+      })
+
+      it('should drop it from the open orders', () => {
+        expect(tradeIds).not.toContain(tradeId)
+      })
+    })
+
+    // Must behave exactly like the signer cancellation above.
+    describe('and its marketplace contract bumps its contract signature index', () => {
+      let tradeIds: string[]
+      let embeddedOrder: unknown
+
+      beforeEach(async () => {
+        await createSquidSignatureIndexRow(components, { address: MARKETPLACE, contract: MARKETPLACE, network: 'POLYGON', index: 1 })
+        await refreshTradesMaterializedView(components)
+        tradeIds = (await getJSON(`/v1/orders?contractAddress=${COLLECTION}&tokenId=${tokenId}&status=open`)).data.map(
+          (row: Row) => row.tradeId as string
+        )
+        const nfts = (await getJSON<{ data: NFTRow[] }>(`/v1/nfts?contractAddress=${COLLECTION}&tokenId=${tokenId}`)).data
+        embeddedOrder = nfts.find(row => row.nft.tokenId === tokenId)?.order
+      })
+
+      it('should drop it from the open orders', () => {
+        expect(tradeIds).not.toContain(tradeId)
+      })
+
+      it('should no longer embed it as the nft order', () => {
+        expect(embeddedOrder).toBeNull()
       })
     })
   })

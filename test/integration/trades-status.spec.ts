@@ -160,6 +160,55 @@ test('trade status computed from indexer rows', function ({ components }) {
     })
   })
 
+  describe('and listing only the open bids', () => {
+    async function fetchOpenBidIds(): Promise<string[]> {
+      const response = await components.localFetch.fetch(
+        `/v1/bids?contractAddress=${CONTRACT_ADDRESS}&tokenId=1&status=open&limit=10&offset=0`
+      )
+      const body = await response.json()
+      return (body.data?.results ?? []).map((bid: { tradeId: string }) => bid.tradeId)
+    }
+
+    describe('and the signer cancelled the bid', () => {
+      let openBidIds: string[]
+
+      beforeEach(async () => {
+        await createSquidTradeActionRow(components, { signature, action: 'cancelled', caller: SIGNER, network: 'POLYGON' })
+        openBidIds = await fetchOpenBidIds()
+      })
+
+      it('should leave it out', () => {
+        expect(openBidIds).not.toContain(tradeId)
+      })
+    })
+
+    // Must behave exactly like the signer cancellation above.
+    describe('and the marketplace the bid targets bumped its own contract signature index', () => {
+      let openBidIds: string[]
+
+      beforeEach(async () => {
+        await createSquidSignatureIndexRow(components, { address: TRADE_CONTRACT, contract: TRADE_CONTRACT, network: 'POLYGON', index: 1 })
+        openBidIds = await fetchOpenBidIds()
+      })
+
+      it('should leave it out', () => {
+        expect(openBidIds).not.toContain(tradeId)
+      })
+    })
+
+    describe('and nothing invalidated the bid', () => {
+      let openBidIds: string[]
+
+      beforeEach(async () => {
+        openBidIds = await fetchOpenBidIds()
+      })
+
+      it('should include it', () => {
+        expect(openBidIds).toContain(tradeId)
+      })
+    })
+  })
+
   describe('and the signer bumped their signature index on a different marketplace version', () => {
     beforeEach(async () => {
       await createSquidSignatureIndexRow(components, {
