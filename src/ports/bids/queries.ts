@@ -103,7 +103,12 @@ export function getLegacyBidsQuery(): string {
   `
 }
 
-function getBidsAndTradesFilters(options: GetBidsParameters) {
+export type BidsQueryOptions = {
+  // Leave out bids on a paused marketplace; they cannot be accepted, so they must not block re-bidding elsewhere.
+  excludePaused?: boolean
+}
+
+function getBidsAndTradesFilters(options: GetBidsParameters, queryOptions: BidsQueryOptions) {
   const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
   const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
@@ -111,6 +116,7 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
+  const FILTER_NOT_PAUSED = queryOptions.excludePaused ? SQL` NOT paused ` : null
 
   // Note: these SQLStatement instances are shared by reference between the trades and legacy arrays.
   // This is safe because getWhereStatementFromFilters only appends them onto a separate accumulator
@@ -122,7 +128,8 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
     FILTER_BY_TOKEN_ID,
     FILTER_BY_NETWORK,
     FILTER_BY_STATUS,
-    FILTER_NOT_EXPIRED
+    FILTER_NOT_EXPIRED,
+    FILTER_NOT_PAUSED
   ]
 
   const FILTER_TRADE_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
@@ -135,8 +142,8 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   }
 }
 
-export function getBidsQuery(options: GetBidsParameters) {
-  const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options)
+export function getBidsQuery(options: GetBidsParameters, queryOptions: BidsQueryOptions = {}) {
+  const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options, queryOptions)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
     .append(getBidTradesQuery())

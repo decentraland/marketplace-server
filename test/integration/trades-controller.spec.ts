@@ -643,4 +643,103 @@ test('trades controller', function ({ components }) {
       })
     })
   })
+
+  describe('when bidding on an nft the bidder already has an open bid on', () => {
+    let firstBid: TradeCreation
+    let response: Response
+    let signedRequest: Awaited<ReturnType<typeof getSignedFetchRequest>>
+
+    async function postBid(bid: TradeCreation): Promise<Response> {
+      const { localFetch } = components
+      return localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify({
+          ...bid,
+          signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString())
+        }),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+    }
+
+    beforeEach(async () => {
+      // One identity for both posts, so the second bid comes from the same bidder.
+      signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      firstBid = {
+        signature: '',
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        network: Network.ETHEREUM,
+        sent: [{ assetType: TradeAssetType.ERC20, contractAddress: MANA_MAINNET_ADDRESS, extra: '0x', amount: '100' }],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763d',
+            tokenId: `${Date.now()}`,
+            extra: '0x',
+            beneficiary: signedRequest.identity.realAccount.address.toLowerCase()
+          }
+        ]
+      }
+      const created = await postBid(firstBid)
+      expect(created.status).toEqual(StatusCode.CREATED)
+    })
+
+    afterEach(async () => {
+      await clearSquidTradesRows(components)
+    })
+
+    describe('and the open bid marketplace is not paused', () => {
+      beforeEach(async () => {
+        response = await postBid(firstBid)
+      })
+
+      it('should reject the new bid as a duplicate', async () => {
+        expect(response.status).toEqual(StatusCode.CONFLICT)
+        expect(await response.json()).toEqual({ ok: false, message: 'There is already a bid with the same parameters' })
+      })
+    })
+
+    describe('and the open bid marketplace is paused', () => {
+      beforeEach(async () => {
+        await createSquidContractStatusRow(components, { address: MARKETPLACE_V2.address, network: 'ETHEREUM', paused: true })
+      })
+
+      describe('and the bidder bids again on another marketplace version', () => {
+        beforeEach(async () => {
+          jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({ contract: MARKETPLACE_V3, cancellationDigest: null }))
+          response = await postBid(firstBid)
+        })
+
+        it('should accept the new bid, since the paused one cannot be accepted', async () => {
+          expect(response.status).toEqual(StatusCode.CREATED)
+          expect((await response.json()).data.contract).toEqual(MARKETPLACE_V3.address)
+        })
+      })
+
+      describe('and the bidder bids again on the same paused marketplace', () => {
+        beforeEach(async () => {
+          response = await postBid(firstBid)
+        })
+
+        it('should reject the new bid because the marketplace contract is paused', async () => {
+          expect(response.status).toEqual(StatusCode.CONFLICT)
+          expect(await response.json()).toEqual({ ok: false, message: 'The marketplace contract is paused' })
+        })
+      })
+    })
+  })
 })

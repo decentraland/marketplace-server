@@ -129,14 +129,18 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateBid = await client.query(
-        getBidsQuery({
-          bidder: trade.signer,
-          network: trade.network,
-          contractAddress: trade.received[0].contractAddress,
-          ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
-          ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
-          status: ListingStatus.OPEN
-        })
+        getBidsQuery(
+          {
+            bidder: trade.signer,
+            network: trade.network,
+            contractAddress: trade.received[0].contractAddress,
+            ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
+            ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
+            status: ListingStatus.OPEN
+          },
+          // A bid on a paused marketplace cannot be accepted, so it must not block bidding again on another version.
+          { excludePaused: true }
+        )
       )
       if (duplicateBid.rowCount > 0) {
         throw new DuplicatedBidError()

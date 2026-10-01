@@ -142,4 +142,28 @@ describe('when querying for bids', () => {
       expect(query.values).toEqual(expect.arrayContaining(['open']))
     })
   })
+
+  describe('and bids on a paused marketplace are excluded', () => {
+    let parts: string[]
+
+    beforeEach(() => {
+      parts = getBidsQuery({ status: ListingStatus.OPEN }, { excludePaused: true }).text.split('UNION ALL')
+    })
+
+    it('should filter out paused bids in both the trades and the legacy branches', () => {
+      expect(parts.map(part => part.includes('NOT paused'))).toEqual([true, true])
+    })
+  })
+
+  describe('and bids on a paused marketplace are not excluded', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = getBidsQuery({ status: ListingStatus.OPEN }).text
+    })
+
+    it('should keep paused bids in the results', () => {
+      expect(text).not.toContain('NOT paused')
+    })
+  })
 })
