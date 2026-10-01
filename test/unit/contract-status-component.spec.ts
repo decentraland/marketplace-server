@@ -78,6 +78,14 @@ describe('when using the contract status component', () => {
       ])
     })
 
+    it('should report a paused contract by any address casing on its own network only', () => {
+      expect([
+        contractStatus.isPaused('0xAbC', 'MATIC'),
+        contractStatus.isPaused('0xabc', 'ETHEREUM'),
+        contractStatus.isPaused('0xdef', 'ETHEREUM')
+      ]).toEqual([true, false, true])
+    })
+
     describe('and a contract is unpaused before the next refresh', () => {
       beforeEach(async () => {
         queryMock.mockResolvedValueOnce({ rows: [{ address: '0xdef', network: 'ETHEREUM' }], rowCount: 1 })

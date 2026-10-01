@@ -22,6 +22,13 @@ export interface IContractStatusComponent extends IBaseComponent {
    */
   getPausedContracts(): PausedContract[]
   /**
+   * Whether a marketplace contract is in the paused set.
+   * @param address - The contract address, in any casing.
+   * @param network - The network in the trades' spelling (ETHEREUM or MATIC).
+   * @returns True when the contract was paused as of the last successful refresh.
+   */
+  isPaused(address: string, network: string): boolean
+  /**
    * Reloads the paused set. Never throws: on failure it logs and keeps the last known set.
    */
   refresh(): Promise<void>

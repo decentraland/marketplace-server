@@ -386,7 +386,7 @@ export function getTradeAssetsWithValuesByHashedSignatureQuery(hashedSignature: 
 
 // Returns flat (trade × asset) rows with explicit aliases so the join's overlapping
 // `id` and `trade_id` columns can be disambiguated when grouping by trade in JS.
-export function getTradesByAddressQuery(address: string, options: { limit: number; offset?: number }, pausedContracts: PausedContract[]) {
+export function getTradesByAddressQuery(address: string, options: { limit: number; offset?: number }) {
   const lowered = address.toLowerCase()
   const offset = options.offset ?? 0
   return SQL`
@@ -402,10 +402,6 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       t.signer       AS trade_signer,
       t.type         AS trade_type,
       t.contract     AS trade_contract,
-      `
-    .append(getPausedExpression(pausedContracts, 't.contract', 't.network'))
-    .append(
-      SQL` AS trade_paused,
       ta.id              AS asset_id,
       ta.asset_type      AS asset_type,
       ta.beneficiary     AS asset_beneficiary,
@@ -434,7 +430,6 @@ export function getTradesByAddressQuery(address: string, options: { limit: numbe
       OFFSET ${offset}
     )
     ORDER BY t.created_at DESC, ta.direction ASC`
-    )
 }
 
 // Resolves the item id of an ERC721 (secondary listing) asset. Uses the same join the trade queries and
@@ -468,10 +463,4 @@ export function getMarketplaceContractPausedQuery(contractAddress: string, netwo
     SELECT paused FROM squid_trades.contract_status
     WHERE address = ${contractAddress.toLowerCase()} AND network = ${toSquidNetwork(network)}
     LIMIT 1`
-}
-
-export function getAllTradesQuery(pausedContracts: PausedContract[]): SQLStatement {
-  return SQL`SELECT t.*, `
-    .append(getPausedExpression(pausedContracts, 't.contract', 't.network'))
-    .append(SQL` AS paused FROM marketplace.trades AS t`)
 }

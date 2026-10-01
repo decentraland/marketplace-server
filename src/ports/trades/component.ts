@@ -1,3 +1,4 @@
+import SQL from 'sql-template-strings'
 import { Event, ListingStatus, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { getNetwork as getChainIdNetwork } from '@dcl/schemas/dist/dapps/chain-id'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
@@ -24,7 +25,6 @@ import {
   TradeNetworkMismatchError
 } from './errors'
 import {
-  getAllTradesQuery,
   getInsertTradeAssetQuery,
   getInsertTradeAssetValueByTypeQuery,
   getInsertTradeQuery,
@@ -61,7 +61,6 @@ type TradeWithAssetRow = {
   trade_signer: string
   trade_type: TradeType
   trade_contract: string
-  trade_paused: boolean
   asset_id: string
   asset_type: TradeAssetType
   asset_beneficiary: string | null
@@ -82,15 +81,14 @@ export function createTradesComponent(
   const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
-    const result = await pg.query<DBTradeWithPaused>(getAllTradesQuery(contractStatus.getPausedContracts()))
-    return { data: result.rows, count: result.rowCount }
+    const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
+    const data: DBTradeWithPaused[] = result.rows.map(row => ({ ...row, paused: contractStatus.isPaused(row.contract, row.network) }))
+    return { data, count: result.rowCount }
   }
 
   async function getTradesByAddress(address: string, options: { limit?: number; offset?: number } = {}) {
     const limit = options.limit ?? 100
-    const result = await pg.query<TradeWithAssetRow>(
-      getTradesByAddressQuery(address, { limit, offset: options.offset }, contractStatus.getPausedContracts())
-    )
+    const result = await pg.query<TradeWithAssetRow>(getTradesByAddressQuery(address, { limit, offset: options.offset }))
 
     const grouped = new Map<string, TradeWithAssetRow[]>()
     for (const row of result.rows) {
@@ -119,7 +117,10 @@ export function createTradesComponent(
         contract: head.trade_contract
       }
       const assets = rows.map(toDBTradeAssetWithValue).filter((a): a is DBTradeAssetWithValue => a !== null)
-      trades.push({ ...fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets), isPaused: head.trade_paused })
+      trades.push({
+        ...fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets),
+        isPaused: contractStatus.isPaused(head.trade_contract, head.trade_network)
+      })
     }
 
     return { data: trades }

@@ -617,7 +617,7 @@ describe('when getting the trades of an address', () => {
   let mockQuery: jest.Mock
   let result: Awaited<ReturnType<ITradesComponent['getTradesByAddress']>>
 
-  function assetRow(tradeId: string, paused: boolean) {
+  function assetRow(tradeId: string, contract: string) {
     return {
       trade_id: tradeId,
       trade_chain_id: ChainId.MATIC_AMOY,
@@ -629,8 +629,7 @@ describe('when getting the trades of an address', () => {
       trade_signature: '0xsig',
       trade_signer: '0xuser',
       trade_type: TradeType.PUBLIC_ITEM_ORDER,
-      trade_contract: '0xmarketplace',
-      trade_paused: paused,
+      trade_contract: contract,
       asset_id: `${tradeId}-asset`,
       asset_type: TradeAssetType.ERC20,
       asset_beneficiary: '0xuser',
@@ -646,7 +645,9 @@ describe('when getting the trades of an address', () => {
   }
 
   beforeEach(async () => {
-    mockQuery = jest.fn().mockResolvedValueOnce({ rows: [assetRow('paused-trade', true), assetRow('live-trade', false)], rowCount: 2 })
+    mockQuery = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [assetRow('paused-trade', '0xPAUSED'), assetRow('live-trade', '0xlive')], rowCount: 2 })
     tradesComponent = createTradesComponent({
       dappsDatabase: { query: mockQuery } as unknown as IPgComponent,
       eventPublisher: { publishMessage: jest.fn() },
@@ -654,7 +655,7 @@ describe('when getting the trades of an address', () => {
         getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
       }),
       shopNotifier: { notifyItemOnSale: jest.fn() },
-      contractStatus: createContractStatusMockedComponent()
+      contractStatus: createContractStatusMockedComponent([{ address: '0xpaused', network: Network.MATIC }])
     })
     result = await tradesComponent.getTradesByAddress('0xuser')
   })
@@ -669,13 +670,13 @@ describe('when getting the trades of an address', () => {
 
 describe('when getting every trade', () => {
   let tradesComponent: ITradesComponent
-  let rows: { id: string; paused: boolean }[]
+  let rows: { id: string; contract: string; network: string }[]
   let result: Awaited<ReturnType<ITradesComponent['getTrades']>>
 
   beforeEach(async () => {
     rows = [
-      { id: '1', paused: true },
-      { id: '2', paused: false }
+      { id: '1', contract: '0xPAUSED', network: Network.MATIC },
+      { id: '2', contract: '0xpaused', network: Network.ETHEREUM }
     ]
     tradesComponent = createTradesComponent({
       dappsDatabase: { query: jest.fn().mockResolvedValueOnce({ rows, rowCount: 2 }) } as unknown as IPgComponent,
@@ -684,12 +685,19 @@ describe('when getting every trade', () => {
         getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
       }),
       shopNotifier: { notifyItemOnSale: jest.fn() },
-      contractStatus: createContractStatusMockedComponent()
+      contractStatus: createContractStatusMockedComponent([{ address: '0xpaused', network: Network.MATIC }])
     })
     result = await tradesComponent.getTrades()
   })
 
-  it('should return the trades with their paused flag and the count', () => {
-    expect(result).toEqual({ data: rows, count: 2 })
+  // The same address on another network is a different deployment.
+  it('should flag each raw row by its contract and network, and return the count', () => {
+    expect(result).toEqual({
+      data: [
+        { ...rows[0], paused: true },
+        { ...rows[1], paused: false }
+      ],
+      count: 2
+    })
   })
 })

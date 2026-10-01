@@ -1,5 +1,6 @@
 import { START_COMPONENT, STOP_COMPONENT } from '@well-known-components/interfaces'
 import { isErrorWithMessage } from '../../logic/errors'
+import { getPausedContractKey } from '../../logic/trades/contract-status'
 import { fromSquidNetwork } from '../../logic/trades/squid-network'
 import { AppComponents } from '../../types'
 import { getPausedContractsQuery } from './queries'
@@ -25,12 +26,14 @@ export async function createContractStatusComponent(
   const refreshIntervalMs = (await config.getNumber('CONTRACT_STATUS_REFRESH_INTERVAL_MS')) ?? DEFAULT_CONTRACT_STATUS_REFRESH_INTERVAL_MS
 
   let pausedContracts: PausedContract[] = []
+  let pausedKeys = new Set<string>()
   let interval: ReturnType<typeof setInterval> | undefined
 
   async function refresh(): Promise<void> {
     try {
       const result = await dappsDatabase.query<DBContractStatus>(getPausedContractsQuery())
       pausedContracts = result.rows.map(row => ({ address: row.address.toLowerCase(), network: fromSquidNetwork(row.network) }))
+      pausedKeys = new Set(pausedContracts.map(({ address, network }) => getPausedContractKey(address, network)))
     } catch (error) {
       logger.error('Failed to refresh the paused marketplace contracts, keeping the last known set', {
         error: isErrorWithMessage(error) ? error.message : 'Unknown error',
@@ -41,6 +44,10 @@ export async function createContractStatusComponent(
 
   function getPausedContracts(): PausedContract[] {
     return pausedContracts
+  }
+
+  function isPaused(address: string, network: string): boolean {
+    return pausedKeys.has(getPausedContractKey(address, network))
   }
 
   async function start(): Promise<void> {
@@ -63,6 +70,7 @@ export async function createContractStatusComponent(
     [START_COMPONENT]: start,
     [STOP_COMPONENT]: stop,
     getPausedContracts,
+    isPaused,
     refresh
   }
 }

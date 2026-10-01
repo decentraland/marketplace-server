@@ -1,11 +1,9 @@
 import { Network, TradeType } from '@dcl/schemas'
 import { PausedContract } from '../../src/ports/contract-status/types'
 import {
-  getAllTradesQuery,
   getMarketplaceContractPausedQuery,
   getOpenItemOrderQuery,
   getOpenNFTOrderQuery,
-  getTradesByAddressQuery,
   getTradesForTypeQuery,
   getTradeStatusByIdQuery
 } from '../../src/ports/trades/queries'
@@ -129,48 +127,5 @@ describe('when building the marketplace pause lookup', () => {
 
   it('should match both columns', () => {
     expect(text).toContain('WHERE address = $1 AND network = $2')
-  })
-})
-
-describe('when building the query for the trades of an address', () => {
-  let text: string
-  let values: unknown[]
-
-  beforeEach(() => {
-    const query = getTradesByAddressQuery('0xUser', { limit: 10, offset: 5 }, [{ address: '0xabc', network: Network.ETHEREUM }])
-    text = query.text
-    values = query.values
-  })
-
-  it('should expose whether each trade marketplace is paused', () => {
-    expect(text).toMatch(/\(LOWER\(t\.contract\) \|\| '-' \|\| t\.network\) = ANY\(\$1::text\[\]\) AS trade_paused/)
-  })
-
-  it('should bind the paused set, the address and the pagination', () => {
-    expect(values).toEqual([['0xabc-ETHEREUM'], '0xuser', '0xuser', 10, 5])
-  })
-})
-
-describe('when building the query for every trade', () => {
-  let text: string
-
-  describe('and no marketplace contract is paused', () => {
-    beforeEach(() => {
-      text = getAllTradesQuery([]).text
-    })
-
-    it('should select every trade as not paused', () => {
-      expect(text).toBe('SELECT t.*, false AS paused FROM marketplace.trades AS t')
-    })
-  })
-
-  describe('and a marketplace contract is paused', () => {
-    beforeEach(() => {
-      text = getAllTradesQuery([{ address: '0xabc', network: Network.MATIC }]).text
-    })
-
-    it('should flag the trades on it as paused', () => {
-      expect(text).toMatch(PAUSED_MATCH)
-    })
   })
 })
