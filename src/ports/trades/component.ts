@@ -1,4 +1,3 @@
-import SQL from 'sql-template-strings'
 import { Event, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
@@ -30,9 +29,11 @@ import {
   getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
+  getTradeListCountQuery,
+  getTradeListQuery,
   getTradesByAddressQuery
 } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
+import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent, TradeListFilters } from './types'
 import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
 
 type TradeWithAssetRow = {
@@ -66,9 +67,18 @@ export function createTradesComponent(
   const { dappsDatabase: pg, eventPublisher, logs, shopNotifier } = components
   const logger = logs.getLogger('Trades component')
 
-  async function getTrades() {
-    const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
-    return { data: result.rows, count: result.rowCount }
+  async function getTrades(filters: TradeListFilters = {}) {
+    // Unpaginated: every match is in the page, so no count query is needed.
+    if (filters.first === undefined && !filters.skip) {
+      const result = await pg.query<DBTrade>(getTradeListQuery(filters))
+      return { data: result.rows, count: result.rows.length }
+    }
+
+    const [result, countResult] = await Promise.all([
+      pg.query<DBTrade>(getTradeListQuery(filters)),
+      pg.query<{ count: number }>(getTradeListCountQuery(filters))
+    ])
+    return { data: result.rows, count: countResult.rows[0]?.count ?? 0 }
   }
 
   async function getTradesByAddress(address: string, options: { limit?: number; offset?: number } = {}) {

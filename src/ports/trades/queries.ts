@@ -4,6 +4,37 @@ import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, T
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 import { squidTradesNetwork } from '../../logic/trades/squid'
+import { getWhereStatementFromFilters } from '../utils'
+import { TradeListFilters } from './types'
+
+export const TRADES_LIST_MAX_LIMIT = 1000
+
+function getTradeListWhereStatement(filters: TradeListFilters): SQLStatement {
+  return getWhereStatementFromFilters([
+    // signer is stored lowercased; contract may hold checksummed addresses.
+    filters.signer ? SQL`t.signer = ${filters.signer.toLowerCase()}` : null,
+    filters.contracts?.length ? SQL`LOWER(t.contract) = ANY(${filters.contracts.map(contract => contract.toLowerCase())})` : null
+  ])
+}
+
+export function getTradeListQuery(filters: TradeListFilters = {}): SQLStatement {
+  const query = SQL`SELECT t.* FROM marketplace.trades AS t`
+    .append(getTradeListWhereStatement(filters))
+    .append(SQL` ORDER BY t.created_at DESC, t.id ASC`)
+
+  if (filters.first !== undefined) {
+    query.append(SQL` LIMIT ${Math.min(filters.first, TRADES_LIST_MAX_LIMIT)}`)
+  }
+  if (filters.skip) {
+    query.append(SQL` OFFSET ${filters.skip}`)
+  }
+
+  return query
+}
+
+export function getTradeListCountQuery(filters: TradeListFilters = {}): SQLStatement {
+  return SQL`SELECT COUNT(*)::int AS count FROM marketplace.trades AS t`.append(getTradeListWhereStatement(filters))
+}
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
