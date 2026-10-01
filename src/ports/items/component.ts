@@ -14,8 +14,8 @@ function rateToNumericString(rate: number): string {
   return rate.toFixed(18)
 }
 
-export function createItemsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IItemsComponent {
-  const { dappsDatabase: database, logs } = components
+export function createItemsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs' | 'contractStatus'>): IItemsComponent {
+  const { dappsDatabase: database, logs, contractStatus } = components
   const logger = logs.getLogger('Items component')
 
   async function validateItemExists(itemId: string): Promise<void> {
@@ -40,7 +40,7 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function getItems(filters: ItemQueryFilters) {
-    const query = getItemsQuery(filters)
+    const query = getItemsQuery(filters, contractStatus.getPausedContracts())
     const result = await database.query<DBItem>(query)
     const items: DBItem[] = result.rows
 
@@ -55,7 +55,7 @@ export function createItemsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function getCatalogItems(filters: ItemQueryFilters, manaUsdRate: number) {
-    const query = getCatalogItemsQuery(filters, rateToNumericString(manaUsdRate))
+    const query = getCatalogItemsQuery(filters, contractStatus.getPausedContracts(), rateToNumericString(manaUsdRate))
     const result = await database.query<CatalogDBItem>(query)
     const items = result.rows
 

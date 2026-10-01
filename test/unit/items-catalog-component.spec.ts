@@ -2,6 +2,7 @@ import { Network, Rarity } from '@dcl/schemas'
 import { createItemsComponent } from '../../src/ports/items'
 import { CatalogDBItem, IItemsComponent, ItemType } from '../../src/ports/items/types'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 // A catalog-items row: the columns fromDBItemToItem consumes plus the SQL-computed price_credits. The
 // asset-aware credit conversion happens in SQL, so the row supplies price_credits directly; the
@@ -48,7 +49,7 @@ describe('Items catalog feed (getCatalogItems)', () => {
     const logs = createTestLogsComponent({
       getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined, debug: () => undefined })
     })
-    items = createItemsComponent({ dappsDatabase, logs })
+    items = createItemsComponent({ dappsDatabase, logs, contractStatus: createContractStatusMockedComponent() })
   })
 
   describe('when mapping a catalog item row', () => {

@@ -3,6 +3,7 @@ import { OrderFilters, OrderSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
@@ -197,11 +198,15 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
 }
 
 // The original getOrdersQuery can now use the new function if needed
-export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, prefix = 'combined_orders'): SQLStatement {
+export function getOrdersQuery(
+  filters: OrderFilters & { nftIds?: string[] },
+  pausedContracts: PausedContract[],
+  prefix = 'combined_orders'
+): SQLStatement {
   const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
 
   const { first, skip } = filters
-  return getTradesCTE({ first, skip }).append(
+  return getTradesCTE({ first, skip, pausedContracts }).append(
     SQL`
     SELECT `
       .append(prefix)
@@ -225,10 +230,10 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, pr
   )
 }
 
-export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
+export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }, pausedContracts: PausedContract[]): SQLStatement {
   const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
 
-  return getTradesCTE({ first: filters.first, skip: filters.skip }).append(
+  return getTradesCTE({ first: filters.first, skip: filters.skip, pausedContracts }).append(
     SQL`
     ,aggregated_counts AS (
       SELECT 

@@ -10,8 +10,8 @@ import {
 } from './types'
 import { consolidateSizes } from './utils'
 
-export function createStatsComponent(components: Pick<AppComponents, 'dappsDatabase'>): IStatsComponent {
-  const { dappsDatabase } = components
+export function createStatsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'contractStatus'>): IStatsComponent {
+  const { dappsDatabase, contractStatus } = components
 
   function isValid(filters: StatsResourceParams) {
     const { category } = filters
@@ -19,7 +19,7 @@ export function createStatsComponent(components: Pick<AppComponents, 'dappsDatab
   }
 
   async function fetchEstateSizes(filters: StatsResourceFilters) {
-    const query = getEstatesSizesQuery(filters)
+    const query = getEstatesSizesQuery(filters, contractStatus.getPausedContracts())
     const results = await dappsDatabase.query<FetchEstateSizesQueryFragment>(query)
     return consolidateSizes(results.rows)
   }

@@ -10,6 +10,7 @@ import {
 // The same helper the component uses to resolve the look-back window, so the expected bound is derived the
 // same way rather than restated as a literal that would need editing whenever the window changes.
 import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 // 1 credit = $0.10 = 1e17 USD wei.
 const WEI_PER_CREDIT = 100000000000000000n
@@ -33,6 +34,7 @@ function shopRow(overrides: Record<string, unknown> = {}) {
     available: '10',
     network: 'MATIC',
     created_at: '1700000000000',
+    paused: false,
     total: '1',
     ...overrides
   }
@@ -53,6 +55,7 @@ function legacyRow(overrides: Record<string, unknown> = {}) {
     available: '10',
     network: 'MATIC',
     created_at: '1700000000000',
+    paused: false,
     total: '1',
     ...overrides
   }
@@ -83,6 +86,7 @@ function unifiedRow(overrides: Record<string, unknown> = {}) {
     available: '10',
     network: 'MATIC',
     created_at: '1700000000000',
+    paused: false,
     total: '1',
     ...overrides
   }
@@ -98,7 +102,8 @@ describe('Shop Catalog Component', () => {
     warn = jest.fn()
     const components = {
       dappsDatabase: { query },
-      logs: { getLogger: jest.fn().mockReturnValue({ warn, info: jest.fn(), error: jest.fn(), debug: jest.fn() }) }
+      logs: { getLogger: jest.fn().mockReturnValue({ warn, info: jest.fn(), error: jest.fn(), debug: jest.fn() }) },
+      contractStatus: createContractStatusMockedComponent()
     } as any
     shopCatalog = createShopCatalogComponent(components)
   })
@@ -1293,7 +1298,7 @@ describe('Shop Catalog Component', () => {
 
       it('should carry each row paused flag', async () => {
         const { data } = await shopCatalog.getShopListings({})
-        expect(data.map(d => [d.tradeId, d.paused])).toEqual([
+        expect(data.map(d => [d.tradeId, d.isPaused])).toEqual([
           ['paused', true],
           ['live', false]
         ])
@@ -1307,7 +1312,7 @@ describe('Shop Catalog Component', () => {
 
       it('should flag the listing as paused', async () => {
         const { data } = await shopCatalog.getLegacyListings({})
-        expect(data[0].paused).toBe(true)
+        expect(data[0].isPaused).toBe(true)
       })
     })
 
@@ -1318,7 +1323,7 @@ describe('Shop Catalog Component', () => {
 
       it('should flag the listing as paused, so the seller can see why it no longer sells', async () => {
         const data = await shopCatalog.getImportableListings('0xseller')
-        expect(data[0].paused).toBe(true)
+        expect(data[0].isPaused).toBe(true)
       })
     })
 
@@ -1329,7 +1334,7 @@ describe('Shop Catalog Component', () => {
 
       it('should flag the listing as paused', async () => {
         const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
-        expect(data[0].paused).toBe(true)
+        expect(data[0].isPaused).toBe(true)
       })
     })
 
@@ -1340,56 +1345,78 @@ describe('Shop Catalog Component', () => {
 
       it('should flag the representative listing as paused', async () => {
         const { data } = await shopCatalog.getShopItems({}, 0.5)
-        expect(data[0].paused).toBe(true)
-      })
-    })
-
-    describe('and the row carries no paused column', () => {
-      beforeEach(() => {
-        query.mockResolvedValueOnce({ rows: [unifiedRow()] })
-      })
-
-      it('should default to not paused', async () => {
-        const { data } = await shopCatalog.getUnifiedListings({}, 0.5)
-        expect(data[0].paused).toBe(false)
+        expect(data[0].isPaused).toBe(true)
       })
     })
   })
 
   describe('when building the paused flag of the shop feeds', () => {
-    const CONTRACT_STATUS_JOIN =
-      /FROM marketplace\.mv_trades mv\s+LEFT JOIN squid_trades\.contract_status AS trade_contract_status\s+ON trade_contract_status\.address = LOWER\(mv\.trade_contract\)\s+AND trade_contract_status\.network = CASE WHEN mv\.network = 'MATIC' THEN 'POLYGON' ELSE mv\.network END/
+    const feeds: [string, () => Promise<unknown>][] = [
+      ['the shop listings feed', () => shopCatalog.getShopListings({})],
+      ['the legacy listings feed', () => shopCatalog.getLegacyListings({})],
+      ['the importable listings', () => shopCatalog.getImportableListings('0xseller')],
+      ['the unified feed', () => shopCatalog.getUnifiedListings({ source: 'native' }, 0.5)]
+    ]
 
     beforeEach(() => {
       query.mockResolvedValue({ rows: [] })
     })
 
-    it('should join each listing marketplace status in the shop listings feed', async () => {
-      await shopCatalog.getShopListings({})
-      const { text } = query.mock.calls[0][0]
-      expect(text).toMatch(CONTRACT_STATUS_JOIN)
-      expect(text).toContain('COALESCE(trade_contract_status.paused, false) AS paused')
+    describe('and no marketplace contract is paused', () => {
+      describe.each(feeds)('and building %s', (_name, fetchFeed) => {
+        let text: string
+
+        beforeEach(async () => {
+          await fetchFeed()
+          text = query.mock.calls[0][0].text
+        })
+
+        it('should report every listing as not paused without reading any status table', () => {
+          expect(text).toContain('false AS paused')
+          expect(text).not.toContain('contract_status')
+        })
+      })
     })
 
-    it('should join each listing marketplace status in the legacy listings feed', async () => {
-      await shopCatalog.getLegacyListings({})
-      expect(query.mock.calls[0][0].text).toMatch(CONTRACT_STATUS_JOIN)
-    })
+    describe('and a marketplace contract is paused', () => {
+      beforeEach(() => {
+        shopCatalog = createShopCatalogComponent({
+          dappsDatabase: { query },
+          logs: { getLogger: jest.fn().mockReturnValue({ warn, info: jest.fn(), error: jest.fn(), debug: jest.fn() }) },
+          contractStatus: createContractStatusMockedComponent([{ address: '0xabc', network: 'MATIC' }])
+        } as any)
+      })
 
-    it('should join each listing marketplace status in the importable listings', async () => {
-      await shopCatalog.getImportableListings('0xseller')
-      expect(query.mock.calls[0][0].text).toMatch(CONTRACT_STATUS_JOIN)
-    })
+      describe.each(feeds)('and building %s', (_name, fetchFeed) => {
+        let text: string
+        let values: unknown[]
 
-    it('should report a CollectionStore mint as never paused, since it is not a trade', async () => {
-      await shopCatalog.getUnifiedListings({ source: 'legacy' }, 0.5)
-      expect(query.mock.calls[0][0].text).toContain('false AS paused')
-    })
+        beforeEach(async () => {
+          await fetchFeed()
+          text = query.mock.calls[0][0].text
+          values = query.mock.calls[0][0].values
+        })
 
-    // Product decision: paused listings stay visible and keep counting.
-    it('should not filter paused listings out of the unified feed', async () => {
-      await shopCatalog.getUnifiedListings({}, 0.5)
-      expect(query.mock.calls[0][0].text).not.toMatch(/NOT\s+(trade_contract_status\.)?paused|paused\s*=\s*false/)
+        it('should flag the listings whose contract and network are in the paused set', () => {
+          expect(text).toMatch(/\(LOWER\(mv\.trade_contract\) \|\| '-' \|\| mv\.network\) = ANY\(\$\d+::text\[\]\) AS paused/)
+          expect(values).toContainEqual(['0xabc-MATIC'])
+        })
+
+        // Product decision: paused listings stay visible and keep counting.
+        it('should not filter paused listings out', () => {
+          expect(text).not.toMatch(/NOT\s+paused|paused\s*=\s*false/)
+        })
+      })
+
+      describe('and building the CollectionStore branch of the unified feed', () => {
+        beforeEach(async () => {
+          await shopCatalog.getUnifiedListings({ source: 'legacy' }, 0.5)
+        })
+
+        it('should report a CollectionStore mint as never paused, since it is not a trade', () => {
+          expect(query.mock.calls[0][0].text).toContain('false AS paused')
+        })
+      })
     })
   })
 

@@ -408,7 +408,7 @@ test('trades controller', function ({ components }) {
           createdAt: expect.any(Number),
           contract: expect.any(String),
           status: 'open',
-          paused: false
+          isPaused: false
         },
         ok: true
       })
@@ -480,6 +480,63 @@ test('trades controller', function ({ components }) {
     })
   })
 
+  describe('when a new trade declares a network that does not match its chain id', () => {
+    let bid: TradeCreation
+    let response: Response
+
+    beforeEach(async () => {
+      const { localFetch } = components
+      const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+        intent: 'dcl:create-trade',
+        signer: 'dcl:marketplace'
+      })
+      bid = {
+        signature: Authenticator.createSignature(signedRequest.identity.realAccount, Math.random().toString()),
+        signer: signedRequest.identity.realAccount.address.toLowerCase(),
+        chainId: 1,
+        type: TradeType.BID,
+        checks: {
+          effective: Date.now(),
+          expiration: Date.now() + 1000000,
+          allowedRoot: '0x',
+          contractSignatureIndex: 0,
+          signerSignatureIndex: 0,
+          externalChecks: [],
+          salt: '0x',
+          uses: 1
+        },
+        // Signed for Ethereum mainnet, declared as Polygon.
+        network: Network.MATIC,
+        sent: [{ assetType: TradeAssetType.ERC20, contractAddress: MANA_MAINNET_ADDRESS, extra: '0x', amount: '100' }],
+        received: [
+          {
+            assetType: TradeAssetType.ERC721,
+            contractAddress: '0x9d32aac179153a991e832550d9f96441ea27763b',
+            tokenId: `${Date.now()}`,
+            extra: '0x',
+            beneficiary: '0x9d32aac179153a991e832550d9f96441ea27763b'
+          }
+        ]
+      }
+      response = await localFetch.fetch('/v1/trades', {
+        method: signedRequest.method,
+        body: JSON.stringify(bid),
+        headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+      })
+    })
+
+    it('should respond with a 400 saying the network does not match the chain id', async () => {
+      expect(response.status).toEqual(StatusCode.BAD_REQUEST)
+      expect(await response.json()).toEqual({ ok: false, message: 'The network MATIC does not match the chain id 1' })
+    })
+
+    it('should not store the trade', async () => {
+      const { dappsDatabase } = components
+      const queryResult = await dappsDatabase.query(SQL`SELECT 1 FROM marketplace.trades WHERE signature = ${bid.signature}`)
+      expect(queryResult.rowCount).toBe(0)
+    })
+  })
+
   describe('when getting a trade whose marketplace contract was paused after it was created', () => {
     let response: Response
     let createdTrade: { id: string }
@@ -533,7 +590,7 @@ test('trades controller', function ({ components }) {
 
     it('should report the trade as still open and paused', async () => {
       expect(response.status).toEqual(StatusCode.OK)
-      expect((await response.json()).data).toMatchObject({ id: createdTrade.id, status: 'open', paused: true })
+      expect((await response.json()).data).toMatchObject({ id: createdTrade.id, status: 'open', isPaused: true })
     })
   })
 

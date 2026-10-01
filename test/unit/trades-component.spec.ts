@@ -37,6 +37,7 @@ import {
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
+  TradeNetworkMismatchError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
 import {
@@ -48,6 +49,7 @@ import {
 } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 let mockTrade: TradeCreation
 let mockSigner: string
@@ -143,7 +145,8 @@ describe('when adding a new trade', () => {
       dappsDatabase: mockPg,
       eventPublisher: mockEventPublisher,
       logs,
-      shopNotifier: mockShopNotifier
+      shopNotifier: mockShopNotifier,
+      contractStatus: createContractStatusMockedComponent()
     })
   })
 
@@ -170,6 +173,34 @@ describe('when adding a new trade', () => {
     })
     it('should throw a TradeEffectiveAfterExpirationError', async () => {
       await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new TradeEffectiveAfterExpirationError())
+    })
+  })
+
+  describe('when the network does not match the chain id', () => {
+    beforeEach(() => {
+      mockTrade = { ...mockTrade, network: Network.MATIC, chainId: ChainId.ETHEREUM_MAINNET }
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+    })
+
+    it('should reject the trade with a TradeNetworkMismatchError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
+        new TradeNetworkMismatchError(Network.MATIC, ChainId.ETHEREUM_MAINNET)
+      )
+    })
+
+    it('should not run the duplicate checks', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(utils.validateTradeByType).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the chain id is not one the marketplace runs on', () => {
+    beforeEach(() => {
+      mockTrade = { ...mockTrade, chainId: 999999 as ChainId }
+    })
+
+    it('should reject the trade with a TradeNetworkMismatchError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(TradeNetworkMismatchError)
     })
   })
 
@@ -415,7 +446,8 @@ describe('when getting a trade', () => {
         dappsDatabase: mockPg,
         eventPublisher: mockEventPublisher,
         logs,
-        shopNotifier: mockShopNotifier
+        shopNotifier: mockShopNotifier,
+        contractStatus: createContractStatusMockedComponent()
       })
     })
 
@@ -529,7 +561,8 @@ describe('when getting a trade', () => {
         dappsDatabase: mockPg,
         eventPublisher: mockEventPublisher,
         logs,
-        shopNotifier: mockShopNotifier
+        shopNotifier: mockShopNotifier,
+        contractStatus: createContractStatusMockedComponent()
       })
     })
 
@@ -542,12 +575,12 @@ describe('when getting a trade', () => {
       })
 
       it('should return the trade with its status and not paused', async () => {
-        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, paused: false })
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, isPaused: false })
       })
 
       it('should compute the status with the query for the trade type and id', async () => {
         await tradesComponent.getTrade('1')
-        expect(mockQuery).toHaveBeenNthCalledWith(2, getTradeStatusByIdQuery(TradeType.BID, '1'))
+        expect(mockQuery).toHaveBeenNthCalledWith(2, getTradeStatusByIdQuery(TradeType.BID, '1', []))
       })
     })
 
@@ -560,7 +593,7 @@ describe('when getting a trade', () => {
       })
 
       it('should return the trade as open and paused', async () => {
-        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, paused: true })
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, isPaused: true })
       })
     })
 
@@ -573,7 +606,7 @@ describe('when getting a trade', () => {
       })
 
       it('should return the trade with the cancelled status', async () => {
-        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.CANCELLED, paused: false })
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.CANCELLED, isPaused: false })
       })
     })
   })
@@ -620,13 +653,14 @@ describe('when getting the trades of an address', () => {
       logs: createTestLogsComponent({
         getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
       }),
-      shopNotifier: { notifyItemOnSale: jest.fn() }
+      shopNotifier: { notifyItemOnSale: jest.fn() },
+      contractStatus: createContractStatusMockedComponent()
     })
     result = await tradesComponent.getTradesByAddress('0xuser')
   })
 
   it('should flag each trade with whether its marketplace is paused', () => {
-    expect(result.data.map(trade => [trade.id, trade.paused])).toEqual([
+    expect(result.data.map(trade => [trade.id, trade.isPaused])).toEqual([
       ['paused-trade', true],
       ['live-trade', false]
     ])
@@ -649,7 +683,8 @@ describe('when getting every trade', () => {
       logs: createTestLogsComponent({
         getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
       }),
-      shopNotifier: { notifyItemOnSale: jest.fn() }
+      shopNotifier: { notifyItemOnSale: jest.fn() },
+      contractStatus: createContractStatusMockedComponent()
     })
     result = await tradesComponent.getTrades()
   })

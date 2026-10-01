@@ -2,6 +2,7 @@ import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '../../src/ports/db/types'
 import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
 import { IShopCatalogComponent } from '../../src/ports/shop-catalog/types'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 // 1 credit = $0.10 = 1e17 USD wei.
 const WEI_PER_CREDIT = 100000000000000000n
@@ -107,7 +108,11 @@ describe('when the shop feed carries creator coupons', () => {
 
   beforeEach(() => {
     query = jest.fn().mockResolvedValue({ rows: [] })
-    component = createShopCatalogComponent({ dappsDatabase: { query } as unknown as IPgComponent, logs })
+    component = createShopCatalogComponent({
+      dappsDatabase: { query } as unknown as IPgComponent,
+      logs,
+      contractStatus: createContractStatusMockedComponent()
+    })
   })
 
   describe('and listings are queried', () => {
@@ -234,7 +239,7 @@ describe('when the shop feed carries creator coupons', () => {
       })
 
       it('should keep the coupon pairing and carry the listing paused flag with it', () => {
-        expect(data[0]).toMatchObject({ priceCredits: 7, paused: true, coupon: expect.objectContaining({ id: 'coupon-1' }) })
+        expect(data[0]).toMatchObject({ priceCredits: 7, isPaused: true, coupon: expect.objectContaining({ id: 'coupon-1' }) })
       })
     })
 
@@ -258,7 +263,7 @@ describe('when the shop feed carries creator coupons', () => {
       })
 
       it('should keep the coupon pairing and carry the listing paused flag with it', () => {
-        expect(data[0]).toMatchObject({ priceCredits: 7, paused: true, coupon: expect.objectContaining({ id: 'coupon-1' }) })
+        expect(data[0]).toMatchObject({ priceCredits: 7, isPaused: true, coupon: expect.objectContaining({ id: 'coupon-1' }) })
       })
     })
   })
@@ -339,7 +344,11 @@ describe('when the unified feed carries creator coupons', () => {
 
   beforeEach(() => {
     query = jest.fn().mockResolvedValue({ rows: [] })
-    component = createShopCatalogComponent({ dappsDatabase: { query } as unknown as IPgComponent, logs })
+    component = createShopCatalogComponent({
+      dappsDatabase: { query } as unknown as IPgComponent,
+      logs,
+      contractStatus: createContractStatusMockedComponent()
+    })
   })
 
   it('should discount only the native branch and keep the legacy and store branches coupon-free', async () => {

@@ -10,6 +10,7 @@ import { DBTrade, DBTradeAsset, ITradesComponent, createTradesComponent } from '
 import { getMarketplaceContractPausedQuery } from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 /**
  * These specs are about the shop-notify ping, and they drive it through a shared `pg.query` mock whose
@@ -117,7 +118,8 @@ describe('when adding a listing trade', () => {
       dappsDatabase: mockPg,
       eventPublisher: mockEventPublisher,
       logs,
-      shopNotifier: mockShopNotifier
+      shopNotifier: mockShopNotifier,
+      contractStatus: createContractStatusMockedComponent()
     })
   })
 

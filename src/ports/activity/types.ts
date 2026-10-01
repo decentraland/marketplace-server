@@ -1,5 +1,7 @@
-import { Bid, Network, Order, Sale, Trade } from '@dcl/schemas'
-import { WithPaused } from '../../types'
+import { Network, Sale } from '@dcl/schemas'
+import { BidWithPause } from '../bids/types'
+import { OrderWithPause } from '../orders/types'
+import { TradeWithPause } from '../trades/types'
 
 export enum ActivityEventType {
   SALE_BUYER = 'sale_buyer',
@@ -35,27 +37,27 @@ export type SaleSellerEvent = ActivityEventBase & {
 
 export type BidPlacedEvent = ActivityEventBase & {
   type: ActivityEventType.BID_PLACED
-  details: { bid: WithPaused<Bid> }
+  details: { bid: BidWithPause }
 }
 
 export type BidReceivedEvent = ActivityEventBase & {
   type: ActivityEventType.BID_RECEIVED
-  details: { bid: WithPaused<Bid> }
+  details: { bid: BidWithPause }
 }
 
 export type OrderCreatedEvent = ActivityEventBase & {
   type: ActivityEventType.ORDER_CREATED
-  details: { order: WithPaused<Order> }
+  details: { order: OrderWithPause }
 }
 
 export type OrderFilledEvent = ActivityEventBase & {
   type: ActivityEventType.ORDER_FILLED
-  details: { order: WithPaused<Order> }
+  details: { order: OrderWithPause }
 }
 
 export type TradeCreatedEvent = ActivityEventBase & {
   type: ActivityEventType.TRADE_CREATED
-  details: { trade: WithPaused<Trade> }
+  details: { trade: TradeWithPause }
 }
 
 export type ActivityEvent =

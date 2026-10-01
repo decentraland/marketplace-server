@@ -18,7 +18,7 @@ describe('when building the items queries', () => {
 
   describe('and filtering by search text', () => {
     it('should match the item name term by term against the word table, so a term is found wherever it sits in the name', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' }, [])
       expect(query.text).toContain('marketplace.item_search_words')
       expect(query.text).toContain('t.term <% w.word')
       expect(query.text).toContain('LEFT JOIN search_matches AS search_match ON search_match.item_id = item.id::text')
@@ -28,17 +28,17 @@ describe('when building the items queries', () => {
     })
 
     it('should also match the item tags, which is where brand and collab names live', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' }, [])
       expect(query.text).toContain('lower(tags.tag) = lower(')
     })
 
     it('should open the search CTEs alongside the trades one, since a statement has a single WITH', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' }, [])
       expect(query.text).toMatch(/WITH \w+ AS \([\s\S]*\), search_terms AS \(/)
     })
 
     it('should keep the best-matching rows of the FILTERED set and count above that filter', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', category: NFTCategory.WEARABLE })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', category: NFTCategory.WEARABLE }, [])
       expect(query.text).toContain('MAX(c.search_matched) OVER () AS search_required')
       expect(query.text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
       // the count is no longer inside the core SELECT, where it would count rows the level then drops
@@ -47,35 +47,35 @@ describe('when building the items queries', () => {
     })
 
     it('should default a search to relevance, reading the sort keys off the level-filtered relation', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau' }, [])
       expect(query.text).toContain('ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.id ASC')
     })
 
     it('should honour an explicit sort on a search, spelled on the output columns the wrapper exposes', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', sortBy: 'cheapest' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'chapeau', sortBy: 'cheapest' }, [])
       expect(query.text).toContain('ORDER BY NULLIF(f.price_credits, 0) ASC NULLS LAST, f.id ASC')
     })
 
     it('should treat relevance without a search as newest, since every row would tie', () => {
-      const query = getCatalogItemsQuery({ ...filters, sortBy: 'relevance' })
+      const query = getCatalogItemsQuery({ ...filters, sortBy: 'relevance' }, [])
       expect(query.text).toContain('ORDER BY item.created_at DESC, item.id ASC')
       expect(query.text).not.toContain('search_matches')
       expect(query.text).toContain('COUNT(*) OVER() as count')
     })
 
     it('should not match a literal substring of the whole name: that returned nothing for multi-word terms', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: 'hat pirate' })
+      const query = getCatalogItemsQuery({ ...filters, search: 'hat pirate' }, [])
       expect(query.text).not.toMatch(NAME_ILIKE)
       expect(query.values).not.toContain('%hat pirate%')
     })
 
     it('should carry LIKE metacharacters as plain data now that nothing builds a LIKE pattern', () => {
-      const query = getCatalogItemsQuery({ ...filters, search: '50%_off\\' })
+      const query = getCatalogItemsQuery({ ...filters, search: '50%_off\\' }, [])
       expect(query.values).toContain('50%_off\\')
     })
 
     it('should apply the same rule to the /v1/items feed', () => {
-      const query = getItemsQuery({ ...filters, search: 'chapeau' })
+      const query = getItemsQuery({ ...filters, search: 'chapeau' }, [])
       expect(query.text).toContain('marketplace.item_search_words')
       expect(query.text).not.toMatch(NAME_ILIKE)
       expect(query.text).not.toContain('search_text')
@@ -84,25 +84,25 @@ describe('when building the items queries', () => {
 
   describe('and filtering by sale status', () => {
     it('should keep only buyable items when isOnSale is true', () => {
-      const query = getCatalogItemsQuery({ ...filters, isOnSale: true })
+      const query = getCatalogItemsQuery({ ...filters, isOnSale: true }, [])
       expect(query.text).toMatch(ON_SALE)
       expect(query.text).not.toMatch(/NOT\s+\(\(\(unified_trades/i)
     })
 
     it('should return the complement when isOnSale is false, so "not for sale" is not a no-op', () => {
-      const query = getCatalogItemsQuery({ ...filters, isOnSale: false })
+      const query = getCatalogItemsQuery({ ...filters, isOnSale: false }, [])
       expect(query.text).toMatch(/NOT\s+\(\(\(unified_trades/i)
     })
 
     it('should not filter by status at all when isOnSale is undefined', () => {
-      const query = getCatalogItemsQuery(filters)
+      const query = getCatalogItemsQuery(filters, [])
       expect(query.text).not.toMatch(ON_SALE)
     })
   })
 
   describe('and paginating the catalog-items feed', () => {
     it('should order by a total key so LIMIT/OFFSET pages cannot repeat or skip items', () => {
-      const query = getCatalogItemsQuery(filters)
+      const query = getCatalogItemsQuery(filters, [])
       expect(query.text).toMatch(/ORDER BY item\.created_at DESC, item\.id ASC[\s\S]*LIMIT/i)
     })
   })
@@ -143,11 +143,11 @@ describe('when the caller filters an item feed by category', () => {
     ['the v1 items feed', getItemsQuery]
   ])('and building %s', (_name, buildQuery) => {
     it('should not narrow the trades CTE by category, which would drop every primary listing', () => {
-      expect(buildQuery(withCategory).text).not.toContain('sent_nft_category')
+      expect(buildQuery(withCategory, []).text).not.toContain('sent_nft_category')
     })
 
     it('should still restrict the items themselves to that category', () => {
-      expect(buildQuery(withCategory).text).toContain('LOWER(item.item_type) = ANY')
+      expect(buildQuery(withCategory, []).text).toContain('LOWER(item.item_type) = ANY')
     })
   })
 })
@@ -163,16 +163,16 @@ describe('when an item has more than one open primary listing', () => {
     ['the catalog items feed', getCatalogItemsQuery],
     ['the v1 items feed', getItemsQuery]
   ])('and building %s', (_name, buildQuery) => {
-    const { text } = buildQuery({ first: 20, skip: 0 })
+    const { text } = buildQuery({ first: 20, skip: 0 }, [])
 
     it('should join at most one trade per item, so the item cannot be emitted twice', () => {
       expect(text).toContain('LEFT JOIN LATERAL')
-      expect(text).toMatch(/ORDER BY\s+id::text DESC\s+LIMIT 1/)
+      expect(text).toMatch(/ORDER BY paused ASC, id::text DESC\s+LIMIT 1/)
     })
 
-    it('should pick the same trade /v2/catalog does, so the two feeds cannot quote different prices', () => {
-      // That feed collapses with MAX(id::text); ordering by the same expression picks the same row.
-      expect(text).toMatch(/ORDER BY\s+id::text DESC/)
+    it('should pick the same trade /v2/catalog does, an unpaused one first, so the two feeds cannot quote different prices', () => {
+      // That feed collapses with a MAX over (unpaused flag, id::text); ordering by the same keys picks the same row.
+      expect(text).toMatch(/ORDER BY paused ASC, id::text DESC/)
     })
 
     it('should still restrict the join to an open primary listing', () => {
@@ -190,7 +190,7 @@ describe('when building an item feed with its open trade', () => {
     let text: string
 
     beforeEach(() => {
-      text = buildQuery({ first: 20, skip: 0 }).text
+      text = buildQuery({ first: 20, skip: 0 }, []).text
     })
 
     it('should expose whether the joined trade marketplace is paused next to its contract', () => {

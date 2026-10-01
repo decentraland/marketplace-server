@@ -9,6 +9,7 @@ import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
 import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
+import { IContractStatusComponent } from './ports/contract-status/types'
 import { IContractsComponent } from './ports/contracts/types'
 import { ICouponsComponent } from './ports/coupons/types'
 import { ICreatorProfilesComponent } from './ports/creator-profiles/types'
@@ -98,6 +99,7 @@ export type BaseComponents = {
   analyticsData: IAnalyticsDayDataComponent
   userAssets: IUserAssetsComponent
   contracts: IContractsComponent
+  contractStatus: IContractStatusComponent
   collections: ICollectionsComponent
   accounts: IAccountsComponent
   activity: IActivityComponent
@@ -187,7 +189,3 @@ export enum SquidNetwork {
   ETHEREUM = 'ETHEREUM',
   POLYGON = 'POLYGON'
 }
-
-// An off-chain trade representation plus whether its marketplace contract is paused.
-// Drop once @dcl/schemas ships `paused` on Order, Bid, Item and Trade.
-export type WithPaused<T> = T & { paused: boolean }

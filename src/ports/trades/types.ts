@@ -1,12 +1,17 @@
 import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event, ListingStatus } from '@dcl/schemas'
-import { WithPaused } from '../../types'
+
+// @dcl/schemas' Trade plus whether the off-chain marketplace contract it targets is paused.
+export type TradeWithPause = Trade & { isPaused: boolean }
 
 // A single trade with its status computed by the same rules as every trade list.
-export type TradeWithStatus = WithPaused<Trade> & { status: ListingStatus }
+export type TradeWithStatus = TradeWithPause & { status: ListingStatus }
+
+// A raw marketplace.trades row plus the pause flag of its marketplace contract.
+export type DBTradeWithPaused = DBTrade & { paused: boolean }
 
 export type ITradesComponent = {
-  getTrades(): Promise<{ data: WithPaused<DBTrade>[]; count: number }>
-  getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: WithPaused<Trade>[] }>
+  getTrades(): Promise<{ data: DBTradeWithPaused[]; count: number }>
+  getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: TradeWithPause[] }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<TradeWithStatus>
   getTradeAcceptedEvent(hashedSignature: string, acceptedDate: number, caller: string): Promise<Event>

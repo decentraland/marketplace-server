@@ -1,10 +1,8 @@
-import { Order } from '@dcl/schemas'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
 import { fromSecondsToMilliseconds } from '../../logic/date'
-import { DBOrder } from '../../ports/orders/types'
-import { WithPaused } from '../../types'
+import { DBOrder, OrderWithPause } from '../../ports/orders/types'
 
-export function fromDBOrderToOrder(dbOrder: DBOrder): WithPaused<Order> {
+export function fromDBOrderToOrder(dbOrder: DBOrder): OrderWithPause {
   return {
     id: dbOrder.id,
     marketplaceAddress: dbOrder.marketplace_address,
@@ -21,6 +19,6 @@ export function fromDBOrderToOrder(dbOrder: DBOrder): WithPaused<Order> {
     chainId: getNetworkChainId(dbOrder.network),
     issuedId: dbOrder.issued_id,
     tradeId: dbOrder.trade_id,
-    paused: !!dbOrder.paused
+    isPaused: dbOrder.paused
   }
 }

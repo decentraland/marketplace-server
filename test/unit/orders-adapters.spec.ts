@@ -1,12 +1,12 @@
-import { ListingStatus, Network, NFTCategory, Order } from '@dcl/schemas'
+import { ListingStatus, Network, NFTCategory } from '@dcl/schemas'
 import { fromDBOrderToOrder } from '../../src/adapters/orders'
 import { fromSecondsToMilliseconds } from '../../src/logic/date'
-import { DBOrder } from '../../src/ports/orders/types'
-import { SquidNetwork, WithPaused } from '../../src/types'
+import { DBOrder, OrderWithPause } from '../../src/ports/orders/types'
+import { SquidNetwork } from '../../src/types'
 
 describe('when converting a db order to an order', () => {
   let dbOrder: DBOrder
-  let expectedOrder: WithPaused<Order>
+  let expectedOrder: OrderWithPause
 
   beforeEach(() => {
     dbOrder = {
@@ -47,7 +47,7 @@ describe('when converting a db order to an order', () => {
       chainId: 1,
       issuedId: 'abc123',
       tradeId: 'def456',
-      paused: false
+      isPaused: false
     }
   })
 
@@ -60,7 +60,7 @@ describe('when converting a db order to an order', () => {
   describe('and its marketplace contract is paused', () => {
     beforeEach(() => {
       dbOrder = { ...dbOrder, paused: true }
-      expectedOrder = { ...expectedOrder, paused: true }
+      expectedOrder = { ...expectedOrder, isPaused: true }
     })
 
     it('should convert it to an open order flagged as paused', () => {

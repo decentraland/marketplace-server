@@ -2,6 +2,7 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { NFTCategory } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getTradesCTE } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTsSortBy } from './landQueries'
 import { getNFTLimitAndOffsetStatement } from './queries'
@@ -38,9 +39,10 @@ function geENSWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   ])
 }
 
-export function getENSs(nftFilters: GetNFTsFilters, uncapped = false): SQLStatement {
+export function getENSs(nftFilters: GetNFTsFilters, pausedContracts: PausedContract[], uncapped = false): SQLStatement {
   const { sortBy, isOnSale, ids } = nftFilters
   return getTradesCTE({
+    pausedContracts,
     cteName: 'trades',
     sortBy: nftFilters.sortBy,
     first: nftFilters.first,

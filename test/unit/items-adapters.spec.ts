@@ -106,7 +106,7 @@ describe('fromDBItemToItem', () => {
         })
 
         it('should keep the item on sale at the trade price and flag it as paused', () => {
-          expect(fromDBItemToItem(dbItem)).toEqual(expect.objectContaining({ isOnSale: true, price: '123', paused: true }))
+          expect(fromDBItemToItem(dbItem)).toEqual(expect.objectContaining({ isOnSale: true, price: '123', isPaused: true }))
         })
       })
 
@@ -134,7 +134,7 @@ describe('fromDBItemToItem', () => {
           tradeId: dbItem.trade_id,
           tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
           tradeContractAddress: dbItem.trade_contract as string,
-          paused: false,
+          isPaused: false,
           data: {
             wearable: {
               bodyShapes: dbItem.wearable_body_shapes,
@@ -171,6 +171,17 @@ describe('fromDBItemToItem', () => {
         expect(result.price).toBe('0')
         expect(result.isOnSale).toBe(false)
       })
+
+      describe('and the open trade is on a paused marketplace contract', () => {
+        beforeEach(() => {
+          dbItem = { ...dbItem, trade_paused: true }
+        })
+
+        // The price does not come from the trade, so its pause does not describe the item.
+        it('should not flag the item as paused', () => {
+          expect(fromDBItemToItem(dbItem).isPaused).toBe(false)
+        })
+      })
     })
 
     describe('and available is 0', () => {
@@ -189,6 +200,16 @@ describe('fromDBItemToItem', () => {
 
         expect(result.price).toBe('0')
         expect(result.isOnSale).toBe(false)
+      })
+
+      describe('and the open trade is on a paused marketplace contract', () => {
+        beforeEach(() => {
+          dbItem = { ...dbItem, trade_paused: true }
+        })
+
+        it('should not flag the item as paused', () => {
+          expect(fromDBItemToItem(dbItem).isPaused).toBe(false)
+        })
       })
     })
 
@@ -256,7 +277,7 @@ describe('fromDBItemToItem', () => {
           soldAt: dbItem.sold_at,
           tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
           tradeContractAddress: dbItem.trade_contract as string,
-          paused: false,
+          isPaused: false,
           data: {
             emote: {
               bodyShapes: dbItem.emote_body_shapes,

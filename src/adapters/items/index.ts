@@ -1,9 +1,8 @@
 import { EmoteCategory, Item, NFTCategory, WearableCategory } from '@dcl/schemas'
 import { isAddressZero } from '../../logic/address'
 import { getNetwork, getNetworkChainId } from '../../logic/chainIds'
-import { DBItem, ItemType } from '../../ports/items'
+import { DBItem, ItemType, ItemWithPause } from '../../ports/items'
 import { fixUrn } from '../../ports/nfts/utils'
-import { WithPaused } from '../../types'
 
 export function getCategoryFromDBItem(dbItem: DBItem): NFTCategory {
   if (
@@ -47,10 +46,11 @@ export function getDataFromDBItem(dbItem: DBItem): Item['data'] {
   }
 }
 
-export function fromDBItemToItem(dbItem: DBItem): WithPaused<Item> {
+export function fromDBItemToItem(dbItem: DBItem): ItemWithPause {
   let price = '0'
+  const pricedByTrade = dbItem.available > 0 && !!dbItem.trade_id && dbItem.search_is_marketplace_v3_minter
   if (dbItem.available > 0) {
-    if (dbItem.trade_id && dbItem.search_is_marketplace_v3_minter) {
+    if (pricedByTrade) {
       price = dbItem.trade_price ?? '0'
     } else if (dbItem.search_is_store_minter) {
       price = dbItem.price
@@ -87,6 +87,7 @@ export function fromDBItemToItem(dbItem: DBItem): WithPaused<Item> {
     tradeId: dbItem.trade_id,
     tradeExpiresAt: dbItem.trade_expires_at?.getTime(),
     tradeContractAddress: dbItem.trade_contract as string,
-    paused: !!dbItem.trade_paused
+    // Only the trade the price comes from can be paused.
+    isPaused: pricedByTrade && dbItem.trade_paused === true
   }
 }

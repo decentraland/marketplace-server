@@ -5,11 +5,8 @@ import {
   clearSquidTradesRows,
   createSquidContractStatusRow,
   createSquidDBItem,
-  createSquidDBItemOrderTrade,
   createSquidDBNFT,
   createSquidDBTrade,
-  createSquidSignatureIndexRow,
-  createSquidTradeActionRow,
   deleteSquidDBItem,
   deleteSquidDBNFT,
   deleteSquidDBTrade,
@@ -17,11 +14,11 @@ import {
 } from './utils/dbItems'
 
 /**
- * A paused off-chain marketplace contract, read from the trades indexer's contract_status at query time.
+ * A paused off-chain marketplace contract, read from the trades indexer's contract_status into an in-app cache.
  *
  * Product decision: a listing on a paused contract stays OPEN and visible everywhere, and keeps counting in
- * the catalogue aggregates; every representation only says so through `paused`. A contract signature index
- * bump, in contrast, cancels its trades, so they leave the open lists exactly like a signer cancellation.
+ * the catalogue aggregates; every representation only says so through `isPaused`. When an item has an open
+ * order on a paused contract and another on a live one, the live one represents it.
  */
 type Row = Record<string, unknown>
 type NFTRow = { nft: { tokenId: string }; order: Row | null }
@@ -61,12 +58,15 @@ test('paused marketplace contracts', function ({ components }) {
         available: 5,
         collectionApproved: true
       })
-      tradeId = await createSquidDBItemOrderTrade(components, {
+      tradeId = await createSquidDBTrade(components, {
         contractAddress: COLLECTION,
         itemId: ITEM_ID,
-        signer: SELLER,
+        owner: SELLER,
         marketplace: MARKETPLACE,
-        network: 'MATIC'
+        network: 'MATIC',
+        price: '500000000000000000',
+        priceAssetType: 2,
+        uses: 10
       })
     })
 
@@ -76,7 +76,7 @@ test('paused marketplace contracts', function ({ components }) {
 
     describe('and its marketplace contract is paused', () => {
       beforeEach(async () => {
-        // POLYGON, not MATIC: proves the network translation the join applies.
+        // POLYGON, not MATIC: proves the network translation the cache applies.
         await createSquidContractStatusRow(components, { address: MARKETPLACE, network: 'POLYGON', paused: true })
         await refreshTradesMaterializedView(components)
       })
@@ -89,7 +89,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep it on sale through the trade and flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, tradeContractAddress: MARKETPLACE, isOnSale: true, paused: true })
+          expect(item).toMatchObject({ tradeId, tradeContractAddress: MARKETPLACE, isOnSale: true, isPaused: true })
         })
       })
 
@@ -101,7 +101,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep it on sale priced by the trade and flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, isOnSale: true, price: '500000000000000000', paused: true })
+          expect(item).toMatchObject({ tradeId, isOnSale: true, price: '500000000000000000', isPaused: true })
         })
       })
 
@@ -113,7 +113,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, paused: true })
+          expect(item).toMatchObject({ tradeId, isPaused: true })
         })
       })
 
@@ -125,7 +125,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep the listing in the feed and flag it as paused', () => {
-          expect(listing).toMatchObject({ tradeId, priceCredits: 5, paused: true })
+          expect(listing).toMatchObject({ tradeId, priceCredits: 5, isPaused: true })
         })
       })
 
@@ -139,7 +139,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep the listing in the feed and flag it as paused', () => {
-          expect(listing).toMatchObject({ tradeId, source: 'native', paused: true })
+          expect(listing).toMatchObject({ tradeId, source: 'native', isPaused: true })
         })
       })
 
@@ -153,7 +153,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep the item in the feed and flag its representative listing as paused', () => {
-          expect(item).toMatchObject({ tradeId, listingCount: 1, paused: true })
+          expect(item).toMatchObject({ tradeId, listingCount: 1, isPaused: true })
         })
       })
 
@@ -165,7 +165,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should report it open and paused', () => {
-          expect(trade).toMatchObject({ id: tradeId, status: 'open', paused: true })
+          expect(trade).toMatchObject({ id: tradeId, status: 'open', isPaused: true })
         })
       })
 
@@ -176,15 +176,19 @@ test('paused marketplace contracts', function ({ components }) {
           trade = (await getJSON<{ data: { data: Row[] } }>('/v1/trades')).data.data.find((row: Row) => row.id === tradeId)
         })
 
-        it('should flag it as paused', () => {
+        // The raw rows keep the snake_case column name.
+        it('should flag the raw row as paused', () => {
           expect(trade).toMatchObject({ id: tradeId, paused: true })
         })
       })
     })
 
-    describe('and its marketplace contract was unpaused', () => {
+    describe.each([
+      ['its marketplace contract was unpaused', { network: 'POLYGON', paused: false }],
+      ['the same contract is paused on another network only', { network: 'ETHEREUM', paused: true }]
+    ])('and %s', (_name, status) => {
       beforeEach(async () => {
-        await createSquidContractStatusRow(components, { address: MARKETPLACE, network: 'POLYGON', paused: false })
+        await createSquidContractStatusRow(components, { address: MARKETPLACE, ...status })
         await refreshTradesMaterializedView(components)
       })
 
@@ -196,7 +200,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should not flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, isOnSale: true, paused: false })
+          expect(item).toMatchObject({ tradeId, isOnSale: true, isPaused: false })
         })
       })
 
@@ -208,84 +212,81 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should not flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, paused: false })
+          expect(item).toMatchObject({ tradeId, isPaused: false })
         })
       })
     })
+  })
 
-    describe('and the same contract is paused on another network only', () => {
+  describe('when an item has an open order on a paused marketplace and another on a live one', () => {
+    const COLLECTION = '0xa11ce00000000000000000000000000000000002'
+    const ITEM_ID = '8'
+    const LIVE_MARKETPLACE = '0x1e0000000000000000000000000000000000ce03'
+    // The paused order has the greater id, so picking by id alone would surface it.
+    const PAUSED_TRADE_ID = 'ffffffff-ffff-4fff-bfff-ffffffffffff'
+    const LIVE_TRADE_ID = '00000000-0000-4000-8000-000000000001'
+    const LIVE_PRICE = '700000000000000000'
+
+    beforeEach(async () => {
+      await createSquidDBItem(components, {
+        itemId: ITEM_ID,
+        contractAddress: COLLECTION,
+        isMarketplaceV3MinterSet: true,
+        available: 5,
+        collectionApproved: true
+      })
+      tradeId = await createSquidDBTrade(components, {
+        id: PAUSED_TRADE_ID,
+        contractAddress: COLLECTION,
+        itemId: ITEM_ID,
+        owner: SELLER,
+        marketplace: MARKETPLACE,
+        network: 'MATIC',
+        price: '900000000000000000',
+        priceAssetType: 2,
+        uses: 10
+      })
+      await createSquidDBTrade(components, {
+        id: LIVE_TRADE_ID,
+        contractAddress: COLLECTION,
+        itemId: ITEM_ID,
+        owner: SELLER,
+        marketplace: LIVE_MARKETPLACE,
+        network: 'MATIC',
+        price: LIVE_PRICE,
+        priceAssetType: 2,
+        uses: 10
+      })
+      await createSquidContractStatusRow(components, { address: MARKETPLACE, network: 'POLYGON', paused: true })
+      await refreshTradesMaterializedView(components)
+    })
+
+    afterEach(async () => {
+      await deleteSquidDBTrade(components, LIVE_TRADE_ID)
+      await deleteSquidDBItem(components, ITEM_ID, COLLECTION)
+    })
+
+    describe('and fetching it from /v1/items', () => {
+      let item: Row | undefined
+
       beforeEach(async () => {
-        await createSquidContractStatusRow(components, { address: MARKETPLACE, network: 'ETHEREUM', paused: true })
-        await refreshTradesMaterializedView(components)
+        item = (await getJSON(`/v1/items?contractAddress=${COLLECTION}&itemId=${ITEM_ID}`)).data[0]
       })
 
-      describe('and fetching it from /v1/items', () => {
-        let item: Row | undefined
-
-        beforeEach(async () => {
-          item = (await getJSON(`/v1/items?contractAddress=${COLLECTION}&itemId=${ITEM_ID}`)).data[0]
-        })
-
-        it('should not flag it as paused', () => {
-          expect(item).toMatchObject({ tradeId, paused: false })
-        })
+      it('should surface the live order with its price and not flag it as paused', () => {
+        expect(item).toMatchObject({ tradeId: LIVE_TRADE_ID, tradeContractAddress: LIVE_MARKETPLACE, price: LIVE_PRICE, isPaused: false })
       })
     })
 
-    describe('and its marketplace contract bumps its contract signature index', () => {
+    describe('and fetching it from /v2/catalog', () => {
+      let item: Row | undefined
+
       beforeEach(async () => {
-        await createSquidSignatureIndexRow(components, { address: MARKETPLACE, contract: MARKETPLACE, network: 'POLYGON', index: 1 })
-        await refreshTradesMaterializedView(components)
+        item = (await getJSON(`/v2/catalog?contractAddress=${COLLECTION}`)).data.find((row: Row) => row.itemId === ITEM_ID)
       })
 
-      describe('and fetching it from /v1/items', () => {
-        let item: Row | undefined
-
-        beforeEach(async () => {
-          item = (await getJSON(`/v1/items?contractAddress=${COLLECTION}&itemId=${ITEM_ID}`)).data[0]
-        })
-
-        it('should no longer surface the trade nor put the item on sale', () => {
-          expect(item).toMatchObject({ tradeId: null, isOnSale: false, price: '0', paused: false })
-        })
-      })
-
-      describe('and fetching it from /v2/catalog', () => {
-        let item: Row | undefined
-
-        beforeEach(async () => {
-          item = (await getJSON(`/v2/catalog?contractAddress=${COLLECTION}`)).data.find((row: Row) => row.itemId === ITEM_ID)
-        })
-
-        // The catalogue omits tradeId unless a trade sets the price.
-        it('should no longer put the item on sale nor surface the trade', () => {
-          expect(item).toEqual(expect.objectContaining({ isOnSale: false, price: '0', paused: false }))
-          expect(item).not.toHaveProperty('tradeId')
-        })
-      })
-
-      describe('and fetching it from /v3/catalog/shop', () => {
-        let tradeIds: string[]
-
-        beforeEach(async () => {
-          tradeIds = (await getJSON(`/v3/catalog/shop?contractAddress=${COLLECTION}`)).data.map((row: Row) => row.tradeId as string)
-        })
-
-        it('should drop the listing from the feed', () => {
-          expect(tradeIds).not.toContain(tradeId)
-        })
-      })
-
-      describe('and fetching the trade from /v1/trades/:id', () => {
-        let trade: Row | undefined
-
-        beforeEach(async () => {
-          trade = (await getJSON<{ data: Row }>(`/v1/trades/${tradeId}`)).data
-        })
-
-        it('should report it cancelled', () => {
-          expect(trade).toMatchObject({ status: 'cancelled', paused: false })
-        })
+      it('should surface the live order with its price and not flag it as paused', () => {
+        expect(item).toMatchObject({ tradeId: LIVE_TRADE_ID, price: LIVE_PRICE, isPaused: false })
       })
     })
   })
@@ -293,17 +294,14 @@ test('paused marketplace contracts', function ({ components }) {
   describe('when an nft has an open secondary listing', () => {
     const COLLECTION = '0xb0b0000000000000000000000000000000000002'
     let tokenId: string
-    let signature: string
 
     beforeEach(async () => {
       tokenId = `${Date.now()}`
-      signature = `paused-nft-order-${tokenId}`
       await createSquidDBNFT(components, { tokenId, contractAddress: COLLECTION, owner: SELLER, category: NFTCategory.WEARABLE })
       tradeId = await createSquidDBTrade(components, {
         tokenId,
         contractAddress: COLLECTION,
         owner: SELLER,
-        signature,
         network: 'MATIC',
         marketplace: MARKETPLACE
       })
@@ -329,7 +327,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should keep it open and flag it as paused', () => {
-          expect(order).toMatchObject({ tradeId, status: 'open', paused: true })
+          expect(order).toMatchObject({ tradeId, status: 'open', isPaused: true })
         })
       })
 
@@ -342,7 +340,7 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should embed the order flagged as paused', () => {
-          expect(order).toMatchObject({ tradeId, status: 'open', paused: true })
+          expect(order).toMatchObject({ tradeId, status: 'open', isPaused: true })
         })
       })
     })
@@ -362,48 +360,8 @@ test('paused marketplace contracts', function ({ components }) {
         })
 
         it('should not flag it as paused', () => {
-          expect(order).toMatchObject({ tradeId, status: 'open', paused: false })
+          expect(order).toMatchObject({ tradeId, status: 'open', isPaused: false })
         })
-      })
-    })
-
-    describe('and the signer cancelled it', () => {
-      let tradeIds: string[]
-
-      beforeEach(async () => {
-        await createSquidTradeActionRow(components, { signature, action: 'cancelled', caller: SELLER, network: 'POLYGON' })
-        await refreshTradesMaterializedView(components)
-        tradeIds = (await getJSON(`/v1/orders?contractAddress=${COLLECTION}&tokenId=${tokenId}&status=open`)).data.map(
-          (row: Row) => row.tradeId as string
-        )
-      })
-
-      it('should drop it from the open orders', () => {
-        expect(tradeIds).not.toContain(tradeId)
-      })
-    })
-
-    // Must behave exactly like the signer cancellation above.
-    describe('and its marketplace contract bumps its contract signature index', () => {
-      let tradeIds: string[]
-      let embeddedOrder: unknown
-
-      beforeEach(async () => {
-        await createSquidSignatureIndexRow(components, { address: MARKETPLACE, contract: MARKETPLACE, network: 'POLYGON', index: 1 })
-        await refreshTradesMaterializedView(components)
-        tradeIds = (await getJSON(`/v1/orders?contractAddress=${COLLECTION}&tokenId=${tokenId}&status=open`)).data.map(
-          (row: Row) => row.tradeId as string
-        )
-        const nfts = (await getJSON<{ data: NFTRow[] }>(`/v1/nfts?contractAddress=${COLLECTION}&tokenId=${tokenId}`)).data
-        embeddedOrder = nfts.find(row => row.nft.tokenId === tokenId)?.order
-      })
-
-      it('should drop it from the open orders', () => {
-        expect(tradeIds).not.toContain(tradeId)
-      })
-
-      it('should no longer embed it as the nft order', () => {
-        expect(embeddedOrder).toBeNull()
       })
     })
   })

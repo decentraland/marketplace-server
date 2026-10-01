@@ -3,6 +3,7 @@ import { EmotePlayMode, GenderFilterOption, ListingStatus, Network, NFTCategory,
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE, MAX_ORDER_TIMESTAMP } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { ItemType } from '../items'
 import { getWhereStatementFromFilters } from '../utils'
 import { getENSs } from './ensQueries'
@@ -234,17 +235,22 @@ export function getMainQuerySortByStatement(sortBy?: NFTSortBy) {
   }
 }
 
-export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: string[] } = {}, uncapped = false): SQLStatement {
+export function getNFTsQuery(
+  nftFilters: GetNFTsFilters & { rentalAssetsIds?: string[] },
+  pausedContracts: PausedContract[],
+  uncapped = false
+): SQLStatement {
   // The Recently Listed sort by is handled by a different CTE because it needs to join with the trades table
   if (nftFilters.isLand || nftFilters.category === NFTCategory.PARCEL || nftFilters.category === NFTCategory.ESTATE) {
-    return nftFilters.isOnSale ? getLandsOnSaleQuery(nftFilters) : getAllLANDsQuery(nftFilters)
+    return nftFilters.isOnSale ? getLandsOnSaleQuery(nftFilters, pausedContracts) : getAllLANDsQuery(nftFilters, pausedContracts)
   } else if (nftFilters.category === NFTCategory.ENS) {
-    return getENSs(nftFilters, uncapped)
+    return getENSs(nftFilters, pausedContracts, uncapped)
   } else if (nftFilters.sortBy === NFTSortBy.RECENTLY_LISTED) {
-    return getRecentlyListedNFTsQuery(nftFilters)
+    return getRecentlyListedNFTsQuery(nftFilters, pausedContracts)
   }
 
   return getTradesCTE({
+    pausedContracts,
     cteName: 'trades',
     sortBy: nftFilters.sortBy,
     first: nftFilters.first,
@@ -356,8 +362,8 @@ export function getNFTsQuery(nftFilters: GetNFTsFilters & { rentalAssetsIds?: st
     )
 }
 
-export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, network: Network) {
-  return getNFTsQuery({ tokenId, network, contractAddresses: [contractAddress] })
+export function getNftByTokenIdQuery(contractAddress: string, tokenId: string, network: Network, pausedContracts: PausedContract[]) {
+  return getNFTsQuery({ tokenId, network, contractAddresses: [contractAddress] }, pausedContracts)
 }
 
 function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
@@ -422,7 +428,7 @@ function getNFTWhereStatement(nftFilters: GetNFTsFilters): SQLStatement {
   ])
 }
 
-function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
+function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters, pausedContracts: PausedContract[]): SQLStatement {
   // These filters are reused across sub-queries that join the nft table with trade_assets/trade_assets_erc721
   // and unified_trades, which share column names (contract_address, token_id, id). Qualify every column with the
   // nft alias so the references are never ambiguous regardless of which sub-query they are appended to.
@@ -495,7 +501,13 @@ function getRecentlyListedNFTsQuery(nftFilters: GetNFTsFilters): SQLStatement {
   ])
   const whereClauseForNFTsWithTrades = getWhereStatementFromFilters([...filters, SQL`nft.id IN (SELECT nft_id FROM recent_trade_nft_ids)`])
 
-  return getTradesCTE({ sortBy: nftFilters.sortBy, first: nftFilters.first, skip: nftFilters.skip, category: nftFilters.category }).append(
+  return getTradesCTE({
+    sortBy: nftFilters.sortBy,
+    first: nftFilters.first,
+    skip: nftFilters.skip,
+    category: nftFilters.category,
+    pausedContracts
+  }).append(
     SQL`
     , recent_trade_nft_ids AS (
       SELECT DISTINCT ON (assets_with_values.nft_id)

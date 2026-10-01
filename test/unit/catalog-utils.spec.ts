@@ -106,7 +106,7 @@ describe('when mapping whether a catalog item is paused', () => {
 
     it('should flag the item as paused while keeping it on sale at the trade price', () => {
       expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC)).toEqual(
-        expect.objectContaining({ paused: true, isOnSale: true, tradeId: 'trade-1', price: '20100000000000000000' })
+        expect.objectContaining({ isPaused: true, isOnSale: true, tradeId: 'trade-1', price: '20100000000000000000' })
       )
     })
   })
@@ -117,7 +117,7 @@ describe('when mapping whether a catalog item is paused', () => {
     })
 
     it('should not flag the item as paused', () => {
-      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).paused).toBe(false)
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
     })
   })
 
@@ -126,9 +126,9 @@ describe('when mapping whether a catalog item is paused', () => {
       row = dbItem({ search_is_marketplace_v3_minter: false, search_is_store_minter: true, open_item_trade_paused: true })
     })
 
-    // paused follows tradeId: the surfaced price is not the paused trade's.
+    // isPaused follows tradeId: the surfaced price is not the paused trade's.
     it('should not flag the item as paused', () => {
-      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).paused).toBe(false)
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
     })
   })
 
@@ -138,7 +138,7 @@ describe('when mapping whether a catalog item is paused', () => {
     })
 
     it('should not flag the item as paused', () => {
-      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).paused).toBe(false)
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
     })
   })
 })

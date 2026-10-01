@@ -49,7 +49,7 @@ describe('when adapting a db bid to a bid', () => {
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
           expiresAt: dbBid.expires_at.getTime(),
-          paused: false,
+          isPaused: false,
           tradeContractAddress: dbBid.trade_contract_address
         })
       })
@@ -97,7 +97,7 @@ describe('when adapting a db bid to a bid', () => {
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
           expiresAt: dbBid.expires_at.getTime(),
-          paused: false,
+          isPaused: false,
           tradeContractAddress: dbBid.trade_contract_address
         })
       })
@@ -128,7 +128,7 @@ describe('when adapting a db bid to a bid', () => {
       })
 
       it('should flag the bid as paused while keeping it open', () => {
-        expect(fromDBBidToBid(dbBid)).toEqual(expect.objectContaining({ paused: true, status: ListingStatus.OPEN }))
+        expect(fromDBBidToBid(dbBid)).toEqual(expect.objectContaining({ isPaused: true, status: ListingStatus.OPEN }))
       })
     })
   })
@@ -177,7 +177,7 @@ describe('when adapting a db bid to a bid', () => {
         chainId: dbBid.chain_id,
         contractAddress: dbBid.contract_address,
         expiresAt: dbBid.expires_at.getTime(),
-        paused: false,
+        isPaused: false,
         bidAddress: dbBid.bid_address,
         blockNumber: dbBid.block_number,
         blockchainId: dbBid.blockchain_id

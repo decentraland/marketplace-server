@@ -1,12 +1,12 @@
 import { Analytics } from '@segment/analytics-node'
 import SQL from 'sql-template-strings'
-import { Item } from '@dcl/schemas'
 import { fromDBPickStatsToPickStats } from '../../adapters/picks'
 import { BUILDER_SERVER_TABLE_SCHEMA } from '../../constants'
 import { rebuildSearchTables, SEARCH_WORDS_TABLE } from '../../logic/catalog/search-words-table'
 import { enhanceItemsWithPicksStats } from '../../logic/favorites/utils'
 import { HttpError } from '../../logic/http/response'
-import { AppComponents, WithPaused } from '../../types'
+import { AppComponents } from '../../types'
+import { ItemWithPause } from '../items/types'
 import { formatQueryForLogging } from '../utils'
 import {
   getCollectionsItemsCatalogQuery,
@@ -20,10 +20,10 @@ import { fromCollectionsItemDbResultToCatalogItem } from './utils'
 const sortByWordSimilarity = (a: { word_similarity: number }, b: { word_similarity: number }) => b.word_similarity - a.word_similarity
 
 export async function createCatalogComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'dappsWriteDatabase' | 'picks'>,
+  components: Pick<AppComponents, 'dappsDatabase' | 'dappsWriteDatabase' | 'picks' | 'contractStatus'>,
   segmentWriteKey: string
 ): Promise<ICatalogComponent> {
-  const { dappsDatabase: dataReadbase, dappsWriteDatabase, picks } = components
+  const { dappsDatabase: dataReadbase, dappsWriteDatabase, picks, contractStatus } = components
   // A single client for the whole component: instantiating one per request leaks its internal queue and
   // flush timer, and every search went through this path.
   const analytics = new Analytics({ writeKey: segmentWriteKey })
@@ -31,9 +31,9 @@ export async function createCatalogComponent(
   async function fetch(
     filters: CatalogOptions,
     { searchId, anonId, isV2 = false }: { searchId: string; anonId: string; isV2: boolean }
-  ): Promise<{ data: WithPaused<Item>[]; total: number }> {
+  ): Promise<{ data: ItemWithPause[]; total: number }> {
     const { network } = filters
-    let catalogItems: WithPaused<Item>[] = []
+    let catalogItems: ItemWithPause[] = []
     let total = 0
     const client = await dataReadbase.getPool().connect()
     let query
@@ -73,7 +73,9 @@ export async function createCatalogComponent(
           return { data: [], total: 0 }
         }
       }
-      query = isV2 ? getCollectionsItemsCatalogQueryWithTrades(filters) : getCollectionsItemsCatalogQuery(filters)
+      query = isV2
+        ? getCollectionsItemsCatalogQueryWithTrades(filters, contractStatus.getPausedContracts())
+        : getCollectionsItemsCatalogQuery(filters)
       const totalQuery = getCollectionsItemsCountQuery(filters)
       const [items, totalItems] = await Promise.all([
         client.query<CollectionsItemDBResult>(query),

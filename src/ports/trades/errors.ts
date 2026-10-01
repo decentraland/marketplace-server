@@ -113,3 +113,9 @@ export class MarketplaceContractPausedError extends Error {
     super('The marketplace contract is paused')
   }
 }
+
+export class TradeNetworkMismatchError extends Error {
+  constructor(public network: string, public chainId: number) {
+    super(`The network ${network} does not match the chain id ${chainId}`)
+  }
+}

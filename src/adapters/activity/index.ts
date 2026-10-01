@@ -1,4 +1,4 @@
-import { Bid, ListingStatus, Order, Sale, Trade, TradeAsset, TradeAssetType } from '@dcl/schemas'
+import { Bid, ListingStatus, Order, Sale, TradeAsset, TradeAssetType } from '@dcl/schemas'
 import {
   ActivityEvent,
   ActivityEventType,
@@ -10,7 +10,9 @@ import {
   SaleSellerEvent,
   TradeCreatedEvent
 } from '../../ports/activity/types'
-import { WithPaused } from '../../types'
+import { BidWithPause } from '../../ports/bids/types'
+import { OrderWithPause } from '../../ports/orders/types'
+import { TradeWithPause } from '../../ports/trades/types'
 
 const nullToUndefined = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v)
 
@@ -50,7 +52,7 @@ export const toSaleBuyerEvent = (sale: Sale): SaleBuyerEvent => toSaleEvent(sale
 export const toSaleSellerEvent = (sale: Sale): SaleSellerEvent => toSaleEvent(sale, ActivityEventType.SALE_SELLER, sale.buyer)
 
 function toBidEvent<T extends ActivityEventType.BID_PLACED | ActivityEventType.BID_RECEIVED>(
-  bid: WithPaused<Bid>,
+  bid: BidWithPause,
   type: T,
   counterparty: string
 ): T extends ActivityEventType.BID_PLACED ? BidPlacedEvent : BidReceivedEvent {
@@ -68,10 +70,10 @@ function toBidEvent<T extends ActivityEventType.BID_PLACED | ActivityEventType.B
   } as never
 }
 
-export const toBidPlacedEvent = (bid: WithPaused<Bid>): BidPlacedEvent => toBidEvent(bid, ActivityEventType.BID_PLACED, bid.seller)
-export const toBidReceivedEvent = (bid: WithPaused<Bid>): BidReceivedEvent => toBidEvent(bid, ActivityEventType.BID_RECEIVED, bid.bidder)
+export const toBidPlacedEvent = (bid: BidWithPause): BidPlacedEvent => toBidEvent(bid, ActivityEventType.BID_PLACED, bid.seller)
+export const toBidReceivedEvent = (bid: BidWithPause): BidReceivedEvent => toBidEvent(bid, ActivityEventType.BID_RECEIVED, bid.bidder)
 
-export function toOrderCreatedEvent(order: WithPaused<Order>): OrderCreatedEvent {
+export function toOrderCreatedEvent(order: OrderWithPause): OrderCreatedEvent {
   return {
     id: `${ActivityEventType.ORDER_CREATED}:${order.id}`,
     type: ActivityEventType.ORDER_CREATED,
@@ -84,7 +86,7 @@ export function toOrderCreatedEvent(order: WithPaused<Order>): OrderCreatedEvent
   }
 }
 
-export function toOrderFilledEvent(order: WithPaused<Order>): OrderFilledEvent {
+export function toOrderFilledEvent(order: OrderWithPause): OrderFilledEvent {
   return {
     id: `${ActivityEventType.ORDER_FILLED}:${order.id}`,
     type: ActivityEventType.ORDER_FILLED,
@@ -98,7 +100,7 @@ export function toOrderFilledEvent(order: WithPaused<Order>): OrderFilledEvent {
   }
 }
 
-export function toTradeCreatedEvent(trade: WithPaused<Trade>): TradeCreatedEvent {
+export function toTradeCreatedEvent(trade: TradeWithPause): TradeCreatedEvent {
   const assets = [...trade.sent, ...trade.received]
   const nonPayment = assets.find(a => !isPaymentAsset(a))
   const payment = assets.find(isPaymentAsset)

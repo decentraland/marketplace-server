@@ -18,6 +18,7 @@ import {
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
+  TradeNetworkMismatchError,
   TradeNotFoundBySignatureError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
@@ -101,6 +102,11 @@ describe('when handling the creation of a new trade', () => {
       { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'EstateTradeWithoutFingerprintError', error: new InvalidEstateTrade(), code: StatusCode.BAD_REQUEST },
       {
+        errorName: 'TradeNetworkMismatchError',
+        error: new TradeNetworkMismatchError(Network.MATIC, ChainId.ETHEREUM_MAINNET),
+        code: StatusCode.BAD_REQUEST
+      },
+      {
         errorName: 'EstateContractNotFoundForChainId',
         error: new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET),
         code: StatusCode.BAD_REQUEST
@@ -167,7 +173,7 @@ describe('when handling the retrieval of a trade', () => {
     let trade: TradeWithStatus
 
     beforeEach(() => {
-      trade = { id: 'trade-id', status: ListingStatus.OPEN, paused: true } as TradeWithStatus
+      trade = { id: 'trade-id', status: ListingStatus.OPEN, isPaused: true } as TradeWithStatus
 
       context = {
         params: {

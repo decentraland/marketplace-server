@@ -4,6 +4,7 @@ import { QueryFailure } from '../../src/ports/favorites/lists/errors'
 import { IItemsComponent, createItemsComponent } from '../../src/ports/items'
 import { ItemNotFoundError } from '../../src/ports/items/errors'
 import { createTestLogsComponent, createTestPgComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 let itemId: string
 let items: IItemsComponent
@@ -28,7 +29,8 @@ beforeEach(() => {
   })
   items = createItemsComponent({
     dappsDatabase,
-    logs
+    logs,
+    contractStatus: createContractStatusMockedComponent()
   })
   itemId = '0x08de0de733cc11081d43569b809c00e6ddf314fb-0'
 })

@@ -1,7 +1,8 @@
-import SQL from 'sql-template-strings'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { PausedContract } from '../contract-status/types'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -45,10 +46,8 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
   }
 }
 
-export function getBidTradesQuery(): string {
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+export function getBidTradesQuery(pausedContracts: PausedContract[]): SQLStatement {
+  return SQL`
     SELECT
       id::text as trade_id,
       NULL::text as legacy_bid_id,
@@ -70,7 +69,9 @@ export function getBidTradesQuery(): string {
 	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
       status,
       paused
-    FROM (${getTradesForTypeQuery(TradeType.BID)}) as trades`
+    FROM (`
+    .append(getTradesForTypeQuery(TradeType.BID, pausedContracts))
+    .append(SQL`) as trades`)
 }
 
 // Legacy bids are on-chain and never pass through the off-chain marketplace, so they are never paused.
@@ -142,11 +143,11 @@ function getBidsAndTradesFilters(options: GetBidsParameters, queryOptions: BidsQ
   }
 }
 
-export function getBidsQuery(options: GetBidsParameters, queryOptions: BidsQueryOptions = {}) {
+export function getBidsQuery(options: GetBidsParameters, pausedContracts: PausedContract[], queryOptions: BidsQueryOptions = {}) {
   const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options, queryOptions)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
-    .append(getBidTradesQuery())
+    .append(getBidTradesQuery(pausedContracts))
     .append(SQL`) as bid_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
 

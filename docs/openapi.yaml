@@ -786,6 +786,9 @@ paths:
         Results are ordered by creation date (most recent first).
 
         **Note:** This endpoint currently returns all trades without pagination support.
+
+        Each entry is a raw `marketplace.trades` row (snake_case columns) plus `paused`: whether the
+        off-chain marketplace contract it targets is paused.
       operationId: getTrades
       security: []
       responses:
@@ -827,6 +830,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Trade'
+        '400':
+          description: Bad request - the trade is invalid (expired, malformed, wrongly signed, or its network does not match its chainId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized - invalid signed fetch
           content:
@@ -856,8 +865,11 @@ paths:
         - Item details and metadata
         - Trade price and currency
         - Current status (open, sold or cancelled), computed by the same rules as every trade list
-        - Whether its marketplace contract is paused
+        - Whether its marketplace contract is paused (`isPaused`)
         - Timestamps (creation, updates, completion)
+
+        The status does not include the NFT-ownership check the listing feeds apply: an order whose
+        signer no longer owns the NFT is left out of /v1/orders but still reads `open` here.
       operationId: getTrade
       security: []
       parameters:
@@ -3512,7 +3524,7 @@ components:
         price:
           type: number
           description: Item price
-        paused:
+        isPaused:
           type: boolean
           description: Whether the marketplace contract of the trade that prices the item (tradeId) is paused. The item stays on sale and keeps counting in prices and listings. False when the price does not come from a trade.
         # TODO: align with precise source types - additional properties may exist
@@ -3607,7 +3619,7 @@ components:
           type: string
           format: date-time
           description: Trade creation timestamp
-        paused:
+        isPaused:
           type: boolean
           description: Whether the off-chain marketplace contract the trade targets is paused. A paused trade stays open but cannot settle until the contract is unpaused.
       required:
@@ -3702,7 +3714,7 @@ components:
         chainId:
           type: number
           description: Chain ID
-        paused:
+        isPaused:
           type: boolean
           description: Whether the off-chain marketplace contract the bid targets is paused. A paused bid stays open but cannot settle until the contract is unpaused. Always false for legacy on-chain bids.
       required:
@@ -3761,7 +3773,7 @@ components:
           type: string
           format: date-time
           description: Order creation timestamp
-        paused:
+        isPaused:
           type: boolean
           description: Whether the off-chain marketplace contract the order targets is paused. A paused order stays open but cannot settle until the contract is unpaused. Always false for legacy on-chain orders.
       required:
@@ -3796,9 +3808,9 @@ components:
         owner:
           type: string
           description: Item owner
-        paused:
+        isPaused:
           type: boolean
-          description: Whether the marketplace contract of the item's open trade (tradeContractAddress) is paused. The item stays on sale. False when there is no open trade.
+          description: Whether the marketplace contract of the trade that prices the item (tradeContractAddress) is paused. The item stays on sale. False when the price does not come from a trade.
       required:
         - id
         - name

@@ -1,6 +1,6 @@
 import { Network, Item, NFTCategory, WearableCategory, BodyShape, Rarity, EmoteCategory, ChainId, EmoteOutcomeType } from '@dcl/schemas'
 import { getPolygonChainId, getEthereumChainId } from '../../logic/chainIds'
-import { WithPaused } from '../../types'
+import { ItemWithPause } from '../items/types'
 import { CollectionsItemDBResult } from './types'
 
 export enum FragmentItemType {
@@ -45,7 +45,7 @@ function fixThumbnail(thumbnail: string, blockchainId: string) {
   return fixedUrl
 }
 
-export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItemDBResult, network?: Network): WithPaused<Item> {
+export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItemDBResult, network?: Network): ItemWithPause {
   let name: string
   let category: NFTCategory
   let data: Item['data']
@@ -140,7 +140,7 @@ export function fromCollectionsItemDbResultToCatalogItem(dbItem: CollectionsItem
     // the browse grid with a MANA glyph on a figure that is dollars.
     ...(pricedByTrade ? { tradeId: dbItem.open_item_trade_id as string } : {}),
     // Follows tradeId: only the trade the price came from can be paused.
-    paused: pricedByTrade && !!dbItem.open_item_trade_paused,
+    isPaused: pricedByTrade && dbItem.open_item_trade_paused === true,
     creator: dbItem.creator,
     data,
     network: itemNetwork.toUpperCase() === 'POLYGON' ? Network.MATIC : Network.ETHEREUM,

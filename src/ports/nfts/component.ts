@@ -15,8 +15,10 @@ import { getNFTFilters } from './utils'
 
 export const MAX_SUBGRAPH_QUERY_IN_ELEMENTS = 500
 
-export function createNFTsComponent(components: Pick<AppComponents, 'dappsDatabase' | 'config' | 'rentals'>): INFTsComponent {
-  const { dappsDatabase: pg, config, rentals } = components
+export function createNFTsComponent(
+  components: Pick<AppComponents, 'dappsDatabase' | 'config' | 'rentals' | 'contractStatus'>
+): INFTsComponent {
+  const { dappsDatabase: pg, config, rentals, contractStatus } = components
 
   async function getNFTs(filters: NFTQueryFilters) {
     const { owner, tenant, tokenId, contractAddresses } = filters
@@ -58,13 +60,14 @@ export function createNFTsComponent(components: Pick<AppComponents, 'dappsDataba
         )
       }
 
-      query = getNFTsQuery({ ...nftFilters, rentalAssetsIds })
+      const pausedContracts = contractStatus.getPausedContracts()
+      query = getNFTsQuery({ ...nftFilters, rentalAssetsIds }, pausedContracts)
       const [nfts, total] =
         nftFilters.category === NFTCategory.ENS
           ? await Promise.all([client.query<DBNFT>(query), client.query<{ total: string }>(getENSsCount(nftFilters))])
           : await Promise.all([client.query<DBNFT>(query), Promise.resolve()])
       const nftIds = nfts.rows.map(nft => nft.id)
-      query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner }, 'combined_nft_orders') // Added a specific prefix to track this queries in the logs easily
+      query = getOrdersQuery({ nftIds, status: ListingStatus.OPEN, owner }, pausedContracts, 'combined_nft_orders') // Added a specific prefix to track this queries in the logs easily
       const orders = await client.query<DBOrder>(query)
 
       const landNftIds = nfts.rows

@@ -1,21 +1,23 @@
-/**
- * Joins the trades indexer's `contract_status` row for the marketplace contract a trade targets.
- *
- * Read at query time rather than baked into `mv_trades`, so a pause shows up without a view refresh. The row
- * is keyed by contract and network, so at most one matches per trade and the join never multiplies rows.
- * Same MATIC -> POLYGON translation as the signature_index joins: the indexer spells Polygon POLYGON while
- * trades.network holds @dcl/schemas' MATIC.
- *
- * Every argument is a fixed SQL identifier, never user input.
- */
-export function getContractStatusJoin(alias: string, contractColumn: string, networkColumn: string): string {
-  return `
-    LEFT JOIN squid_trades.contract_status AS ${alias}
-      ON ${alias}.address = LOWER(${contractColumn})
-      AND ${alias}.network = CASE WHEN ${networkColumn} = 'MATIC' THEN 'POLYGON' ELSE ${networkColumn} END `
+import SQL, { SQLStatement } from 'sql-template-strings'
+import { PausedContract } from '../../ports/contract-status/types'
+
+// Matches a trade to the paused set by `${lowercased contract}-${network}`, network in the trades' spelling.
+export function getPausedContractKey(address: string, network: string): string {
+  return `${address.toLowerCase()}-${network}`
 }
 
-// A contract with no status row has never been paused.
-export function getPausedColumn(alias: string): string {
-  return `COALESCE(${alias}.paused, false)`
+/**
+ * Whether a trade's marketplace contract is in the paused set. A constant `false` when nothing is paused,
+ * so the common case costs nothing. Columns are fixed SQL identifiers, never user input.
+ */
+export function getPausedExpression(pausedContracts: PausedContract[], contractColumn: string, networkColumn: string): SQLStatement {
+  if (!pausedContracts.length) {
+    return SQL`false`
+  }
+  const keys = pausedContracts.map(({ address, network }) => getPausedContractKey(address, network))
+  return SQL`(LOWER(`
+    .append(contractColumn)
+    .append(") || '-' || ")
+    .append(networkColumn)
+    .append(SQL`) = ANY(${keys}::text[])`)
 }

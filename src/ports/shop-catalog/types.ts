@@ -111,7 +111,7 @@ export type ShopListing = {
   network: string
   chainId: number
   createdAt: number
-  paused: boolean // the listing's marketplace contract is paused, so it cannot settle until unpaused
+  isPaused: boolean // the listing's marketplace contract is paused, so it cannot settle until unpaused
 }
 
 // `relevance` is the default of a search and only meaningful with one: without a search every row ties, so
@@ -181,7 +181,7 @@ export type ImportableListing = {
   available: number
   network: string
   chainId: number
-  paused: boolean
+  isPaused: boolean
 }
 
 // A classic (ERC20-MANA) PRIMARY listing surfaced as a paginated browse feed so the Shop can offer
@@ -205,7 +205,7 @@ export type LegacyListing = {
   network: string
   chainId: number
   createdAt: number
-  paused: boolean
+  isPaused: boolean
 }
 
 // Filters accepted by getLegacyListings. Same shape as ShopCatalogFilters minus the price-range

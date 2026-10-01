@@ -3,6 +3,7 @@ import { fromDBBidToBid } from '../../src/adapters/bids/bids'
 import { DBBid, IBidsComponent, createBidsComponents } from '../../src/ports/bids'
 import { IPgComponent } from '../../src/ports/db/types'
 import { createTestPgComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 jest.mock('../../src/logic/chainIds', () => ({
   getEthereumChainId: () => ChainId.ETHEREUM_SEPOLIA,
@@ -17,7 +18,7 @@ describe('when fetching bids', () => {
     beforeEach(() => {
       pgComponent = createTestPgComponent()
       ;(pgComponent.query as jest.Mock).mockResolvedValue({ rows: [], count: 0 })
-      bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
+      bidsComponent = createBidsComponents({ dappsDatabase: pgComponent, contractStatus: createContractStatusMockedComponent() })
     })
 
     it('should return empty data with 0 count', async () => {
@@ -52,7 +53,7 @@ describe('when fetching bids', () => {
       ]
       pgComponent = createTestPgComponent()
       ;(pgComponent.query as jest.Mock).mockResolvedValue({ rows: bids, count: 1 })
-      bidsComponent = createBidsComponents({ dappsDatabase: pgComponent })
+      bidsComponent = createBidsComponents({ dappsDatabase: pgComponent, contractStatus: createContractStatusMockedComponent() })
     })
 
     it('should return the bids with the count', async () => {

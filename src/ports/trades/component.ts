@@ -1,4 +1,5 @@
 import { Event, ListingStatus, Trade, TradeAsset, TradeAssetDirection, TradeAssetType, TradeCreation, TradeType } from '@dcl/schemas'
+import { getNetwork as getChainIdNetwork } from '@dcl/schemas/dist/dapps/chain-id'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../adapters/trades/trades'
 import { isErrorWithMessage } from '../../logic/errors'
 import {
@@ -7,7 +8,7 @@ import {
   recreateTradesMaterializedView
 } from '../../logic/trades/materialized-view'
 import { resolveTradeSignature, validateAssetOwnership } from '../../logic/trades/utils'
-import { AppComponents, WithPaused } from '../../types'
+import { AppComponents } from '../../types'
 import {
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
@@ -19,7 +20,8 @@ import {
   TradeNotFoundBySignatureError,
   InvalidOwnerError,
   InvalidEstateTrade,
-  MarketplaceContractPausedError
+  MarketplaceContractPausedError,
+  TradeNetworkMismatchError
 } from './errors'
 import {
   getAllTradesQuery,
@@ -34,7 +36,17 @@ import {
   getTradesByAddressQuery,
   getTradeStatusByIdQuery
 } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent, TradeWithStatus } from './types'
+import {
+  DBTrade,
+  DBTradeAsset,
+  DBTradeAssetValue,
+  DBTradeAssetWithValue,
+  DBTradeWithPaused,
+  ITradesComponent,
+  TradeEvent,
+  TradeWithPause,
+  TradeWithStatus
+} from './types'
 import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
 
 type TradeWithAssetRow = {
@@ -64,19 +76,21 @@ type TradeWithAssetRow = {
 }
 
 export function createTradesComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier'>
+  components: Pick<AppComponents, 'dappsDatabase' | 'eventPublisher' | 'logs' | 'shopNotifier' | 'contractStatus'>
 ): ITradesComponent {
-  const { dappsDatabase: pg, eventPublisher, logs, shopNotifier } = components
+  const { dappsDatabase: pg, eventPublisher, logs, shopNotifier, contractStatus } = components
   const logger = logs.getLogger('Trades component')
 
   async function getTrades() {
-    const result = await pg.query<WithPaused<DBTrade>>(getAllTradesQuery())
+    const result = await pg.query<DBTradeWithPaused>(getAllTradesQuery(contractStatus.getPausedContracts()))
     return { data: result.rows, count: result.rowCount }
   }
 
   async function getTradesByAddress(address: string, options: { limit?: number; offset?: number } = {}) {
     const limit = options.limit ?? 100
-    const result = await pg.query<TradeWithAssetRow>(getTradesByAddressQuery(address, { limit, offset: options.offset }))
+    const result = await pg.query<TradeWithAssetRow>(
+      getTradesByAddressQuery(address, { limit, offset: options.offset }, contractStatus.getPausedContracts())
+    )
 
     const grouped = new Map<string, TradeWithAssetRow[]>()
     for (const row of result.rows) {
@@ -88,7 +102,7 @@ export function createTradesComponent(
       }
     }
 
-    const trades: WithPaused<Trade>[] = []
+    const trades: TradeWithPause[] = []
     for (const rows of grouped.values()) {
       const head = rows[0]
       const dbTrade: DBTrade = {
@@ -105,7 +119,7 @@ export function createTradesComponent(
         contract: head.trade_contract
       }
       const assets = rows.map(toDBTradeAssetWithValue).filter((a): a is DBTradeAssetWithValue => a !== null)
-      trades.push({ ...fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets), paused: !!head.trade_paused })
+      trades.push({ ...fromDbTradeAndDBTradeAssetWithValueListToTrade(dbTrade, assets), isPaused: head.trade_paused })
     }
 
     return { data: trades }
@@ -167,8 +181,13 @@ export function createTradesComponent(
       throw new InvalidTradeSignerError()
     }
 
+    // The contract is resolved from the signed chainId while every lookup and the stored row use network.
+    if (getChainIdNetwork(trade.chainId) !== trade.network) {
+      throw new TradeNetworkMismatchError(trade.network, trade.chainId)
+    }
+
     // validate trade type
-    if (!(await validateTradeByType(trade, pg))) {
+    if (!(await validateTradeByType(trade, pg, contractStatus.getPausedContracts()))) {
       throw new InvalidTradeStructureError(trade.type)
     }
     // Validate if estate trade is correct
@@ -189,11 +208,12 @@ export function createTradesComponent(
       throw new InvalidTradeSignatureError()
     }
 
-    // A paused marketplace reverts every settlement, so a trade signed against it could never sell.
-    const contractStatus = await pg.query<{ paused: boolean }>(
+    // A paused marketplace reverts every settlement, so a trade signed against it could never sell. Read
+    // from the database rather than the cache so a trade signed right after a pause is still refused.
+    const pausedResult = await pg.query<{ paused: boolean }>(
       getMarketplaceContractPausedQuery(signatureMatch.contract.address, trade.network)
     )
-    if (contractStatus.rows[0]?.paused) {
+    if (pausedResult.rows[0]?.paused) {
       throw new MarketplaceContractPausedError(signatureMatch.contract.address, trade.network)
     }
 
@@ -232,7 +252,7 @@ export function createTradesComponent(
 
     // trigger notification for trade creation
     try {
-      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED, signer)
+      const event = await getNotificationEventForTrade(insertedTrade, pg, TradeEvent.CREATED, signer, contractStatus.getPausedContracts())
       if (event) {
         const messageId = await eventPublisher.publishMessage(event)
         logger.info(`Notification has been send for trade ${insertedTrade.id} with message id ${messageId}`)
@@ -327,13 +347,15 @@ export function createTradesComponent(
     }
 
     const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
-    const statusResult = await pg.query<{ status: ListingStatus; paused: boolean }>(getTradeStatusByIdQuery(trade.type, id))
+    const statusResult = await pg.query<{ status: ListingStatus; paused: boolean }>(
+      getTradeStatusByIdQuery(trade.type, id, contractStatus.getPausedContracts())
+    )
     const statusRow = statusResult.rows[0]
     if (!statusRow) {
       throw new TradeNotFoundError(id)
     }
 
-    return { ...trade, status: statusRow.status, paused: !!statusRow.paused }
+    return { ...trade, status: statusRow.status, isPaused: statusRow.paused }
   }
 
   async function getTradeAcceptedEvent(hashedSignature: string, timestamp: number, caller: string): Promise<Event> {
@@ -344,7 +366,7 @@ export function createTradesComponent(
     }
 
     const trade = fromDbTradeAndDBTradeAssetWithValueListToTrade(result.rows[0], result.rows)
-    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED, caller)
+    const event = await getNotificationEventForTrade(trade, pg, TradeEvent.ACCEPTED, caller, contractStatus.getPausedContracts())
 
     if (!event) {
       throw new EventNotGeneratedError()

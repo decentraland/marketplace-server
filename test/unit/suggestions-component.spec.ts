@@ -1,5 +1,6 @@
 import { createSuggestionsComponent } from '../../src/ports/suggestions/component'
 import type { ISuggestionsComponent } from '../../src/ports/suggestions/types'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 const ADDRESS = '0x1096f950841a99f9b961434714d9a08d3d4ebdff'
 const RATE = 0.02
@@ -58,6 +59,7 @@ describe('when asking for suggestions', () => {
 
     suggestions = await createSuggestionsComponent({
       dappsDatabase: { query },
+      contractStatus: createContractStatusMockedComponent(),
       shopCatalog: { getTrendingItems },
       lists: { getPicksByListId },
       cache: { get: cacheGet, set: cacheSet },
@@ -386,6 +388,7 @@ describe('when asking for suggestions', () => {
       warn = jest.fn()
       suggestions = await createSuggestionsComponent({
         dappsDatabase: { query },
+        contractStatus: createContractStatusMockedComponent(),
         shopCatalog: { getTrendingItems },
         cache: { get: cacheGet, set: cacheSet },
         config: { getNumber: async () => 1 },
@@ -442,6 +445,7 @@ describe('when asking for suggestions', () => {
       warn = jest.fn()
       suggestions = await createSuggestionsComponent({
         dappsDatabase: { query },
+        contractStatus: createContractStatusMockedComponent(),
         shopCatalog: { getTrendingItems },
         cache: { get: cacheGet, set: cacheSet },
         config: { getNumber: async () => 0 },
@@ -481,6 +485,7 @@ describe('when asking for suggestions', () => {
       ]
       cachedSuggestions = await createSuggestionsComponent({
         dappsDatabase: { query },
+        contractStatus: createContractStatusMockedComponent(),
         shopCatalog: { getTrendingItems },
         lists: { getPicksByListId },
         cache: {

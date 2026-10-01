@@ -12,7 +12,8 @@ import {
   WearableCategory
 } from '@dcl/schemas'
 import { BUILDER_SERVER_TABLE_SCHEMA, MARKETPLACE_SQUID_SCHEMA } from '../../constants'
-import { getContractStatusJoin, getPausedColumn } from '../../logic/trades/contract-status'
+import { getPausedExpression } from '../../logic/trades/contract-status'
+import { PausedContract } from '../contract-status/types'
 import { CatalogQueryFilters } from './types'
 import { FragmentItemType } from './utils'
 
@@ -613,7 +614,8 @@ export const getTradesCTE = ({
   sortBy,
   first,
   skip,
-  itemIds
+  itemIds,
+  pausedContracts
 }: {
   cteName?: string
   category?: NFTCategory | EmoteCategory
@@ -621,7 +623,8 @@ export const getTradesCTE = ({
   first?: number
   skip?: number
   itemIds?: string[]
-} = {}) => {
+  pausedContracts: PausedContract[]
+}) => {
   const conditions: SQLStatement[] = []
   if (category) {
     conditions.push(SQL`sent_nft_category = ${category}`)
@@ -647,9 +650,8 @@ export const getTradesCTE = ({
       SQL` AS (
         SELECT mv_trades.*, `
     )
-    .append(getPausedColumn('trade_contract_status'))
-    .append(SQL` AS paused from marketplace.mv_trades`)
-    .append(getContractStatusJoin('trade_contract_status', 'mv_trades.trade_contract', 'mv_trades.network'))
+    .append(getPausedExpression(pausedContracts, 'mv_trades.trade_contract', 'mv_trades.network'))
+    .append(SQL` AS paused from marketplace.mv_trades `)
 
   conditions.forEach((condition, index) => {
     cte.append(index === 0 ? SQL`WHERE ` : SQL` AND `).append(condition)
@@ -660,11 +662,27 @@ export const getTradesCTE = ({
     .append(SQL`)`)
 }
 
+// One open item order represents the item: an unpaused one wins over a paused one, then the greatest id
+// (what /v1/items picks too). Its id, price and paused flag ride in one sortable key, `<1 unpaused | 0
+// paused><uuid>|<price>`, so a single MAX keeps them from the same trade and stays hash-aggregate friendly.
+const OPEN_ITEM_TRADE_KEY =
+  "(CASE WHEN paused THEN '0' ELSE '1' END || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\""
+const UUID_TEXT_LENGTH = 36
+
 const getTradesJoin = (filters: CatalogQueryFilters) => {
   return SQL`
         LEFT JOIN
           (
-            SELECT 
+            SELECT
+              grouped_trades.*,
+              substr(grouped_trades.open_item_trade_key, 2, `
+    .append(`${UUID_TEXT_LENGTH}`)
+    .append(
+      SQL`) AS open_item_trade_id,
+              NULLIF(split_part(grouped_trades.open_item_trade_key, '|', 2), '')::numeric AS open_item_trade_price,
+              left(grouped_trades.open_item_trade_key, 1) = '0' AS open_item_trade_paused
+            FROM (
+            SELECT
               COUNT(id),
               COUNT(id) FILTER (WHERE status = 'open' and type = 'public_nft_order') AS nfts_listings_count,
               COUNT(id) FILTER (WHERE status = 'open' and type = 'public_item_order') AS items_listings_count,
@@ -675,17 +693,20 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
               -- Item amount is the minimum value for public_item_order
               assets -> 'sent' ->> 'item_id' AS item_id, -- item_id grouping key for public_item_order
               MAX(created_at) AS max_created_at,
-              MAX(id::text) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_id,
-              MAX(amount_received) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_price,
-              -- Paused flag of the same trade open_item_trade_id picks (the greatest id::text).
-              (array_agg(paused ORDER BY id::text DESC) FILTER (WHERE status = 'open' and type = 'public_item_order'))[1] AS open_item_trade_paused,
+              MAX(`
+    )
+    .append(OPEN_ITEM_TRADE_KEY)
+    .append(
+      SQL`) FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_key,
               MIN(created_at) FILTER (WHERE type = 'public_item_order') AS item_first_listed_at
           FROM unified_trades
             WHERE status = 'open' and (available IS NULL OR available > 0)`
+    )
     .append(filters.onlyMinting ? SQL` AND type = 'public_item_order'` : SQL``)
     .append(filters.minPrice ? SQL` AND amount_received >= ${filters.minPrice}` : SQL``)
     .append(filters.maxPrice ? SQL` AND amount_received <= ${filters.maxPrice}` : SQL``).append(SQL`
             GROUP BY contract_address_sent, assets -> 'sent' ->> 'item_id'
+            ) AS grouped_trades
           ) AS offchain_orders ON offchain_orders.contract_address_sent = items.collection_id AND offchain_orders.item_id::numeric = items.blockchain_id
             LEFT JOIN ut_min_item 
   ON offchain_orders.contract_address_sent = ut_min_item.contract_address_sent
@@ -1054,9 +1075,9 @@ export const getCollectionsItemsCountQuery = (filters: CatalogQueryFilters) => {
   return query
 }
 
-export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters) => {
+export const getCollectionsItemsCatalogQueryWithTrades = (filters: CatalogQueryFilters, pausedContracts: PausedContract[]) => {
   const query = SQL``
-    .append(getTradesCTE({ itemIds: filters.ids }))
+    .append(getTradesCTE({ itemIds: filters.ids, pausedContracts }))
     .append(getTopNItemsCTE(filters))
     .append(filters.onlyMinting ? SQL`` : getNFTsWithOrdersCTE(filters))
     .append(getMinItemCreatedAtCTE())
