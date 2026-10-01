@@ -1,3 +1,4 @@
+import { getAddress, hexlify, randomBytes } from 'ethers'
 import SQL from 'sql-template-strings'
 import { Authenticator } from '@dcl/crypto'
 import {
@@ -405,6 +406,155 @@ test('trades controller', function ({ components }) {
       // let the asset's id clobber the trade's id — the endpoint returned the trade with its ASSET's
       // id. Assert the returned id is the trade's own id (matches the POST response + the URL param).
       expect(body.data.id).toEqual(createdTrade.id)
+    })
+  })
+
+  describe('when listing trades', () => {
+    let signerA: string
+    let signerB: string
+    let contractA: string
+    let contractB: string
+    let contractC: string
+    let tradeIds: string[]
+    let response: Response
+    let body: { ok: boolean; data: { data: { id: string }[]; count: number } }
+
+    const randomAddress = (): string => hexlify(randomBytes(20)).toLowerCase()
+
+    async function insertTrade(signer: string, contract: string, hoursAgo: number): Promise<string> {
+      const signature = hexlify(randomBytes(65))
+      const result = await components.dappsDatabase.query<{ id: string }>(SQL`
+        INSERT INTO marketplace.trades (signature, hashed_signature, signer, type, network, chain_id, checks, expires_at, effective_since, contract, created_at)
+        VALUES (${signature}, ${signature}, ${signer}, ${TradeType.BID}, ${Network.ETHEREUM}, 1, ${{ uses: 1 }},
+          NOW() + INTERVAL '1 day', NOW(), ${contract}, NOW() - (${hoursAgo} * INTERVAL '1 hour'))
+        RETURNING id`)
+      return result.rows[0].id
+    }
+
+    async function list(query: string): Promise<void> {
+      response = await components.localFetch.fetch(`/v1/trades${query}`)
+      body = await response.json()
+    }
+
+    const ids = (): string[] => body.data.data.map(trade => trade.id)
+
+    beforeEach(async () => {
+      signerA = randomAddress()
+      signerB = randomAddress()
+      contractA = randomAddress()
+      contractB = randomAddress()
+      contractC = randomAddress()
+      // Index order is newest first; the first trade stores its contract checksummed.
+      tradeIds = [
+        await insertTrade(signerA, getAddress(contractA), 1),
+        await insertTrade(signerA, contractB, 2),
+        await insertTrade(signerB, contractA, 3),
+        await insertTrade(signerB, contractC, 4)
+      ]
+    })
+
+    afterEach(async () => {
+      await components.dappsDatabase.query(SQL`DELETE FROM marketplace.trades WHERE id = ANY(${tradeIds})`)
+    })
+
+    describe('and no parameters are given', () => {
+      let total: number
+
+      beforeEach(async () => {
+        const countResult = await components.dappsDatabase.query<{ count: number }>(
+          SQL`SELECT COUNT(*)::int AS count FROM marketplace.trades`
+        )
+        total = countResult.rows[0].count
+        await list('')
+      })
+
+      it('should respond with every trade and their total as the count', () => {
+        expect({ status: response.status, length: body.data.data.length, count: body.data.count }).toEqual({
+          status: StatusCode.OK,
+          length: total,
+          count: total
+        })
+      })
+
+      it('should include the inserted trades', () => {
+        expect(ids()).toEqual(expect.arrayContaining(tradeIds))
+      })
+    })
+
+    describe('and a signer is given', () => {
+      beforeEach(async () => {
+        await list(`?signer=${getAddress(signerA)}`)
+      })
+
+      it("should respond with the signer's trades, newest first", () => {
+        expect(body.data).toEqual({
+          data: [expect.objectContaining({ id: tradeIds[0] }), expect.objectContaining({ id: tradeIds[1] })],
+          count: 2
+        })
+      })
+    })
+
+    describe('and a contract is given', () => {
+      beforeEach(async () => {
+        await list(`?contract=${contractA}`)
+      })
+
+      it('should respond with the trades of that contract regardless of the stored casing', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0], tradeIds[2]], count: 2 })
+      })
+    })
+
+    describe('and several contracts are given', () => {
+      beforeEach(async () => {
+        await list(`?contract=${contractA}&contract=${getAddress(contractB)}`)
+      })
+
+      it('should respond with the trades of any of those contracts', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0], tradeIds[1], tradeIds[2]], count: 3 })
+      })
+    })
+
+    describe('and a signer and a contract are given', () => {
+      beforeEach(async () => {
+        await list(`?signer=${signerA}&contract=${contractA}`)
+      })
+
+      it('should respond with the trades matching both', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0]], count: 1 })
+      })
+    })
+
+    describe('and first and skip are given', () => {
+      beforeEach(async () => {
+        await list(`?contract=${contractA}&contract=${contractB}&contract=${contractC}&first=2&skip=1`)
+      })
+
+      it('should respond with that page and the count of every matching trade', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[1], tradeIds[2]], count: 4 })
+      })
+    })
+
+    describe('and skip goes past the last match', () => {
+      beforeEach(async () => {
+        await list(`?signer=${signerB}&first=10&skip=10`)
+      })
+
+      it('should respond with an empty page and the count of every matching trade', () => {
+        expect(body.data).toEqual({ data: [], count: 2 })
+      })
+    })
+
+    describe('and the signer is not an address', () => {
+      beforeEach(async () => {
+        await list('?signer=not-an-address')
+      })
+
+      it('should respond with a 400 and the invalid parameter', () => {
+        expect({ status: response.status, body }).toEqual({
+          status: StatusCode.BAD_REQUEST,
+          body: { ok: false, message: 'The value of the signer parameter is invalid: not-an-address' }
+        })
+      })
     })
   })
 })
