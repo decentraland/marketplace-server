@@ -2,7 +2,7 @@ import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection,
 
 export type TradeListFilters = {
   /** Lowercased signer address. */
-  signer?: string
+  signer: string
   /** Lowercased addresses of the marketplace contracts the trades were signed for; a trade matches any of them. */
   marketplaceAddresses?: string[]
   /** A trade matches any of these statuses. */
@@ -17,7 +17,7 @@ export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
   /**
    * Lists a page of trades with their assets and status, newest first (ties broken by id).
-   * @param filters - Optional signer, marketplace address and status filters, plus the page's limit and offset.
+   * @param filters - The signer, optional marketplace address and status filters, plus the page's limit and offset.
    * @returns The page of trades and the total number of trades matching the filters.
    */
   listTrades(filters: TradeListFilters): Promise<{ data: TradeWithStatus[]; count: number }>

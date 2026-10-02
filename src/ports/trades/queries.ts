@@ -51,7 +51,7 @@ function getTradeListFromStatement(filters: Omit<TradeListFilters, 'limit' | 'of
   return SQL` FROM marketplace.trades AS t`.append(hasStatuses ? TRADE_STATUS_JOINS : '').append(
     getWhereStatementFromFilters([
       // signer is stored lowercased; contract may hold checksummed addresses.
-      filters.signer ? SQL`t.signer = ${filters.signer.toLowerCase()}` : null,
+      SQL`t.signer = ${filters.signer.toLowerCase()}`,
       filters.marketplaceAddresses?.length
         ? SQL`LOWER(t.contract) = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
         : null,

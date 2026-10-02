@@ -29,14 +29,24 @@ describe('when parsing the trade list parameters', () => {
   let params: URLSearchParams
   let result: TradeListFilters
 
-  describe('and no parameters are given', () => {
+  describe('and only the signer is given', () => {
     beforeEach(() => {
-      params = new URLSearchParams()
+      params = new URLSearchParams(`signer=${SIGNER}`)
       result = getTradeListParams(params)
     })
 
-    it('should default to the first page of 100 trades without filters', () => {
-      expect(result).toEqual({ limit: 100, offset: 0 })
+    it("should default to the first page of 100 of the signer's trades", () => {
+      expect(result).toEqual({ signer: SIGNER, limit: 100, offset: 0 })
+    })
+  })
+
+  describe('and no signer is given', () => {
+    beforeEach(() => {
+      params = new URLSearchParams('status=open')
+    })
+
+    it('should throw a missing parameter error naming the signer', () => {
+      expect(() => getTradeListParams(params)).toThrow('The signer parameter is required')
     })
   })
 
@@ -62,7 +72,7 @@ describe('when parsing the trade list parameters', () => {
 
   describe('and a status is repeated', () => {
     beforeEach(() => {
-      params = new URLSearchParams('status=cancelled&status=cancelled')
+      params = new URLSearchParams(`signer=${SIGNER}&status=cancelled&status=cancelled`)
       result = getTradeListParams(params)
     })
 
@@ -73,7 +83,7 @@ describe('when parsing the trade list parameters', () => {
 
   describe('and the limit is above the maximum', () => {
     beforeEach(() => {
-      params = new URLSearchParams('limit=500')
+      params = new URLSearchParams(`signer=${SIGNER}&limit=500`)
       result = getTradeListParams(params)
     })
 
@@ -84,18 +94,18 @@ describe('when parsing the trade list parameters', () => {
 
   describe('and a page is given instead of an offset', () => {
     beforeEach(() => {
-      params = new URLSearchParams('limit=10&page=3')
+      params = new URLSearchParams(`signer=${SIGNER}&limit=10&page=3`)
       result = getTradeListParams(params)
     })
 
     it('should derive the offset from the zero-based page', () => {
-      expect(result).toEqual({ limit: 10, offset: 30 })
+      expect(result).toEqual({ signer: SIGNER, limit: 10, offset: 30 })
     })
   })
 
   describe('and the camelCase marketplace address name is given', () => {
     beforeEach(() => {
-      params = new URLSearchParams(`marketplaceAddress=${OTHER_MARKETPLACE}`)
+      params = new URLSearchParams(`signer=${SIGNER}&marketplaceAddress=${OTHER_MARKETPLACE}`)
       result = getTradeListParams(params)
     })
 
@@ -127,7 +137,7 @@ describe('when parsing the trade list parameters', () => {
     ['a non numeric page', 'page=abc', 'The value of the page parameter is invalid: abc']
   ])('and %s is given', (_description, query, message) => {
     beforeEach(() => {
-      params = new URLSearchParams(query)
+      params = new URLSearchParams(query.startsWith('signer=') ? query : `signer=${SIGNER}&${query}`)
     })
 
     it('should throw an invalid parameter error naming the parameter and the value', () => {
@@ -140,15 +150,15 @@ describe('when building the trade list query', () => {
   let filters: TradeListFilters
   let query: SQLStatement
 
-  describe('and no filters are given', () => {
+  describe('and only a signer is given', () => {
     beforeEach(() => {
-      filters = { limit: 100, offset: 0 }
+      filters = { signer: SIGNER, limit: 100, offset: 0 }
       query = getTradeListQuery(filters)
     })
 
-    it('should page the trades ordered by creation date and id in a subquery without joins or a where', () => {
+    it("should page the signer's trades ordered by creation date and id in a subquery without joins", () => {
       expect(normalize(query)).toContain(
-        '(SELECT t.* FROM marketplace.trades AS t ORDER BY t.created_at DESC, t.id ASC LIMIT $1 OFFSET $2) AS t LEFT JOIN'
+        '(SELECT t.* FROM marketplace.trades AS t WHERE t.signer = $1 ORDER BY t.created_at DESC, t.id ASC LIMIT $2 OFFSET $3) AS t LEFT JOIN'
       )
     })
 
@@ -158,8 +168,8 @@ describe('when building the trade list query', () => {
       )
     })
 
-    it('should bind the limit and the offset', () => {
-      expect(query.values).toEqual([100, 0])
+    it('should bind the signer, the limit and the offset', () => {
+      expect(query.values).toEqual([SIGNER, 100, 0])
     })
   })
 
@@ -180,18 +190,18 @@ describe('when building the trade list query', () => {
 
   describe('and statuses are given', () => {
     beforeEach(() => {
-      filters = { statuses: [ListingStatus.OPEN, ListingStatus.CANCELLED], limit: 10, offset: 0 }
+      filters = { signer: SIGNER, statuses: [ListingStatus.OPEN, ListingStatus.CANCELLED], limit: 10, offset: 0 }
       query = getTradeListQuery(filters)
     })
 
     it('should filter the paged trades by their computed status', () => {
       expect(normalize(query)).toMatch(
-        /\(SELECT t\.\* FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE \(\s?CASE .* END\) = ANY\(\$1\) ORDER BY t\.created_at DESC, t\.id ASC LIMIT \$2 OFFSET \$3\) AS t/
+        /\(SELECT t\.\* FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE t\.signer = \$1 AND \(\s?CASE .* END\) = ANY\(\$2\) ORDER BY t\.created_at DESC, t\.id ASC LIMIT \$3 OFFSET \$4\) AS t/
       )
     })
 
-    it('should bind the statuses', () => {
-      expect(query.values).toEqual([[ListingStatus.OPEN, ListingStatus.CANCELLED], 10, 0])
+    it('should bind the signer and the statuses', () => {
+      expect(query.values).toEqual([SIGNER, [ListingStatus.OPEN, ListingStatus.CANCELLED], 10, 0])
     })
   })
 })
@@ -213,12 +223,12 @@ describe('when building the trade list count query', () => {
 
   describe('and a status is given', () => {
     beforeEach(() => {
-      query = getTradeListCountQuery({ statuses: [ListingStatus.SOLD] })
+      query = getTradeListCountQuery({ signer: SIGNER, statuses: [ListingStatus.SOLD] })
     })
 
     it('should count the trades whose computed status matches', () => {
       expect(normalize(query)).toMatch(
-        /^SELECT COUNT\(\*\)::int AS count FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE \(\s?CASE .* END\) = ANY\(\$1\)$/
+        /^SELECT COUNT\(\*\)::int AS count FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE t\.signer = \$1 AND \(\s?CASE .* END\) = ANY\(\$2\)$/
       )
     })
   })
@@ -433,7 +443,7 @@ describe('when handling the v2 listing of trades', () => {
 
   describe('and no trade matches', () => {
     beforeEach(async () => {
-      query = ''
+      query = `?signer=${SIGNER}`
       listTradesMock.mockResolvedValueOnce({ data: [], count: 0 })
       response = await handle()
     })
@@ -446,9 +456,27 @@ describe('when handling the v2 listing of trades', () => {
     })
   })
 
+  describe('and the signer is missing', () => {
+    beforeEach(async () => {
+      query = '?status=open'
+      response = await handle()
+    })
+
+    it('should respond with a 400 and the missing parameter', () => {
+      expect(response).toEqual({
+        status: StatusCode.BAD_REQUEST,
+        body: { ok: false, message: 'The signer parameter is required' }
+      })
+    })
+
+    it('should not list the trades', () => {
+      expect(listTradesMock).not.toHaveBeenCalled()
+    })
+  })
+
   describe('and a parameter is invalid', () => {
     beforeEach(async () => {
-      query = '?status=pending'
+      query = `?signer=${SIGNER}&status=pending`
       response = await handle()
     })
 
@@ -466,7 +494,7 @@ describe('when handling the v2 listing of trades', () => {
 
   describe('and listing the trades fails', () => {
     beforeEach(async () => {
-      query = ''
+      query = `?signer=${SIGNER}`
       listTradesMock.mockRejectedValueOnce(new Error('Database is down'))
       response = await handle()
     })
