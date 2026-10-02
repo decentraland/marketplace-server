@@ -913,17 +913,17 @@ paths:
         - Trades
       summary: List trades with filters and pagination
       description: |
-        Retrieves a page of trades with their assets and computed status, ordered by creation date
+        Retrieves a page of a signer's trades with their assets and computed status, ordered by creation date
         (most recent first, ties broken by id). Query parameters are snake_case.
 
-        Filters are optional and combined with AND; a repeated parameter matches any of its values.
-        `total` is the number of trades matching the filters, regardless of the page.
+        `signer` is required; the other filters are optional and combined with AND, and a repeated parameter
+        matches any of its values. `total` is the number of trades matching the filters, regardless of the page.
       operationId: getTradesV2
       security: []
       parameters:
         - name: signer
           in: query
-          required: false
+          required: true
           description: Signer address (case-insensitive).
           schema:
             type: string
@@ -1018,7 +1018,7 @@ paths:
                   - ok
                   - data
         '400':
-          description: Invalid signer, marketplace_address, status, limit, offset or page parameter
+          description: Missing signer, or invalid signer, marketplace_address, status, limit, offset or page parameter
           content:
             application/json:
               schema:

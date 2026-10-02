@@ -505,28 +505,16 @@ test('trades controller', function ({ components }) {
       await components.dappsDatabase.query(SQL`DELETE FROM marketplace.trades WHERE id = ANY(${tradeIds})`)
     })
 
-    describe('and no parameters are given', () => {
-      let total: number
-
+    describe('and no signer is given', () => {
       beforeEach(async () => {
-        const countResult = await components.dappsDatabase.query<{ count: number }>(
-          SQL`SELECT COUNT(*)::int AS count FROM marketplace.trades`
-        )
-        total = countResult.rows[0].count
-        await list('/v2/trades')
+        await list(`/v2/trades?marketplace_address=${marketplaceA}`)
       })
 
-      it('should respond with the first page of up to 100 trades and the total of every trade', () => {
-        expect({ status: response.status, length: body.data.results.length, total: body.data.total, page: body.data.page }).toEqual({
-          status: StatusCode.OK,
-          length: Math.min(total, 100),
-          total,
-          page: 0
+      it('should respond with a 400 and the missing parameter', () => {
+        expect({ status: response.status, body }).toEqual({
+          status: StatusCode.BAD_REQUEST,
+          body: { ok: false, message: 'The signer parameter is required' }
         })
-      })
-
-      it('should report the default limit and the number of pages', () => {
-        expect({ limit: body.data.limit, pages: body.data.pages }).toEqual({ limit: 100, pages: Math.ceil(total / 100) })
       })
     })
 
@@ -575,43 +563,42 @@ test('trades controller', function ({ components }) {
 
     describe('and a marketplace address is given', () => {
       beforeEach(async () => {
-        await list(`/v2/trades?marketplace_address=${marketplaceA}`)
+        await list(`/v2/trades?signer=${signerA}&marketplace_address=${marketplaceA}`)
       })
 
-      it('should respond with the trades signed for that marketplace regardless of the stored casing', () => {
-        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[0], tradeIds[2]], total: 2 })
+      it("should respond with the signer's trades signed for that marketplace regardless of the stored casing", () => {
+        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[0]], total: 1 })
       })
     })
 
     describe('and several marketplace addresses are given', () => {
       beforeEach(async () => {
-        await list(`/v2/trades?marketplace_address=${marketplaceA}&marketplace_address=${getAddress(marketplaceB)}`)
+        await list(`/v2/trades?signer=${signerA}&marketplace_address=${marketplaceA}&marketplace_address=${getAddress(marketplaceB)}`)
       })
 
-      it('should respond with the trades signed for any of those marketplaces', () => {
-        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[0], tradeIds[1], tradeIds[2]], total: 3 })
+      it("should respond with the signer's trades signed for any of those marketplaces", () => {
+        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[0], tradeIds[1]], total: 2 })
       })
     })
 
-    describe('and a signer and a marketplace address are given', () => {
+    describe('and a marketplace address the signer has no trades for is given', () => {
       beforeEach(async () => {
-        await list(`/v2/trades?signer=${signerA}&marketplace_address=${marketplaceA}`)
+        await list(`/v2/trades?signer=${signerA}&marketplace_address=${marketplaceC}`)
       })
 
-      it('should respond with the trades matching both', () => {
-        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[0]], total: 1 })
+      it('should respond with no trades', () => {
+        expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [], total: 0 })
       })
     })
 
     describe.each([
-      ['open', () => [tradeIds[3], tradeIds[4]]],
-      ['sold', () => [tradeIds[0]]],
-      ['cancelled', () => [tradeIds[1], tradeIds[2]]]
-    ])('and the %s status is given', (status, expectedIds) => {
+      ['open', 'second', () => signerB, () => [tradeIds[3], tradeIds[4]]],
+      ['sold', 'first', () => signerA, () => [tradeIds[0]]],
+      ['cancelled', 'first', () => signerA, () => [tradeIds[1]]],
+      ['cancelled', 'second', () => signerB, () => [tradeIds[2]]]
+    ])('and the %s status is given for the %s signer', (status, _signerName, signer, expectedIds) => {
       beforeEach(async () => {
-        await list(
-          `/v2/trades?marketplace_address=${marketplaceA}&marketplace_address=${marketplaceB}&marketplace_address=${marketplaceC}&status=${status}`
-        )
+        await list(`/v2/trades?signer=${signer()}&status=${status}`)
       })
 
       it(`should respond with the ${status} trades only and their total`, () => {
@@ -650,7 +637,7 @@ test('trades controller', function ({ components }) {
 
     describe('and trades share a creation date', () => {
       beforeEach(async () => {
-        await list(`/v2/trades?marketplace_address=${marketplaceC}`)
+        await list(`/v2/trades?signer=${signerB}&marketplace_address=${marketplaceC}`)
       })
 
       it('should order them by id', () => {
@@ -660,18 +647,16 @@ test('trades controller', function ({ components }) {
 
     describe('and a limit and an offset are given', () => {
       beforeEach(async () => {
-        await list(
-          `/v2/trades?marketplace_address=${marketplaceA}&marketplace_address=${marketplaceB}&marketplace_address=${marketplaceC}&limit=2&offset=2`
-        )
+        await list(`/v2/trades?signer=${signerB}&limit=1&offset=1`)
       })
 
       it('should respond with that page and the pagination of every matching trade', () => {
         expect({ ids: ids(), total: body.data.total, page: body.data.page, pages: body.data.pages, limit: body.data.limit }).toEqual({
-          ids: [tradeIds[2], tradeIds[3]],
-          total: 5,
+          ids: [tradeIds[3]],
+          total: 3,
           page: 1,
           pages: 3,
-          limit: 2
+          limit: 1
         })
       })
     })
@@ -707,18 +692,18 @@ test('trades controller', function ({ components }) {
     })
 
     describe.each([
-      ['the signer is not an address', '?signer=not-an-address', 'The value of the signer parameter is invalid: not-an-address'],
+      ['the signer is not an address', 'signer=not-an-address', 'The value of the signer parameter is invalid: not-an-address'],
       [
         'a marketplace address is not an address',
-        '?marketplace_address=0x1&marketplace_address=not-an-address',
+        'marketplace_address=0x1&marketplace_address=not-an-address',
         'The value of the marketplace_address parameter is invalid: 0x1'
       ],
-      ['the status is unknown', '?status=expired', 'The value of the status parameter is invalid: expired'],
-      ['the limit is not a number', '?limit=ten', 'The value of the limit parameter is invalid: ten'],
-      ['the offset is negative', '?offset=-1', 'The value of the offset parameter is invalid: -1']
+      ['the status is unknown', 'status=expired', 'The value of the status parameter is invalid: expired'],
+      ['the limit is not a number', 'limit=ten', 'The value of the limit parameter is invalid: ten'],
+      ['the offset is negative', 'offset=-1', 'The value of the offset parameter is invalid: -1']
     ])('and %s', (_description, query, message) => {
       beforeEach(async () => {
-        await list(`/v2/trades${query}`)
+        await list(query.startsWith('signer=') ? `/v2/trades?${query}` : `/v2/trades?signer=${signerA}&${query}`)
       })
 
       it('should respond with a 400 and the invalid parameter', () => {

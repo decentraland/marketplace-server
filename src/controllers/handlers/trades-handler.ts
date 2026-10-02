@@ -2,7 +2,7 @@ import { Trade, TradeCreation, Event, ListingStatus } from '@dcl/schemas'
 import { isAddress } from '../../logic/address'
 import { isErrorWithMessage } from '../../logic/errors'
 import { PaginatedResponse, getNonNegativeIntegerParameter, getNumberParameter, getPaginationParams, getParameter } from '../../logic/http'
-import { InvalidParameterError } from '../../logic/http/errors'
+import { InvalidParameterError, MissingParameterError } from '../../logic/http/errors'
 import { DBTrade, TradeListFilters, TradeWithStatus } from '../../ports/trades'
 import {
   DuplicatedBidError,
@@ -53,13 +53,15 @@ function isListingStatus(value: string): value is ListingStatus {
 }
 
 /**
- * Parses the GET /v2/trades query: `signer`, repeatable `marketplace_address` and `status`, and the
- * `limit`/`offset`/`page` pagination of getPaginationParams.
+ * Parses the GET /v2/trades query: the required `signer`, repeatable `marketplace_address` and `status`, and
+ * the `limit`/`offset`/`page` pagination of getPaginationParams.
+ * @throws MissingParameterError if the signer is not given.
  * @throws InvalidParameterError if an address, a status or a pagination value is malformed.
  */
 export function getTradeListParams(params: URLSearchParams): TradeListFilters {
   const signer = params.get('signer')
-  if (signer !== null && !isAddress(signer)) throw new InvalidParameterError('signer', signer)
+  if (signer === null) throw new MissingParameterError('signer')
+  if (!isAddress(signer)) throw new InvalidParameterError('signer', signer)
 
   const marketplaceAddresses = params.getAll('marketplace_address')
   if (marketplaceAddresses.length > MAX_MARKETPLACE_ADDRESS_FILTERS) {
@@ -82,7 +84,7 @@ export function getTradeListParams(params: URLSearchParams): TradeListFilters {
   const { limit, offset } = getPaginationParams(params)
 
   return {
-    ...(signer !== null && { signer: signer.toLowerCase() }),
+    signer: signer.toLowerCase(),
     ...(marketplaceAddresses.length > 0 && {
       marketplaceAddresses: marketplaceAddresses.map(marketplaceAddress => marketplaceAddress.toLowerCase())
     }),
@@ -119,7 +121,7 @@ export async function getTradesV2Handler(
       }
     }
   } catch (e) {
-    if (e instanceof InvalidParameterError) {
+    if (e instanceof InvalidParameterError || e instanceof MissingParameterError) {
       return {
         status: StatusCode.BAD_REQUEST,
         body: {
