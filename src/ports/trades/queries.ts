@@ -47,7 +47,10 @@ const TRADE_STATUS_STATEMENT = `
 
 /** FROM and WHERE of the trade list; the status filter brings the status joins along. */
 function getTradeListFromStatement(filters: Omit<TradeListFilters, 'limit' | 'offset'>): SQLStatement {
-  const hasStatuses = !!filters.statuses?.length
+  const statuses = filters.statuses ?? []
+  const hasStatuses = statuses.length > 0
+  // The status CASE makes every expired trade cancelled, so only unexpired trades can be open or sold.
+  const onlyUnexpiredStatuses = hasStatuses && statuses.every(status => status === ListingStatus.OPEN || status === ListingStatus.SOLD)
   return SQL` FROM marketplace.trades AS t`.append(hasStatuses ? TRADE_STATUS_JOINS : '').append(
     getWhereStatementFromFilters([
       // signer is stored lowercased; contract may hold checksummed addresses.
@@ -55,7 +58,8 @@ function getTradeListFromStatement(filters: Omit<TradeListFilters, 'limit' | 'of
       filters.marketplaceAddresses?.length
         ? SQL`LOWER(t.contract) = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
         : null,
-      hasStatuses ? SQL`(`.append(TRADE_STATUS_STATEMENT).append(SQL`) = ANY(${filters.statuses})`) : null
+      onlyUnexpiredStatuses ? SQL`t.expires_at >= now()::timestamptz(3)` : null,
+      hasStatuses ? SQL`(`.append(TRADE_STATUS_STATEMENT).append(SQL`) = ANY(${statuses})`) : null
     ])
   )
 }
