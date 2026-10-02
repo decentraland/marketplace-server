@@ -11,9 +11,11 @@ export const TRADES_LIST_MAX_LIMIT = 1000
 
 function getTradeListWhereStatement(filters: TradeListFilters): SQLStatement {
   return getWhereStatementFromFilters([
-    // signer is stored lowercased; contract may hold checksummed addresses.
+    // signer is stored lowercased; contract (the settling marketplace) may hold checksummed addresses.
     filters.signer ? SQL`t.signer = ${filters.signer.toLowerCase()}` : null,
-    filters.contracts?.length ? SQL`LOWER(t.contract) = ANY(${filters.contracts.map(contract => contract.toLowerCase())})` : null
+    filters.marketplaceAddresses?.length
+      ? SQL`LOWER(t.contract) = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
+      : null
   ])
 }
 

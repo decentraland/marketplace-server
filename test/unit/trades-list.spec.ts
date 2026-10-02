@@ -1,3 +1,4 @@
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { SQLStatement } from 'sql-template-strings'
 import { getTradesHandler } from '../../src/controllers/handlers/trades-handler'
 import { IPgComponent } from '../../src/ports/db/types'
@@ -9,8 +10,8 @@ import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../src/type
 import { createTestLogsComponent } from '../components'
 
 const SIGNER = '0x1111111111111111111111111111111111111111'
-const CHECKSUMMED_CONTRACT = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01'
-const OTHER_CONTRACT = '0x2222222222222222222222222222222222222222'
+const CHECKSUMMED_MARKETPLACE = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01'
+const OTHER_MARKETPLACE = '0x2222222222222222222222222222222222222222'
 
 describe('when building the trade list query', () => {
   let filters: TradeListFilters
@@ -46,24 +47,24 @@ describe('when building the trade list query', () => {
     })
   })
 
-  describe('and contracts are given', () => {
+  describe('and marketplace addresses are given', () => {
     beforeEach(() => {
-      filters = { contracts: [CHECKSUMMED_CONTRACT, OTHER_CONTRACT] }
+      filters = { marketplaceAddresses: [CHECKSUMMED_MARKETPLACE, OTHER_MARKETPLACE] }
       query = getTradeListQuery(filters)
     })
 
-    it('should compare the lowercased contract column against any of the values', () => {
+    it('should compare the lowercased marketplace contract column against any of the values', () => {
       expect(query.text).toContain('WHERE LOWER(t.contract) = ANY($1)')
     })
 
-    it('should bind the lowercased contracts', () => {
-      expect(query.values).toEqual([[CHECKSUMMED_CONTRACT.toLowerCase(), OTHER_CONTRACT]])
+    it('should bind the lowercased marketplace addresses', () => {
+      expect(query.values).toEqual([[CHECKSUMMED_MARKETPLACE.toLowerCase(), OTHER_MARKETPLACE]])
     })
   })
 
-  describe('and a signer and contracts are given', () => {
+  describe('and a signer and marketplace addresses are given', () => {
     beforeEach(() => {
-      filters = { signer: SIGNER, contracts: [OTHER_CONTRACT] }
+      filters = { signer: SIGNER, marketplaceAddresses: [OTHER_MARKETPLACE] }
       query = getTradeListQuery(filters)
     })
 
@@ -84,6 +85,23 @@ describe('when building the trade list query', () => {
 
     it('should bind first and skip', () => {
       expect(query.values).toEqual([10, 20])
+    })
+  })
+
+  describe('and only skip is given', () => {
+    beforeEach(() => {
+      filters = { skip: 20 }
+      query = getTradeListQuery(filters)
+    })
+
+    it('should offset after ordering without a limit', () => {
+      expect(query.text.replace(/\s+/g, ' ').trim()).toEqual(
+        'SELECT t.* FROM marketplace.trades AS t ORDER BY t.created_at DESC, t.id ASC OFFSET $1'
+      )
+    })
+
+    it('should bind skip', () => {
+      expect(query.values).toEqual([20])
     })
   })
 
@@ -114,7 +132,7 @@ describe('when building the trade list count query', () => {
   let query: SQLStatement
 
   beforeEach(() => {
-    query = getTradeListCountQuery({ signer: SIGNER, contracts: [OTHER_CONTRACT], first: 10, skip: 5 })
+    query = getTradeListCountQuery({ signer: SIGNER, marketplaceAddresses: [OTHER_MARKETPLACE], first: 10, skip: 5 })
   })
 
   it('should count the filtered trades without pagination', () => {
@@ -177,22 +195,44 @@ describe('when listing trades', () => {
       expect(result).toEqual({ data: rows, count: 42 })
     })
   })
+
+  describe('and only skip is given', () => {
+    beforeEach(async () => {
+      queryMock.mockResolvedValueOnce({ rows, rowCount: rows.length }).mockResolvedValueOnce({ rows: [{ count: 6 }], rowCount: 1 })
+      result = await tradesComponent.getTrades({ skip: 4 })
+    })
+
+    it('should return the remaining trades and the total count of matching trades', () => {
+      expect(result).toEqual({ data: rows, count: 6 })
+    })
+
+    it('should run the list and the count queries', () => {
+      expect(queryMock).toHaveBeenCalledTimes(2)
+    })
+  })
 })
 
 describe('when handling the listing of trades', () => {
-  let context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components' | 'url'>
+  let context: Pick<HandlerContextWithPath<'trades' | 'logs', '/v1/trades'>, 'components' | 'url'>
   let getTradesMock: jest.Mock
+  let errorLogMock: jest.Mock
+  let logs: ILoggerComponent
   let response: HTTPResponse<{ data: DBTrade[]; count: number }>
   let query: string
 
   beforeEach(() => {
     getTradesMock = jest.fn()
+    errorLogMock = jest.fn()
+    logs = createTestLogsComponent({
+      getLogger: jest.fn().mockReturnValue({ error: errorLogMock, warn: jest.fn(), info: jest.fn(), debug: jest.fn(), log: jest.fn() })
+    })
   })
 
   async function handle(): Promise<HTTPResponse<{ data: DBTrade[]; count: number }>> {
     context = {
       url: new URL(`http://localhost/v1/trades${query}`),
       components: {
+        logs,
         trades: {
           recreateMaterializedView: jest.fn(),
           flushMaterializedViewIfDirty: jest.fn(),
@@ -228,7 +268,7 @@ describe('when handling the listing of trades', () => {
       query = `?signer=${SIGNER.toUpperCase().replace(
         '0X',
         '0x'
-      )}&contract=${CHECKSUMMED_CONTRACT}&contract=${OTHER_CONTRACT}&first=10&skip=5`
+      )}&marketplaceAddress=${CHECKSUMMED_MARKETPLACE}&marketplaceAddress=${OTHER_MARKETPLACE}&first=10&skip=5`
       getTradesMock.mockResolvedValueOnce({ data: [], count: 0 })
       response = await handle()
     })
@@ -236,22 +276,34 @@ describe('when handling the listing of trades', () => {
     it('should list the trades with the lowercased filters and the pagination', () => {
       expect(getTradesMock).toHaveBeenCalledWith({
         signer: SIGNER,
-        contracts: [CHECKSUMMED_CONTRACT.toLowerCase(), OTHER_CONTRACT],
+        marketplaceAddresses: [CHECKSUMMED_MARKETPLACE.toLowerCase(), OTHER_MARKETPLACE],
         first: 10,
         skip: 5
       })
     })
   })
 
+  describe('and only skip is given', () => {
+    beforeEach(async () => {
+      query = '?skip=5'
+      getTradesMock.mockResolvedValueOnce({ data: [], count: 5 })
+      response = await handle()
+    })
+
+    it('should list the trades skipping the given number without a limit', () => {
+      expect(getTradesMock).toHaveBeenCalledWith({ skip: 5 })
+    })
+  })
+
   describe.each([
     ['an invalid signer', '?signer=0x123'],
     ['an empty signer', '?signer='],
-    ['an invalid contract', `?contract=${OTHER_CONTRACT}&contract=not-an-address`],
+    ['an invalid marketplace address', `?marketplaceAddress=${OTHER_MARKETPLACE}&marketplaceAddress=not-an-address`],
     ['a negative first', '?first=-1'],
     ['a non integer first', '?first=1.5'],
     ['a partially numeric first', '?first=10abc'],
     ['a non numeric skip', '?skip=abc'],
-    ['more than 100 contracts', `?${Array.from({ length: 101 }, () => `contract=${OTHER_CONTRACT}`).join('&')}`]
+    ['more than 100 marketplace addresses', `?${Array.from({ length: 101 }, () => `marketplaceAddress=${OTHER_MARKETPLACE}`).join('&')}`]
   ])('and %s is given', (_description, invalidQuery) => {
     beforeEach(async () => {
       query = invalidQuery
@@ -277,8 +329,12 @@ describe('when handling the listing of trades', () => {
       response = await handle()
     })
 
-    it('should respond with a 500 and the error message', () => {
-      expect(response).toEqual({ status: StatusCode.ERROR, body: { ok: false, message: 'Database is down' } })
+    it('should respond with a 500 and a generic message', () => {
+      expect(response).toEqual({ status: StatusCode.ERROR, body: { ok: false, message: 'Could not fetch the trades' } })
+    })
+
+    it('should log the error', () => {
+      expect(errorLogMock).toHaveBeenCalledWith('Could not fetch the trades: Database is down')
     })
   })
 })

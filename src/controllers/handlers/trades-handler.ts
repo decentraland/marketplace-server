@@ -1,7 +1,7 @@
 import { Trade, TradeCreation, Event } from '@dcl/schemas'
 import { isAddress } from '../../logic/address'
 import { isErrorWithMessage } from '../../logic/errors'
-import { getNumberParameter, getParameter } from '../../logic/http'
+import { getNonNegativeIntegerParameter, getNumberParameter, getParameter } from '../../logic/http'
 import { InvalidParameterError } from '../../logic/http/errors'
 import { DBTrade, TradeListFilters } from '../../ports/trades'
 import {
@@ -25,19 +25,10 @@ import {
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
-const MAX_CONTRACT_FILTERS = 100
-
-function getNonNegativeIntegerParameter(name: string, params: URLSearchParams): number | undefined {
-  const value = params.get(name)
-  if (value === null) return undefined
-  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
-    throw new InvalidParameterError(name, value)
-  }
-  return Number(value)
-}
+const MAX_MARKETPLACE_ADDRESS_FILTERS = 100
 
 /**
- * Parses the GET /v1/trades query: `signer`, repeatable `contract`, `first` and `skip`.
+ * Parses the GET /v1/trades query: `signer`, repeatable `marketplaceAddress`, `first` and `skip`.
  * @throws InvalidParameterError if an address or a pagination value is malformed.
  */
 export function getTradeListFilters(params: URLSearchParams): TradeListFilters {
@@ -49,15 +40,15 @@ export function getTradeListFilters(params: URLSearchParams): TradeListFilters {
     filters.signer = signer.toLowerCase()
   }
 
-  const contracts = params.getAll('contract')
-  if (contracts.length > MAX_CONTRACT_FILTERS) {
-    throw new InvalidParameterError('contract', `more than ${MAX_CONTRACT_FILTERS} values`)
+  const marketplaceAddresses = params.getAll('marketplaceAddress')
+  if (marketplaceAddresses.length > MAX_MARKETPLACE_ADDRESS_FILTERS) {
+    throw new InvalidParameterError('marketplaceAddress', `more than ${MAX_MARKETPLACE_ADDRESS_FILTERS} values`)
   }
-  for (const contract of contracts) {
-    if (!isAddress(contract)) throw new InvalidParameterError('contract', contract)
+  for (const marketplaceAddress of marketplaceAddresses) {
+    if (!isAddress(marketplaceAddress)) throw new InvalidParameterError('marketplaceAddress', marketplaceAddress)
   }
-  if (contracts.length > 0) {
-    filters.contracts = contracts.map(contract => contract.toLowerCase())
+  if (marketplaceAddresses.length > 0) {
+    filters.marketplaceAddresses = marketplaceAddresses.map(marketplaceAddress => marketplaceAddress.toLowerCase())
   }
 
   const first = getNonNegativeIntegerParameter('first', params)
@@ -69,12 +60,13 @@ export function getTradeListFilters(params: URLSearchParams): TradeListFilters {
 }
 
 export async function getTradesHandler(
-  context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components' | 'url'>
+  context: Pick<HandlerContextWithPath<'trades' | 'logs', '/v1/trades'>, 'components' | 'url'>
 ): Promise<HTTPResponse<{ data: DBTrade[]; count: number }>> {
   const {
-    components: { trades },
+    components: { trades, logs },
     url
   } = context
+  const logger = logs.getLogger('Trades handler')
 
   try {
     const { data, count } = await trades.getTrades(getTradeListFilters(url.searchParams))
@@ -100,11 +92,12 @@ export async function getTradesHandler(
       }
     }
 
+    logger.error(`Could not fetch the trades: ${isErrorWithMessage(e) ? e.message : String(e)}`)
     return {
       status: StatusCode.ERROR,
       body: {
         ok: false,
-        message: isErrorWithMessage(e) ? e.message : 'Could not fetch the trades'
+        message: 'Could not fetch the trades'
       }
     }
   }
