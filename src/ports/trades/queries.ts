@@ -53,10 +53,10 @@ function getTradeListFromStatement(filters: Omit<TradeListFilters, 'limit' | 'of
   const onlyUnexpiredStatuses = hasStatuses && statuses.every(status => status === ListingStatus.OPEN || status === ListingStatus.SOLD)
   return SQL` FROM marketplace.trades AS t`.append(hasStatuses ? TRADE_STATUS_JOINS : '').append(
     getWhereStatementFromFilters([
-      // signer is stored lowercased; contract may hold checksummed addresses.
+      // signer and contract are stored lowercased.
       SQL`t.signer = ${filters.signer.toLowerCase()}`,
       filters.marketplaceAddresses?.length
-        ? SQL`LOWER(t.contract) = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
+        ? SQL`t.contract = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
         : null,
       onlyUnexpiredStatuses ? SQL`t.expires_at >= now()::timestamptz(3)` : null,
       hasStatuses ? SQL`(`.append(TRADE_STATUS_STATEMENT).append(SQL`) = ANY(${statuses})`) : null
@@ -134,7 +134,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string; t
    ${trade.tradeDigest},
    ${signer.toLowerCase()},
    ${trade.type},
-   ${trade.contract}
+   ${trade.contract.toLowerCase()}
    ) RETURNING *;`
 }
 

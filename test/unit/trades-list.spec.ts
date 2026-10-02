@@ -180,7 +180,7 @@ describe('when building the trade list query', () => {
     })
 
     it('should compare the signer directly and the lowercased contract against any of the addresses', () => {
-      expect(normalize(query)).toContain('WHERE t.signer = $1 AND LOWER(t.contract) = ANY($2) ORDER BY')
+      expect(normalize(query)).toContain('WHERE t.signer = $1 AND t.contract = ANY($2) ORDER BY')
     })
 
     it('should bind the lowercased filters before the limit and the offset', () => {
@@ -233,7 +233,7 @@ describe('when building the trade list count query', () => {
 
     it('should count the filtered trades without computing their status', () => {
       expect(normalize(query)).toEqual(
-        'SELECT COUNT(*)::int AS count FROM marketplace.trades AS t WHERE t.signer = $1 AND LOWER(t.contract) = ANY($2)'
+        'SELECT COUNT(*)::int AS count FROM marketplace.trades AS t WHERE t.signer = $1 AND t.contract = ANY($2)'
       )
     })
   })

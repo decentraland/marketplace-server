@@ -506,9 +506,9 @@ test('trades controller', function ({ components }) {
       marketplaceB = randomAddress()
       marketplaceC = randomAddress()
       tieCreatedAt = hoursAgo(4)
-      // Newest first. The first trade stores its marketplace address checksummed; the last two share a creation date.
+      // Newest first; the last two share a creation date.
       const inserted = [
-        await insertTrade({ signer: signerA, marketplaceAddress: getAddress(marketplaceA), createdAt: hoursAgo(1) }),
+        await insertTrade({ signer: signerA, marketplaceAddress: marketplaceA, createdAt: hoursAgo(1) }),
         await insertTrade({ signer: signerA, marketplaceAddress: marketplaceB, createdAt: hoursAgo(2) }),
         await insertTrade({ signer: signerB, marketplaceAddress: marketplaceA, createdAt: hoursAgo(3), expiresInHours: -1 }),
         await insertTrade({ signer: signerB, marketplaceAddress: marketplaceC, createdAt: tieCreatedAt }),
@@ -590,7 +590,7 @@ test('trades controller', function ({ components }) {
                     beneficiary: signerA
                   }
                 ],
-                contract: getAddress(marketplaceA),
+                contract: marketplaceA,
                 status: 'sold'
               },
               expect.objectContaining({ id: tradeIds[1], sent: [], received: [], status: 'cancelled' })
