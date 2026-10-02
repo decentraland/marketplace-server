@@ -3,8 +3,8 @@ import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection,
 export type TradeListFilters = {
   /** Lowercased signer address. */
   signer?: string
-  /** Lowercased contract addresses; a trade matches any of them. */
-  contracts?: string[]
+  /** Lowercased addresses of the marketplace contracts that settle the trade; a trade matches any of them. */
+  marketplaceAddresses?: string[]
   first?: number
   skip?: number
 }
@@ -12,7 +12,7 @@ export type TradeListFilters = {
 export type ITradesComponent = {
   /**
    * Lists trades, newest first.
-   * @param filters - Optional signer/contract filters and first/skip pagination. Without `first` every match is returned.
+   * @param filters - Optional signer/marketplace address filters and first/skip pagination. Without `first` every match is returned.
    * @returns The page of trades and the total number of trades matching the filters.
    */
   getTrades(filters?: TradeListFilters): Promise<{ data: DBTrade[]; count: number }>

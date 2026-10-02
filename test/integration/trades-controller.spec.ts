@@ -412,21 +412,21 @@ test('trades controller', function ({ components }) {
   describe('when listing trades', () => {
     let signerA: string
     let signerB: string
-    let contractA: string
-    let contractB: string
-    let contractC: string
+    let marketplaceA: string
+    let marketplaceB: string
+    let marketplaceC: string
     let tradeIds: string[]
     let response: Response
     let body: { ok: boolean; data: { data: { id: string }[]; count: number } }
 
     const randomAddress = (): string => hexlify(randomBytes(20)).toLowerCase()
 
-    async function insertTrade(signer: string, contract: string, hoursAgo: number): Promise<string> {
+    async function insertTrade(signer: string, marketplaceAddress: string, hoursAgo: number): Promise<string> {
       const signature = hexlify(randomBytes(65))
       const result = await components.dappsDatabase.query<{ id: string }>(SQL`
         INSERT INTO marketplace.trades (signature, hashed_signature, signer, type, network, chain_id, checks, expires_at, effective_since, contract, created_at)
         VALUES (${signature}, ${signature}, ${signer}, ${TradeType.BID}, ${Network.ETHEREUM}, 1, ${{ uses: 1 }},
-          NOW() + INTERVAL '1 day', NOW(), ${contract}, NOW() - (${hoursAgo} * INTERVAL '1 hour'))
+          NOW() + INTERVAL '1 day', NOW(), ${marketplaceAddress}, NOW() - (${hoursAgo} * INTERVAL '1 hour'))
         RETURNING id`)
       return result.rows[0].id
     }
@@ -441,15 +441,15 @@ test('trades controller', function ({ components }) {
     beforeEach(async () => {
       signerA = randomAddress()
       signerB = randomAddress()
-      contractA = randomAddress()
-      contractB = randomAddress()
-      contractC = randomAddress()
-      // Index order is newest first; the first trade stores its contract checksummed.
+      marketplaceA = randomAddress()
+      marketplaceB = randomAddress()
+      marketplaceC = randomAddress()
+      // Index order is newest first; the first trade stores its marketplace address checksummed.
       tradeIds = [
-        await insertTrade(signerA, getAddress(contractA), 1),
-        await insertTrade(signerA, contractB, 2),
-        await insertTrade(signerB, contractA, 3),
-        await insertTrade(signerB, contractC, 4)
+        await insertTrade(signerA, getAddress(marketplaceA), 1),
+        await insertTrade(signerA, marketplaceB, 2),
+        await insertTrade(signerB, marketplaceA, 3),
+        await insertTrade(signerB, marketplaceC, 4)
       ]
     })
 
@@ -494,29 +494,29 @@ test('trades controller', function ({ components }) {
       })
     })
 
-    describe('and a contract is given', () => {
+    describe('and a marketplace address is given', () => {
       beforeEach(async () => {
-        await list(`?contract=${contractA}`)
+        await list(`?marketplaceAddress=${marketplaceA}`)
       })
 
-      it('should respond with the trades of that contract regardless of the stored casing', () => {
+      it('should respond with the trades settled by that marketplace regardless of the stored casing', () => {
         expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0], tradeIds[2]], count: 2 })
       })
     })
 
-    describe('and several contracts are given', () => {
+    describe('and several marketplace addresses are given', () => {
       beforeEach(async () => {
-        await list(`?contract=${contractA}&contract=${getAddress(contractB)}`)
+        await list(`?marketplaceAddress=${marketplaceA}&marketplaceAddress=${getAddress(marketplaceB)}`)
       })
 
-      it('should respond with the trades of any of those contracts', () => {
+      it('should respond with the trades settled by any of those marketplaces', () => {
         expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0], tradeIds[1], tradeIds[2]], count: 3 })
       })
     })
 
-    describe('and a signer and a contract are given', () => {
+    describe('and a signer and a marketplace address are given', () => {
       beforeEach(async () => {
-        await list(`?signer=${signerA}&contract=${contractA}`)
+        await list(`?signer=${signerA}&marketplaceAddress=${marketplaceA}`)
       })
 
       it('should respond with the trades matching both', () => {
@@ -526,11 +526,33 @@ test('trades controller', function ({ components }) {
 
     describe('and first and skip are given', () => {
       beforeEach(async () => {
-        await list(`?contract=${contractA}&contract=${contractB}&contract=${contractC}&first=2&skip=1`)
+        await list(
+          `?marketplaceAddress=${marketplaceA}&marketplaceAddress=${marketplaceB}&marketplaceAddress=${marketplaceC}&first=2&skip=1`
+        )
       })
 
       it('should respond with that page and the count of every matching trade', () => {
         expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[1], tradeIds[2]], count: 4 })
+      })
+    })
+
+    describe('and only first is given', () => {
+      beforeEach(async () => {
+        await list(`?signer=${signerA}&first=1`)
+      })
+
+      it('should respond with the newest matches up to first and the count of every matching trade', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[0]], count: 2 })
+      })
+    })
+
+    describe('and only skip is given', () => {
+      beforeEach(async () => {
+        await list(`?signer=${signerB}&skip=1`)
+      })
+
+      it('should respond with every match after the skipped ones and the count of every matching trade', () => {
+        expect({ ids: ids(), count: body.data.count }).toEqual({ ids: [tradeIds[3]], count: 2 })
       })
     })
 
@@ -541,6 +563,19 @@ test('trades controller', function ({ components }) {
 
       it('should respond with an empty page and the count of every matching trade', () => {
         expect(body.data).toEqual({ data: [], count: 2 })
+      })
+    })
+
+    describe('and a marketplace address is not an address', () => {
+      beforeEach(async () => {
+        await list(`?marketplaceAddress=${marketplaceA}&marketplaceAddress=not-an-address`)
+      })
+
+      it('should respond with a 400 and the invalid parameter', () => {
+        expect({ status: response.status, body }).toEqual({
+          status: StatusCode.BAD_REQUEST,
+          body: { ok: false, message: 'The value of the marketplaceAddress parameter is invalid: not-an-address' }
+        })
       })
     })
 

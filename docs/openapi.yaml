@@ -784,9 +784,10 @@ paths:
 
         **Filters** (optional, combined with AND):
         - `signer`: only trades signed by this address.
-        - `contract`: only trades for any of these contract addresses (repeat the parameter for several).
+        - `marketplaceAddress`: only trades settled by any of these marketplace contracts (repeat the parameter for several).
+          This is the marketplace contract the trade was signed for, not the address of a collection or NFT in its assets.
 
-        **Pagination** (optional): `first` and `skip`. Without `first` every matching trade is returned.
+        **Pagination** (optional): `first` and `skip`. Without `first` every matching trade after the first `skip` is returned.
 
         `count` is the total number of trades matching the filters, regardless of `first` and `skip`.
       operationId: getTrades
@@ -799,10 +800,12 @@ paths:
           schema:
             type: string
             pattern: '^0x[a-fA-F0-9]{40}$'
-        - name: contract
+        - name: marketplaceAddress
           in: query
           required: false
-          description: Contract address (case-insensitive). Repeat to match any of several, up to 100.
+          description: >-
+            Address of the marketplace contract the trade was signed for (case-insensitive), not a collection or NFT
+            contract. Repeat to match any of several, up to 100.
           style: form
           explode: true
           schema:
@@ -865,6 +868,7 @@ paths:
                               type: string
                             contract:
                               type: string
+                              description: Address of the marketplace contract the trade was signed for.
                             expires_at:
                               type: string
                               format: date-time
@@ -878,7 +882,7 @@ paths:
                         type: integer
                         description: Total number of trades matching the filters, regardless of first and skip.
         '400':
-          description: Invalid signer, contract, first or skip parameter
+          description: Invalid signer, marketplaceAddress, first or skip parameter
           content:
             application/json:
               schema:
