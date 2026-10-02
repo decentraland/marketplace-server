@@ -1,21 +1,7 @@
 import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event } from '@dcl/schemas'
 
-export type TradeListFilters = {
-  /** Lowercased signer address. */
-  signer?: string
-  /** Lowercased addresses of the marketplace contracts that settle the trade; a trade matches any of them. */
-  marketplaceAddresses?: string[]
-  first?: number
-  skip?: number
-}
-
 export type ITradesComponent = {
-  /**
-   * Lists trades, newest first.
-   * @param filters - Optional signer/marketplace address filters and first/skip pagination. Without `first` every match is returned.
-   * @returns The page of trades and the total number of trades matching the filters.
-   */
-  getTrades(filters?: TradeListFilters): Promise<{ data: DBTrade[]; count: number }>
+  getTrades(): Promise<{ data: DBTrade[]; count: number }>
   getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: Trade[] }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
