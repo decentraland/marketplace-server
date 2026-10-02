@@ -19,16 +19,37 @@ describe('when building the catalog queries', () => {
 
   describe('and building the v2 (with-trades) catalog query', () => {
     it('should not build the json_agg(assets) aggregate: it was never consumed and is expensive over all grouped trades', () => {
-      const text = getCollectionsItemsCatalogQueryWithTrades(filters).text
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
       expect(text).not.toContain('json_agg')
       expect(text).not.toContain('aggregated_assets')
     })
 
     it('should still compute the offchain order aggregates the query actually reads', () => {
-      const text = getCollectionsItemsCatalogQueryWithTrades(filters).text
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
       expect(text).toContain('nfts_listings_count')
       expect(text).toContain('open_item_trade_price')
       expect(text).toContain('item_first_listed_at')
+    })
+
+    // id, price and paused ride in one MAX key, so they always describe the same trade: unpaused first, then newest.
+    it('should pick the open item trade by a single key that sorts unpaused trades first, then the newest', () => {
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
+      expect(text).toContain(
+        "MAX((CASE WHEN paused THEN '0' ELSE '1' END || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS') || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\") FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_key"
+      )
+    })
+
+    it('should read the id, price and paused flag of that trade off its key', () => {
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
+      expect(text).toContain('substr(grouped_trades.open_item_trade_key, 22, 36) AS open_item_trade_id')
+      expect(text).toContain("NULLIF(split_part(grouped_trades.open_item_trade_key, '|', 2), '')::numeric AS open_item_trade_price")
+      expect(text).toContain("left(grouped_trades.open_item_trade_key, 1) = '0' AS open_item_trade_paused")
+    })
+
+    // Product decision: a paused listing keeps counting towards the item's prices and listing counts.
+    it('should not exclude paused trades from the offchain order aggregates', () => {
+      const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
+      expect(text).not.toMatch(/NOT\s+paused|paused\s*=\s*false/)
     })
   })
 
@@ -76,14 +97,14 @@ describe('when building the search text query', () => {
 
 describe('when building the trades CTE', () => {
   it('should not restrict the trades when no item ids are given', () => {
-    const text = getTradesCTE().text
+    const text = getTradesCTE({ pausedContracts: [] }).text
 
     expect(text).not.toContain('trade_items')
     expect(text).not.toContain('WHERE')
   })
 
   it('should restrict the trades to the given items so the whole view is not materialized', () => {
-    const query = getTradesCTE({ itemIds: ['0xabc-1', '0xabc-2'] })
+    const query = getTradesCTE({ itemIds: ['0xabc-1', '0xabc-2'], pausedContracts: [] })
 
     expect(query.text).toContain('EXISTS')
     expect(query.text).toContain('trade_items.collection_id = mv_trades.contract_address_sent')
@@ -92,15 +113,47 @@ describe('when building the trades CTE', () => {
     expect(query.values).toEqual([['0xabc-1', '0xabc-2']])
   })
 
+  describe('and no marketplace contract is paused', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = getTradesCTE({ pausedContracts: [] }).text
+    })
+
+    it('should flag every trade as not paused without reading any status table', () => {
+      expect(text).toContain('SELECT mv_trades.*, false AS paused from marketplace.mv_trades')
+    })
+  })
+
+  describe('and a marketplace contract is paused', () => {
+    let text: string
+    let values: unknown[]
+
+    beforeEach(() => {
+      const query = getTradesCTE({ pausedContracts: [{ address: '0xabc', network: 'MATIC' }] })
+      text = query.text
+      values = query.values
+    })
+
+    it('should flag the trades whose contract and network are in the paused set', () => {
+      expect(text).toContain(
+        "SELECT mv_trades.*, (LOWER(mv_trades.trade_contract) || '-' || mv_trades.network) = ANY($1::text[]) AS paused"
+      )
+    })
+
+    it('should bind the paused set as contract-network keys', () => {
+      expect(values).toEqual([['0xabc-MATIC']])
+    })
+  })
+
   it('should ignore an empty item id list rather than emitting an unsatisfiable condition', () => {
-    expect(getTradesCTE({ itemIds: [] }).text).not.toContain('trade_items')
+    expect(getTradesCTE({ itemIds: [], pausedContracts: [] }).text).not.toContain('trade_items')
   })
 
   it('should keep the category filter and the recently-listed window working alongside an item restriction', () => {
-    const text = getTradesCTE({ itemIds: ['0xabc-1'], category: 'wearable' as never }).text
+    const text = getTradesCTE({ itemIds: ['0xabc-1'], category: 'wearable' as never, pausedContracts: [] }).text
 
-    expect(text).toContain('sent_nft_category')
-    expect(text.indexOf('WHERE')).toBeLessThan(text.indexOf('AND'))
+    expect(text).toMatch(/WHERE sent_nft_category = \$\d+\s+AND EXISTS/)
   })
 })
 

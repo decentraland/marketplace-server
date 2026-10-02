@@ -1,4 +1,5 @@
-import { CatalogFilters, CatalogSortBy, CatalogSortDirection, Item } from '@dcl/schemas'
+import { CatalogFilters, CatalogSortBy, CatalogSortDirection } from '@dcl/schemas'
+import { ItemWithPause } from '../items/types'
 
 export type CollectionsItemDBResult = {
   total?: number // for UNION queries, this field will be defined
@@ -24,6 +25,7 @@ export type CollectionsItemDBResult = {
   max_listing_price: string | null
   open_item_trade_id: string | null
   open_item_trade_price: string | null
+  open_item_trade_paused?: boolean | null // absent on the trade-less /v1/catalog query
   listings_count: number | null
   owners_count: number | null
   min_price: string
@@ -57,6 +59,6 @@ export interface ICatalogComponent {
   fetch(
     filters: CatalogOptions,
     { searchId, anonId }: { searchId: string; anonId: string; isV2?: boolean }
-  ): Promise<{ data: Item[]; total: number }>
+  ): Promise<{ data: ItemWithPause[]; total: number }>
   updateBuilderServerItemsView(): Promise<void>
 }

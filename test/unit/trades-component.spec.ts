@@ -12,7 +12,8 @@ import {
   Events,
   NFTCategory,
   Rarity,
-  Event
+  Event,
+  ListingStatus
 } from '@dcl/schemas'
 import { ContractName, getContract } from 'decentraland-transactions'
 import { fromDbTradeAndDBTradeAssetWithValueListToTrade } from '../../src/adapters/trades/trades'
@@ -32,14 +33,23 @@ import {
 import {
   InvalidEstateTrade,
   InvalidTradeSignatureError,
+  MarketplaceContractPausedError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
+  TradeNetworkMismatchError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
-import { getInsertTradeAssetQuery, getInsertTradeAssetValueByTypeQuery, getInsertTradeQuery } from '../../src/ports/trades/queries'
+import {
+  getInsertTradeAssetQuery,
+  getInsertTradeAssetValueByTypeQuery,
+  getInsertTradeQuery,
+  getMarketplaceContractPausedQuery,
+  getTradeStatusByIdQuery
+} from '../../src/ports/trades/queries'
 import * as utils from '../../src/ports/trades/utils'
 import { createTestLogsComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 let mockTrade: TradeCreation
 let mockSigner: string
@@ -135,7 +145,8 @@ describe('when adding a new trade', () => {
       dappsDatabase: mockPg,
       eventPublisher: mockEventPublisher,
       logs,
-      shopNotifier: mockShopNotifier
+      shopNotifier: mockShopNotifier,
+      contractStatus: createContractStatusMockedComponent()
     })
   })
 
@@ -162,6 +173,34 @@ describe('when adding a new trade', () => {
     })
     it('should throw a TradeEffectiveAfterExpirationError', async () => {
       await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new TradeEffectiveAfterExpirationError())
+    })
+  })
+
+  describe('when the network does not match the chain id', () => {
+    beforeEach(() => {
+      mockTrade = { ...mockTrade, network: Network.MATIC, chainId: ChainId.ETHEREUM_MAINNET }
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+    })
+
+    it('should reject the trade with a TradeNetworkMismatchError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
+        new TradeNetworkMismatchError(Network.MATIC, ChainId.ETHEREUM_MAINNET)
+      )
+    })
+
+    it('should not run the duplicate checks', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(utils.validateTradeByType).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the chain id is not one the marketplace runs on', () => {
+    beforeEach(() => {
+      mockTrade = { ...mockTrade, chainId: 999999 as ChainId }
+    })
+
+    it('should reject the trade with a TradeNetworkMismatchError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(TradeNetworkMismatchError)
     })
   })
 
@@ -213,6 +252,51 @@ describe('when adding a new trade', () => {
     })
   })
 
+  describe('when the marketplace contract the trade resolves to is paused', () => {
+    let queryMock: jest.Mock
+    let withTransactionMock: jest.Mock
+
+    beforeEach(() => {
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      queryMock = jest.fn().mockResolvedValueOnce({ rows: [{ paused: true }], rowCount: 1 })
+      withTransactionMock = jest.fn()
+      mockPg.query = queryMock
+      mockPg.withTransaction = withTransactionMock
+    })
+
+    it('should reject the trade with a MarketplaceContractPausedError', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
+        new MarketplaceContractPausedError(signatureMatch.contract.address, mockTrade.network)
+      )
+    })
+
+    it('should look the status up for the resolved contract and the trade network', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(queryMock).toHaveBeenCalledWith(getMarketplaceContractPausedQuery(signatureMatch.contract.address, mockTrade.network))
+    })
+
+    it('should not store the trade', async () => {
+      await tradesComponent.addTrade(mockTrade, mockSigner).catch(() => undefined)
+      expect(withTransactionMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the marketplace contract the trade resolves to was unpaused', () => {
+    beforeEach(() => {
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      ;(mockPg.query as jest.Mock).mockResolvedValueOnce({ rows: [{ paused: false }], rowCount: 1 })
+      ;(mockPg.withTransaction as jest.Mock).mockRejectedValueOnce(new Error('stop after the pause check'))
+    })
+
+    it('should go on to store the trade', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow('stop after the pause check')
+    })
+  })
+
   describe('when the trade passes all validations', () => {
     let mockPgQuery: jest.Mock
     let insertedTrade: DBTrade
@@ -227,6 +311,8 @@ describe('when adding a new trade', () => {
       jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue(signatureMatch)
       jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
       jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+      // No contract_status row: the marketplace was never paused.
+      ;(mockPg.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 })
       mockPgQuery = jest.fn()
       ;(mockPg.withTransaction as jest.Mock).mockImplementation((fn, _onError) => fn({ query: mockPgQuery }))
 
@@ -360,7 +446,8 @@ describe('when getting a trade', () => {
         dappsDatabase: mockPg,
         eventPublisher: mockEventPublisher,
         logs,
-        shopNotifier: mockShopNotifier
+        shopNotifier: mockShopNotifier,
+        contractStatus: createContractStatusMockedComponent()
       })
     })
 
@@ -372,6 +459,7 @@ describe('when getting a trade', () => {
   describe('when there is a trade with the given id', () => {
     let assets: (DBTrade & DBTradeAssetWithValue)[]
     let trade: Trade
+    let mockQuery: jest.Mock
 
     beforeEach(() => {
       trade = {
@@ -462,7 +550,8 @@ describe('when getting a trade', () => {
         start: jest.fn(),
         stop: jest.fn(),
         streamQuery: jest.fn(),
-        query: jest.fn().mockResolvedValue({ rows: assets, rowCount: 2 })
+        // Each context below sets mockQuery after this runs.
+        query: jest.fn((...args: unknown[]) => mockQuery(...args))
       }
       const mockEventPublisher = {
         publishMessage: jest.fn()
@@ -472,12 +561,143 @@ describe('when getting a trade', () => {
         dappsDatabase: mockPg,
         eventPublisher: mockEventPublisher,
         logs,
-        shopNotifier: mockShopNotifier
+        shopNotifier: mockShopNotifier,
+        contractStatus: createContractStatusMockedComponent()
       })
     })
 
-    it('should return trade', async () => {
-      await expect(tradesComponent.getTrade('1')).resolves.toEqual(trade)
+    describe('and it is open on a marketplace that is not paused', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.OPEN, paused: false }], rowCount: 1 })
+      })
+
+      it('should return the trade with its status and not paused', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, isPaused: false })
+      })
+
+      it('should compute the status with the query for the trade type and id', async () => {
+        await tradesComponent.getTrade('1')
+        expect(mockQuery).toHaveBeenNthCalledWith(2, getTradeStatusByIdQuery(TradeType.BID, '1', []))
+      })
+    })
+
+    describe('and its marketplace contract is paused', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.OPEN, paused: true }], rowCount: 1 })
+      })
+
+      it('should return the trade as open and paused', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.OPEN, isPaused: true })
+      })
+    })
+
+    describe('and it was cancelled', () => {
+      beforeEach(() => {
+        mockQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: assets, rowCount: 2 })
+          .mockResolvedValueOnce({ rows: [{ status: ListingStatus.CANCELLED, paused: false }], rowCount: 1 })
+      })
+
+      it('should return the trade with the cancelled status', async () => {
+        await expect(tradesComponent.getTrade('1')).resolves.toEqual({ ...trade, status: ListingStatus.CANCELLED, isPaused: false })
+      })
+    })
+  })
+})
+
+describe('when getting the trades of an address', () => {
+  let tradesComponent: ITradesComponent
+  let mockQuery: jest.Mock
+  let result: Awaited<ReturnType<ITradesComponent['getTradesByAddress']>>
+
+  function assetRow(tradeId: string, contract: string) {
+    return {
+      trade_id: tradeId,
+      trade_chain_id: ChainId.MATIC_AMOY,
+      trade_checks: {},
+      trade_created_at: new Date(1000),
+      trade_effective_since: new Date(1000),
+      trade_expires_at: new Date(2000),
+      trade_network: Network.MATIC,
+      trade_signature: '0xsig',
+      trade_signer: '0xuser',
+      trade_type: TradeType.PUBLIC_ITEM_ORDER,
+      trade_contract: contract,
+      asset_id: `${tradeId}-asset`,
+      asset_type: TradeAssetType.ERC20,
+      asset_beneficiary: '0xuser',
+      asset_contract_address: '0xmana',
+      asset_direction: TradeAssetDirection.RECEIVED,
+      asset_extra: '0x',
+      asset_trade_id: tradeId,
+      asset_created_at: new Date(1000),
+      token_id: null,
+      amount: '10',
+      item_id: null
+    }
+  }
+
+  beforeEach(async () => {
+    mockQuery = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [assetRow('paused-trade', '0xPAUSED'), assetRow('live-trade', '0xlive')], rowCount: 2 })
+    tradesComponent = createTradesComponent({
+      dappsDatabase: { query: mockQuery } as unknown as IPgComponent,
+      eventPublisher: { publishMessage: jest.fn() },
+      logs: createTestLogsComponent({
+        getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
+      }),
+      shopNotifier: { notifyItemOnSale: jest.fn() },
+      contractStatus: createContractStatusMockedComponent([{ address: '0xpaused', network: Network.MATIC }])
+    })
+    result = await tradesComponent.getTradesByAddress('0xuser')
+  })
+
+  it('should flag each trade with whether its marketplace is paused', () => {
+    expect(result.data.map(trade => [trade.id, trade.isPaused])).toEqual([
+      ['paused-trade', true],
+      ['live-trade', false]
+    ])
+  })
+})
+
+describe('when getting every trade', () => {
+  let tradesComponent: ITradesComponent
+  let rows: { id: string; contract: string; network: string }[]
+  let result: Awaited<ReturnType<ITradesComponent['getTrades']>>
+
+  beforeEach(async () => {
+    rows = [
+      { id: '1', contract: '0xPAUSED', network: Network.MATIC },
+      { id: '2', contract: '0xpaused', network: Network.ETHEREUM }
+    ]
+    tradesComponent = createTradesComponent({
+      dappsDatabase: { query: jest.fn().mockResolvedValueOnce({ rows, rowCount: 2 }) } as unknown as IPgComponent,
+      eventPublisher: { publishMessage: jest.fn() },
+      logs: createTestLogsComponent({
+        getLogger: jest.fn().mockReturnValue({ error: () => undefined, info: () => undefined, warn: () => undefined })
+      }),
+      shopNotifier: { notifyItemOnSale: jest.fn() },
+      contractStatus: createContractStatusMockedComponent([{ address: '0xpaused', network: Network.MATIC }])
+    })
+    result = await tradesComponent.getTrades()
+  })
+
+  // The same address on another network is a different deployment.
+  it('should flag each raw row by its contract and network, and return the count', () => {
+    expect(result).toEqual({
+      data: [
+        { ...rows[0], paused: true },
+        { ...rows[1], paused: false }
+      ],
+      count: 2
     })
   })
 })

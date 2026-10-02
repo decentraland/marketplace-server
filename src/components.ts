@@ -21,6 +21,7 @@ import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/compon
 import { createBidsComponents } from './ports/bids'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createCollectionsComponent } from './ports/collections/component'
+import { createContractStatusComponent } from './ports/contract-status'
 import { createContractsComponent } from './ports/contracts/component'
 import { createCouponsComponent } from './ports/coupons'
 import { COUPON_STATE_REFRESH_INTERVAL_MS } from './ports/coupons/types'
@@ -145,6 +146,8 @@ export async function initComponents(): Promise<AppComponents> {
   const rentalsSubgraph = await createSubgraphComponent({ logs, config, fetch, metrics }, RENTALS_SUBGRAPH_URL)
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
 
+  const contractStatus = await createContractStatusComponent({ dappsDatabase: dappsReadDatabase, config, logs })
+
   // favorites stuff
   const schemaValidator = await createSchemaValidatorComponent()
 
@@ -152,7 +155,7 @@ export async function initComponents(): Promise<AppComponents> {
   const inMemoryCache = await createInMemoryCacheComponent() // Used for caching data that should not be stored in Redis
 
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase, contractStatus })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -163,8 +166,11 @@ export async function initComponents(): Promise<AppComponents> {
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
 
   // catalog
-  const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
-  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const catalog = await createCatalogComponent(
+    { dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks, contractStatus },
+    SEGMENT_WRITE_KEY
+  )
+  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs, contractStatus })
   const creatorProfiles = await createCreatorProfilesComponent({
     config,
     logs,
@@ -172,11 +178,19 @@ export async function initComponents(): Promise<AppComponents> {
     dappsDatabase: dappsReadDatabase,
     dappsWriteDatabase
   })
-  const suggestions = await createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs, config })
+  const suggestions = await createSuggestionsComponent({
+    dappsDatabase: dappsReadDatabase,
+    shopCatalog,
+    lists,
+    cache,
+    logs,
+    config,
+    contractStatus
+  })
   const manaUsdRate = await createManaUsdRateComponent({ config, logs })
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const searchSuggest = createSearchSuggestComponent({ dappsDatabase: dappsReadDatabase, items, creatorProfiles, manaUsdRate })
-  const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
+  const trades = await createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier, contractStatus })
   // Trailing flush for the debounced trades materialized view refresh: any write that
   // arrived while the leading-edge debounce gate was closed only marks the state row
   // dirty, so this reflects it within one interval instead of waiting for an unrelated
@@ -292,17 +306,17 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
-  const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
-  const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
-  const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase, contractStatus })
+  const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals, contractStatus })
+  const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase, contractStatus })
   const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
-  const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
+  const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase, contractStatus })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
-  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
+  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase, contractStatus })
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
@@ -371,6 +385,7 @@ export async function initComponents(): Promise<AppComponents> {
     nfts,
     orders,
     contracts,
+    contractStatus,
     collections,
     accounts,
     owners,

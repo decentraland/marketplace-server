@@ -14,7 +14,9 @@ import {
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { collectionProof } from '../../logic/coupons/merkle'
 import { getCouponMarketplacePairings } from '../../logic/coupons/signature'
+import { getPausedExpression } from '../../logic/trades/contract-status'
 import { AppComponents } from '../../types'
+import { PausedContract } from '../contract-status/types'
 // The SAME window helper the marketplace's /v1/trendings row uses. Imported rather than reimplemented so the
 // two rows provably span the same slice of history — a second copy of "midnight, N days ago" is exactly the
 // kind of thing that drifts by an hour and makes the two rows quietly disagree.
@@ -136,6 +138,11 @@ function metadataJoinsOn() {
 function metadataJoins() {
   return SQL`FROM marketplace.mv_trades mv
       `.append(metadataJoinsOn())
+}
+
+// The listing's marketplace pause flag.
+function pausedColumn(pausedContracts: PausedContract[]): SQLStatement {
+  return getPausedExpression(pausedContracts, 'mv.trade_contract', 'mv.network').append(SQL` AS paused`)
 }
 
 /**
@@ -538,8 +545,9 @@ function unifiedBranch(opts: {
   filters: UnifiedCatalogFilters
   /** Whether creator coupons can discount this branch. Only native primaries: the coupon contract mints collection items. */
   withCoupons: boolean
+  pausedContracts: PausedContract[]
 }): SQLStatement {
-  const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters, withCoupons } = opts
+  const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters, withCoupons, pausedContracts } = opts
   const isStore = acquisition === 'store'
   const usdWei = applyRate
     ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)`
@@ -593,6 +601,9 @@ function unifiedBranch(opts: {
     .append(withCoupons ? couponColumns() : nullCouponColumns())
     .append(SQL`, `)
     .append(genderExpr())
+    // A store mint is not a trade, so no marketplace pause applies to it.
+    .append(SQL`, `)
+    .append(isStore ? SQL`false AS paused` : pausedColumn(pausedContracts))
     // Search columns ride along on every branch alike, so the UNION lines up and the level filter above it
     // can read them off the merged set.
     .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -647,7 +658,7 @@ function unifiedBranch(opts: {
 // The two STORE branches keep `primaryOnly: true` for the record, but it is inert there: `unifiedBranch`
 // returns before reading it for a store relation, which is primary by construction (it aliases
 // `'public_item_order'` as its own `type`).
-function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
+function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: string, pausedContracts: PausedContract[]): SQLStatement {
   const parts: SQLStatement[] = []
   if (filters.source !== 'legacy') {
     parts.push(
@@ -659,7 +670,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         applyRate: false,
         rateNumericString,
         filters,
-        withCoupons: true
+        withCoupons: true,
+        pausedContracts
       })
     )
   }
@@ -673,7 +685,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         applyRate: true,
         rateNumericString,
         filters,
-        withCoupons: false
+        withCoupons: false,
+        pausedContracts
       })
     )
     // CollectionStore mints. `source: 'legacy'` because they are MANA-priced and must inherit the legacy
@@ -690,7 +703,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         applyRate: true,
         rateNumericString,
         filters,
-        withCoupons: false
+        withCoupons: false,
+        pausedContracts
       })
     )
   }
@@ -720,8 +734,12 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
 // Shared by the browse feed and the related-items rail so the rail is drawn from exactly the same universe,
 // grouping and headline-price rules as the grid it is meant to mirror -- a divergence here would show the
 // same item at two different prices on two screens.
-export function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumericString: string): SQLStatement {
-  const inner = buildUnifiedInner(filters, rateNumericString)
+export function buildItemUnifiedCore(
+  filters: UnifiedCatalogFilters,
+  rateNumericString: string,
+  pausedContracts: PausedContract[]
+): SQLStatement {
+  const inner = buildUnifiedInner(filters, rateNumericString, pausedContracts)
 
   return SQL`SELECT DISTINCT ON (f.contract_address, f.item_id)
           f.*,
@@ -817,7 +835,8 @@ function mapUnifiedRow(
     available: r.available ? Number(r.available) : 1,
     network: isPolygon ? Network.MATIC : Network.ETHEREUM,
     chainId: isPolygon ? polygonChainId : ethereumChainId,
-    createdAt: Number(r.created_at)
+    createdAt: Number(r.created_at),
+    isPaused: r.paused
   }
 }
 
@@ -885,8 +904,10 @@ function unifiedOrderBy(sortBy: ShopSortBy, alias: string): SQLStatement {
   }
 }
 
-export function createShopCatalogComponent(components: Pick<AppComponents, 'dappsDatabase' | 'logs'>): IShopCatalogComponent {
-  const { dappsDatabase: pg } = components
+export function createShopCatalogComponent(
+  components: Pick<AppComponents, 'dappsDatabase' | 'logs' | 'contractStatus'>
+): IShopCatalogComponent {
+  const { dappsDatabase: pg, contractStatus } = components
   const logger = components.logs.getLogger('shop-catalog-component')
   // A dropped coupon is a sale the buyer will not see; every feed logs it the same way.
   const warn = (message: string) => logger.warn(message)
@@ -928,6 +949,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
+      .append(SQL`, `)
+      .append(pausedColumn(contractStatus.getPausedContracts()))
       .append(SQL`, `)
       .append(couponColumns())
       .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -1085,7 +1108,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
+        createdAt: Number(r.created_at),
+        isPaused: r.paused
       })
     }
 
@@ -1114,8 +1138,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ) AS wearable_category,
         mv.amount_received::text AS mana_wei,
         mv.available::text AS available,
-        mv.network AS network
+        mv.network AS network,
       `
+      .append(pausedColumn(contractStatus.getPausedContracts()))
+      .append(SQL` `)
       .append(metadataJoins())
       .append(
         SQL`
@@ -1150,7 +1176,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         manaWei: r.mana_wei,
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
-        chainId: isPolygon ? polygonChainId : ethereumChainId
+        chainId: isPolygon ? polygonChainId : ethereumChainId,
+        isPaused: r.paused
       }
     })
   }
@@ -1185,6 +1212,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
+      .append(SQL`, `)
+      .append(pausedColumn(contractStatus.getPausedContracts()))
       .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
       .append(SQL` `)
       .append(metadataJoins())
@@ -1271,7 +1300,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         available: r.available ? Number(r.available) : 1,
         network: isPolygon ? Network.MATIC : Network.ETHEREUM,
         chainId: isPolygon ? polygonChainId : ethereumChainId,
-        createdAt: Number(r.created_at)
+        createdAt: Number(r.created_at),
+        isPaused: r.paused
       }
     })
 
@@ -1292,7 +1322,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
     // Build only the requested branch(es); default is both, UNION ALL-ed together.
-    const inner = buildUnifiedInner(filters, rateNumericString)
+    const inner = buildUnifiedInner(filters, rateNumericString, contractStatus.getPausedContracts())
 
     // Wrap the union so priceCredits, the price-range filter and the sort operate on the merged set. With a
     // search the total is counted above the level filter (see applySearchLevel), not here.
@@ -1366,7 +1396,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       FROM (
         `
       )
-      .append(buildItemUnifiedCore(filters, rateNumericString))
+      .append(buildItemUnifiedCore(filters, rateNumericString, contractStatus.getPausedContracts()))
       .append(
         SQL`
       ) d
@@ -1465,7 +1495,8 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         includeLegacySecondary: filters.includeLegacySecondary,
         listingType: filters.listingType
       },
-      rateNumericString
+      rateNumericString,
+      contractStatus.getPausedContracts()
     )
 
     const query = SQL`
@@ -1555,7 +1586,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         FROM (
           `
       )
-      .append(buildItemUnifiedCore(filters, rateNumericString)).append(SQL`
+      .append(buildItemUnifiedCore(filters, rateNumericString, contractStatus.getPausedContracts())).append(SQL`
         ) d
         JOIN sales_window w ON w.contract_address = d.contract_address AND w.item_id = d.item_id
         WHERE d.usd_wei > 0

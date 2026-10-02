@@ -1,10 +1,11 @@
-import { ChainId, Event, Events, Trade, TradeCreation } from '@dcl/schemas'
+import { ChainId, Event, Events, ListingStatus, Network, Trade, TradeCreation } from '@dcl/schemas'
 import {
   addTradeHandler,
   getTradeAcceptedEventHandler,
   getTradeHandler,
   recreateTradesMaterializedViewHandler
 } from '../../src/controllers/handlers/trades-handler'
+import { TradeWithStatus } from '../../src/ports/trades'
 import {
   DuplicatedBidError,
   DuplicateNFTOrderError,
@@ -13,9 +14,11 @@ import {
   InvalidEstateTrade,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
+  MarketplaceContractPausedError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
+  TradeNetworkMismatchError,
   TradeNotFoundBySignatureError,
   TradeNotFoundError
 } from '../../src/ports/trades/errors'
@@ -99,13 +102,23 @@ describe('when handling the creation of a new trade', () => {
       { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'EstateTradeWithoutFingerprintError', error: new InvalidEstateTrade(), code: StatusCode.BAD_REQUEST },
       {
+        errorName: 'TradeNetworkMismatchError',
+        error: new TradeNetworkMismatchError(Network.MATIC, ChainId.ETHEREUM_MAINNET),
+        code: StatusCode.BAD_REQUEST
+      },
+      {
         errorName: 'EstateContractNotFoundForChainId',
         error: new EstateContractNotFoundForChainId(ChainId.AVALANCHE_MAINNET),
         code: StatusCode.BAD_REQUEST
       },
       { errorName: 'DuplicatedBidError', error: new DuplicatedBidError(), code: StatusCode.CONFLICT },
       { errorName: 'DuplicateNFTOrderError', error: new DuplicateNFTOrderError(), code: StatusCode.CONFLICT },
-      { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT }
+      { errorName: 'DuplicateItemOrderError', error: new DuplicateItemOrderError(), code: StatusCode.CONFLICT },
+      {
+        errorName: 'MarketplaceContractPausedError',
+        error: new MarketplaceContractPausedError('0xmarketplace', Network.MATIC),
+        code: StatusCode.CONFLICT
+      }
     ])('and the error is an instance of $errorName', ({ error, code }) => {
       beforeEach(() => {
         body = { type: 'bid' } as TradeCreation
@@ -157,10 +170,10 @@ describe('when handling the retrieval of a trade', () => {
   let context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
 
   describe('and the trade exists', () => {
-    let trade: Trade
+    let trade: TradeWithStatus
 
     beforeEach(() => {
-      trade = { id: 'trade-id' } as Trade
+      trade = { id: 'trade-id', status: ListingStatus.OPEN, isPaused: true } as TradeWithStatus
 
       context = {
         params: {
@@ -180,7 +193,7 @@ describe('when handling the retrieval of a trade', () => {
       }
     })
 
-    it('should return trade', async () => {
+    it('should return the trade with its status and paused flag', async () => {
       const result = await getTradeHandler(context)
       expect(result).toEqual({
         status: StatusCode.OK,

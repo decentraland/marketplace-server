@@ -3,6 +3,7 @@ import { OrderFilters, OrderSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { getWhereStatementFromFilters } from '../utils'
 
 function getOrdersSortByStatement(filters: OrderFilters): SQLStatement {
@@ -67,7 +68,8 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
       EXTRACT(EPOCH FROM created_at) as created_at,
       EXTRACT(EPOCH FROM created_at) as updated_at,
       EXTRACT(EPOCH FROM expires_at) as expires_at,
-      network
+      network,
+      paused
     FROM (`
       .append(SQL`SELECT * FROM unified_trades WHERE type = 'public_nft_order' AND status = 'open'`)
       // NOTE: broken-by-upgrade Estate orders are intentionally NOT filtered here.
@@ -80,6 +82,7 @@ export function getTradesOrdersQuery(filters: OrderFilters & { nftIds?: string[]
   )
 }
 
+// Legacy orders are on-chain and never pass through the off-chain marketplace, so they are never paused.
 export function getLegacyOrdersQuery(): string {
   return `
     SELECT
@@ -102,7 +105,8 @@ export function getLegacyOrdersQuery(): string {
       ord.created_at,
       ord.updated_at,
       ord.expires_at,
-      ord.network
+      ord.network,
+      false as paused
     FROM ${MARKETPLACE_SQUID_SCHEMA}."order" ord
     JOIN ${MARKETPLACE_SQUID_SCHEMA}."nft" nft ON ord.nft_id = nft.id AND nft.owner_address = ord.owner`
 }
@@ -194,11 +198,15 @@ export function getOrderAndTradeQueries(filters: OrderFilters & { nftIds?: strin
 }
 
 // The original getOrdersQuery can now use the new function if needed
-export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, prefix = 'combined_orders'): SQLStatement {
+export function getOrdersQuery(
+  filters: OrderFilters & { nftIds?: string[] },
+  pausedContracts: PausedContract[],
+  prefix = 'combined_orders'
+): SQLStatement {
   const { orderTradesQuery, legacyOrdersQuery } = getOrderAndTradeQueries(filters)
 
   const { first, skip } = filters
-  return getTradesCTE({ first, skip }).append(
+  return getTradesCTE({ first, skip, pausedContracts }).append(
     SQL`
     SELECT `
       .append(prefix)
@@ -222,10 +230,10 @@ export function getOrdersQuery(filters: OrderFilters & { nftIds?: string[] }, pr
   )
 }
 
-export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }): SQLStatement {
+export function getOrdersCountQuery(filters: OrderFilters & { nftIds?: string[] }, pausedContracts: PausedContract[]): SQLStatement {
   const { orders: ordersFilters, trades: tradesFilters } = getOrdersAndTradesFilters(filters)
 
-  return getTradesCTE({ first: filters.first, skip: filters.skip }).append(
+  return getTradesCTE({ first: filters.first, skip: filters.skip, pausedContracts }).append(
     SQL`
     ,aggregated_counts AS (
       SELECT 

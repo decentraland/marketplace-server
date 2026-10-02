@@ -410,7 +410,8 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
         network: SquidNetwork.ETHEREUM,
         item_id: '123',
         issued_id: '123',
-        trade_id: '123'
+        trade_id: '123',
+        paused: false
       },
       {
         id: '2',
@@ -430,7 +431,8 @@ describe('fromNFTsAndOrdersToNFTsResult', () => {
         network: SquidNetwork.ETHEREUM,
         item_id: '456',
         issued_id: '456',
-        trade_id: '456'
+        trade_id: '456',
+        paused: false
       }
     ]
 

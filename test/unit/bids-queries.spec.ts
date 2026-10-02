@@ -38,7 +38,7 @@ function extractColumnAliases(sql: string): string[] {
 
 describe('when checking UNION ALL column alignment', () => {
   it('should have getBidTradesQuery and getLegacyBidsQuery output identical columns in BID_COLUMNS order', () => {
-    const tradeColumns = extractColumnAliases(getBidTradesQuery())
+    const tradeColumns = extractColumnAliases(getBidTradesQuery([]).text)
     const legacyColumns = extractColumnAliases(getLegacyBidsQuery())
 
     // Length check as a failsafe — catches parser regressions before the deep-equal
@@ -51,18 +51,18 @@ describe('when checking UNION ALL column alignment', () => {
 
 describe('when querying for bids', () => {
   it('should use UNION ALL instead of NATURAL FULL OUTER JOIN', () => {
-    const query = getBidsQuery({})
+    const query = getBidsQuery({}, [])
     expect(query.text).toContain('UNION ALL')
     expect(query.text).not.toContain('NATURAL FULL OUTER JOIN')
   })
 
   it('should only query the ones not expired', () => {
-    const query = getBidsQuery({})
+    const query = getBidsQuery({}, [])
     expect(query.text).toContain('expires_at > now()::timestamptz(3)')
   })
 
   describe('and limit and offset are defined', () => {
-    const query = getBidsQuery({ offset: 2, limit: 1 })
+    const query = getBidsQuery({ offset: 2, limit: 1 }, [])
     expect(query.text).toContain('LIMIT')
     expect(query.text).toContain('OFFSET')
     expect(query.values).toEqual(expect.arrayContaining([1, 2]))
@@ -70,7 +70,7 @@ describe('when querying for bids', () => {
 
   describe('and the bidder filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ bidder: '0x1', offset: 1, limit: 1 })
+      const query = getBidsQuery({ bidder: '0x1', offset: 1, limit: 1 }, [])
       expect(query.text).toContain('LOWER(bidder) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['0x1']))
     })
@@ -78,7 +78,7 @@ describe('when querying for bids', () => {
 
   describe('and the seller filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ seller: '0x12', offset: 1, limit: 1 })
+      const query = getBidsQuery({ seller: '0x12', offset: 1, limit: 1 }, [])
       expect(query.text).toContain('LOWER(seller) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['0x12']))
     })
@@ -86,7 +86,7 @@ describe('when querying for bids', () => {
 
   describe('and the contract address filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ contractAddress: '0x123', offset: 1, limit: 1 })
+      const query = getBidsQuery({ contractAddress: '0x123', offset: 1, limit: 1 }, [])
       expect(query.text).toContain('contract_address = $1')
       expect(query.values).toEqual(expect.arrayContaining(['0x123']))
     })
@@ -94,7 +94,7 @@ describe('when querying for bids', () => {
 
   describe('and the token id filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ tokenId: 'a-token-id', offset: 1, limit: 1 })
+      const query = getBidsQuery({ tokenId: 'a-token-id', offset: 1, limit: 1 }, [])
       expect(query.text).toContain('LOWER(token_id) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['a-token-id']))
     })
@@ -102,13 +102,13 @@ describe('when querying for bids', () => {
 
   describe('and the item id filter is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 }, [])
       expect(query.text).toContain('LOWER(item_id) = LOWER($1)')
       expect(query.values).toEqual(expect.arrayContaining(['an-item-id']))
     })
 
     it('should exclude legacy bids with FALSE filter in the legacy branch WHERE clause', () => {
-      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 })
+      const query = getBidsQuery({ itemId: 'an-item-id', offset: 1, limit: 1 }, [])
       // Split the query at UNION ALL and verify FALSE appears only in the legacy (second) branch
       const parts = query.text.split('UNION ALL')
       expect(parts).toHaveLength(2)
@@ -120,7 +120,7 @@ describe('when querying for bids', () => {
   describe('and the network is defined', () => {
     describe('and the network is MATIC', () => {
       it('should add the filter to the query', () => {
-        const query = getBidsQuery({ network: Network.MATIC, offset: 1, limit: 1 })
+        const query = getBidsQuery({ network: Network.MATIC, offset: 1, limit: 1 }, [])
         expect(query.text).toContain('network = ANY ($1)')
         expect(query.values).toEqual(expect.arrayContaining([[Network.MATIC, SquidNetwork.POLYGON]]))
       })
@@ -128,7 +128,7 @@ describe('when querying for bids', () => {
 
     describe('and the network is ETHEREUM', () => {
       it('should add the filter to the query', () => {
-        const query = getBidsQuery({ network: Network.ETHEREUM, offset: 1, limit: 1 })
+        const query = getBidsQuery({ network: Network.ETHEREUM, offset: 1, limit: 1 }, [])
         expect(query.text).toContain('network = ANY ($1)')
         expect(query.values).toEqual(expect.arrayContaining([[Network.ETHEREUM, SquidNetwork.ETHEREUM]]))
       })
@@ -137,9 +137,33 @@ describe('when querying for bids', () => {
 
   describe('and the status is defined', () => {
     it('should add the filter to the query', () => {
-      const query = getBidsQuery({ status: ListingStatus.OPEN })
+      const query = getBidsQuery({ status: ListingStatus.OPEN }, [])
       expect(query.text).toContain('status = $1')
       expect(query.values).toEqual(expect.arrayContaining(['open']))
+    })
+  })
+
+  describe('and bids on a paused marketplace are excluded', () => {
+    let parts: string[]
+
+    beforeEach(() => {
+      parts = getBidsQuery({ status: ListingStatus.OPEN }, [], { excludePaused: true }).text.split('UNION ALL')
+    })
+
+    it('should filter out paused bids in both the trades and the legacy branches', () => {
+      expect(parts.map(part => part.includes('NOT paused'))).toEqual([true, true])
+    })
+  })
+
+  describe('and bids on a paused marketplace are not excluded', () => {
+    let text: string
+
+    beforeEach(() => {
+      text = getBidsQuery({ status: ListingStatus.OPEN }, []).text
+    })
+
+    it('should keep paused bids in the results', () => {
+      expect(text).not.toContain('NOT paused')
     })
   })
 })

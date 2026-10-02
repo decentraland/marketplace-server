@@ -7,6 +7,7 @@ import { FragmentItemType } from '../../src/ports/catalog/utils'
 import { IPicksComponent } from '../../src/ports/favorites/picks'
 import { AppComponents } from '../../src/types'
 import { createTestPgComponent } from '../components'
+import { createContractStatusMockedComponent } from '../mocks/contract-status-mock'
 
 jest.mock('@segment/analytics-node')
 
@@ -50,7 +51,10 @@ beforeEach(async () => {
   }
 
   segmentWriteKey = 'testSegmentWriteKey'
-  catalogComponent = await createCatalogComponent({ dappsDatabase, dappsWriteDatabase, picks }, segmentWriteKey)
+  catalogComponent = await createCatalogComponent(
+    { dappsDatabase, dappsWriteDatabase, picks, contractStatus: createContractStatusMockedComponent() },
+    segmentWriteKey
+  )
 })
 
 describe('Catalog Component', () => {

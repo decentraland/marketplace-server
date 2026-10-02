@@ -26,6 +26,7 @@ describe('when adapting a db bid to a bid', () => {
           fingerprint: '123',
           status: ListingStatus.OPEN,
           seller: '0x123',
+          paused: false,
           legacy_bid_id: null
         }
       })
@@ -48,6 +49,7 @@ describe('when adapting a db bid to a bid', () => {
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
           expiresAt: dbBid.expires_at.getTime(),
+          isPaused: false,
           tradeContractAddress: dbBid.trade_contract_address
         })
       })
@@ -72,6 +74,7 @@ describe('when adapting a db bid to a bid', () => {
           fingerprint: '123',
           status: ListingStatus.OPEN,
           seller: '0x123',
+          paused: false,
           legacy_bid_id: null
         }
       })
@@ -94,8 +97,38 @@ describe('when adapting a db bid to a bid', () => {
           chainId: dbBid.chain_id,
           contractAddress: dbBid.contract_address,
           expiresAt: dbBid.expires_at.getTime(),
+          isPaused: false,
           tradeContractAddress: dbBid.trade_contract_address
         })
+      })
+    })
+
+    describe('and its marketplace contract is paused', () => {
+      beforeEach(() => {
+        dbBid = {
+          bids_count: 1,
+          trade_id: '1',
+          trade_contract_address: '0x1',
+          price: '10',
+          token_id: 'token-id',
+          created_at: new Date(),
+          updated_at: new Date(),
+          network: Network.MATIC,
+          chain_id: ChainId.MATIC_AMOY,
+          bidder: '0x1',
+          contract_address: '0x1',
+          expires_at: new Date(),
+          item_id: null,
+          fingerprint: '123',
+          status: ListingStatus.OPEN,
+          seller: '0x123',
+          paused: true,
+          legacy_bid_id: null
+        }
+      })
+
+      it('should flag the bid as paused while keeping it open', () => {
+        expect(fromDBBidToBid(dbBid)).toEqual(expect.objectContaining({ isPaused: true, status: ListingStatus.OPEN }))
       })
     })
   })
@@ -119,6 +152,7 @@ describe('when adapting a db bid to a bid', () => {
         fingerprint: '123',
         status: ListingStatus.OPEN,
         seller: '0x123',
+        paused: false,
         legacy_bid_id: '0x123',
         bid_address: '0x1234',
         block_number: '1',
@@ -143,6 +177,7 @@ describe('when adapting a db bid to a bid', () => {
         chainId: dbBid.chain_id,
         contractAddress: dbBid.contract_address,
         expiresAt: dbBid.expires_at.getTime(),
+        isPaused: false,
         bidAddress: dbBid.bid_address,
         blockNumber: dbBid.block_number,
         blockchainId: dbBid.blockchain_id

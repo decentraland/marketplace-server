@@ -1,7 +1,8 @@
-import SQL from 'sql-template-strings'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
+import { PausedContract } from '../contract-status/types'
 import { getTradesForTypeQuery } from '../trades/queries'
 import { getWhereStatementFromFilters } from '../utils'
 
@@ -28,7 +29,8 @@ export const BID_COLUMNS = [
   'contract_address',
   'fingerprint',
   'seller',
-  'status'
+  'status',
+  'paused'
 ] as const
 
 export function getBidsSortByQuery(sortBy?: BidSortBy) {
@@ -44,10 +46,8 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
   }
 }
 
-export function getBidTradesQuery(): string {
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+export function getBidTradesQuery(pausedContracts: PausedContract[]): SQLStatement {
+  return SQL`
     SELECT
       id::text as trade_id,
       NULL::text as legacy_bid_id,
@@ -67,10 +67,14 @@ export function getBidTradesQuery(): string {
       assets -> 'received' ->> 'contract_address' as contract_address,
       assets -> 'received' ->> 'extra' as fingerprint,
 	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
-      status
-    FROM (${getTradesForTypeQuery(TradeType.BID)}) as trades`
+      status,
+      paused
+    FROM (`
+    .append(getTradesForTypeQuery(TradeType.BID, pausedContracts))
+    .append(SQL`) as trades`)
 }
 
+// Legacy bids are on-chain and never pass through the off-chain marketplace, so they are never paused.
 export function getLegacyBidsQuery(): string {
   // Important! This is handled as a string. If input values are later used in this query,
   // they should be sanitized, or the query should be rewritten as an SQLStatement
@@ -94,12 +98,18 @@ export function getLegacyBidsQuery(): string {
       nft_address as contract_address,
       '0x' || encode(fingerprint, 'hex') as fingerprint,
       '0x' || encode(seller, 'hex') as seller,
-      status
+      status,
+      false as paused
     FROM ${MARKETPLACE_SQUID_SCHEMA}.bid
   `
 }
 
-function getBidsAndTradesFilters(options: GetBidsParameters) {
+export type BidsQueryOptions = {
+  // Leave out bids on a paused marketplace; they cannot be accepted, so they must not block re-bidding elsewhere.
+  excludePaused?: boolean
+}
+
+function getBidsAndTradesFilters(options: GetBidsParameters, queryOptions: BidsQueryOptions) {
   const FILTER_BY_BIDDER = options.bidder ? SQL` LOWER(bidder) = LOWER(${options.bidder}) ` : null
   const FILTER_BY_SELLER = options.seller ? SQL` LOWER(seller) = LOWER(${options.seller}) ` : null
   const FILTER_BY_CONTRACT_ADDRESS = options.contractAddress ? SQL` contract_address = ${options.contractAddress.toLowerCase()} ` : null
@@ -107,6 +117,7 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   const FILTER_BY_NETWORK = options.network ? SQL` network = ANY (${getDBNetworks(options.network)}) ` : null
   const FILTER_BY_STATUS = options.status ? SQL` status = ${options.status} ` : null
   const FILTER_NOT_EXPIRED = SQL` expires_at > now()::timestamptz(3) `
+  const FILTER_NOT_PAUSED = queryOptions.excludePaused ? SQL` NOT paused ` : null
 
   // Note: these SQLStatement instances are shared by reference between the trades and legacy arrays.
   // This is safe because getWhereStatementFromFilters only appends them onto a separate accumulator
@@ -118,7 +129,8 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
     FILTER_BY_TOKEN_ID,
     FILTER_BY_NETWORK,
     FILTER_BY_STATUS,
-    FILTER_NOT_EXPIRED
+    FILTER_NOT_EXPIRED,
+    FILTER_NOT_PAUSED
   ]
 
   const FILTER_TRADE_BY_ITEM_ID = options.itemId ? SQL` LOWER(item_id) = LOWER(${options.itemId}) ` : null
@@ -131,11 +143,11 @@ function getBidsAndTradesFilters(options: GetBidsParameters) {
   }
 }
 
-export function getBidsQuery(options: GetBidsParameters) {
-  const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options)
+export function getBidsQuery(options: GetBidsParameters, pausedContracts: PausedContract[], queryOptions: BidsQueryOptions = {}) {
+  const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options, queryOptions)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
-    .append(getBidTradesQuery())
+    .append(getBidTradesQuery(pausedContracts))
     .append(SQL`) as bid_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
 

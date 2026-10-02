@@ -24,13 +24,16 @@ export interface IItemsComponent {
   getCatalogItems(filters: ItemQueryFilters, manaUsdRate: number): Promise<GetCatalogItemsResponse>
 }
 
+// @dcl/schemas' Item plus whether the marketplace contract of the trade that prices it is paused.
+export type ItemWithPause = Item & { isPaused: boolean }
+
 export type GetItemsResponse = {
-  data: Item[]
+  data: ItemWithPause[]
   total: number
 }
 
 // A catalog item is the same shape /v1/items returns plus a server-computed whole-credit price.
-export type CatalogItem = Item & { priceCredits: number }
+export type CatalogItem = ItemWithPause & { priceCredits: number }
 
 export type GetCatalogItemsResponse = {
   data: CatalogItem[]
@@ -81,6 +84,7 @@ export type DBItem = {
   trade_beneficiary?: string
   trade_expires_at?: Date
   trade_contract?: string
+  trade_paused?: boolean | null
   trade_price: string
   utility?: string
 }

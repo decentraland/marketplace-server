@@ -95,3 +95,50 @@ describe('when the price does not come from a trade', () => {
     expect(item.price).toBe('1000000000000000000000')
   })
 })
+
+describe('when mapping whether a catalog item is paused', () => {
+  let row: CollectionsItemDBResult
+
+  describe('and the open trade that prices it is on a paused marketplace', () => {
+    beforeEach(() => {
+      row = dbItem({ open_item_trade_paused: true })
+    })
+
+    it('should flag the item as paused while keeping it on sale at the trade price', () => {
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC)).toEqual(
+        expect.objectContaining({ isPaused: true, isOnSale: true, tradeId: 'trade-1', price: '20100000000000000000' })
+      )
+    })
+  })
+
+  describe('and the open trade that prices it is on a marketplace that is not paused', () => {
+    beforeEach(() => {
+      row = dbItem({ open_item_trade_paused: false })
+    })
+
+    it('should not flag the item as paused', () => {
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
+    })
+  })
+
+  describe('and the store minter sets the price while a paused trade is also open', () => {
+    beforeEach(() => {
+      row = dbItem({ search_is_marketplace_v3_minter: false, search_is_store_minter: true, open_item_trade_paused: true })
+    })
+
+    // isPaused follows tradeId: the surfaced price is not the paused trade's.
+    it('should not flag the item as paused', () => {
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
+    })
+  })
+
+  describe('and the row comes from the trade-less catalog query', () => {
+    beforeEach(() => {
+      row = dbItem({ open_item_trade_id: null, open_item_trade_price: null, open_item_trade_paused: undefined })
+    })
+
+    it('should not flag the item as paused', () => {
+      expect(fromCollectionsItemDbResultToCatalogItem(row, Network.MATIC).isPaused).toBe(false)
+    })
+  })
+})

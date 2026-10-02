@@ -18,6 +18,7 @@ import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/c
 import { createBidsComponents } from '../src/ports/bids'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
+import { createContractStatusComponent } from '../src/ports/contract-status'
 import { createContractsComponent } from '../src/ports/contracts/component'
 import { createCouponsComponent } from '../src/ports/coupons'
 import { createCreatorProfilesComponent } from '../src/ports/creator-profiles/component'
@@ -107,9 +108,12 @@ async function initComponents(): Promise<TestComponents> {
   const wertSigner = createWertSigner({ privateKey: WERT_PRIVATE_KEY, publicationFeesPrivateKey: WERT_PUBLICATION_FEES_PRIVATE_KEY })
   const wertApi = await createWertApi({ config, fetch })
 
+  // Specs that seed squid_trades.contract_status call contractStatus.refresh() to load it.
+  const contractStatus = await createContractStatusComponent({ dappsDatabase: dappsReadDatabase, config, logs })
+
   // favorites stuff
   const snapshot = await createSnapshotComponent({ fetch, config })
-  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase })
+  const items = createItemsComponent({ logs, dappsDatabase: dappsReadDatabase, contractStatus })
   const lists = createListsComponent({
     favoritesDatabase,
     items,
@@ -118,8 +122,11 @@ async function initComponents(): Promise<TestComponents> {
   })
   const access = createAccessComponent({ favoritesDatabase, logs, lists })
   const picks = createPicksComponent({ favoritesDatabase, items, snapshot, logs, lists })
-  const catalog = await createCatalogComponent({ dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks }, SEGMENT_WRITE_KEY)
-  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs })
+  const catalog = await createCatalogComponent(
+    { dappsDatabase: dappsReadDatabase, dappsWriteDatabase, picks, contractStatus },
+    SEGMENT_WRITE_KEY
+  )
+  const shopCatalog = createShopCatalogComponent({ dappsDatabase: dappsReadDatabase, logs, contractStatus })
   const creatorProfiles = await createCreatorProfilesComponent({
     config,
     logs,
@@ -131,7 +138,7 @@ async function initComponents(): Promise<TestComponents> {
   const shopNotifier = await createShopNotifierComponent({ config, logs, fetch })
   const searchSuggest = createSearchSuggestComponent({ dappsDatabase: dappsReadDatabase, items, creatorProfiles, manaUsdRate })
   const schemaValidator = await createSchemaValidatorComponent()
-  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier })
+  const trades = createTradesComponent({ dappsDatabase: dappsWriteDatabase, eventPublisher, logs, shopNotifier, contractStatus })
   // The shared harness must never reach the chain: jest.setup disables outbound connections, so a real
   // reader would turn any coupon call into a network error instead of a readable assertion.
   const coupons = createCouponsComponent(
@@ -144,7 +151,7 @@ async function initComponents(): Promise<TestComponents> {
       }
     }
   )
-  const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase })
+  const bids = createBidsComponents({ dappsDatabase: dappsReadDatabase, contractStatus })
 
   const rentalsSubgraph = await createSubgraphComponent(
     { logs, config, fetch, metrics },
@@ -153,17 +160,25 @@ async function initComponents(): Promise<TestComponents> {
   const SIGNATURES_SERVER_URL = await config.requireString('SIGNATURES_SERVER_URL')
   const rentals = createRentalsComponent({ fetch }, SIGNATURES_SERVER_URL, rentalsSubgraph)
   const cache = await createInMemoryCacheComponent()
-  const suggestions = await createSuggestionsComponent({ dappsDatabase: dappsReadDatabase, shopCatalog, lists, cache, logs, config })
+  const suggestions = await createSuggestionsComponent({
+    dappsDatabase: dappsReadDatabase,
+    shopCatalog,
+    lists,
+    cache,
+    logs,
+    config,
+    contractStatus
+  })
   const inMemoryCache = await createInMemoryCacheComponent()
 
-  const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
-  const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase })
+  const nfts = createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals, contractStatus })
+  const orders = createOrdersComponent({ dappsDatabase: dappsReadDatabase, contractStatus })
   const contracts = createContractsComponent({ dappsDatabase: dappsReadDatabase, inMemoryCache })
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
-  const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
+  const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase, contractStatus })
   // Mock the start function to avoid connecting to a local database
   jest.spyOn(catalog, 'updateBuilderServerItemsView').mockResolvedValue(undefined)
   const updateBuilderServerItemsViewJob = createJobComponent({ logs }, () => undefined, 5 * 60 * 1000, {
@@ -199,7 +214,7 @@ async function initComponents(): Promise<TestComponents> {
       apiSecret: ''
     }
   )
-  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase })
+  const stats = await createStatsComponent({ dappsDatabase: dappsReadDatabase, contractStatus })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
   const rankings = await createRankingsComponent({ dappsDatabase: dappsReadDatabase })
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
@@ -248,6 +263,7 @@ async function initComponents(): Promise<TestComponents> {
     nfts,
     orders,
     contracts,
+    contractStatus,
     collections,
     accounts,
     owners,

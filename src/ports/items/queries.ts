@@ -13,6 +13,7 @@ import {
 } from '../../logic/catalog/search-match'
 import { getDBNetworks } from '../../utils'
 import { getTradesCTE } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { ShopSortBy } from '../shop-catalog/types'
 import { getWhereStatementFromFilters } from '../utils'
 import { ItemQueryFilters, ItemType } from './types'
@@ -196,7 +197,7 @@ function getItemsWhereStatement(
 // all the SELECT expressions and shared helpers already use), so the CTE it reads from needs its own.
 const ITEM_TRADES_CTE = 'item_trades'
 
-export function getItemsQuery(filters: ItemQueryFilters = {}) {
+export function getItemsQuery(filters: ItemQueryFilters, pausedContracts: PausedContract[]) {
   /**
    * The trades CTE is deliberately NOT narrowed by `category`, and the join below picks exactly one trade.
    *
@@ -210,8 +211,8 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
    * ONE TRADE: an item can have more than one OPEN item order (5 items do in production), and a plain join
    * would then emit that item twice — duplicate tiles, an inflated `COUNT(*) OVER()` total, and a price
    * taken from whichever row the planner happened to return. The LATERAL below picks the same one
-   * `/v2/catalog` does (its `MAX(id::text)`, see getTradesJoin in ports/catalog/queries), so the two feeds
-   * cannot quote different prices for the same item.
+   * `/v2/catalog` does (unpaused first, then the greatest id; see getTradesJoin in ports/catalog/queries),
+   * so the two feeds cannot quote different prices for the same item.
    */
   // With a search the count is taken above the level filter (see applySearchLevel), not here.
   const core = SQL`
@@ -254,6 +255,7 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
       unified_trades.trade_contract as trade_contract,
+      unified_trades.paused as trade_paused,
       unified_trades.assets -> 'received' ->> 'amount' as trade_price`
     )
     .append(filters.search ? SQL`, `.append(getSearchScoreColumns()) : SQL``)
@@ -288,7 +290,7 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
               AND sent_contract_address = item.collection_id
               AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
               AND status = '${ListingStatus.OPEN}'
-            ORDER BY id::text DESC
+            ORDER BY paused ASC, created_at DESC, id::text DESC
             LIMIT 1
           ) unified_trades ON TRUE `
                     )
@@ -301,7 +303,7 @@ export function getItemsQuery(filters: ItemQueryFilters = {}) {
 
   // This feed emits no ORDER BY of its own. A search adds one: with the rows ranked, an unordered page would
   // hand back the ranking in whatever order the plan produced it, and a LIMIT/OFFSET over that is not paging.
-  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE, pausedContracts })
     .append(filters.search ? SQL`, `.append(getSearchCteDefinitions(filters.search)) : SQL``)
     .append(
       filters.search
@@ -400,7 +402,7 @@ function getCatalogItemsOrderByStatement(rateNumericString: string, sortBy: Shop
 // a credit-denominated price range and a sort. Mirrors getItemsQuery's SELECT/joins so the row maps
 // through fromDBItemToItem unchanged, plus the one extra column. `rateNumericString` is the MANA/USD rate
 // as a fixed-precision numeric literal.
-export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumericString = '0') {
+export function getCatalogItemsQuery(filters: ItemQueryFilters, pausedContracts: PausedContract[], rateNumericString = '0') {
   const sortBy = resolveShopSortBy(filters.sortBy, filters.search)
 
   // With a search the count is taken above the level filter (see applySearchLevel), not here.
@@ -444,6 +446,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
       unified_trades.assets -> 'received' ->> 'beneficiary' as trade_beneficiary,
       unified_trades.expires_at as trade_expires_at,
       unified_trades.trade_contract as trade_contract,
+      unified_trades.paused as trade_paused,
       unified_trades.assets -> 'received' ->> 'amount' as trade_price,`
     )
     .append(getPriceCreditsSelect(rateNumericString))
@@ -478,7 +481,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
               AND sent_contract_address = item.collection_id
               AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
               AND status = '${ListingStatus.OPEN}'
-            ORDER BY id::text DESC
+            ORDER BY paused ASC, created_at DESC, id::text DESC
             LIMIT 1
           ) unified_trades ON TRUE `
                         )
@@ -491,7 +494,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters = {}, rateNumeric
     )
 
   // Same two rules as getItemsQuery above: no `category` on the trades CTE, and one trade per item.
-  return getTradesCTE({ cteName: ITEM_TRADES_CTE })
+  return getTradesCTE({ cteName: ITEM_TRADES_CTE, pausedContracts })
     .append(filters.search ? SQL`, `.append(getSearchCteDefinitions(filters.search)) : SQL``)
     .append(filters.search ? applySearchLevel(core, 'count') : core)
     .append(getCatalogItemsOrderByStatement(rateNumericString, sortBy, !!filters.search))
@@ -513,6 +516,6 @@ export function getUtilityByItem(contractAddress: string, itemId: string) {
     )
 }
 
-export function getItemByItemIdQuery(contractAddress: string, itemId: string) {
-  return getItemsQuery({ contractAddresses: [contractAddress], itemId })
+export function getItemByItemIdQuery(contractAddress: string, itemId: string, pausedContracts: PausedContract[]) {
+  return getItemsQuery({ contractAddresses: [contractAddress], itemId }, pausedContracts)
 }

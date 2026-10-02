@@ -571,118 +571,104 @@ export async function createEstateNFT(
   })
 }
 
+/**
+ * An open listing: a secondary nft order by default, or a primary item order (public_item_order) when
+ * `itemId` is given. The price is MANA (asset type 1) unless `priceAssetType` is 2, a USD-pegged amount.
+ */
 export async function createSquidDBTrade(
   dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
   options: {
-    tokenId: string
     contractAddress: string
+    // Fixed when a test depends on how trade ids sort; generated otherwise.
+    id?: string
+    tokenId?: string
+    itemId?: string
     owner?: string
     price?: string
+    priceAssetType?: 1 | 2
+    uses?: number
     signature?: string
     type?: string
+    network?: string
+    // The marketplace the trade targets; the column default when omitted.
+    marketplace?: string
+    // Fixed when a test depends on which trade is newer; the column default (now) otherwise.
+    createdAt?: Date
   }
 ): Promise<string> {
   const { dappsDatabase } = dbComponent
   const {
+    id,
     tokenId,
+    itemId,
     contractAddress,
     owner = '0x1234567890123456789012345678901234567890',
     price = '100000000000000000000',
-    signature = `signature_${tokenId}_${Date.now()}`,
-    type = 'public_nft_order'
+    priceAssetType = 1,
+    uses = 1,
+    signature = `signature_${tokenId ?? itemId}_${Date.now()}_${Math.random()}`,
+    type = itemId ? 'public_item_order' : 'public_nft_order',
+    network = 'matic',
+    marketplace,
+    createdAt
   } = options
+  const checks = {
+    uses,
+    effective: Date.now(),
+    expiration: Date.now() + 86400000,
+    allowedRoot: '0x',
+    contractSignatureIndex: 0,
+    signerSignatureIndex: 0,
+    externalChecks: [],
+    salt: '0x'
+  }
 
   const client = await dappsDatabase.getPool().connect()
 
   try {
-    // Generate a proper UUID for trade
-    const tradeResult = await client.query(`
-      INSERT INTO marketplace.trades (
-        signature,
-        hashed_signature,
-        signer,
-        type,
-        network,
-        chain_id,
-        checks,
-        expires_at,
-        effective_since
-      ) VALUES (
-        '${signature}',
-        '${signature}',
-        '${owner.toLowerCase()}',
-        '${type}',
-        'matic',
-        80002,
-        '{"uses": 1, "effective": ${Date.now()}, "expiration": ${
-      Date.now() + 86400000
-    }, "allowedRoot": "0x", "contractSignatureIndex": 0, "signerSignatureIndex": 0, "externalChecks": [], "salt": "0x"}',
-        NOW() + INTERVAL '1 day',
-        NOW()
-      ) RETURNING id
-    `)
-
+    const tradeResult = await client.query<{ id: string }>(
+      SQL`INSERT INTO marketplace.trades (`
+        .append(id ? SQL`id, ` : SQL``)
+        .append(SQL`signature, hashed_signature, signer, type, network, chain_id, checks, expires_at, effective_since) VALUES (`)
+        .append(id ? SQL`${id}, ` : SQL``)
+        .append(
+          SQL`${signature}, ${signature}, ${owner.toLowerCase()}, ${type}, ${network}, 80002, ${JSON.stringify(checks)},
+        NOW() + INTERVAL '1 day', NOW())
+      RETURNING id`
+        )
+    )
     const tradeId = tradeResult.rows[0].id
+    if (marketplace) {
+      await client.query(SQL`UPDATE marketplace.trades SET contract = ${marketplace} WHERE id = ${tradeId}`)
+    }
+    if (createdAt) {
+      await client.query(SQL`UPDATE marketplace.trades SET created_at = ${createdAt} WHERE id = ${tradeId}`)
+    }
 
-    // Insert the sent asset (NFT being sold)
-    const sentAssetResult = await client.query(`
-      INSERT INTO marketplace.trade_assets (
-        trade_id,
-        direction,
-        asset_type,
-        contract_address,
-        beneficiary,
-        extra
-      ) VALUES (
-        '${tradeId}',
-        'sent',
-        3,
-        '${contractAddress.toLowerCase()}',
-        '${owner.toLowerCase()}',
-        '0x'
-      ) RETURNING id
+    // The sent asset: the collection item a primary order mints (asset type 4), or the nft a secondary order sells.
+    const sentAssetResult = await client.query<{ id: string }>(SQL`
+      INSERT INTO marketplace.trade_assets (trade_id, direction, asset_type, contract_address, beneficiary, extra)
+      VALUES (${tradeId}, 'sent', ${itemId ? 4 : 3}, ${contractAddress.toLowerCase()}, ${itemId ? null : owner.toLowerCase()}, '0x')
+      RETURNING id
     `)
-
-    // Insert the ERC721 details for the sent asset
-    await client.query(`
-      INSERT INTO marketplace.trade_assets_erc721 (
-        asset_id,
-        token_id
-      ) VALUES (
-        '${sentAssetResult.rows[0].id}',
-        '${tokenId}'
+    if (itemId) {
+      await client.query(
+        SQL`INSERT INTO marketplace.trade_assets_item (asset_id, item_id) VALUES (${sentAssetResult.rows[0].id}, ${itemId})`
       )
-    `)
-
-    // Insert the received asset (MANA payment)
-    const receivedAssetResult = await client.query(`
-      INSERT INTO marketplace.trade_assets (
-        trade_id,
-        direction,
-        asset_type,
-        contract_address,
-        beneficiary,
-        extra
-      ) VALUES (
-        '${tradeId}',
-        'received',
-        1,
-        '0x9d32aac179153a991e832550d9f96441ea27763a',
-        '${owner.toLowerCase()}',
-        '0x'
-      ) RETURNING id
-    `)
-
-    // Insert the ERC20 details for the received asset
-    await client.query(`
-      INSERT INTO marketplace.trade_assets_erc20 (
-        asset_id,
-        amount
-      ) VALUES (
-        '${receivedAssetResult.rows[0].id}',
-        '${price}'
+    } else {
+      await client.query(
+        SQL`INSERT INTO marketplace.trade_assets_erc721 (asset_id, token_id) VALUES (${sentAssetResult.rows[0].id}, ${tokenId})`
       )
+    }
+
+    const receivedAssetResult = await client.query<{ id: string }>(SQL`
+      INSERT INTO marketplace.trade_assets (trade_id, direction, asset_type, contract_address, beneficiary, extra)
+      VALUES (${tradeId}, 'received', ${priceAssetType}, '0x9d32aac179153a991e832550d9f96441ea27763a', ${owner.toLowerCase()}, '0x')
+      RETURNING id
     `)
+    await client.query(
+      SQL`INSERT INTO marketplace.trade_assets_erc20 (asset_id, amount) VALUES (${receivedAssetResult.rows[0].id}, ${price})`
+    )
 
     return tradeId
   } finally {
@@ -709,6 +695,11 @@ export async function deleteSquidDBTrade(dbComponent: Pick<BaseComponents, 'dapp
       WHERE asset_id IN (
         SELECT id FROM marketplace.trade_assets WHERE trade_id = '${tradeId}'
       )
+    `)
+
+    await client.query(SQL`
+      DELETE FROM marketplace.trade_assets_item
+      WHERE asset_id IN (SELECT id FROM marketplace.trade_assets WHERE trade_id = ${tradeId})
     `)
 
     // Delete from trade_assets
@@ -1200,7 +1191,23 @@ export async function setTradeDigest(
   `)
 }
 
-export async function clearSquidTradesRows(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
+export async function clearSquidTradesRows(dbComponent: Pick<BaseComponents, 'dappsDatabase' | 'contractStatus'>): Promise<void> {
   await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.trade`)
   await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.signature_index`)
+  await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.contract_status`)
+  await dbComponent.contractStatus.refresh()
+}
+
+/** The indexer's pause state of a marketplace contract, keyed the way trades-squid-core writes it, reloaded into the cache. */
+export async function createSquidContractStatusRow(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase' | 'contractStatus'>,
+  options: { address: string; network: string; paused: boolean }
+): Promise<void> {
+  const { address, network, paused } = options
+  await dbComponent.dappsDatabase.query(SQL`
+    INSERT INTO squid_trades.contract_status (id, address, network, paused)
+    VALUES (${`${address.toLowerCase()}-${network}`}, ${address.toLowerCase()}, ${network}, ${paused})
+    ON CONFLICT (id) DO UPDATE SET paused = EXCLUDED.paused
+  `)
+  await dbComponent.contractStatus.refresh()
 }

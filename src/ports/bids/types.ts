@@ -1,8 +1,11 @@
 import { ChainId, Network, Bid, ListingStatus, GetBidsParameters } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
+// @dcl/schemas' Bid plus whether the off-chain marketplace contract it targets is paused.
+export type BidWithPause = Bid & { isPaused: boolean }
+
 export type IBidsComponent = {
-  getBids(options: GetBidsParameters): Promise<{ data: Bid[]; count: number }>
+  getBids(options: GetBidsParameters): Promise<{ data: BidWithPause[]; count: number }>
 }
 
 export type WithCount<T> = T & { bids_count: number }
@@ -21,6 +24,7 @@ type DBBaseBid = {
   price: string
   contract_address: string
   fingerprint?: string
+  paused: boolean
 }
 
 export type DBTradeBid = DBBaseBid & {

@@ -2,6 +2,7 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { NFTSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getExcludeBrokenEstateTradesWhere, getTradesCTE } from '../catalog/queries'
+import { PausedContract } from '../contract-status/types'
 import { getWhereStatementFromFilters } from '../utils'
 import { getNFTLimitAndOffsetStatement } from './queries'
 import { GetNFTsFilters } from './types'
@@ -199,14 +200,14 @@ function getOpenTradesCTE(filters: GetNFTsFilters): SQLStatement {
   `)
 }
 
-export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
+export function getLandsOnSaleQuery(filters: GetNFTsFilters, pausedContracts: PausedContract[]) {
   // Only the category narrowing — deliberately NOT the whole filter set. `getTradesCTE` limits itself to
   // one page when the sort is Recently Listed, which suits a caller that reads the trades directly, and is
   // wrong here: this query UNIONs the trades with the on-chain orders and counts the union. Truncating one
   // side left the other whole, so the total became "every order + one page of trades" and grew with the
   // page size — measured on production, parcels on sale reported 72 at first=1, 81 at first=10 and 97 at
   // first=48, against a real 194. Everything past the first page of trade-backed LAND was unreachable.
-  return getTradesCTE({ category: filters.category })
+  return getTradesCTE({ category: filters.category, pausedContracts })
     .append(SQL`,`)
     .append(getOpenOrderNFTsCTE(filters))
     .append(getOpenTradesCTE(filters))
@@ -348,7 +349,7 @@ export function getLandsOnSaleQuery(filters: GetNFTsFilters) {
 
 // @TODO DEBUG WHY THIS FILTERS ARE SLOWING DOWN THE QUERY AND ENABLE THEM BACK
 
-export function getAllLANDsQuery(filters: GetNFTsFilters) {
+export function getAllLANDsQuery(filters: GetNFTsFilters, pausedContracts: PausedContract[]) {
   const { sortBy } = filters
   const {
     FILTER_BY_MAX_PLAZA_DISTANCE,
@@ -382,7 +383,7 @@ export function getAllLANDsQuery(filters: GetNFTsFilters) {
 
   // Category only, for the reason spelled out in getLandsOnSaleQuery: a page-limited trades CTE would
   // silently strip the listing off any LAND whose trade fell outside the first page.
-  return getTradesCTE({ category: filters.category }).append(
+  return getTradesCTE({ category: filters.category, pausedContracts }).append(
     SQL`
     , land_count AS (
       SELECT count(*) AS total_count

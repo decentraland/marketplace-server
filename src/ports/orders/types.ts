@@ -1,8 +1,11 @@
 import { ListingStatus, NFTCategory, Order, OrderFilters } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 
+// @dcl/schemas' Order plus whether the off-chain marketplace contract it targets is paused.
+export type OrderWithPause = Order & { isPaused: boolean }
+
 export type IOrdersComponent = {
-  getOrders(filters?: OrderFilters): Promise<{ data: Order[]; total: number }>
+  getOrders(filters?: OrderFilters): Promise<{ data: OrderWithPause[]; total: number }>
 }
 
 export type DBOrder = {
@@ -24,4 +27,5 @@ export type DBOrder = {
   item_id: string
   issued_id: string
   trade_id: string
+  paused: boolean
 }

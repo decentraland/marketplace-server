@@ -28,21 +28,21 @@ describe('when browsing LAND that is on sale', () => {
      * first page of trade-backed LAND was unreachable.
      */
     it('should not limit the trades it unions with the orders', () => {
-      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }))
+      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }), [])
 
       expect(tradesCTE(text)).not.toMatch(/LIMIT/i)
       expect(tradesCTE(text)).not.toMatch(/OFFSET/i)
     })
 
     it('should still page the result itself, so the fix does not turn into an unbounded read', () => {
-      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }))
+      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }), [])
 
       expect(text).toMatch(/LIMIT/i)
       expect(text).toMatch(/OFFSET/i)
     })
 
     it('should order the union by the listing date', () => {
-      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }))
+      const { text } = getLandsOnSaleQuery(onSale({ sortBy: NFTSortBy.RECENTLY_LISTED }), [])
 
       expect(text).toContain('ORDER BY order_created_at DESC NULLS LAST')
     })
@@ -56,14 +56,14 @@ describe('when browsing LAND that is on sale', () => {
      * exactly those 196. It has to be applied where the two rails are already joined to the nft.
      */
     it('should match the search against the nft over the whole union, not one rail of it', () => {
-      const { text, values } = getLandsOnSaleQuery(onSale({ search: 'genesis' }))
+      const { text, values } = getLandsOnSaleQuery(onSale({ search: 'genesis' }), [])
 
       expect(text).toContain('nft.search_text %')
       expect(values).toContain('genesis')
     })
 
     it('should apply it exactly once, after the union, where both rails are in scope', () => {
-      const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }))
+      const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }), [])
       const union = text.indexOf('combined AS (')
       const occurrences = [...text.matchAll(/search_text\s*%/g)].map(m => m.index)
 
@@ -75,7 +75,7 @@ describe('when browsing LAND that is on sale', () => {
     })
 
     it('should bind the term rather than inline it', () => {
-      const { text, values } = getLandsOnSaleQuery(onSale({ search: "o'brien" }))
+      const { text, values } = getLandsOnSaleQuery(onSale({ search: "o'brien" }), [])
 
       expect(text).not.toContain("o'brien")
       expect(values).toContain("o'brien")
@@ -83,7 +83,7 @@ describe('when browsing LAND that is on sale', () => {
   })
 
   it('should add no search predicate when nothing was searched for', () => {
-    const { text } = getLandsOnSaleQuery(onSale())
+    const { text } = getLandsOnSaleQuery(onSale(), [])
 
     expect(text).not.toContain('nft.search_text %')
   })
@@ -97,12 +97,15 @@ describe('when browsing every LAND, on sale or not', () => {
    * `column "order_created_at" does not exist` for every LAND browse not filtered to on-sale.
    */
   it('should sort the pre-selection by a column the nft table actually has', () => {
-    const { text } = getAllLANDsQuery({
-      category: NFTCategory.PARCEL,
-      sortBy: NFTSortBy.RECENTLY_LISTED,
-      first: 24,
-      skip: 0
-    } as GetNFTsFilters)
+    const { text } = getAllLANDsQuery(
+      {
+        category: NFTCategory.PARCEL,
+        sortBy: NFTSortBy.RECENTLY_LISTED,
+        first: 24,
+        skip: 0
+      } as GetNFTsFilters,
+      []
+    )
     const preselection = text.slice(text.indexOf('top_land AS ('), text.indexOf('open_orders_nfts'))
 
     expect(preselection).toContain('ORDER BY search_order_created_at DESC NULLS LAST')
@@ -110,12 +113,15 @@ describe('when browsing every LAND, on sale or not', () => {
   })
 
   it('should not limit the trades it joins for pricing either', () => {
-    const { text } = getAllLANDsQuery({
-      category: NFTCategory.PARCEL,
-      sortBy: NFTSortBy.RECENTLY_LISTED,
-      first: 24,
-      skip: 0
-    } as GetNFTsFilters)
+    const { text } = getAllLANDsQuery(
+      {
+        category: NFTCategory.PARCEL,
+        sortBy: NFTSortBy.RECENTLY_LISTED,
+        first: 24,
+        skip: 0
+      } as GetNFTsFilters,
+      []
+    )
 
     expect(tradesCTE(text)).not.toMatch(/LIMIT/i)
   })
@@ -170,13 +176,13 @@ describe('when matching a LAND search term', () => {
 
 describe('when a LAND browse carries a search term', () => {
   it('should use the word-aware match on the on-sale feed', () => {
-    const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }))
+    const { text } = getLandsOnSaleQuery(onSale({ search: 'genesis' }), [])
 
     expect(text).toContain('<% nft.search_text')
   })
 
   it('should use it on the full-catalogue feed too, so the two do not disagree', () => {
-    const { text } = getAllLANDsQuery({ search: 'genesis', first: 24, skip: 0 } as GetNFTsFilters)
+    const { text } = getAllLANDsQuery({ search: 'genesis', first: 24, skip: 0 } as GetNFTsFilters, [])
 
     expect(text).toContain('<% search_text')
   })

@@ -2,7 +2,10 @@ import { keccak256 } from 'ethers'
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { getPausedExpression } from '../../logic/trades/contract-status'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
+import { toSquidNetwork, toSquidNetworkSql } from '../../logic/trades/squid-network'
+import { PausedContract } from '../contract-status/types'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
@@ -101,10 +104,11 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
   return getTradeAssetsWithValuesQuery(SQL`t.id = ${id}`)
 }
 
-export function getTradesForTypeQuery(type: TradeType) {
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+export function getTradesForTypeQuery(type: TradeType, pausedContracts: PausedContract[], options: { id?: string } = {}): SQLStatement {
+  // Important! The status rules below are a fixed string; every input value goes in as a parameter.
+  return SQL``
+    .append(
+      `
     SELECT
       t.id,
       t.contract as trade_contract_address,
@@ -143,7 +147,12 @@ export function getTradesForTypeQuery(type: TradeType) {
         ) THEN '${ListingStatus.CANCELLED}'
         WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
       ELSE '${ListingStatus.OPEN}'
-      END AS status
+      END AS status,
+      `
+    )
+    .append(getPausedExpression(pausedContracts, 't.contract', 't.network'))
+    .append(
+      ` AS paused
     FROM marketplace.trades as t
     JOIN (
       SELECT
@@ -179,17 +188,20 @@ export function getTradesForTypeQuery(type: TradeType) {
       ON signer_signature_index.address = LOWER(t.signer)
       -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
       AND signer_signature_index.contract = LOWER(t.contract)
-      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND signer_signature_index.network = ${toSquidNetworkSql('t.network')}
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
       ON contract_signature_index.address = LOWER(t.contract)
       -- Exact on the row's whole identity (address + contract + network); see the materialized view.
       AND contract_signature_index.contract = LOWER(t.contract)
-      -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
-      -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
-      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
-    WHERE t.type = '${type}'
+      -- A raw equality never matches a Polygon trade; see toSquidNetworkSql.
+      AND contract_signature_index.network = ${toSquidNetworkSql('t.network')}
+    WHERE t.type = '${type}'`
+    )
+    .append(options.id ? SQL` AND t.id = ${options.id}` : SQL``)
+    .append(
+      `
     /**
      * NOT grouped by trade_status.caller.
      *
@@ -213,26 +225,53 @@ export function getTradesForTypeQuery(type: TradeType) {
      */
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
   `
+    )
 }
 
-export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
-    .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER))
-    .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
-    .append(SQL` AND item_order_trades.network = ${network}`)
-    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
-    .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
-    .append(SQL` LIMIT 1`)
+// Status and pause flag of a single trade, computed by the same rules as every trade list. The id goes
+// inside: COUNT(*) OVER() keeps the planner from pushing an outer filter below the window.
+export function getTradeStatusByIdQuery(type: TradeType, id: string, pausedContracts: PausedContract[]): SQLStatement {
+  return SQL`SELECT trade_by_id.status, trade_by_id.paused FROM (`
+    .append(getTradesForTypeQuery(type, pausedContracts, { id }))
+    .append(SQL`) AS trade_by_id`)
 }
 
-export function getOpenNFTOrderQuery(contractAddress: string, tokenId: string, network: string): SQLStatement {
-  return SQL`SELECT 1 FROM (`
-    .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER))
-    .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
-    .append(SQL` AND nft_order_trades.network = ${network}`)
-    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
-    .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
-    .append(SQL` LIMIT 1`)
+export function getOpenItemOrderQuery(
+  contractAddress: string,
+  itemId: string,
+  network: string,
+  pausedContracts: PausedContract[]
+): SQLStatement {
+  return (
+    SQL`SELECT 1 FROM (`
+      .append(getTradesForTypeQuery(TradeType.PUBLIC_ITEM_ORDER, pausedContracts))
+      .append(SQL`) AS item_order_trades WHERE item_order_trades.status = ${ListingStatus.OPEN}`)
+      // A listing on a paused marketplace cannot sell, so it must not block relisting on another version.
+      .append(SQL` AND NOT item_order_trades.paused`)
+      .append(SQL` AND item_order_trades.network = ${network}`)
+      .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+      .append(SQL` AND (item_order_trades.assets -> 'sent' ->> 'item_id') = ${itemId}`)
+      .append(SQL` LIMIT 1`)
+  )
+}
+
+export function getOpenNFTOrderQuery(
+  contractAddress: string,
+  tokenId: string,
+  network: string,
+  pausedContracts: PausedContract[]
+): SQLStatement {
+  return (
+    SQL`SELECT 1 FROM (`
+      .append(getTradesForTypeQuery(TradeType.PUBLIC_NFT_ORDER, pausedContracts))
+      .append(SQL`) AS nft_order_trades WHERE nft_order_trades.status = ${ListingStatus.OPEN}`)
+      // A listing on a paused marketplace cannot sell, so it must not block relisting on another version.
+      .append(SQL` AND NOT nft_order_trades.paused`)
+      .append(SQL` AND nft_order_trades.network = ${network}`)
+      .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'contract_address') = ${contractAddress}`)
+      .append(SQL` AND (nft_order_trades.assets -> 'sent' ->> 'token_id') = ${tokenId}`)
+      .append(SQL` LIMIT 1`)
+  )
 }
 
 export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFilters & { nftIds?: string[] }) {
@@ -416,4 +455,12 @@ export function getOtherOpenListingForItemQuery(contractAddress: string, itemId:
       AND id <> ${excludeTradeId}
       LIMIT 1`
   )
+}
+
+// Whether the marketplace a new trade targets is paused. No row means it never was.
+export function getMarketplaceContractPausedQuery(contractAddress: string, network: string): SQLStatement {
+  return SQL`
+    SELECT paused FROM squid_trades.contract_status
+    WHERE address = ${contractAddress.toLowerCase()} AND network = ${toSquidNetwork(network)}
+    LIMIT 1`
 }

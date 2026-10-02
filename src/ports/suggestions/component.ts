@@ -68,9 +68,9 @@ type AttributeRow = {
  * advertise an item the browse grid would not sell, or at a price the grid would disagree with.
  */
 export async function createSuggestionsComponent(
-  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'lists' | 'cache' | 'logs' | 'config'>
+  components: Pick<AppComponents, 'dappsDatabase' | 'shopCatalog' | 'lists' | 'cache' | 'logs' | 'config' | 'contractStatus'>
 ): Promise<ISuggestionsComponent> {
-  const { dappsDatabase: pg, shopCatalog, lists, cache, logs, config } = components
+  const { dappsDatabase: pg, shopCatalog, lists, cache, logs, config, contractStatus } = components
   const logger = logs.getLogger('suggestions')
   // Validated rather than trusted: a misconfigured 0 or -1 would shed EVERY request and leave the rail
   // permanently empty, which looks exactly like the feature being off rather than like a broken setting.
@@ -287,7 +287,11 @@ export async function createSuggestionsComponent(
         return fallback
       }
 
-      const core = buildItemUnifiedCore({ category, includeSocialEmotes: false, contractAddresses }, rateToNumericString(manaUsdRate))
+      const core = buildItemUnifiedCore(
+        { category, includeSocialEmotes: false, contractAddresses },
+        rateToNumericString(manaUsdRate),
+        contractStatus.getPausedContracts()
+      )
       const result = await pg.query<CandidateRow>(
         buildCandidateScoresQuery({
           profile,

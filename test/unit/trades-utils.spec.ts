@@ -128,12 +128,12 @@ describe('when calling getNotificationEventForTrade function', () => {
           name: 'a name'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbNFT] })
-        response = await getNotificationEventForTrade(nftBid, mockPgComponent, TradeEvent.CREATED, '0x123')
+        response = await getNotificationEventForTrade(nftBid, mockPgComponent, TradeEvent.CREATED, '0x123', [])
       })
 
       it('should fetch asset from database', () => {
         expect(mockPgQuery).toHaveBeenCalledWith(
-          getNftByTokenIdQuery(nftBid.received[0].contractAddress, (nftBid.received[0] as ERC721TradeAsset).tokenId, nftBid.network)
+          getNftByTokenIdQuery(nftBid.received[0].contractAddress, (nftBid.received[0] as ERC721TradeAsset).tokenId, nftBid.network, [])
         )
       })
 
@@ -205,12 +205,12 @@ describe('when calling getNotificationEventForTrade function', () => {
           trade_price: '123'
         }
         mockPgQuery.mockResolvedValue({ rows: [dbItem] })
-        response = await getNotificationEventForTrade(dbBid, mockPgComponent, TradeEvent.CREATED, '0x123')
+        response = await getNotificationEventForTrade(dbBid, mockPgComponent, TradeEvent.CREATED, '0x123', [])
       })
 
       it('should fetch asset from database', () => {
         expect(mockPgQuery).toHaveBeenCalledWith(
-          getItemByItemIdQuery(dbBid.received[0].contractAddress, (dbBid.received[0] as CollectionItemTradeAsset).itemId)
+          getItemByItemIdQuery(dbBid.received[0].contractAddress, (dbBid.received[0] as CollectionItemTradeAsset).itemId, [])
         )
       })
 
@@ -467,7 +467,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -485,7 +485,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -508,7 +508,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -533,7 +533,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -550,7 +550,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradePriceAsset error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradePriceAssetError())
       })
     })
 
@@ -567,7 +567,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
 
@@ -584,13 +584,13 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
 
     describe('and the trades is correctly defined', () => {
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
   })
@@ -613,7 +613,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -631,7 +631,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -654,7 +654,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -679,7 +679,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -706,7 +706,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
 
@@ -733,7 +733,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradePriceAsset error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradePriceAssetError())
       })
     })
 
@@ -760,7 +760,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
   })
@@ -783,7 +783,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -801,7 +801,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -824,7 +824,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -849,7 +849,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradeStructure error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradeStructureError(trade.type))
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradeStructureError(trade.type))
       })
     })
 
@@ -879,7 +879,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
 
@@ -909,7 +909,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidCollectionItemCreator error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidCollectionItemCreatorError())
       })
     })
 
@@ -939,7 +939,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidCollectionItemCreator error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidCollectionItemCreatorError())
       })
     })
 
@@ -969,7 +969,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidCollectionItemCreator error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidCollectionItemCreatorError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidCollectionItemCreatorError())
       })
     })
 
@@ -1000,7 +1000,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
 
@@ -1027,7 +1027,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should throw InvalidTradePriceAsset error', () => {
-        return expect(validateTradeByType(trade, pgClient)).rejects.toEqual(new InvalidTradePriceAssetError())
+        return expect(validateTradeByType(trade, pgClient, [])).rejects.toEqual(new InvalidTradePriceAssetError())
       })
     })
 
@@ -1057,7 +1057,7 @@ describe('when validating trade by type', () => {
       })
 
       it('should return true', () => {
-        return expect(validateTradeByType(trade, pgClient)).resolves.toBe(true)
+        return expect(validateTradeByType(trade, pgClient, [])).resolves.toBe(true)
       })
     })
   })

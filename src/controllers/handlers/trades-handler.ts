@@ -1,7 +1,7 @@
 import { Trade, TradeCreation, Event } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { getNumberParameter, getParameter } from '../../logic/http'
-import { DBTrade } from '../../ports/trades'
+import { DBTradeWithPaused, TradeWithStatus } from '../../ports/trades'
 import {
   DuplicatedBidError,
   InvalidCollectionItemCreatorError,
@@ -18,13 +18,15 @@ import {
   DuplicateNFTOrderError,
   DuplicateItemOrderError,
   InvalidEstateTrade,
-  EstateContractNotFoundForChainId
+  EstateContractNotFoundForChainId,
+  MarketplaceContractPausedError,
+  TradeNetworkMismatchError
 } from '../../ports/trades/errors'
 import { HTTPResponse, HandlerContextWithPath, StatusCode } from '../../types'
 
 export async function getTradesHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades'>, 'components'>
-): Promise<HTTPResponse<{ data: DBTrade[]; count: number }>> {
+): Promise<HTTPResponse<{ data: DBTradeWithPaused[]; count: number }>> {
   const {
     components: { trades }
   } = context
@@ -86,7 +88,8 @@ export async function addTradeHandler(
       e instanceof InvalidTradeSignerError ||
       e instanceof InvalidECDSASignatureError ||
       e instanceof InvalidEstateTrade ||
-      e instanceof EstateContractNotFoundForChainId
+      e instanceof EstateContractNotFoundForChainId ||
+      e instanceof TradeNetworkMismatchError
     ) {
       return {
         status: StatusCode.BAD_REQUEST,
@@ -97,7 +100,12 @@ export async function addTradeHandler(
       }
     }
 
-    if (e instanceof DuplicatedBidError || e instanceof DuplicateNFTOrderError || e instanceof DuplicateItemOrderError) {
+    if (
+      e instanceof DuplicatedBidError ||
+      e instanceof DuplicateNFTOrderError ||
+      e instanceof DuplicateItemOrderError ||
+      e instanceof MarketplaceContractPausedError
+    ) {
       return {
         status: StatusCode.CONFLICT,
         body: {
@@ -119,7 +127,7 @@ export async function addTradeHandler(
 
 export async function getTradeHandler(
   context: Pick<HandlerContextWithPath<'trades', '/v1/trades/:id'>, 'components' | 'params'>
-): Promise<HTTPResponse<Trade | null>> {
+): Promise<HTTPResponse<TradeWithStatus | null>> {
   try {
     const {
       components: { trades },

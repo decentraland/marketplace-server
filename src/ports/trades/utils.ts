@@ -18,6 +18,7 @@ import { fromTradeAndAssetsToEventNotification } from '../../adapters/trades/tra
 import { getMarketplaceContracts } from '../../logic/contracts'
 import { isEstateFingerprintValid } from '../../logic/trades/utils'
 import { getBidsQuery } from '../bids/queries'
+import { PausedContract } from '../contract-status/types'
 import { getItemByItemIdQuery } from '../items/queries'
 import { DBItem } from '../items/types'
 import { getNftByTokenIdQuery } from '../nfts/queries'
@@ -109,7 +110,7 @@ export async function isValidEstateTrade(trade: TradeCreation): Promise<boolean>
   return true
 }
 
-export async function validateTradeByType(trade: TradeCreation, client: IPgComponent): Promise<boolean> {
+export async function validateTradeByType(trade: TradeCreation, client: IPgComponent, pausedContracts: PausedContract[]): Promise<boolean> {
   const { sent, received, type } = trade
 
   try {
@@ -129,14 +130,19 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateBid = await client.query(
-        getBidsQuery({
-          bidder: trade.signer,
-          network: trade.network,
-          contractAddress: trade.received[0].contractAddress,
-          ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
-          ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
-          status: ListingStatus.OPEN
-        })
+        getBidsQuery(
+          {
+            bidder: trade.signer,
+            network: trade.network,
+            contractAddress: trade.received[0].contractAddress,
+            ...('tokenId' in trade.received[0] ? { tokenId: trade.received[0].tokenId } : {}),
+            ...('itemId' in trade.received[0] ? { itemId: trade.received[0].itemId } : {}),
+            status: ListingStatus.OPEN
+          },
+          pausedContracts,
+          // A bid on a paused marketplace cannot be accepted, so it must not block bidding again on another version.
+          { excludePaused: true }
+        )
       )
       if (duplicateBid.rowCount > 0) {
         throw new DuplicatedBidError()
@@ -157,7 +163,7 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateOrder = await client.query(
-        getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId, trade.network)
+        getOpenNFTOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as ERC721TradeAsset).tokenId, trade.network, pausedContracts)
       )
 
       if (duplicateOrder.rowCount > 0) {
@@ -186,7 +192,11 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       // collection_id is stored lowercased, so normalize the address to avoid rejecting a legitimate
       // creator who signs with a checksummed (mixed-case) contract address.
       const itemResult = await client.query<DBItem>(
-        getItemByItemIdQuery(trade.sent[0].contractAddress.toLowerCase(), (trade.sent[0] as CollectionItemTradeAsset).itemId)
+        getItemByItemIdQuery(
+          trade.sent[0].contractAddress.toLowerCase(),
+          (trade.sent[0] as CollectionItemTradeAsset).itemId,
+          pausedContracts
+        )
       )
       const item = itemResult.rows[0]
       if (!item || !item.creator || item.creator.toLowerCase() !== trade.signer.toLowerCase()) {
@@ -194,7 +204,12 @@ export async function validateTradeByType(trade: TradeCreation, client: IPgCompo
       }
 
       const duplicateOrder = await client.query(
-        getOpenItemOrderQuery(trade.sent[0].contractAddress, (trade.sent[0] as CollectionItemTradeAsset).itemId, trade.network)
+        getOpenItemOrderQuery(
+          trade.sent[0].contractAddress,
+          (trade.sent[0] as CollectionItemTradeAsset).itemId,
+          trade.network,
+          pausedContracts
+        )
       )
 
       if (duplicateOrder.rowCount > 0) {
@@ -213,14 +228,17 @@ export async function getNotificationEventForTrade(
   trade: Trade,
   pg: IPgComponent,
   tradeEvent: TradeEvent,
-  caller: string
+  caller: string,
+  pausedContracts: PausedContract[]
 ): Promise<Event | null> {
   const assets: (DBNFT | DBItem | undefined)[] = await Promise.all(
     [...trade.sent, ...trade.received].map((asset: TradeAsset) => {
       if (asset.assetType === TradeAssetType.ERC721) {
-        return pg.query<DBNFT>(getNftByTokenIdQuery(asset.contractAddress, asset.tokenId, trade.network)).then(result => result.rows[0])
+        return pg
+          .query<DBNFT>(getNftByTokenIdQuery(asset.contractAddress, asset.tokenId, trade.network, pausedContracts))
+          .then(result => result.rows[0])
       } else if (asset.assetType === TradeAssetType.COLLECTION_ITEM) {
-        return pg.query<DBItem>(getItemByItemIdQuery(asset.contractAddress, asset.itemId)).then(result => result.rows[0])
+        return pg.query<DBItem>(getItemByItemIdQuery(asset.contractAddress, asset.itemId, pausedContracts)).then(result => result.rows[0])
       } else {
         return Promise.resolve(undefined)
       }

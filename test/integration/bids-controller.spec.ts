@@ -5,6 +5,8 @@ import * as tradeUtils from '../../src/logic/trades/utils'
 import { test } from '../components'
 import { createBidViaAPI } from './utils/bids'
 import {
+  clearSquidTradesRows,
+  createSquidContractStatusRow,
   createSquidDBBidTrade,
   createSquidDBLegacyBid,
   createSquidDBNFT,
@@ -12,6 +14,11 @@ import {
   deleteSquidDBNFT,
   deleteSquidDBTrade
 } from './utils/dbItems'
+
+// The column default on marketplace.trades, which every createSquidDBBidTrade fixture targets.
+const FIXTURE_MARKETPLACE = '0x540fb08eDb56AaE562864B390542C97F562825BA'
+
+type FetchedBid = { id: string; tradeId?: string; status: ListingStatus; isPaused: boolean }
 
 test('bids controller', function ({ components }) {
   beforeEach(() => {
@@ -520,6 +527,88 @@ test('bids controller', function ({ components }) {
               network: Network.ETHEREUM
             })
           )
+        })
+      })
+    })
+
+    describe('and an nft has an off-chain bid and a legacy on-chain bid', () => {
+      let tradeId: string
+      let legacyBidId: string
+      let bids: FetchedBid[]
+      const contractAddress = '0x7777000000000000000000000000000000000001'
+      const tokenId = '990'
+      const ownerHex = '8888000000000000000000000000000000000001'
+      const owner = `0x${ownerHex}`
+      const tradeBidder = '0x9999000000000000000000000000000000000001'
+      const legacyBidderHex = 'aaaa000000000000000000000000000000000002'
+
+      async function fetchBids(query: string): Promise<FetchedBid[]> {
+        const response = await components.localFetch.fetch(`/v1/bids?${query}&limit=10&offset=0`)
+        return (await response.json()).data.results
+      }
+
+      beforeEach(async () => {
+        await createSquidDBNFT(components, { contractAddress, tokenId, owner, network: 'matic' })
+        tradeId = await createSquidDBBidTrade(components, { contractAddress, tokenId, bidder: tradeBidder, network: 'MATIC' })
+        legacyBidId = await createSquidDBLegacyBid(components, {
+          contractAddress,
+          tokenId,
+          bidder: legacyBidderHex,
+          seller: ownerHex,
+          status: 'open'
+        })
+      })
+
+      afterEach(async () => {
+        await clearSquidTradesRows(components)
+        await deleteSquidDBTrade(components, tradeId)
+        await deleteSquidDBLegacyBid(components, legacyBidId)
+        await deleteSquidDBNFT(components, tokenId, contractAddress)
+      })
+
+      describe('and the marketplace the off-chain bid targets is paused', () => {
+        beforeEach(async () => {
+          await createSquidContractStatusRow(components, { address: FIXTURE_MARKETPLACE, network: 'POLYGON', paused: true })
+        })
+
+        describe('and filtering the open bids by contract address and token id', () => {
+          beforeEach(async () => {
+            bids = await fetchBids(`contractAddress=${contractAddress}&tokenId=${tokenId}&status=${ListingStatus.OPEN}`)
+          })
+
+          it('should keep the off-chain bid open and flagged as paused, and the legacy bid unpaused', () => {
+            expect(bids).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ tradeId, status: ListingStatus.OPEN, isPaused: true }),
+                expect.objectContaining({ id: legacyBidId, status: ListingStatus.OPEN, isPaused: false })
+              ])
+            )
+          })
+        })
+
+        describe('and filtering the open bids by the bidder', () => {
+          beforeEach(async () => {
+            bids = await fetchBids(`bidder=${tradeBidder}&status=${ListingStatus.OPEN}`)
+          })
+
+          it('should return the bid flagged as paused', () => {
+            expect(bids).toEqual([expect.objectContaining({ tradeId, isPaused: true })])
+          })
+        })
+
+        describe('and filtering the open bids by the owner as seller', () => {
+          beforeEach(async () => {
+            bids = await fetchBids(`seller=${owner}&status=${ListingStatus.OPEN}`)
+          })
+
+          it('should return both bids with only the off-chain one flagged as paused', () => {
+            expect(bids.map(bid => [bid.tradeId ?? bid.id, bid.isPaused]).sort()).toEqual(
+              [
+                [tradeId, true],
+                [legacyBidId, false]
+              ].sort()
+            )
+          })
         })
       })
     })

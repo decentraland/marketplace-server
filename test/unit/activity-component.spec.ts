@@ -1,22 +1,11 @@
 /* eslint-disable @typescript-eslint/unbound-method */
-import {
-  LegacyBid,
-  ListingStatus,
-  Network,
-  Order,
-  Sale,
-  SaleType,
-  Trade,
-  TradeAssetDirection,
-  TradeAssetType,
-  TradeType
-} from '@dcl/schemas'
+import { LegacyBid, ListingStatus, Network, Sale, SaleType, TradeAssetDirection, TradeAssetType, TradeType } from '@dcl/schemas'
 import { createActivityComponent } from '../../src/ports/activity'
 import { ActivityEventType, IActivityComponent } from '../../src/ports/activity/types'
 import { IBidsComponent } from '../../src/ports/bids'
-import { IOrdersComponent } from '../../src/ports/orders/types'
+import { IOrdersComponent, OrderWithPause } from '../../src/ports/orders/types'
 import { ISalesComponent } from '../../src/ports/sales'
-import { ITradesComponent } from '../../src/ports/trades/types'
+import { ITradesComponent, TradeWithPause } from '../../src/ports/trades/types'
 
 const makeLogs = (logger: { warn: jest.Mock; error?: jest.Mock; info?: jest.Mock; debug?: jest.Mock; log?: jest.Mock }) => ({
   getLogger: jest.fn().mockReturnValue({
@@ -44,7 +33,7 @@ const makeSale = (overrides: Partial<Sale> = {}): Sale => ({
   ...overrides
 })
 
-const makeOrder = (overrides: Partial<Order> = {}): Order =>
+const makeOrder = (overrides: Partial<OrderWithPause> = {}): OrderWithPause =>
   ({
     id: 'o1',
     marketplaceAddress: '0xmarket',
@@ -60,10 +49,11 @@ const makeOrder = (overrides: Partial<Order> = {}): Order =>
     network: Network.MATIC,
     chainId: 137 as any,
     issuedId: '1',
+    isPaused: false,
     ...overrides
-  } as Order)
+  } as OrderWithPause)
 
-const makeBid = (overrides: Partial<LegacyBid> = {}): LegacyBid => ({
+const makeBid = (overrides: Partial<LegacyBid & { isPaused: boolean }> = {}): LegacyBid & { isPaused: boolean } => ({
   id: 'b1',
   bidder: '0xbidder',
   seller: '0xseller',
@@ -80,10 +70,11 @@ const makeBid = (overrides: Partial<LegacyBid> = {}): LegacyBid => ({
   bidAddress: '0xbid',
   blockchainId: '1',
   blockNumber: '1',
+  isPaused: false,
   ...overrides
 })
 
-const makeTrade = (overrides: Partial<Trade> = {}): Trade => ({
+const makeTrade = (overrides: Partial<TradeWithPause> = {}): TradeWithPause => ({
   id: 't1',
   signature: 'sig',
   signer: '0xuser',
@@ -95,6 +86,7 @@ const makeTrade = (overrides: Partial<Trade> = {}): Trade => ({
   sent: [],
   received: [],
   contract: '0xtrade',
+  isPaused: false,
   ...overrides
 })
 

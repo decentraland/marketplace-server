@@ -4,11 +4,11 @@ import { AppComponents } from '../../types'
 import { getBidsQuery } from './queries'
 import { DBBid, IBidsComponent } from './types'
 
-export function createBidsComponents(components: Pick<AppComponents, 'dappsDatabase'>): IBidsComponent {
-  const { dappsDatabase: pg } = components
+export function createBidsComponents(components: Pick<AppComponents, 'dappsDatabase' | 'contractStatus'>): IBidsComponent {
+  const { dappsDatabase: pg, contractStatus } = components
 
   async function getBids(options: GetBidsParameters) {
-    const result = await pg.query<DBBid>(getBidsQuery(options))
+    const result = await pg.query<DBBid>(getBidsQuery(options, contractStatus.getPausedContracts()))
 
     return {
       data: result.rows.map(fromDBBidToBid),

@@ -3,7 +3,6 @@ import {
   NFTCategory,
   Network,
   NFTFilters,
-  Order,
   RentalListing,
   NFT,
   BodyShape,
@@ -13,6 +12,7 @@ import {
 } from '@dcl/schemas'
 import { SquidNetwork } from '../../types'
 import { ItemType } from '../items'
+import { OrderWithPause } from '../orders/types'
 
 export type INFTsComponent = {
   getNFTs(filters?: NFTQueryFilters, caller?: string): Promise<GetNFTsResponse>
@@ -24,7 +24,7 @@ export type GetNFTsFilters = NFTQueryFilters & { bannedNames?: string[] }
 
 export type NFTResult = {
   nft: NFT
-  order: Order | null
+  order: OrderWithPause | null
   rental: RentalListing | null
 }
 
