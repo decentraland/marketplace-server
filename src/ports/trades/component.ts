@@ -29,9 +29,22 @@ import {
   getOtherOpenListingForItemQuery,
   getTradeAssetsWithValuesByHashedSignatureQuery,
   getTradeAssetsWithValuesByIdQuery,
+  getTradeAssetsWithValuesByTradeIdsQuery,
+  getTradeListCountQuery,
+  getTradeListQuery,
   getTradesByAddressQuery
 } from './queries'
-import { DBTrade, DBTradeAsset, DBTradeAssetValue, DBTradeAssetWithValue, ITradesComponent, TradeEvent } from './types'
+import {
+  DBTrade,
+  DBTradeAsset,
+  DBTradeAssetValue,
+  DBTradeAssetWithValue,
+  DBTradeWithStatus,
+  ITradesComponent,
+  TradeEvent,
+  TradeListFilters,
+  TradeWithStatus
+} from './types'
 import { getNotificationEventForTrade, isERC721TradeAsset, isEstateChain, isValidEstateTrade, validateTradeByType } from './utils'
 
 type TradeWithAssetRow = {
@@ -68,6 +81,37 @@ export function createTradesComponent(
   async function getTrades() {
     const result = await pg.query<DBTrade>(SQL`SELECT * FROM marketplace.trades`)
     return { data: result.rows, count: result.rowCount }
+  }
+
+  async function listTrades(filters: TradeListFilters): Promise<{ data: TradeWithStatus[]; count: number }> {
+    const [page, countResult] = await Promise.all([
+      pg.query<DBTradeWithStatus>(getTradeListQuery(filters)),
+      pg.query<{ count: number }>(getTradeListCountQuery(filters))
+    ])
+    const count = countResult.rows[0]?.count ?? 0
+    if (!page.rows.length) {
+      return { data: [], count }
+    }
+
+    // Assets are loaded for the page only, in one query.
+    const assets = await pg.query<DBTradeAssetWithValue>(getTradeAssetsWithValuesByTradeIdsQuery(page.rows.map(trade => trade.id)))
+    const assetsByTradeId = new Map<string, DBTradeAssetWithValue[]>()
+    for (const asset of assets.rows) {
+      const tradeAssets = assetsByTradeId.get(asset.trade_id)
+      if (tradeAssets) {
+        tradeAssets.push(asset)
+      } else {
+        assetsByTradeId.set(asset.trade_id, [asset])
+      }
+    }
+
+    return {
+      data: page.rows.map(trade => ({
+        ...fromDbTradeAndDBTradeAssetWithValueListToTrade(trade, assetsByTradeId.get(trade.id) ?? []),
+        status: trade.status
+      })),
+      count
+    }
   }
 
   async function getTradesByAddress(address: string, options: { limit?: number; offset?: number } = {}) {
@@ -351,6 +395,7 @@ export function createTradesComponent(
 
   return {
     getTrades,
+    listTrades,
     getTradesByAddress,
     addTrade,
     getTrade,

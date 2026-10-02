@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { MigrationBuilder } from 'node-pg-migrate'
 
-// Backs the `signer` filter of GET /v1/trades, which orders by created_at DESC.
+// Backs the `signer` filter of GET /v2/trades, which orders by created_at DESC.
 export async function up(pgm: MigrationBuilder): Promise<void> {
   pgm.sql('CREATE INDEX IF NOT EXISTS idx_trades_signer_created_at ON marketplace.trades (signer, created_at DESC);')
 }
