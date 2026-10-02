@@ -780,119 +780,23 @@ paths:
         - Trades
       summary: List marketplace trades
       description: |
-        Retrieves trades stored in the marketplace, ordered by creation date (most recent first, ties broken by id).
+        Retrieves a list of trades in the marketplace.
+        Trades represent peer-to-peer exchanges between users, including offers and accepted deals.
 
-        **Filters** (optional, combined with AND):
-        - `signer`: only trades signed by this address.
-        - `marketplaceAddress`: only trades settled by any of these marketplace contracts (repeat the parameter for several).
-          This is the marketplace contract the trade was signed for, not the address of a collection or NFT in its assets.
+        Results are ordered by creation date (most recent first).
 
-        **Pagination** (optional): `first` and `skip`. Without `first` every matching trade after the first `skip` is returned.
-
-        `count` is the total number of trades matching the filters, regardless of `first` and `skip`.
+        **Note:** This endpoint currently returns all trades without pagination support.
       operationId: getTrades
       security: []
-      parameters:
-        - name: signer
-          in: query
-          required: false
-          description: Signer address (case-insensitive).
-          schema:
-            type: string
-            pattern: '^0x[a-fA-F0-9]{40}$'
-        - name: marketplaceAddress
-          in: query
-          required: false
-          description: >-
-            Address of the marketplace contract the trade was signed for (case-insensitive), not a collection or NFT
-            contract. Repeat to match any of several, up to 100.
-          style: form
-          explode: true
-          schema:
-            type: array
-            maxItems: 100
-            items:
-              type: string
-              pattern: '^0x[a-fA-F0-9]{40}$'
-        - name: first
-          in: query
-          required: false
-          description: Maximum number of trades to return, capped at 1000. Omit to return every match.
-          schema:
-            type: integer
-            minimum: 0
-            example: 100
-        - name: skip
-          in: query
-          required: false
-          description: 'Number of trades to skip (default: 0).'
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
       responses:
         '200':
           description: List of trades
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          type: object
-                          description: Stored trade row.
-                          properties:
-                            id:
-                              type: string
-                            network:
-                              type: string
-                            chain_id:
-                              type: integer
-                            signature:
-                              type: string
-                            hashed_signature:
-                              type: string
-                            checks:
-                              type: object
-                            signer:
-                              type: string
-                            type:
-                              type: string
-                            contract:
-                              type: string
-                              description: Address of the marketplace contract the trade was signed for.
-                            expires_at:
-                              type: string
-                              format: date-time
-                            effective_since:
-                              type: string
-                              format: date-time
-                            created_at:
-                              type: string
-                              format: date-time
-                      count:
-                        type: integer
-                        description: Total number of trades matching the filters, regardless of first and skip.
-        '400':
-          description: Invalid signer, marketplaceAddress, first or skip parameter
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trade'
     post:
       tags:
         - Trades
