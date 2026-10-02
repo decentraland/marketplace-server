@@ -1,7 +1,26 @@
-import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event } from '@dcl/schemas'
+import { Trade, TradeAssetType, TradeCreation, TradeChecks, TradeAssetDirection, TradeType, Event, ListingStatus } from '@dcl/schemas'
+
+export type TradeListFilters = {
+  /** Lowercased signer address. */
+  signer?: string
+  /** Lowercased addresses of the marketplace contracts the trades were signed for; a trade matches any of them. */
+  marketplaceAddresses?: string[]
+  /** A trade matches any of these statuses. */
+  statuses?: ListingStatus[]
+  limit: number
+  offset: number
+}
+
+export type TradeWithStatus = Trade & { status: ListingStatus }
 
 export type ITradesComponent = {
   getTrades(): Promise<{ data: DBTrade[]; count: number }>
+  /**
+   * Lists a page of trades with their assets and status, newest first (ties broken by id).
+   * @param filters - Optional signer, marketplace address and status filters, plus the page's limit and offset.
+   * @returns The page of trades and the total number of trades matching the filters.
+   */
+  listTrades(filters: TradeListFilters): Promise<{ data: TradeWithStatus[]; count: number }>
   getTradesByAddress(address: string, options?: { limit?: number; offset?: number }): Promise<{ data: Trade[] }>
   addTrade(body: TradeCreation, signer: string): Promise<Trade>
   getTrade(id: string): Promise<Trade>
@@ -39,6 +58,8 @@ export type DBTradeAsset = {
   id: string
   trade_id: string
 }
+
+export type DBTradeWithStatus = DBTrade & { status: ListingStatus }
 
 export type DBTradeAssetValue = { token_id: string } | { item_id: string } | { amount: string }
 

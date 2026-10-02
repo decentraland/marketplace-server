@@ -46,6 +46,7 @@ import {
   getTradeAcceptedEventHandler,
   getTradeHandler,
   getTradesHandler,
+  getTradesV2Handler,
   recreateTradesMaterializedViewHandler
 } from './handlers/trades-handler'
 import { createTransakHandler, createTransakWidgetHandler, refreshTransakAccessTokenHandler } from './handlers/transak-handler'
@@ -147,6 +148,8 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/trades/:id', getTradeHandler)
+  // Public read, like GET /v1/trades: trades are signed public orders.
+  router.get('/v2/trades', getTradesV2Handler)
 
   router.get('/v1/coupons', getCouponsHandler)
   router.post(
