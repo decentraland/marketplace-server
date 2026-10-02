@@ -592,6 +592,8 @@ export async function createSquidDBTrade(
     network?: string
     // The marketplace the trade targets; the column default when omitted.
     marketplace?: string
+    // Fixed when a test depends on which trade is newer; the column default (now) otherwise.
+    createdAt?: Date
   }
 ): Promise<string> {
   const { dappsDatabase } = dbComponent
@@ -607,7 +609,8 @@ export async function createSquidDBTrade(
     signature = `signature_${tokenId ?? itemId}_${Date.now()}_${Math.random()}`,
     type = itemId ? 'public_item_order' : 'public_nft_order',
     network = 'matic',
-    marketplace
+    marketplace,
+    createdAt
   } = options
   const checks = {
     uses,
@@ -637,6 +640,9 @@ export async function createSquidDBTrade(
     const tradeId = tradeResult.rows[0].id
     if (marketplace) {
       await client.query(SQL`UPDATE marketplace.trades SET contract = ${marketplace} WHERE id = ${tradeId}`)
+    }
+    if (createdAt) {
+      await client.query(SQL`UPDATE marketplace.trades SET created_at = ${createdAt} WHERE id = ${tradeId}`)
     }
 
     // The sent asset: the collection item a primary order mints (asset type 4), or the nft a secondary order sells.

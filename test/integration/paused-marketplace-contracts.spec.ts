@@ -17,8 +17,8 @@ import {
  * A paused off-chain marketplace contract, read from the trades indexer's contract_status into an in-app cache.
  *
  * Product decision: a listing on a paused contract stays OPEN and visible everywhere, and keeps counting in
- * the catalogue aggregates; every representation only says so through `isPaused`. When an item has an open
- * order on a paused contract and another on a live one, the live one represents it.
+ * the catalogue aggregates; every representation only says so through `isPaused`. When an item has more than one
+ * open order, an unpaused one represents it, then the newest.
  */
 type Row = Record<string, unknown>
 type NFTRow = { nft: { tokenId: string }; order: Row | null }
@@ -222,7 +222,7 @@ test('paused marketplace contracts', function ({ components }) {
     const COLLECTION = '0xa11ce00000000000000000000000000000000002'
     const ITEM_ID = '8'
     const LIVE_MARKETPLACE = '0x1e0000000000000000000000000000000000ce03'
-    // The paused order has the greater id, so picking by id alone would surface it.
+    // The paused order is the newest and has the greater id, so only the paused flag can rank it last.
     const PAUSED_TRADE_ID = 'ffffffff-ffff-4fff-bfff-ffffffffffff'
     const LIVE_TRADE_ID = '00000000-0000-4000-8000-000000000001'
     const LIVE_PRICE = '700000000000000000'
@@ -244,7 +244,8 @@ test('paused marketplace contracts', function ({ components }) {
         network: 'MATIC',
         price: '900000000000000000',
         priceAssetType: 2,
-        uses: 10
+        uses: 10,
+        createdAt: new Date('2026-02-01T00:00:00.000Z')
       })
       await createSquidDBTrade(components, {
         id: LIVE_TRADE_ID,
@@ -255,7 +256,8 @@ test('paused marketplace contracts', function ({ components }) {
         network: 'MATIC',
         price: LIVE_PRICE,
         priceAssetType: 2,
-        uses: 10
+        uses: 10,
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
       })
       await createSquidContractStatusRow(components, { address: MARKETPLACE, network: 'POLYGON', paused: true })
       await refreshTradesMaterializedView(components)
@@ -287,6 +289,79 @@ test('paused marketplace contracts', function ({ components }) {
 
       it('should surface the live order with its price and not flag it as paused', () => {
         expect(item).toMatchObject({ tradeId: LIVE_TRADE_ID, price: LIVE_PRICE, isPaused: false })
+      })
+    })
+  })
+
+  describe('when an item has two open orders on live marketplaces', () => {
+    const COLLECTION = '0xa11ce00000000000000000000000000000000003'
+    const ITEM_ID = '9'
+    // The older order has the greater id, so picking by id alone would surface it.
+    const OLDER_TRADE_ID = 'ffffffff-ffff-4fff-bfff-fffffffffffe'
+    const NEWER_TRADE_ID = '00000000-0000-4000-8000-000000000002'
+    const NEWER_PRICE = '600000000000000000'
+
+    beforeEach(async () => {
+      await createSquidDBItem(components, {
+        itemId: ITEM_ID,
+        contractAddress: COLLECTION,
+        isMarketplaceV3MinterSet: true,
+        available: 5,
+        collectionApproved: true
+      })
+      tradeId = await createSquidDBTrade(components, {
+        id: OLDER_TRADE_ID,
+        contractAddress: COLLECTION,
+        itemId: ITEM_ID,
+        owner: SELLER,
+        marketplace: MARKETPLACE,
+        network: 'MATIC',
+        price: '800000000000000000',
+        priceAssetType: 2,
+        uses: 10,
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
+      })
+      await createSquidDBTrade(components, {
+        id: NEWER_TRADE_ID,
+        contractAddress: COLLECTION,
+        itemId: ITEM_ID,
+        owner: SELLER,
+        marketplace: MARKETPLACE,
+        network: 'MATIC',
+        price: NEWER_PRICE,
+        priceAssetType: 2,
+        uses: 10,
+        createdAt: new Date('2026-02-01T00:00:00.000Z')
+      })
+      await refreshTradesMaterializedView(components)
+    })
+
+    afterEach(async () => {
+      await deleteSquidDBTrade(components, NEWER_TRADE_ID)
+      await deleteSquidDBItem(components, ITEM_ID, COLLECTION)
+    })
+
+    describe('and fetching it from /v1/items', () => {
+      let item: Row | undefined
+
+      beforeEach(async () => {
+        item = (await getJSON(`/v1/items?contractAddress=${COLLECTION}&itemId=${ITEM_ID}`)).data[0]
+      })
+
+      it('should surface the newest order with its price', () => {
+        expect(item).toMatchObject({ tradeId: NEWER_TRADE_ID, price: NEWER_PRICE, isPaused: false })
+      })
+    })
+
+    describe('and fetching it from /v2/catalog', () => {
+      let item: Row | undefined
+
+      beforeEach(async () => {
+        item = (await getJSON(`/v2/catalog?contractAddress=${COLLECTION}`)).data.find((row: Row) => row.itemId === ITEM_ID)
+      })
+
+      it('should surface the newest order with its price', () => {
+        expect(item).toMatchObject({ tradeId: NEWER_TRADE_ID, price: NEWER_PRICE, isPaused: false })
       })
     })
   })

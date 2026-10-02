@@ -167,12 +167,12 @@ describe('when an item has more than one open primary listing', () => {
 
     it('should join at most one trade per item, so the item cannot be emitted twice', () => {
       expect(text).toContain('LEFT JOIN LATERAL')
-      expect(text).toMatch(/ORDER BY paused ASC, id::text DESC\s+LIMIT 1/)
+      expect(text).toMatch(/ORDER BY paused ASC, created_at DESC, id::text DESC\s+LIMIT 1/)
     })
 
-    it('should pick the same trade /v2/catalog does, an unpaused one first, so the two feeds cannot quote different prices', () => {
-      // That feed collapses with a MAX over (unpaused flag, id::text); ordering by the same keys picks the same row.
-      expect(text).toMatch(/ORDER BY paused ASC, id::text DESC/)
+    it('should pick the same trade /v2/catalog does, an unpaused one first and then the newest, so the two feeds cannot quote different prices', () => {
+      // That feed collapses with a MAX over (unpaused flag, created_at, id::text); ordering by the same keys picks the same row.
+      expect(text).toMatch(/ORDER BY paused ASC, created_at DESC, id::text DESC/)
     })
 
     it('should still restrict the join to an open primary listing', () => {

@@ -662,11 +662,14 @@ export const getTradesCTE = ({
     .append(SQL`)`)
 }
 
-// One open item order represents the item: an unpaused one wins over a paused one, then the greatest id
-// (what /v1/items picks too). Its id, price and paused flag ride in one sortable key, `<1 unpaused | 0
-// paused><uuid>|<price>`, so a single MAX keeps them from the same trade and stays hash-aggregate friendly.
+// One open item order represents the item: an unpaused one wins over a paused one, then the newest (what
+// /v1/items picks too), with the id as tiebreaker. Its id, price and paused flag ride in one sortable key,
+// `<1 unpaused | 0 paused><created_at UTC micros><uuid>|<price>`, so a single MAX keeps them from the same
+// trade and stays hash-aggregate friendly.
+const OPEN_ITEM_TRADE_CREATED_AT_LENGTH = 20
 const OPEN_ITEM_TRADE_KEY =
-  "(CASE WHEN paused THEN '0' ELSE '1' END || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\""
+  "(CASE WHEN paused THEN '0' ELSE '1' END || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS') || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\""
+const OPEN_ITEM_TRADE_ID_START = 2 + OPEN_ITEM_TRADE_CREATED_AT_LENGTH
 const UUID_TEXT_LENGTH = 36
 
 const getTradesJoin = (filters: CatalogQueryFilters) => {
@@ -675,8 +678,8 @@ const getTradesJoin = (filters: CatalogQueryFilters) => {
           (
             SELECT
               grouped_trades.*,
-              substr(grouped_trades.open_item_trade_key, 2, `
-    .append(`${UUID_TEXT_LENGTH}`)
+              substr(grouped_trades.open_item_trade_key, `
+    .append(`${OPEN_ITEM_TRADE_ID_START}, ${UUID_TEXT_LENGTH}`)
     .append(
       SQL`) AS open_item_trade_id,
               NULLIF(split_part(grouped_trades.open_item_trade_key, '|', 2), '')::numeric AS open_item_trade_price,

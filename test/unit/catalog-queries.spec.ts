@@ -31,17 +31,17 @@ describe('when building the catalog queries', () => {
       expect(text).toContain('item_first_listed_at')
     })
 
-    // id, price and paused ride in one MAX key, so they always describe the same trade and an unpaused one wins.
-    it('should pick the open item trade by a single key that sorts unpaused trades first', () => {
+    // id, price and paused ride in one MAX key, so they always describe the same trade: unpaused first, then newest.
+    it('should pick the open item trade by a single key that sorts unpaused trades first, then the newest', () => {
       const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
       expect(text).toContain(
-        "MAX((CASE WHEN paused THEN '0' ELSE '1' END || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\") FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_key"
+        "MAX((CASE WHEN paused THEN '0' ELSE '1' END || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS') || id::text || '|' || COALESCE(amount_received::text, '')) COLLATE \"C\") FILTER (WHERE status = 'open' and type = 'public_item_order') AS open_item_trade_key"
       )
     })
 
     it('should read the id, price and paused flag of that trade off its key', () => {
       const text = getCollectionsItemsCatalogQueryWithTrades(filters, []).text
-      expect(text).toContain('substr(grouped_trades.open_item_trade_key, 2, 36) AS open_item_trade_id')
+      expect(text).toContain('substr(grouped_trades.open_item_trade_key, 22, 36) AS open_item_trade_id')
       expect(text).toContain("NULLIF(split_part(grouped_trades.open_item_trade_key, '|', 2), '')::numeric AS open_item_trade_price")
       expect(text).toContain("left(grouped_trades.open_item_trade_key, 1) = '0' AS open_item_trade_paused")
     })

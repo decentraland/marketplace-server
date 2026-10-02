@@ -290,7 +290,7 @@ export function getItemsQuery(filters: ItemQueryFilters, pausedContracts: Paused
               AND sent_contract_address = item.collection_id
               AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
               AND status = '${ListingStatus.OPEN}'
-            ORDER BY paused ASC, id::text DESC
+            ORDER BY paused ASC, created_at DESC, id::text DESC
             LIMIT 1
           ) unified_trades ON TRUE `
                     )
@@ -481,7 +481,7 @@ export function getCatalogItemsQuery(filters: ItemQueryFilters, pausedContracts:
               AND sent_contract_address = item.collection_id
               AND type = '${TradeType.PUBLIC_ITEM_ORDER}'
               AND status = '${ListingStatus.OPEN}'
-            ORDER BY paused ASC, id::text DESC
+            ORDER BY paused ASC, created_at DESC, id::text DESC
             LIMIT 1
           ) unified_trades ON TRUE `
                         )
