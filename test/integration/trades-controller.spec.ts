@@ -625,6 +625,51 @@ test('trades controller', function ({ components }) {
       })
     })
 
+    describe('and an expired trade was executed', () => {
+      beforeEach(async () => {
+        await createSquidTradeActionRow(components, {
+          signature: signatures[2],
+          action: 'executed',
+          caller: randomAddress(),
+          network: 'ETHEREUM'
+        })
+      })
+
+      describe('and the open and sold statuses are given', () => {
+        beforeEach(async () => {
+          await list(`/v2/trades?signer=${signerB}&status=open&status=sold`)
+        })
+
+        it('should respond with the unexpired open and sold trades only and their total', () => {
+          expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [tradeIds[3], tradeIds[4]], total: 2 })
+        })
+      })
+
+      describe('and the sold status is given', () => {
+        beforeEach(async () => {
+          await list(`/v2/trades?signer=${signerB}&status=sold`)
+        })
+
+        it('should respond with no trades', () => {
+          expect({ ids: ids(), total: body.data.total }).toEqual({ ids: [], total: 0 })
+        })
+      })
+
+      describe('and the cancelled status is given', () => {
+        beforeEach(async () => {
+          await list(`/v2/trades?signer=${signerB}&status=cancelled`)
+        })
+
+        it('should respond with the expired trade as cancelled', () => {
+          expect({ ids: ids(), total: body.data.total, statuses: body.data.results.map(trade => trade.status) }).toEqual({
+            ids: [tradeIds[2]],
+            total: 1,
+            statuses: ['cancelled']
+          })
+        })
+      })
+    })
+
     describe('and several statuses are given', () => {
       beforeEach(async () => {
         await list(`/v2/trades?signer=${signerB}&status=open&status=cancelled`)

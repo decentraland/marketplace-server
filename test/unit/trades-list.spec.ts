@@ -203,6 +203,23 @@ describe('when building the trade list query', () => {
     it('should bind the signer and the statuses', () => {
       expect(query.values).toEqual([SIGNER, [ListingStatus.OPEN, ListingStatus.CANCELLED], 10, 0])
     })
+
+    it('should not skip the expired trades', () => {
+      expect(normalize(query)).not.toContain('t.expires_at >=')
+    })
+  })
+
+  describe('and only the open and sold statuses are given', () => {
+    beforeEach(() => {
+      filters = { signer: SIGNER, statuses: [ListingStatus.OPEN, ListingStatus.SOLD], limit: 10, offset: 0 }
+      query = getTradeListQuery(filters)
+    })
+
+    it('should skip the expired trades before computing the status of the paged trades', () => {
+      expect(normalize(query)).toMatch(
+        /\(SELECT t\.\* FROM marketplace\.trades AS t LEFT JOIN .* WHERE t\.signer = \$1 AND t\.expires_at >= now\(\)::timestamptz\(3\) AND \(\s?CASE .* END\) = ANY\(\$2\) ORDER BY/
+      )
+    })
   })
 })
 
@@ -221,12 +238,24 @@ describe('when building the trade list count query', () => {
     })
   })
 
-  describe('and a status is given', () => {
+  describe('and the sold status is given', () => {
     beforeEach(() => {
       query = getTradeListCountQuery({ signer: SIGNER, statuses: [ListingStatus.SOLD] })
     })
 
-    it('should count the trades whose computed status matches', () => {
+    it('should count the unexpired trades whose computed status matches', () => {
+      expect(normalize(query)).toMatch(
+        /^SELECT COUNT\(\*\)::int AS count FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE t\.signer = \$1 AND t\.expires_at >= now\(\)::timestamptz\(3\) AND \(\s?CASE .* END\) = ANY\(\$2\)$/
+      )
+    })
+  })
+
+  describe('and the cancelled status is given', () => {
+    beforeEach(() => {
+      query = getTradeListCountQuery({ signer: SIGNER, statuses: [ListingStatus.CANCELLED] })
+    })
+
+    it('should count the trades whose computed status matches, expired or not', () => {
       expect(normalize(query)).toMatch(
         /^SELECT COUNT\(\*\)::int AS count FROM marketplace\.trades AS t LEFT JOIN .* LEFT JOIN LATERAL .* WHERE t\.signer = \$1 AND \(\s?CASE .* END\) = ANY\(\$2\)$/
       )
