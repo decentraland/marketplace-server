@@ -12,8 +12,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
     -- CREATE THE TRADES SQUID TABLES
-    CREATE TABLE squid_trades."trade" ("id" character varying NOT NULL, "signature" text NOT NULL, "trade_digest" text, "network" character varying(8) NOT NULL, "action" character varying(9) NOT NULL, "timestamp" numeric, "caller" text NOT NULL, CONSTRAINT "PK_d4097908741dc408f8274ebdc53" PRIMARY KEY ("id"));
+    CREATE TABLE squid_trades."trade" ("id" character varying NOT NULL, "signature" text NOT NULL, "trade_digest" text, "network" character varying(8) NOT NULL, "action" character varying(9) NOT NULL, "timestamp" numeric, "caller" text NOT NULL, "tx_hash" text NOT NULL, "log_index" integer NOT NULL, CONSTRAINT "PK_d4097908741dc408f8274ebdc53" PRIMARY KEY ("id"));
     CREATE TABLE squid_trades."signature_index" ("id" character varying NOT NULL, "address" text NOT NULL, "contract" text NOT NULL, "network" character varying(8) NOT NULL, "index" integer NOT NULL, CONSTRAINT "PK_ffa4422e3338f8a5632922e6d4e" PRIMARY KEY ("id"));
+    CREATE TABLE squid_trades."signature_index_increase" ("id" character varying NOT NULL, "kind" character varying(8) NOT NULL, "address" text NOT NULL, "contract" text NOT NULL, "network" character varying(8) NOT NULL, "new_value" integer NOT NULL, "caller" text NOT NULL, "timestamp" numeric NOT NULL, "block_number" integer NOT NULL, "tx_hash" text NOT NULL, "log_index" integer NOT NULL, CONSTRAINT "PK_e877ee6ef4c7ca0b88ef839f3a1" PRIMARY KEY ("id"));
     CREATE TABLE squid_trades."contract_status" ("id" character varying NOT NULL, "address" text NOT NULL, "network" character varying(8) NOT NULL, "paused" boolean NOT NULL, CONSTRAINT "PK_14a66107c6d68e6c40c80de1f86" PRIMARY KEY ("id"));
 
 

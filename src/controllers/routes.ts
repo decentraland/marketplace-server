@@ -9,6 +9,7 @@ import { GlobalContext } from '../types'
 import { getAccountsHandler } from './handlers/accounts-handler'
 import { getActivityHandler } from './handlers/activity-handler'
 import { getBidsHandler } from './handlers/bids-handler'
+import { getCancelledTradesHandler } from './handlers/cancelled-trades-handler'
 import { createCatalogHandler } from './handlers/catalog-handler'
 import { getCollectionsHandler } from './handlers/collections-handler'
 import { getContractsHandler } from './handlers/contracts-handler'
@@ -200,6 +201,15 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       metadataValidator: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], undefined)
     }),
     getActivityHandler
+  )
+  router.get(
+    '/v1/cancelled-trades',
+    wellKnownComponents({
+      optional: false,
+      expiration: FIVE_MINUTES,
+      metadataValidator: validateAuthMetadata(['dcl:marketplace', 'dcl:builder'], undefined)
+    }),
+    getCancelledTradesHandler
   )
   router.get('/v1/prices', getPricesHandler)
   router.get('/v1/trendings', getTrendingsHandler)

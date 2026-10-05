@@ -906,6 +906,114 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/cancelled-trades:
+    get:
+      tags:
+        - Trades
+      summary: The signer's trades cancelled for a reason that still need re-creating
+      operationId: getCancelledTrades
+      security:
+        - SignedFetch: []
+      description: |
+        The signed-in signer's listings and bids cancelled for the given reason, computed from the trades
+        indexer's event history. With `contract_signature_index_bump`, a trade counts when the marketplace's
+        contract signature index bump is what invalidated it: at that moment it was unexpired, signed against
+        both current indexes, not cancelled by its signer and not used up.
+
+        A trade is left out once its original expiration passes, once the signer re-creates it (same type and
+        asset, on a marketplace the bump didn't reach) or once its asset can no longer be traded (the signer
+        no longer owns the NFT, the item sold out). One row per asset, newest first; total covers every page.
+        Requires a signed fetch from `dcl:marketplace` or `dcl:builder`.
+      parameters:
+        - name: reason
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [contract_signature_index_bump]
+        - name: first
+          in: query
+          description: Page size, capped at 100.
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of cancelled trades and how many there are
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, type, network, chainId, contract, reason, createdAt, expiresAt, cancelledAt, asset, price]
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                          enum: [bid, public_nft_order, public_item_order]
+                        network:
+                          type: string
+                          enum: [ETHEREUM, MATIC]
+                        chainId:
+                          type: integer
+                        contract:
+                          type: string
+                          description: The marketplace the trade was signed against.
+                        reason:
+                          type: string
+                          enum: [contract_signature_index_bump]
+                        createdAt:
+                          type: integer
+                          description: Epoch milliseconds.
+                        expiresAt:
+                          type: integer
+                          description: Epoch milliseconds.
+                        cancelledAt:
+                          type: integer
+                          description: Block time of the event that cancelled the trade, in epoch milliseconds.
+                        asset:
+                          type: object
+                          description: What was listed, or bid on.
+                          required: [contractAddress, tokenId, itemId, name, image]
+                          properties:
+                            contractAddress:
+                              type: string
+                            tokenId:
+                              type: [string, 'null']
+                            itemId:
+                              type: [string, 'null']
+                            name:
+                              type: [string, 'null']
+                            image:
+                              type: [string, 'null']
+                        price:
+                          type: [object, 'null']
+                          description: What the trade asked for, or offered.
+                          required: [assetType, amount]
+                          properties:
+                            assetType:
+                              type: integer
+                              description: 1 for ERC20 (MANA), 2 for USD-pegged MANA.
+                            amount:
+                              type: string
+        '400':
+          description: Missing or invalid signed fetch, unknown reason or an invalid page.
+
   /v1/bids:
     get:
       tags:

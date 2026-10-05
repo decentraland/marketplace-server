@@ -1170,12 +1170,20 @@ export async function deleteSquidDBSale(
  */
 export async function createSquidTradeActionRow(
   dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
-  options: { signature: string; action: 'cancelled' | 'executed'; caller: string; network: string }
+  options: {
+    signature: string
+    action: 'cancelled' | 'executed'
+    caller: string
+    network: string
+    timestamp?: number
+    logIndex?: number
+  }
 ): Promise<void> {
-  const { signature, action, caller, network } = options
+  const { signature, action, caller, network, timestamp = Date.now(), logIndex = 0 } = options
   await dbComponent.dappsDatabase.query(SQL`
-    INSERT INTO squid_trades.trade (id, signature, network, action, caller, timestamp)
-    VALUES (${`${signature}-${action}-${caller}`}, ${signature}, ${network}, ${action}, ${caller.toLowerCase()}, ${Date.now()})
+    INSERT INTO squid_trades.trade (id, signature, network, action, caller, timestamp, tx_hash, log_index)
+    VALUES (${`${signature}-${action}-${caller}-${timestamp}-${logIndex}`}, ${signature}, ${network}, ${action}, ${caller.toLowerCase()},
+      ${timestamp}, '0xtx', ${logIndex})
   `)
 }
 
@@ -1187,6 +1195,28 @@ export async function createSquidSignatureIndexRow(
   await dbComponent.dappsDatabase.query(SQL`
     INSERT INTO squid_trades.signature_index (id, address, contract, network, index)
     VALUES (${`${address}-${contract}-${network}`}, ${address.toLowerCase()}, ${contract.toLowerCase()}, ${network}, ${index})
+  `)
+}
+
+/** One signature index bump, as the trades indexer records it. */
+export async function createSquidSignatureIndexIncreaseRow(
+  dbComponent: Pick<BaseComponents, 'dappsDatabase'>,
+  options: {
+    kind: 'contract' | 'signer'
+    address: string
+    contract: string
+    network: string
+    newValue: number
+    timestamp: number
+    logIndex?: number
+  }
+): Promise<void> {
+  const { kind, address, contract, network, newValue, timestamp, logIndex = 0 } = options
+  await dbComponent.dappsDatabase.query(SQL`
+    INSERT INTO squid_trades.signature_index_increase
+      (id, kind, address, contract, network, new_value, caller, timestamp, block_number, tx_hash, log_index)
+    VALUES (${`${kind}-${address}-${contract}-${newValue}`}, ${kind}, ${address.toLowerCase()}, ${contract.toLowerCase()}, ${network},
+      ${newValue}, ${address.toLowerCase()}, ${timestamp}, 1, '0xtx', ${logIndex})
   `)
 }
 
@@ -1203,4 +1233,5 @@ export async function setTradeDigest(
 export async function clearSquidTradesRows(dbComponent: Pick<BaseComponents, 'dappsDatabase'>): Promise<void> {
   await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.trade`)
   await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.signature_index`)
+  await dbComponent.dappsDatabase.query(SQL`DELETE FROM squid_trades.signature_index_increase`)
 }

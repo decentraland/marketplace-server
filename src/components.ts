@@ -19,6 +19,7 @@ import { createAccountsComponent } from './ports/accounts/component'
 import { createActivityComponent } from './ports/activity'
 import { createAnalyticsDayDataComponent } from './ports/analyticsDayData/component'
 import { createBidsComponents } from './ports/bids'
+import { createCancelledTradesComponent } from './ports/cancelled-trades'
 import { createCatalogComponent } from './ports/catalog/component'
 import { createCollectionsComponent } from './ports/collections/component'
 import { createContractsComponent } from './ports/contracts/component'
@@ -308,6 +309,7 @@ export async function initComponents(): Promise<AppComponents> {
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const cancelledTrades = createCancelledTradesComponent({ dappsDatabase: dappsReadDatabase })
 
   const transak = await createTransakComponent(
     { fetch, logs, cache },
@@ -384,6 +386,7 @@ export async function initComponents(): Promise<AppComponents> {
     analyticsData,
     volumes,
     userAssets,
-    activity
+    activity,
+    cancelledTrades
   }
 }
