@@ -103,7 +103,8 @@ describe('when adding a listing trade', () => {
 
     // Isolate the shop-notify path: signature/structure validations pass, the SNS notification is a no-op.
     jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue({
-      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.MATIC_MAINNET),
+      contractName: ContractName.OffChainMarketplaceV3,
+      contract: getContract(ContractName.OffChainMarketplaceV3, ChainId.MATIC_MAINNET),
       cancellationDigest: null
     })
     jest.spyOn(signatureUtils, 'validateAssetOwnership').mockResolvedValue(true)

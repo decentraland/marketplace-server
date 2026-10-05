@@ -13,6 +13,7 @@ import {
   InvalidEstateTrade,
   EventNotGeneratedError,
   InvalidTradeSignatureError,
+  DeprecatedMarketplaceContractError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
@@ -97,6 +98,11 @@ describe('when handling the creation of a new trade', () => {
       { errorName: 'TradeEffectiveAfterExpirationError', error: new TradeEffectiveAfterExpirationError(), code: StatusCode.BAD_REQUEST },
       { errorName: 'InvalidTradeStructureError', error: new InvalidTradeStructureError('bid'), code: StatusCode.BAD_REQUEST },
       { errorName: 'InvalidTradeSignatureError', error: new InvalidTradeSignatureError(), code: StatusCode.BAD_REQUEST },
+      {
+        errorName: 'DeprecatedMarketplaceContractError',
+        error: new DeprecatedMarketplaceContractError('OffChainMarketplaceV2', 'OffChainMarketplaceV3'),
+        code: StatusCode.BAD_REQUEST
+      },
       { errorName: 'EstateTradeWithoutFingerprintError', error: new InvalidEstateTrade(), code: StatusCode.BAD_REQUEST },
       {
         errorName: 'EstateContractNotFoundForChainId',
