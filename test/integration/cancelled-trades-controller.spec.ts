@@ -26,6 +26,7 @@ type TradeFixture = {
   contract: string
   signature: string
   createdAt: number
+  tokenId?: string
   expiresAt?: number
   signerSignatureIndex?: number
 }
@@ -39,7 +40,7 @@ test('cancelled trades', function ({ components }) {
   let signatures: string[]
 
   async function insertTrade(fixture: TradeFixture): Promise<void> {
-    const { type, contract, signature, createdAt, expiresAt = Date.now() + DAY, signerSignatureIndex = 0 } = fixture
+    const { type, contract, signature, createdAt, tokenId = '1', expiresAt = Date.now() + DAY, signerSignatureIndex = 0 } = fixture
     const checks = JSON.stringify({
       uses: 1,
       effective: createdAt,
@@ -66,7 +67,7 @@ test('cancelled trades', function ({ components }) {
       VALUES (${tradeId}, ${nftDirection}, 3, ${NFT_CONTRACT}, ${fixture.signer}, '0x') RETURNING id
     `)
     await components.dappsDatabase.query(SQL`
-      INSERT INTO marketplace.trade_assets_erc721 (asset_id, token_id) VALUES (${nft.rows[0].id}, '1')
+      INSERT INTO marketplace.trade_assets_erc721 (asset_id, token_id) VALUES (${nft.rows[0].id}, ${tokenId})
     `)
     const price = await components.dappsDatabase.query<{ id: string }>(SQL`
       INSERT INTO marketplace.trade_assets (trade_id, direction, asset_type, contract_address, beneficiary, extra)
@@ -111,6 +112,7 @@ test('cancelled trades', function ({ components }) {
     await components.dappsDatabase.query(SQL`DELETE FROM marketplace.trades WHERE signature = ANY(${signatures})`)
     await clearSquidTradesRows(components)
     await deleteSquidDBNFT(components, '1', NFT_CONTRACT)
+    await deleteSquidDBNFT(components, '2', NFT_CONTRACT)
   })
 
   describe('when the request is not signed', () => {
@@ -126,6 +128,16 @@ test('cancelled trades', function ({ components }) {
   describe('when the reason is not a known one', () => {
     beforeEach(async () => {
       await fetchCancelledTrades('reason=expired')
+    })
+
+    it('should respond with a 400', () => {
+      expect(response.status).toBe(400)
+    })
+  })
+
+  describe('when a trade type is not a known one', () => {
+    beforeEach(async () => {
+      await fetchCancelledTrades(`reason=${REASON}&type=public_nft_order&type=listing`)
     })
 
     it('should respond with a 400', () => {
@@ -340,6 +352,53 @@ test('cancelled trades', function ({ components }) {
         expect(body).toEqual({
           data: [expect.objectContaining({ type: 'bid', price: { assetType: 1, amount: '1000' } })],
           total: 1
+        })
+      })
+    })
+
+    describe('and the signer also had a bid on another NFT', () => {
+      beforeEach(async () => {
+        await createSquidDBNFT(components, { tokenId: '2', contractAddress: NFT_CONTRACT, owner: OTHER_OWNER })
+        await insertTrade({
+          signer,
+          type: 'bid',
+          contract: BUMPED_MARKETPLACE,
+          signature: 'cancelled-trades-other-bid',
+          createdAt: Date.now() - 2 * DAY,
+          tokenId: '2'
+        })
+      })
+
+      describe('and only bids are asked for', () => {
+        beforeEach(async () => {
+          await fetchCancelledTrades(`reason=${REASON}&type=bid`)
+        })
+
+        it('should respond with the bid alone and count only bids in the total', () => {
+          expect(body).toEqual({ data: [expect.objectContaining({ type: 'bid' })], total: 1 })
+        })
+      })
+
+      describe('and listings and bids are asked for', () => {
+        beforeEach(async () => {
+          await fetchCancelledTrades(`reason=${REASON}&type=public_nft_order&type=bid`)
+        })
+
+        it('should respond with both, newest first', () => {
+          expect(body).toEqual({
+            data: [expect.objectContaining({ type: 'public_nft_order' }), expect.objectContaining({ type: 'bid' })],
+            total: 2
+          })
+        })
+      })
+
+      describe('and only item listings are asked for', () => {
+        beforeEach(async () => {
+          await fetchCancelledTrades(`reason=${REASON}&type=public_item_order`)
+        })
+
+        it('should respond with no trades', () => {
+          expect(body).toEqual({ data: [], total: 0 })
         })
       })
     })

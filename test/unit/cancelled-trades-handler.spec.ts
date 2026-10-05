@@ -46,6 +46,36 @@ describe('when getting the cancelled trades of the signer', () => {
     })
   })
 
+  describe('and a single trade type is asked for', () => {
+    beforeEach(() => {
+      withRequest(`reason=${REASON}&type=bid`)
+    })
+
+    it('should read only that type', async () => {
+      await getCancelledTradesHandler(context)
+
+      expect(getCancelledTrades).toHaveBeenCalledWith({ signer: SIGNER, reason: REASON, types: ['bid'], first: 20, skip: 0 })
+    })
+  })
+
+  describe('and two trade types are asked for', () => {
+    beforeEach(() => {
+      withRequest(`reason=${REASON}&type=public_nft_order&type=public_item_order`)
+    })
+
+    it('should read both types', async () => {
+      await getCancelledTradesHandler(context)
+
+      expect(getCancelledTrades).toHaveBeenCalledWith({
+        signer: SIGNER,
+        reason: REASON,
+        types: ['public_nft_order', 'public_item_order'],
+        first: 20,
+        skip: 0
+      })
+    })
+  })
+
   describe('and the request is not signed', () => {
     beforeEach(() => {
       withRequest(`reason=${REASON}`, '')
@@ -57,17 +87,21 @@ describe('when getting the cancelled trades of the signer', () => {
     })
   })
 
-  describe.each(['', 'reason=expired', `reason=${REASON}&first=0`, `reason=${REASON}&skip=-1`, `reason=${REASON}&first=abc`])(
-    'and the query is %s',
-    query => {
-      beforeEach(() => {
-        withRequest(query)
-      })
+  describe.each([
+    '',
+    'reason=expired',
+    `reason=${REASON}&first=0`,
+    `reason=${REASON}&skip=-1`,
+    `reason=${REASON}&first=abc`,
+    `reason=${REASON}&type=bid&type=listing`
+  ])('and the query is %s', query => {
+    beforeEach(() => {
+      withRequest(query)
+    })
 
-      it('should respond with a bad request without reading', async () => {
-        expect((await getCancelledTradesHandler(context)).status).toBe(StatusCode.BAD_REQUEST)
-        expect(getCancelledTrades).not.toHaveBeenCalled()
-      })
-    }
-  )
+    it('should respond with a bad request without reading', async () => {
+      expect((await getCancelledTradesHandler(context)).status).toBe(StatusCode.BAD_REQUEST)
+      expect(getCancelledTrades).not.toHaveBeenCalled()
+    })
+  })
 })

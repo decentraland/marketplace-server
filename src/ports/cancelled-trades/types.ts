@@ -8,6 +8,8 @@ export enum TradeCancellationReason {
 export type CancelledTradesFilters = {
   signer: string
   reason: TradeCancellationReason
+  /** Only trades of these types; all of them when absent. */
+  types?: TradeType[]
   first: number
   skip: number
 }
@@ -65,7 +67,7 @@ export type ICancelledTradesComponent = {
    * The signer's trades cancelled for the given reason that they still have to re-create: unexpired, not
    * re-created on a marketplace the reason didn't reach, and whose asset can still be listed or bid on.
    *
-   * @param filters - The signer, the reason and the page.
+   * @param filters - The signer, the reason, the trade types and the page.
    * @returns A page of cancelled trades, newest first, and how many there are in total.
    */
   getCancelledTrades(filters: CancelledTradesFilters): Promise<CancelledTradesPage>

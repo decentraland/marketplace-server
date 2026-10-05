@@ -1,3 +1,4 @@
+import { TradeType } from '@dcl/schemas'
 import { Params } from '../../logic/http/params'
 import { TradeCancellationReason } from '../../ports/cancelled-trades/types'
 import { HandlerContextWithPath, StatusCode } from '../../types'
@@ -9,6 +10,10 @@ function wholeNumber(value: string | undefined): number | undefined | null {
   if (value === undefined) return undefined
   const n = /^\d+$/.test(value) ? Number(value) : NaN
   return Number.isSafeInteger(n) ? n : null
+}
+
+function isTradeType(value: string): value is TradeType {
+  return Object.values(TradeType).some(type => type === value)
 }
 
 function isCancellationReason(value: string | undefined): value is TradeCancellationReason {
@@ -44,9 +49,15 @@ export async function getCancelledTradesHandler(
     return { status: StatusCode.BAD_REQUEST, body: { ok: false, message: 'first and skip must be whole numbers, first at least 1' } }
   }
 
+  const types = params.getList('type')
+  if (!types.every(isTradeType)) {
+    return { status: StatusCode.BAD_REQUEST, body: { ok: false, message: `type must be one of: ${Object.values(TradeType).join(', ')}` } }
+  }
+
   const page = await context.components.cancelledTrades.getCancelledTrades({
     signer,
     reason,
+    ...(types.length > 0 && { types }),
     first: Math.min(first ?? DEFAULT_PAGE, MAX_PAGE),
     skip: skip ?? 0
   })

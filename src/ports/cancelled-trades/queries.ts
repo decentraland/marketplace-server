@@ -16,6 +16,7 @@ const SQUID_NETWORK = "CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.netwo
  */
 export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilters): SQLStatement {
   const signer = filters.signer.toLowerCase()
+  const types = filters.types?.length ? SQL` AND t.type = ANY(${filters.types}::marketplace.trade_type[])` : SQL``
   return SQL`WITH bumped AS (
     SELECT t.id, t.type, t.network, t.chain_id, t.contract, t.created_at, t.expires_at, t.checks,
       ARRAY[t.hashed_signature, t.trade_digest] AS keys, n.squid_network,
@@ -34,7 +35,11 @@ export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilt
       ORDER BY e.new_value
       LIMIT 1
     ) bump ON TRUE
-    WHERE t.signer = ${signer} AND t.expires_at > now()
+    WHERE t.signer = ${signer} AND t.expires_at > now()`
+    )
+    .append(types)
+    .append(
+      SQL`
   ), cancelled AS (
     SELECT b.* FROM bumped b
     WHERE b.expires_at > to_timestamp(b.bump_timestamp / 1000)
@@ -68,13 +73,50 @@ export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilt
     LEFT JOIN marketplace.trade_assets_item item_asset ON item_asset.asset_id = a.id
     LEFT JOIN marketplace.trade_assets price ON price.trade_id = c.id AND price.direction::text = CASE WHEN c.type = 'bid' THEN 'sent' ELSE 'received' END
     LEFT JOIN marketplace.trade_assets_erc20 price_amount ON price_amount.asset_id = price.id
+  ), live AS (
+    -- The signer's trades no contract bump has invalidated: a re-creation of a cancelled one, if newer.
+    SELECT t.type, t.network, t.created_at, na.contract_address AS asset_contract, ne.token_id, ni.item_id
+    FROM marketplace.trades t
+    JOIN marketplace.trade_assets na ON na.trade_id = t.id
+      AND na.direction::text = CASE WHEN t.type = 'bid' THEN 'received' ELSE 'sent' END
+    LEFT JOIN marketplace.trade_assets_erc721 ne ON ne.asset_id = na.id
+    LEFT JOIN marketplace.trade_assets_item ni ON ni.asset_id = na.id
+    WHERE t.signer = ${signer}`
+    )
+    .append(types)
+    .append(
+      SQL`
+      AND NOT EXISTS (
+        SELECT 1 FROM squid_trades.signature_index_increase e
+        WHERE e.kind = 'contract' AND e.address = LOWER(t.contract) AND e.contract = LOWER(t.contract)
+          AND e.network = `
+    )
+    .append(SQUID_NETWORK)
+    .append(
+      SQL` AND e.new_value > (t.checks ->> 'contractSignatureIndex')::numeric
+      )
+  ), unrecreated AS (
+    -- Candidates and live trades share one window per asset instead of an anti-join, which plans badly on misestimates.
+    SELECT * FROM (
+      SELECT u.*, MAX(u.created_at) FILTER (WHERE u.live)
+        OVER (PARTITION BY u.type, u.network, u.asset_contract, u.token_id, u.item_id) AS recreated_at
+      FROM (
+        SELECT w.id, w.type, w.network, w.chain_id, w.contract, w.created_at, w.expires_at, w.bump_timestamp,
+          w.asset_contract, w.token_id, w.item_id, w.price_asset_type, w.price_amount, false AS live
+        FROM with_assets w
+        UNION ALL
+        SELECT NULL, l.type, l.network, NULL, NULL, l.created_at, NULL, NULL, l.asset_contract, l.token_id, l.item_id, NULL, NULL, true
+        FROM live l
+      ) u
+    ) m
+    WHERE NOT m.live AND (m.recreated_at IS NULL OR m.recreated_at <= m.created_at)
   ), pending AS (
     -- One row per asset: a signer with several cancelled trades for the same asset re-creates it once.
     SELECT DISTINCT ON (w.type, w.asset_contract, w.token_id, w.item_id)
       w.id, w.type, w.network, w.chain_id, w.contract, w.created_at, w.expires_at, w.bump_timestamp,
       w.asset_contract, w.token_id, w.item_id, w.price_asset_type, w.price_amount,
       nft.name AS nft_name, COALESCE(nft.image, item.image) AS image, item.metadata_id
-    FROM with_assets w
+    FROM unrecreated w
     LEFT JOIN `
     )
     .append(MARKETPLACE_SQUID_SCHEMA)
@@ -90,26 +132,6 @@ export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilt
         WHEN 'public_item_order' THEN item.available > 0
         ELSE (w.token_id IS NULL OR nft.owner_address <> ${signer}) AND (w.item_id IS NULL OR item.available > 0)
       END
-      AND NOT EXISTS (
-        SELECT 1 FROM marketplace.trades t
-        JOIN marketplace.trade_assets na ON na.trade_id = t.id
-          AND na.direction::text = CASE WHEN t.type = 'bid' THEN 'received' ELSE 'sent' END
-        LEFT JOIN marketplace.trade_assets_erc721 ne ON ne.asset_id = na.id
-        LEFT JOIN marketplace.trade_assets_item ni ON ni.asset_id = na.id
-        WHERE t.signer = ${signer} AND t.type = w.type AND t.network = w.network AND t.created_at > w.created_at
-          AND na.contract_address = w.asset_contract
-          AND ne.token_id IS NOT DISTINCT FROM w.token_id AND ni.item_id IS NOT DISTINCT FROM w.item_id
-          -- Re-created on a marketplace whose own bump hasn't invalidated it too.
-          AND NOT EXISTS (
-            SELECT 1 FROM squid_trades.signature_index_increase e
-            WHERE e.kind = 'contract' AND e.address = LOWER(t.contract) AND e.contract = LOWER(t.contract)
-              AND e.network = `
-    )
-    .append(SQUID_NETWORK)
-    .append(
-      SQL` AND e.new_value > (t.checks ->> 'contractSignatureIndex')::numeric
-          )
-      )
     ORDER BY w.type, w.asset_contract, w.token_id, w.item_id, w.created_at DESC
   ), page AS (
     SELECT * FROM pending ORDER BY created_at DESC, id LIMIT ${filters.first} OFFSET ${filters.skip}
