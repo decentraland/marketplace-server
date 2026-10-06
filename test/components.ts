@@ -16,6 +16,7 @@ import { createAccountsComponent } from '../src/ports/accounts/component'
 import { createActivityComponent } from '../src/ports/activity'
 import { createAnalyticsDayDataComponent } from '../src/ports/analyticsDayData/component'
 import { createBidsComponents } from '../src/ports/bids'
+import { createCancelledTradesComponent } from '../src/ports/cancelled-trades'
 import { createCatalogComponent } from '../src/ports/catalog/component'
 import { createCollectionsComponent } from '../src/ports/collections/component'
 import { createContractsComponent } from '../src/ports/contracts/component'
@@ -206,6 +207,7 @@ async function initComponents(): Promise<TestComponents> {
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
   const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const cancelledTrades = createCancelledTradesComponent({ dappsDatabase: dappsReadDatabase })
 
   return {
     cache,
@@ -261,7 +263,8 @@ async function initComponents(): Promise<TestComponents> {
     analyticsData,
     volumes,
     userAssets,
-    activity
+    activity,
+    cancelledTrades
   }
 }
 

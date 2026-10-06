@@ -7,6 +7,7 @@ import { IAccountsComponent } from './ports/accounts/types'
 import { IActivityComponent } from './ports/activity/types'
 import { IAnalyticsDayDataComponent } from './ports/analyticsDayData/types'
 import { IBidsComponent } from './ports/bids'
+import { ICancelledTradesComponent } from './ports/cancelled-trades/types'
 import { ICatalogComponent } from './ports/catalog/types'
 import { ICollectionsComponent } from './ports/collections/types'
 import { IContractsComponent } from './ports/contracts/types'
@@ -101,6 +102,7 @@ export type BaseComponents = {
   collections: ICollectionsComponent
   accounts: IAccountsComponent
   activity: IActivityComponent
+  cancelledTrades: ICancelledTradesComponent
 }
 
 // components used in runtime

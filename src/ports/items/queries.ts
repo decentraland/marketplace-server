@@ -79,7 +79,7 @@ function getIsOnSalePredicate(): SQLStatement {
 
 // Item name as the other shop feeds resolve it (/v3/catalog/unified, /v3/catalog/shop) -- the
 // wearable's or the emote's, whichever the metadata join produced.
-const ITEM_NAME_EXPRESSION = 'COALESCE(wearable.name, emote.name)'
+export const ITEM_NAME_EXPRESSION = 'COALESCE(wearable.name, emote.name)'
 const ITEM_ID_EXPRESSION = 'item.id::text'
 
 function getItemNameExpression(): SQLStatement {

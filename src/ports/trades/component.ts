@@ -7,9 +7,10 @@ import {
   forceFlushTradesMaterializedView,
   recreateTradesMaterializedView
 } from '../../logic/trades/materialized-view'
-import { resolveTradeSignature, validateAssetOwnership } from '../../logic/trades/utils'
+import { NEW_TRADE_CONTRACT_NAME, resolveTradeSignature, validateAssetOwnership } from '../../logic/trades/utils'
 import { AppComponents } from '../../types'
 import {
+  DeprecatedMarketplaceContractError,
   InvalidTradeSignatureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
@@ -183,6 +184,11 @@ export function createTradesComponent(
     const signatureMatch = resolveTradeSignature(trade, signer)
     if (!signatureMatch) {
       throw new InvalidTradeSignatureError()
+    }
+
+    // Older marketplaces are being retired; only trades on the newest one are taken.
+    if (signatureMatch.contractName !== NEW_TRADE_CONTRACT_NAME) {
+      throw new DeprecatedMarketplaceContractError(signatureMatch.contractName, NEW_TRADE_CONTRACT_NAME)
     }
 
     // validate right ownership

@@ -3,6 +3,7 @@ import SQL, { SQLStatement } from 'sql-template-strings'
 import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, TradeCreation, TradeType, NFTFilters } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
+import { squidTradesNetwork } from '../../logic/trades/squid'
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
@@ -131,7 +132,9 @@ export function getTradesForTypeQuery(type: TradeType) {
         'nft_name', assets_with_values.nft_name
       )) as assets,
       CASE
-        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN '${ListingStatus.CANCELLED}'
+        WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN '${
+          ListingStatus.CANCELLED
+        }'
         WHEN (
           (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
           OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -141,7 +144,9 @@ export function getTradesForTypeQuery(type: TradeType) {
           (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
           OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
         ) THEN '${ListingStatus.CANCELLED}'
-        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
+        WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${
+          ListingStatus.SOLD
+        }'
       ELSE '${ListingStatus.OPEN}'
       END AS status
     FROM marketplace.trades as t
@@ -179,7 +184,7 @@ export function getTradesForTypeQuery(type: TradeType) {
       ON signer_signature_index.address = LOWER(t.signer)
       -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
       AND signer_signature_index.contract = LOWER(t.contract)
-      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND signer_signature_index.network = ${squidTradesNetwork('t')}
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
@@ -188,7 +193,7 @@ export function getTradesForTypeQuery(type: TradeType) {
       AND contract_signature_index.contract = LOWER(t.contract)
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
-      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND contract_signature_index.network = ${squidTradesNetwork('t')}
     WHERE t.type = '${type}'
     /**
      * NOT grouped by trade_status.caller.
@@ -319,7 +324,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
       ON signer_signature_index.address = LOWER(t.signer)
       -- Also scoped to the trade's own marketplace: signerSignatureIndex is storage on each deployment.
       AND signer_signature_index.contract = LOWER(t.contract)
-      AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND signer_signature_index.network = ${squidTradesNetwork('t')}
     -- Keyed by the trade's OWN marketplace, not just by network: each version keeps an independent
     -- contractSignatureIndex, and a trade signed the value it read from the version it targets.
     LEFT JOIN squid_trades.signature_index as contract_signature_index
@@ -328,7 +333,7 @@ export function getTradesForTypeQueryWithFilters(type: TradeType, filters: NFTFi
       AND contract_signature_index.contract = LOWER(t.contract)
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
-      AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND contract_signature_index.network = ${squidTradesNetwork('t')}
     WHERE t.type = '`
                 .append(type)
                 .append(

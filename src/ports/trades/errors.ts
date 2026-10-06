@@ -60,6 +60,12 @@ export class InvalidOwnerError extends Error {
   }
 }
 
+export class DeprecatedMarketplaceContractError extends Error {
+  constructor(public contractName: string, public expectedContractName: string) {
+    super(`Trades signed on ${contractName} are no longer accepted, sign it on ${expectedContractName}`)
+  }
+}
+
 export class MarketplaceContractNotFound extends Error {
   constructor(public chainId: ChainId, public network: Network) {
     super(`Contract not found for ${chainId} and ${network}`)

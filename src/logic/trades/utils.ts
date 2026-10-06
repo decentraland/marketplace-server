@@ -99,6 +99,13 @@ export const MARKETPLACE_TRADE_TYPES: Record<string, TypedDataField[]> = {
 export const OFF_CHAIN_MARKETPLACE_CONTRACT_NAMES = [ContractName.OffChainMarketplaceV3, ContractName.OffChainMarketplaceV2]
 
 /**
+ * The only version new trades may be signed against. The older ones are being paused and their contract
+ * signature index bumped, which cancels every trade signed on them. They are still resolved above, so a
+ * trade signed on one is told why it is refused instead of reading as an invalid signature.
+ */
+export const NEW_TRADE_CONTRACT_NAME = ContractName.OffChainMarketplaceV3
+
+/**
  * Versions that identify a trade by its EIP-712 digest rather than by keccak256 of the signature bytes.
  *
  * This is what a cancellation is keyed on, so it decides which value has to be stored to be able to
@@ -170,6 +177,8 @@ function getTradeTypedData(trade: TradeCreation, contract: ContractData): { doma
 }
 
 export type TradeSignatureMatch = {
+  /** The name of the marketplace version the signature verified against. */
+  contractName: ContractName
   /** The marketplace version the signature verified against. */
   contract: ContractData
   /**
@@ -213,6 +222,7 @@ export function resolveTradeSignature(trade: TradeCreation, signer: string): Tra
 
     if (recovered.toLowerCase() === signer.toLowerCase()) {
       return {
+        contractName,
         contract,
         cancellationDigest: DIGEST_KEYED_MARKETPLACE_CONTRACT_NAMES.includes(contractName)
           ? TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values)

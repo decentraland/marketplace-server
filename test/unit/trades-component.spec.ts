@@ -32,6 +32,7 @@ import {
 import {
   InvalidEstateTrade,
   InvalidTradeSignatureError,
+  DeprecatedMarketplaceContractError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
   TradeEffectiveAfterExpirationError,
@@ -60,7 +61,8 @@ describe('when adding a new trade', () => {
     // A non-null digest on purpose: it is what a V3 trade carries, and asserting it as a literal below
     // means the trade recording a hardcoded null instead of what was resolved fails this test.
     signatureMatch = {
-      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      contractName: ContractName.OffChainMarketplaceV3,
+      contract: getContract(ContractName.OffChainMarketplaceV3, ChainId.ETHEREUM_MAINNET),
       cancellationDigest: MOCK_CANCELLATION_DIGEST
     }
     mockTrade = {
@@ -197,6 +199,24 @@ describe('when adding a new trade', () => {
 
     it('should throw an InvalidTradeSignatureError', async () => {
       await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(new InvalidTradeSignatureError())
+    })
+  })
+
+  describe('when the trade was signed on an older marketplace', () => {
+    beforeEach(() => {
+      jest.spyOn(signatureUtils, 'resolveTradeSignature').mockReturnValue({
+        contractName: ContractName.OffChainMarketplaceV2,
+        contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+        cancellationDigest: null
+      })
+      jest.spyOn(utils, 'validateTradeByType').mockResolvedValue(true)
+      jest.spyOn(utils, 'isValidEstateTrade').mockResolvedValueOnce(true)
+    })
+
+    it('should throw a DeprecatedMarketplaceContractError naming the contract to sign on instead', async () => {
+      await expect(tradesComponent.addTrade(mockTrade, mockSigner)).rejects.toThrow(
+        new DeprecatedMarketplaceContractError(ContractName.OffChainMarketplaceV2, ContractName.OffChainMarketplaceV3)
+      )
     })
   })
 

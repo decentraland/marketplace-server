@@ -9,6 +9,7 @@ import {
   EventNotGeneratedError,
   InvalidTradePriceAssetError,
   InvalidTradeSignatureError,
+  DeprecatedMarketplaceContractError,
   InvalidTradeSignerError,
   InvalidTradeStructureError,
   TradeAlreadyExpiredError,
@@ -83,6 +84,7 @@ export async function addTradeHandler(
       e instanceof InvalidTradePriceAssetError ||
       e instanceof InvalidCollectionItemCreatorError ||
       e instanceof InvalidTradeSignatureError ||
+      e instanceof DeprecatedMarketplaceContractError ||
       e instanceof InvalidTradeSignerError ||
       e instanceof InvalidECDSASignatureError ||
       e instanceof InvalidEstateTrade ||

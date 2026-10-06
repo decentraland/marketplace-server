@@ -26,7 +26,8 @@ test('trades controller', function ({ components }) {
     // digest, both of which the trade records. The fixtures carry a placeholder signature, so this stands
     // in for real verification the way the old validateTradeSignature mock did.
     jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({
-      contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+      contractName: ContractName.OffChainMarketplaceV3,
+      contract: getContract(ContractName.OffChainMarketplaceV3, ChainId.ETHEREUM_MAINNET),
       cancellationDigest: null
     }))
     jest.spyOn(chainIdUtils, 'getEthereumChainId').mockReturnValue(ChainId.ETHEREUM_SEPOLIA)
@@ -90,6 +91,48 @@ test('trades controller', function ({ components }) {
           ]
         }
       })
+      describe('and the bid was signed on an older marketplace', () => {
+        beforeEach(async () => {
+          jest.spyOn(tradeUtils, 'resolveTradeSignature').mockImplementation(() => ({
+            contractName: ContractName.OffChainMarketplaceV2,
+            contract: getContract(ContractName.OffChainMarketplaceV2, ChainId.ETHEREUM_MAINNET),
+            cancellationDigest: null
+          }))
+          const { localFetch } = components
+          const signedRequest = await getSignedFetchRequest('POST', '/v1/trades', {
+            intent: 'dcl:create-trade',
+            signer: 'dcl:marketplace'
+          })
+          signer = signedRequest.identity.realAccount.address.toLowerCase()
+          bid = {
+            ...bid,
+            signer,
+            signature: Authenticator.createSignature(signedRequest.identity.realAccount, bid.signature)
+          }
+          response = await localFetch.fetch('/v1/trades', {
+            method: signedRequest.method,
+            body: JSON.stringify(bid),
+            headers: { ...signedRequest.headers, 'Content-Type': 'application/json' }
+          })
+        })
+
+        it('should respond with a 400 telling to sign it on the newest marketplace', async () => {
+          expect({ status: response.status, body: await response.json() }).toEqual({
+            status: StatusCode.BAD_REQUEST,
+            body: {
+              ok: false,
+              message: 'Trades signed on OffChainMarketplaceV2 are no longer accepted, sign it on OffChainMarketplaceV3'
+            }
+          })
+        })
+
+        it('should not store the trade', async () => {
+          const { dappsDatabase } = components
+          const queryResult = await dappsDatabase.query(SQL`SELECT * FROM marketplace.trades WHERE signature = ${bid.signature}`)
+          expect(queryResult.rowCount).toBe(0)
+        })
+      })
+
       describe('and the bid is valid', () => {
         beforeEach(async () => {
           const { localFetch } = components

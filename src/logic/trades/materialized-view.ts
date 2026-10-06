@@ -1,5 +1,6 @@
 import { IPgComponent } from '@dcl/pg-component'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { squidTradesNetwork } from './squid'
 
 export const TRADES_MV_NAME = 'mv_trades'
 // Minimum time between materialized view refreshes. Writes on the source tables
@@ -147,7 +148,7 @@ export const TRADES_MV_CREATE_SQL = `
       -- so the same signer holds an independent counter on V2 and V3, and the trade signed the one it
       -- read from the version it targets.
       AND si_signer.contract = LOWER(t.contract)
-      AND si_signer.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND si_signer.network = ${squidTradesNetwork('t')}
 
       -- Keyed by the trade's OWN marketplace, not just by network. Each version keeps an independent
       -- contractSignatureIndex, and a trade signed the value it read from the version it targets, so
@@ -164,7 +165,7 @@ export const TRADES_MV_CREATE_SQL = `
       -- The indexer's Network enum spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC,
       -- so a raw equality never matches a Polygon trade and the whole per-version scoping is a no-op on
       -- the network carrying most of the volume. Same translation as ports/catalog/queries.ts.
-      AND si_contract.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+      AND si_contract.network = ${squidTradesNetwork('t')}
 
       WHERE t.type IN ('public_item_order', 'public_nft_order')
       GROUP BY

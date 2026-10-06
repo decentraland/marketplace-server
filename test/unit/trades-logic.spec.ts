@@ -318,6 +318,10 @@ describe('when resolving which marketplace version a trade signature belongs to'
       expect(resolveTradeSignature(trade, signerAddress)?.contract.address).toBe(marketplace.address)
     })
 
+    it('should name V3 as the version, which is the one new trades are accepted on', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.contractName).toBe(ContractName.OffChainMarketplaceV3)
+    })
+
     it('should return the EIP-712 digest under the V3 domain, which is what V3 keys cancellations on', () => {
       expect(resolveTradeSignature(trade, signerAddress)?.cancellationDigest).toBe(
         TypedDataEncoder.hash(domain, MARKETPLACE_TRADE_TYPES, values)
@@ -344,9 +348,13 @@ describe('when resolving which marketplace version a trade signature belongs to'
       trade.signature = await wallet.signTypedData(domain, MARKETPLACE_TRADE_TYPES, values)
     })
 
-    // A trade signed against the older version must keep working while clients roll over to V3.
+    // Still resolved, so a trade signed on it is refused with a clear reason rather than as an invalid signature.
     it('should report V2 as the contract the signature belongs to', () => {
       expect(resolveTradeSignature(trade, signerAddress)?.contract.address).toBe(marketplace.address)
+    })
+
+    it('should name V2 as the version, so the trade can be refused as signed on a retired marketplace', () => {
+      expect(resolveTradeSignature(trade, signerAddress)?.contractName).toBe(ContractName.OffChainMarketplaceV2)
     })
 
     // V2 keys cancellations on keccak256(signature bytes), which the trade already stores as
