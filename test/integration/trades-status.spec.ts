@@ -17,7 +17,7 @@ import {
  * indistinguishable from a correct one. Every case below fails if one specific predicate is removed.
  */
 test('trade status computed from indexer rows', function ({ components }) {
-  // The column default on marketplace.trades, and checksummed, which is why the joins lower() it.
+  // Checksummed on purpose: the status joins must still match it through lower().
   const TRADE_CONTRACT = '0x540fb08eDb56AaE562864B390542C97F562825BA'
   const OTHER_MARKETPLACE = '0x36fd1434a6c4b8ade80c9847c1d15033ce34488c'
   const SIGNER = '0x1234567890123456789012345678901234567890'

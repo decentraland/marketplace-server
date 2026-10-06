@@ -1,7 +1,9 @@
-import { Trade, TradeCreation, Event } from '@dcl/schemas'
+import { Trade, TradeCreation, Event, ListingStatus } from '@dcl/schemas'
+import { isAddress } from '../../logic/address'
 import { isErrorWithMessage } from '../../logic/errors'
-import { getNumberParameter, getParameter } from '../../logic/http'
-import { DBTrade } from '../../ports/trades'
+import { PaginatedResponse, getNonNegativeIntegerParameter, getNumberParameter, getPaginationParams, getParameter } from '../../logic/http'
+import { InvalidParameterError, MissingParameterError } from '../../logic/http/errors'
+import { DBTrade, TradeListFilters, TradeWithStatus } from '../../ports/trades'
 import {
   DuplicatedBidError,
   InvalidCollectionItemCreatorError,
@@ -39,6 +41,103 @@ export async function getTradesHandler(
       data: {
         data,
         count
+      }
+    }
+  }
+}
+
+const MAX_MARKETPLACE_ADDRESS_FILTERS = 100
+const TRADE_STATUSES: ListingStatus[] = [ListingStatus.OPEN, ListingStatus.SOLD, ListingStatus.CANCELLED]
+
+function isListingStatus(value: string): value is ListingStatus {
+  return TRADE_STATUSES.some(status => status === value)
+}
+
+/**
+ * Parses the GET /v2/trades query: the required `signer`, repeatable `marketplace_address` and `status`, and
+ * the `limit`/`offset`/`page` pagination of getPaginationParams.
+ * @throws MissingParameterError if the signer is not given.
+ * @throws InvalidParameterError if an address, a status or a pagination value is malformed.
+ */
+export function getTradeListParams(params: URLSearchParams): TradeListFilters {
+  const signer = params.get('signer')
+  if (signer === null) throw new MissingParameterError('signer')
+  if (!isAddress(signer)) throw new InvalidParameterError('signer', signer)
+
+  const marketplaceAddresses = params.getAll('marketplace_address')
+  if (marketplaceAddresses.length > MAX_MARKETPLACE_ADDRESS_FILTERS) {
+    throw new InvalidParameterError('marketplace_address', `more than ${MAX_MARKETPLACE_ADDRESS_FILTERS} values`)
+  }
+  for (const marketplaceAddress of marketplaceAddresses) {
+    if (!isAddress(marketplaceAddress)) throw new InvalidParameterError('marketplace_address', marketplaceAddress)
+  }
+
+  const statuses: ListingStatus[] = []
+  for (const status of params.getAll('status')) {
+    if (!isListingStatus(status)) throw new InvalidParameterError('status', status)
+    if (!statuses.includes(status)) statuses.push(status)
+  }
+
+  // getPaginationParams silently falls back on malformed input, so the format is checked first.
+  if (getNonNegativeIntegerParameter('limit', params) === 0) throw new InvalidParameterError('limit', '0')
+  getNonNegativeIntegerParameter('offset', params)
+  getNonNegativeIntegerParameter('page', params)
+  const { limit, offset } = getPaginationParams(params)
+
+  return {
+    signer: signer.toLowerCase(),
+    ...(marketplaceAddresses.length > 0 && {
+      marketplaceAddresses: marketplaceAddresses.map(marketplaceAddress => marketplaceAddress.toLowerCase())
+    }),
+    ...(statuses.length > 0 && { statuses }),
+    limit,
+    offset
+  }
+}
+
+export async function getTradesV2Handler(
+  context: Pick<HandlerContextWithPath<'trades' | 'logs', '/v2/trades'>, 'components' | 'url'>
+): Promise<HTTPResponse<PaginatedResponse<TradeWithStatus>>> {
+  const {
+    components: { trades, logs },
+    url
+  } = context
+  const logger = logs.getLogger('Trades handler')
+
+  try {
+    const filters = getTradeListParams(url.searchParams)
+    const { data, count } = await trades.listTrades(filters)
+
+    return {
+      status: StatusCode.OK,
+      body: {
+        ok: true,
+        data: {
+          results: data,
+          total: count,
+          page: Math.floor(filters.offset / filters.limit),
+          pages: Math.ceil(count / filters.limit),
+          limit: filters.limit
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof InvalidParameterError || e instanceof MissingParameterError) {
+      return {
+        status: StatusCode.BAD_REQUEST,
+        body: {
+          ok: false,
+          message: e.message
+        }
+      }
+    }
+
+    logger.error('Could not list the trades', { error: isErrorWithMessage(e) ? e.message : String(e) })
+    return {
+      status: StatusCode.ERROR,
+      body: {
+        ok: false,
+        message: 'Could not list the trades'
       }
     }
   }
