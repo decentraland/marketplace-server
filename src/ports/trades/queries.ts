@@ -15,11 +15,11 @@ const TRADE_STATUS_JOINS = `
   LEFT JOIN squid_trades.signature_index AS signer_signature_index
     ON signer_signature_index.address = LOWER(t.signer)
     AND signer_signature_index.contract = LOWER(t.contract)
-    AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+    AND signer_signature_index.network = ${squidTradesNetwork('t')}
   LEFT JOIN squid_trades.signature_index AS contract_signature_index
     ON contract_signature_index.address = LOWER(t.contract)
     AND contract_signature_index.contract = LOWER(t.contract)
-    AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+    AND contract_signature_index.network = ${squidTradesNetwork('t')}
   LEFT JOIN LATERAL (
     SELECT
       COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) AS cancellations,
