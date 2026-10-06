@@ -13,6 +13,10 @@ const SQUID_NETWORK = "CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.netwo
  * at the bump that invalidated it, it was otherwise still valid: unexpired, signed against both current
  * indexes, not cancelled by its signer and not used up. It is then left out once it expired, was re-created
  * on a marketplace the bump didn't reach, or its asset can no longer be listed (NFT sold, item sold out).
+ *
+ * Re-created means a newer trade for the same asset was signed, whatever became of it since. Once the signer
+ * re-lists, the cancelled trade stays answered even if that listing later expires, sells or is cancelled:
+ * asking again would nag about something they already acted on.
  */
 export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilters): SQLStatement {
   const signer = filters.signer.toLowerCase()

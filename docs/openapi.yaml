@@ -929,8 +929,9 @@ paths:
         both current indexes, not cancelled by its signer and not used up.
 
         A trade is left out once its original expiration passes, once the signer re-creates it (same type and
-        asset, on a marketplace the bump didn't reach) or once its asset can no longer be traded (the signer
-        no longer owns the NFT, the item sold out). One row per asset, newest first; total covers every page.
+        asset, on a marketplace the bump didn't reach, whatever became of that re-creation since) or once its
+        asset can no longer be traded (the signer no longer owns the NFT, the item sold out). One row per asset,
+        newest first; total covers every page.
         Requires a signed fetch from `dcl:marketplace` or `dcl:builder`.
       parameters:
         - name: reason
