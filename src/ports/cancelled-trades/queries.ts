@@ -1,9 +1,13 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { squidTradesNetwork } from '../../logic/trades/squid'
+import { ITEM_NAME_EXPRESSION } from '../items/queries'
+import { getTradeAssetsWithValuesQuery } from '../trades/queries'
 import { CancelledTradesFilters } from './types'
 
-// The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC.
-const SQUID_NETWORK = "CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END"
+// Listings send the asset and receive the price; bids the other way around.
+const ASSET_SIDE = (alias: string) => `CASE WHEN ${alias}.type = 'bid' THEN 'received' ELSE 'sent' END`
+const PRICE_SIDE = (alias: string) => `CASE WHEN ${alias}.type = 'bid' THEN 'sent' ELSE 'received' END`
 
 /**
  * A signer's trades that a contract signature index bump cancelled and that they still have to re-create.
@@ -21,13 +25,21 @@ const SQUID_NETWORK = "CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.netwo
 export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilters): SQLStatement {
   const signer = filters.signer.toLowerCase()
   const types = filters.types?.length ? SQL` AND t.type = ANY(${filters.types}::marketplace.trade_type[])` : SQL``
-  return SQL`WITH bumped AS (
+  return SQL`WITH signer_assets AS NOT MATERIALIZED (
+    -- One row per asset of each of the signer's trades. Inlined at each use, so every join can reach the
+    -- trade_id index; materialized, it is a scan with no index that the candidates join against row by row.
+    `
+    .append(getTradeAssetsWithValuesQuery(SQL`t.signer = ${signer}`.append(types)))
+    .append(
+      SQL`
+  ), bumped AS (
     SELECT t.id, t.type, t.network, t.chain_id, t.contract, t.created_at, t.expires_at, t.checks,
       ARRAY[t.hashed_signature, t.trade_digest] AS keys, n.squid_network,
       bump.timestamp AS bump_timestamp, bump.log_index AS bump_log_index
     FROM marketplace.trades t
     CROSS JOIN LATERAL (SELECT `
-    .append(SQUID_NETWORK)
+    )
+    .append(squidTradesNetwork('t'))
     .append(
       SQL` AS squid_network) n
     -- Counters only ever increase, so the bump that invalidated the trade is the lowest value past the signed one.
@@ -68,36 +80,36 @@ export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilt
           AND (st.timestamp, st.log_index) < (b.bump_timestamp, b.bump_log_index)
       ) < (b.checks ->> 'uses')::numeric
   ), with_assets AS (
-    -- Listings send the asset and receive the price; bids the other way around.
-    SELECT c.*, a.contract_address AS asset_contract, erc721.token_id, item_asset.item_id,
-      price.asset_type AS price_asset_type, price_amount.amount AS price_amount
+    SELECT c.*, a.contract_address AS asset_contract, a.token_id, a.item_id,
+      price.asset_type AS price_asset_type, price.amount AS price_amount
     FROM cancelled c
-    JOIN marketplace.trade_assets a ON a.trade_id = c.id AND a.direction::text = CASE WHEN c.type = 'bid' THEN 'received' ELSE 'sent' END
-    LEFT JOIN marketplace.trade_assets_erc721 erc721 ON erc721.asset_id = a.id
-    LEFT JOIN marketplace.trade_assets_item item_asset ON item_asset.asset_id = a.id
-    LEFT JOIN marketplace.trade_assets price ON price.trade_id = c.id AND price.direction::text = CASE WHEN c.type = 'bid' THEN 'sent' ELSE 'received' END
-    LEFT JOIN marketplace.trade_assets_erc20 price_amount ON price_amount.asset_id = price.id
+    JOIN signer_assets a ON a.id = c.id AND a.direction::text = `
+    )
+    .append(ASSET_SIDE('c'))
+    .append(
+      SQL`
+    LEFT JOIN signer_assets price ON price.id = c.id AND price.direction::text = `
+    )
+    .append(PRICE_SIDE('c'))
+    .append(
+      SQL`
   ), live AS (
     -- The signer's trades no contract bump has invalidated: a re-creation of a cancelled one, if newer.
-    SELECT t.type, t.network, t.created_at, na.contract_address AS asset_contract, ne.token_id, ni.item_id
-    FROM marketplace.trades t
-    JOIN marketplace.trade_assets na ON na.trade_id = t.id
-      AND na.direction::text = CASE WHEN t.type = 'bid' THEN 'received' ELSE 'sent' END
-    LEFT JOIN marketplace.trade_assets_erc721 ne ON ne.asset_id = na.id
-    LEFT JOIN marketplace.trade_assets_item ni ON ni.asset_id = na.id
-    WHERE t.signer = ${signer}`
+    SELECT a.type, a.network, a.created_at, a.contract_address AS asset_contract, a.token_id, a.item_id
+    FROM signer_assets a
+    WHERE a.direction::text = `
     )
-    .append(types)
+    .append(ASSET_SIDE('a'))
     .append(
       SQL`
       AND NOT EXISTS (
         SELECT 1 FROM squid_trades.signature_index_increase e
-        WHERE e.kind = 'contract' AND e.address = LOWER(t.contract) AND e.contract = LOWER(t.contract)
+        WHERE e.kind = 'contract' AND e.address = LOWER(a.contract) AND e.contract = LOWER(a.contract)
           AND e.network = `
     )
-    .append(SQUID_NETWORK)
+    .append(squidTradesNetwork('a'))
     .append(
-      SQL` AND e.new_value > (t.checks ->> 'contractSignatureIndex')::numeric
+      SQL` AND e.new_value > (a.checks ->> 'contractSignatureIndex')::numeric
       )
   ), unrecreated AS (
     -- Candidates and live trades share one window per asset instead of an anti-join, which plans badly on misestimates.
@@ -143,7 +155,11 @@ export function getContractBumpCancelledTradesQuery(filters: CancelledTradesFilt
   -- The total comes from its own row, joined to the page, so a page past the end still answers it.
   SELECT page.id, page.type, page.network, page.chain_id, page.contract, page.created_at, page.expires_at,
     page.bump_timestamp::text AS cancelled_at, page.asset_contract, page.token_id, page.item_id,
-    COALESCE(page.nft_name, wearable.name, emote.name) AS name, page.image,
+    COALESCE(page.nft_name, `
+    )
+    .append(ITEM_NAME_EXPRESSION)
+    .append(
+      SQL`) AS name, page.image,
     page.price_asset_type, page.price_amount::text AS price_amount, totals.total
   FROM (SELECT COUNT(*) AS total FROM pending) totals
   LEFT JOIN page ON TRUE
