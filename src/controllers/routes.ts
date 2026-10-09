@@ -176,22 +176,31 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/orders', getOrdersHandler)
 
-  // Holdings at a past Ethereum block, for the DAO's voting power. POST because the filters list addresses by the thousand.
-  router.post(
-    '/v1/historical/nfts',
-    components.schemaValidator.withSchemaValidatorMiddleware(HistoricalNftsSchema),
-    getHistoricalNftsHandler
-  )
-  router.post(
-    '/v1/historical/estates',
-    components.schemaValidator.withSchemaValidatorMiddleware(HistoricalEstatesSchema),
-    getHistoricalEstatesHandler
-  )
-  router.post(
-    '/v1/historical/rental-assets',
-    components.schemaValidator.withSchemaValidatorMiddleware(HistoricalRentalAssetsSchema),
-    getHistoricalRentalAssetsHandler
-  )
+  // Holdings at a past Ethereum block, for the DAO's voting power. POST because the filters list addresses by the
+  // thousand. Each new block scans the transfers, so only the subgraph worker may call them, with its token; without
+  // one configured they are off.
+  const historicalApiToken = await config.getString('HISTORICAL_API_TOKEN')
+  if (historicalApiToken) {
+    const historicalAuth = bearerTokenMiddleware(historicalApiToken)
+    router.post(
+      '/v1/historical/nfts',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalNftsSchema),
+      getHistoricalNftsHandler
+    )
+    router.post(
+      '/v1/historical/estates',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalEstatesSchema),
+      getHistoricalEstatesHandler
+    )
+    router.post(
+      '/v1/historical/rental-assets',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalRentalAssetsSchema),
+      getHistoricalRentalAssetsHandler
+    )
+  }
   router.get('/v1/contracts', getContractsHandler)
   router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/accounts', getAccountsHandler)

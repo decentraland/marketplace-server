@@ -4,6 +4,7 @@ import {
   createHistoricalComponent,
   HistoricalBusyError,
   IHistoricalComponent,
+  MAX_RESULT_AGE_MS,
   MAX_RUNNING_READS,
   MAX_WAITING_READS,
   MIN_BLOCK_AGE_SECONDS
@@ -169,6 +170,26 @@ describe('when getting the NFTs held at a block', () => {
   })
 })
 
+describe('when a result has been kept for long', () => {
+  let clock: number
+
+  beforeEach(() => {
+    clock = NOW
+    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, now: () => clock })
+    pgQueryMock.mockResolvedValue({ rows: [] })
+  })
+
+  it('should read it again, in case a squid was behind the first time', async () => {
+    await historical.getNfts(nftsFilters)
+    clock += MAX_RESULT_AGE_MS / 2
+    await historical.getNfts(nftsFilters)
+    clock += MAX_RESULT_AGE_MS
+    await historical.getNfts(nftsFilters)
+
+    expect(ownerQueries()).toHaveLength(2)
+  })
+})
+
 describe('when reading the owners fails', () => {
   beforeEach(() => {
     pgQueryMock.mockRejectedValueOnce(new Error('connection reset')).mockResolvedValue({ rows: [] })
@@ -301,6 +322,18 @@ describe('when more reads arrive than run at once', () => {
 
     finish.slice(1).forEach(done => done())
     await expect(Promise.all(reads)).resolves.toEqual([[], [], []])
+  })
+
+  it('should free the slot of a read that fails', async () => {
+    pgQueryMock.mockReset()
+    pgQueryMock
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValue({ rows: [] })
+    const failed = [1, 2].map(i => historical.getNfts({ ...nftsFilters, contractAddresses: [contract(i)] }))
+    await Promise.allSettled(failed)
+
+    await expect(historical.getNfts({ ...nftsFilters, contractAddresses: [contract(3)] })).resolves.toEqual([])
   })
 
   it('should turn a read away when too many are waiting', async () => {

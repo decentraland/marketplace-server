@@ -30,6 +30,12 @@ export const MAX_CACHED_ROWS = 500000
 /** And at most this many results, however small. */
 export const MAX_CACHED_RESULTS = 256
 
+/**
+ * And none for longer than this. Whether a squid holds a block is told only by the block's age, so a
+ * result read while a squid lagged is incomplete: it is read again soon, not kept for the whole vote.
+ */
+export const MAX_RESULT_AGE_MS = 15 * 60 * 1000
+
 /** Block timestamps are a few bytes each; keep enough for every block being voted on. */
 const CACHED_TIMESTAMPS = 1000
 
@@ -68,7 +74,7 @@ const lowercased = (addresses: string[] | undefined) => addresses?.map(address =
 /** A block too recent is asked about again only after this, whoever asks. */
 const TOO_RECENT_KEPT_MS = 10000
 
-type Entry = { value: Promise<unknown>; rows: number; settled: boolean }
+type Entry = { value: Promise<unknown>; rows: number; settled: boolean; readAt: number }
 
 export function createHistoricalComponent(options: {
   dappsDatabase: Pick<AppComponents, 'dappsDatabase'>['dappsDatabase']
@@ -115,12 +121,16 @@ export function createHistoricalComponent(options: {
    */
   function cached<T>(key: string, load: () => Promise<{ value: T; rows: number }>): Promise<T> {
     const hit = results.get(key)
-    if (hit) {
+    if (hit && !(hit.settled && now() - hit.readAt > MAX_RESULT_AGE_MS)) {
       results.delete(key)
       results.set(key, hit)
       return hit.value as Promise<T>
     }
-    const entry: Entry = { value: Promise.resolve(), rows: 0, settled: false }
+    if (hit) {
+      results.delete(key)
+      cachedRows -= hit.rows
+    }
+    const entry: Entry = { value: Promise.resolve(), rows: 0, settled: false, readAt: now() }
     const loaded = load()
     entry.value = loaded.then(({ value }) => value)
     results.set(key, entry)

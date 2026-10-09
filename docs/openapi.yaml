@@ -2131,7 +2131,8 @@ paths:
         - Historical
       summary: List the Ethereum NFTs some accounts held at a past block
       operationId: getHistoricalNfts
-      security: []
+      security:
+        - HistoricalToken: []
       description: |
         Who owned each Ethereum NFT at the given block, read from its last transfer up to that block, for
         the NFTs the given accounts held then. Estates come with their size at that block. This is what the
@@ -2234,6 +2235,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: The holdings could not be read
           content:
@@ -2265,7 +2272,8 @@ paths:
         - Historical
       summary: Get the size of some estates at a past block
       operationId: getHistoricalEstates
-      security: []
+      security:
+        - HistoricalToken: []
       description: |
         The size of each given estate at the given block: the parcels added to it up to then, minus those
         removed. Estates that had no parcel added or removed by the block are left out. Results are ordered
@@ -2329,6 +2337,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: The holdings could not be read
           content:
@@ -2360,7 +2374,8 @@ paths:
         - Historical
       summary: List the LAND and estates some accounts had in the Rentals contract at a past block
       operationId: getHistoricalRentalAssets
-      security: []
+      security:
+        - HistoricalToken: []
       description: |
         The assets the given lessors had put in the Rentals contract and not claimed back by the given
         block. An asset claimed back by then has no lessor any more, as on the rentals subgraph, so it is
@@ -2431,6 +2446,12 @@ paths:
                           type: boolean
         '400':
           description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
           content:
             application/json:
               schema:
@@ -3921,6 +3942,12 @@ paths:
                 $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
+    HistoricalToken:
+      type: http
+      scheme: bearer
+      description: |
+        The token of the subgraph worker, the only caller of the /v1/historical endpoints (HISTORICAL_API_TOKEN).
+        Without one configured, those endpoints are off.
     SignedFetch:
       type: http
       scheme: bearer
