@@ -74,7 +74,7 @@ describe('when the block is too recent', () => {
     expect(result).toEqual({
       status: StatusCode.SERVICE_UNAVAILABLE,
       headers: { 'Retry-After': '60' },
-      body: { ok: false, message: new BlockTooRecentError(100).message }
+      body: { ok: false, code: 'block-too-recent', message: new BlockTooRecentError(100).message }
     })
   })
 })
@@ -89,7 +89,13 @@ describe('when too many reads are running', () => {
       context<Parameters<typeof getHistoricalNftsHandler>[0]>({ block: 100, owners: [OWNER], category: 'wearable' })
     )
 
-    expect(result).toEqual(expect.objectContaining({ status: StatusCode.SERVICE_UNAVAILABLE, headers: { 'Retry-After': '5' } }))
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: StatusCode.SERVICE_UNAVAILABLE,
+        headers: { 'Retry-After': '5' },
+        body: expect.objectContaining({ code: 'busy' })
+      })
+    )
   })
 })
 

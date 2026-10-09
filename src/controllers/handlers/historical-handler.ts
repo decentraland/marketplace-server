@@ -24,12 +24,13 @@ async function answer<T>(context: Context<string>, read: () => Promise<T[]>, wha
   try {
     return { status: StatusCode.OK, body: { ok: true, data: await read() } }
   } catch (e) {
+    // The code tells the two apart: a block too recent is not a server in trouble.
     if (e instanceof BlockTooRecentError || e instanceof HistoricalBusyError) {
-      const retryAfter = e instanceof BlockTooRecentError ? RETRY_AFTER_SECONDS.tooRecent : RETRY_AFTER_SECONDS.busy
+      const tooRecent = e instanceof BlockTooRecentError
       return {
         status: StatusCode.SERVICE_UNAVAILABLE,
-        headers: { 'Retry-After': String(retryAfter) },
-        body: { ok: false, message: e.message }
+        headers: { 'Retry-After': String(tooRecent ? RETRY_AFTER_SECONDS.tooRecent : RETRY_AFTER_SECONDS.busy) },
+        body: { ok: false, code: tooRecent ? 'block-too-recent' : 'busy', message: e.message }
       }
     }
     context.components.logs

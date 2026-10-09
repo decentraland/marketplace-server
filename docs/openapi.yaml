@@ -2241,7 +2241,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet, or too many reads are running
+          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2250,7 +2250,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy]
+                  message:
+                    type: string
   /v1/historical/estates:
     post:
       tags:
@@ -2328,7 +2336,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet, or too many reads are running
+          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2337,7 +2345,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy]
+                  message:
+                    type: string
   /v1/historical/rental-assets:
     post:
       tags:
@@ -2426,7 +2442,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet, or too many reads are running
+          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2435,7 +2451,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy]
+                  message:
+                    type: string
   /v1/rates/mana-usd:
     get:
       tags:
