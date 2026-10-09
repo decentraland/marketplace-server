@@ -2142,7 +2142,8 @@ paths:
         can be paged with `idGt` as well as with `first` and `skip`. A `category` or some `contractAddresses`
         are required: the owners at a block are read over every NFT they cover, and kept, so reading them
         again for another batch of accounts is cheap. A block the chain has not reached, or one less than
-        three minutes old, gets a 503 with a Retry-After; so do reads when too many are already running.
+        three minutes old, gets a 503 with a Retry-After, and so does one the marketplace squid (and, for
+        estates, registry-squid) has not indexed yet, or reads when too many are already running.
       requestBody:
         required: true
         content:
@@ -2175,16 +2176,19 @@ paths:
                     pattern: '^0x[a-fA-F0-9]{40}$'
                 itemTypes:
                   type: array
-                  maxItems: 16
+                  maxItems: 5
                   items:
                     type: string
-                  description: For wearables and emotes, e.g. `wearable_v1`, `wearable_v2`, `smart_wearable_v1`, `emote_v1`.
+                    enum: [undefined, wearable_v1, wearable_v2, smart_wearable_v1, emote_v1]
+                  description: For wearables and emotes.
                 estateSizeGt:
                   type: integer
                   description: Only estates whose size at the block is above this.
                 idGt:
                   type: string
-                  description: Only NFTs whose `<contractAddress>-<tokenId>` sorts after this.
+                  description: |
+                    Only NFTs whose `<contractAddress>-<tokenId>` sorts after this, in lowercase and without the
+                    category prefix the marketplace subgraph puts in its ids (`estate-<contractAddress>-<tokenId>`).
                 first:
                   type: integer
                   minimum: 0
@@ -2248,7 +2252,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2263,7 +2270,7 @@ paths:
                     type: boolean
                   code:
                     type: string
-                    enum: [block-too-recent, busy]
+                    enum: [block-too-recent, busy, unavailable]
                   message:
                     type: string
   /v1/historical/estates:
@@ -2277,8 +2284,8 @@ paths:
       description: |
         The size of each given estate at the given block: the parcels added to it up to then, minus those
         removed. Estates that had no parcel added or removed by the block are left out. Results are ordered
-        by token id as a string. A block the chain has not reached, or one less than three minutes old,
-        gets a 503 with a Retry-After.
+        by token id as a string. A block the chain has not reached, one less than three minutes old, or one
+        registry-squid has not indexed yet, gets a 503 with a Retry-After.
       requestBody:
         required: true
         content:
@@ -2350,7 +2357,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2365,7 +2375,7 @@ paths:
                     type: boolean
                   code:
                     type: string
-                    enum: [block-too-recent, busy]
+                    enum: [block-too-recent, busy, unavailable]
                   message:
                     type: string
   /v1/historical/rental-assets:
@@ -2380,8 +2390,8 @@ paths:
         The assets the given lessors had put in the Rentals contract and not claimed back by the given
         block. An asset claimed back by then has no lessor any more, as on the rentals subgraph, so it is
         never listed for one, and `isClaimed: true` lists nothing. Results are ordered by
-        `<contractAddress>-<tokenId>`. A block the chain has not reached, or one less than three minutes
-        old, gets a 503 with a Retry-After.
+        `<contractAddress>-<tokenId>`. A block the chain has not reached, one less than three minutes old,
+        or one registry-squid has not indexed yet, gets a 503 with a Retry-After.
       requestBody:
         required: true
         content:
@@ -2463,7 +2473,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: The block is too recent to read holdings at yet (`code` is `block-too-recent`), or too many reads are running (`code` is `busy`)
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
           headers:
             Retry-After:
               description: Seconds to wait before retrying
@@ -2478,7 +2491,7 @@ paths:
                     type: boolean
                   code:
                     type: string
-                    enum: [block-too-recent, busy]
+                    enum: [block-too-recent, busy, unavailable]
                   message:
                     type: string
   /v1/rates/mana-usd:

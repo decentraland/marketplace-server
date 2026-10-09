@@ -2,7 +2,8 @@ import { ethers } from 'ethers'
 import { ChainId } from '@dcl/schemas'
 import { getEthereumChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
-import { BlockTooRecentError, HistoricalBusyError } from './errors'
+import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError } from './errors'
+import { Squid } from './heights'
 import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, NftTarget } from './queries'
 import {
   EstateSizeDBRow,
@@ -17,7 +18,10 @@ import {
   RentalAtBlockDBRow
 } from './types'
 
-/** Holdings are read only at blocks at least this old, so that the indexers surely hold them. */
+/**
+ * Holdings are read only at blocks at least this old, and only once the squids have indexed them (see
+ * `createIndexedHeights`): a few minutes keep reorgs out of the answers.
+ */
 export const MIN_BLOCK_AGE_SECONDS = 180
 
 /**
@@ -30,10 +34,7 @@ export const MAX_CACHED_ROWS = 500000
 /** And at most this many results, however small. */
 export const MAX_CACHED_RESULTS = 256
 
-/**
- * And none for longer than this. Whether a squid holds a block is told only by the block's age, so a
- * result read while a squid lagged is incomplete: it is read again soon, not kept for the whole vote.
- */
+/** And none for longer than this, so that a correction in a squid reaches the answers within minutes. */
 export const MAX_RESULT_AGE_MS = 15 * 60 * 1000
 
 /** Block timestamps are a few bytes each; keep enough for every block being voted on. */
@@ -47,6 +48,9 @@ export const MAX_WAITING_READS = 16
 
 const RPC_TIMEOUT_MS = 10000
 
+/** The chain's head is asked again after this: a block number above it is not looked up at all. */
+const HEAD_TTL_MS = 12000
+
 /** The Ethereum RPC of the environment, for block timestamps. */
 export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
   const chainId = getEthereumChainId()
@@ -56,7 +60,16 @@ export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) 
   request.timeout = RPC_TIMEOUT_MS
   // The network is known: without it, ethers would keep detecting it whenever the RPC is down.
   const provider = new ethers.JsonRpcProvider(request, chainId, { staticNetwork: true })
-  return async block => (await provider.getBlock(block))?.timestamp
+  let head = 0
+  let headReadAt = 0
+  return async block => {
+    if (block > head && Date.now() - headReadAt > HEAD_TTL_MS) {
+      head = await provider.getBlockNumber()
+      headReadAt = Date.now()
+    }
+    if (block > head) return undefined
+    return (await provider.getBlock(block))?.timestamp
+  }
 }
 
 /** Orders NFTs and assets the way the subgraphs order their ids, `<contractAddress>-<tokenId>` as a string. */
@@ -80,10 +93,12 @@ export function createHistoricalComponent(options: {
   dappsDatabase: Pick<AppComponents, 'dappsDatabase'>['dappsDatabase']
   /** The timestamp of an Ethereum block, or undefined if the chain has not reached it. */
   getBlockTimestamp: (block: number) => Promise<number | undefined>
+  /** How far a squid has indexed Ethereum, see `createIndexedHeights`. */
+  getIndexedHeight: (squid: Squid) => Promise<number>
   now?: () => number
   maxCachedRows?: number
 }): IHistoricalComponent {
-  const { dappsDatabase, getBlockTimestamp } = options
+  const { dappsDatabase, getBlockTimestamp, getIndexedHeight } = options
   const now = options.now ?? Date.now
   const maxCachedRows = options.maxCachedRows ?? MAX_CACHED_ROWS
 
@@ -165,10 +180,15 @@ export function createHistoricalComponent(options: {
     const key = String(block)
     let timestamp = timestamps.get(key)
     if (!timestamp) {
-      timestamp = getBlockTimestamp(block).then(found => {
-        if (found === undefined || now() / 1000 - found < MIN_BLOCK_AGE_SECONDS) throw new BlockTooRecentError(block)
-        return found
-      })
+      timestamp = getBlockTimestamp(block).then(
+        found => {
+          if (found === undefined || now() / 1000 - found < MIN_BLOCK_AGE_SECONDS) throw new BlockTooRecentError(block)
+          return found
+        },
+        (error: unknown) => {
+          throw new HistoricalUnavailableError(`the block's timestamp: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      )
       const pending = timestamp
       // A failure is forgotten at once, a block too recent a little later: the chain moves on.
       pending.catch(error => {
@@ -180,6 +200,17 @@ export function createHistoricalComponent(options: {
       if (timestamps.size > CACHED_TIMESTAMPS) timestamps.delete(timestamps.keys().next().value as string)
     }
     return timestamp
+  }
+
+  /** Holdings at a block a squid has not indexed yet would miss its transfers: they are not read. */
+  async function requireIndexed(squid: Squid, block: number): Promise<void> {
+    let height: number
+    try {
+      height = await getIndexedHeight(squid)
+    } catch (error) {
+      throw new HistoricalUnavailableError(`the ${squid} squid's height: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (height < block) throw new BlockTooRecentError(block, `the ${squid} squid has indexed up to ${height}`)
   }
 
   function ownersAt(block: number, target: NftTarget): Promise<OwnerAtBlockDBRow[]> {
@@ -204,7 +235,9 @@ export function createHistoricalComponent(options: {
   }
 
   async function getNfts(filters: HistoricalNftsFilters): Promise<HistoricalNft[]> {
+    if (!filters.owners.length) return []
     await blockTimestamp(filters.block)
+    await requireIndexed('marketplace', filters.block)
     const owners = new Set(filters.owners.map(owner => owner.toLowerCase()))
     const idGt = filters.idGt?.toLowerCase()
     const rows = (
@@ -214,7 +247,11 @@ export function createHistoricalComponent(options: {
         itemTypes: normalized(filters.itemTypes)
       })
     ).filter(row => owners.has(row.owner))
-    const sizes = rows.some(row => row.category === 'estate') ? await estateSizesAt(filters.block) : undefined
+    let sizes: Map<string, number> | undefined
+    if (rows.some(row => row.category === 'estate')) {
+      await requireIndexed('registry', filters.block)
+      sizes = await estateSizesAt(filters.block)
+    }
 
     return rows
       .map(row => ({
@@ -234,7 +271,9 @@ export function createHistoricalComponent(options: {
   }
 
   async function getEstates(filters: HistoricalEstatesFilters): Promise<HistoricalEstate[]> {
+    if (!filters.tokenIds.length) return []
     await blockTimestamp(filters.block)
+    await requireIndexed('registry', filters.block)
     const sizes = await estateSizesAt(filters.block)
     return Array.from(new Set(filters.tokenIds))
       .flatMap(tokenId => {
@@ -247,7 +286,9 @@ export function createHistoricalComponent(options: {
   }
 
   async function getRentalAssets(filters: HistoricalRentalAssetsFilters): Promise<HistoricalRentalAsset[]> {
+    if (!filters.lessors.length) return []
     const timestamp = await blockTimestamp(filters.block)
+    await requireIndexed('registry', filters.block)
     const lessors = new Set(filters.lessors.map(lessor => lessor.toLowerCase()))
     const contracts = filters.contractAddresses?.length ? new Set(lowercased(filters.contractAddresses)) : undefined
     return (await rentalsAt(filters.block))

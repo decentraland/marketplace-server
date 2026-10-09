@@ -164,7 +164,11 @@ async function initComponents(): Promise<TestComponents> {
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
-  const historical = createHistoricalComponent({ dappsDatabase: dappsReadDatabase, getBlockTimestamp: async () => undefined })
+  const historical = createHistoricalComponent({
+    dappsDatabase: dappsReadDatabase,
+    getBlockTimestamp: async () => undefined,
+    getIndexedHeight: async () => 0
+  })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database

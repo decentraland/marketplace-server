@@ -6,6 +6,9 @@ export const MAX_FILTER_VALUES = 10000
 /** The most results one page returns, as on the subgraphs. */
 export const MAX_PAGE_SIZE = 1000
 
+/** The item types the marketplace squid knows (its `ItemType` enum). */
+const ITEM_TYPES = ['undefined', 'wearable_v1', 'wearable_v2', 'smart_wearable_v1', 'emote_v1']
+
 /** The most contracts a request narrows to: only a handful hold LAND, estates or wearables on Ethereum. */
 export const MAX_CONTRACTS = 100
 
@@ -55,7 +58,7 @@ export const HistoricalNftsSchema: JSONSchema<HistoricalNftsRequest> = {
       nullable: true
     },
     contractAddresses: { ...addresses, maxItems: MAX_CONTRACTS, nullable: true },
-    itemTypes: { type: 'array', items: { type: 'string', maxLength: 64 }, maxItems: 16, nullable: true },
+    itemTypes: { type: 'array', items: { type: 'string', enum: ITEM_TYPES }, maxItems: ITEM_TYPES.length, nullable: true },
     estateSizeGt: { type: 'integer', nullable: true },
     idGt: { type: 'string', maxLength: 128, nullable: true },
     first,

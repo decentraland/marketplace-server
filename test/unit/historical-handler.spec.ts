@@ -4,7 +4,7 @@ import {
   getHistoricalNftsHandler,
   getHistoricalRentalAssetsHandler
 } from '../../src/controllers/handlers/historical-handler'
-import { BlockTooRecentError, HistoricalBusyError, IHistoricalComponent } from '../../src/ports/historical'
+import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError, IHistoricalComponent } from '../../src/ports/historical'
 import { StatusCode } from '../../src/types'
 import { createLoggerMockedComponent } from '../mocks/logger-mock'
 
@@ -96,6 +96,25 @@ describe('when too many reads are running', () => {
         body: expect.objectContaining({ code: 'busy' })
       })
     )
+  })
+})
+
+describe('when the RPC or a squid does not answer', () => {
+  beforeEach(() => {
+    historical.getEstates.mockRejectedValue(new HistoricalUnavailableError("the registry squid's height: permission denied"))
+  })
+
+  it('should answer that the service is unavailable for a while, and log why', async () => {
+    const result = await getHistoricalEstatesHandler(
+      context<Parameters<typeof getHistoricalEstatesHandler>[0]>({ block: 100, tokenIds: ['1'] })
+    )
+
+    expect(result).toEqual({
+      status: StatusCode.SERVICE_UNAVAILABLE,
+      headers: { 'Retry-After': '30' },
+      body: { ok: false, code: 'unavailable', message: 'Could not fetch the estates right now' }
+    })
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining('permission denied'))
   })
 })
 

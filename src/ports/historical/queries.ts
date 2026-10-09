@@ -74,3 +74,23 @@ export function getRentalsAtBlockQuery(block: number): SQLStatement {
     ORDER BY contract_address, token_id, block_number DESC, log_index DESC`
     )
 }
+
+/** The schema of a squid's live deployment, which the squid management server keeps in `public.squids`. */
+export function getLiveSchemaQuery(squid: string): SQLStatement {
+  return SQL`SELECT schema FROM public.squids WHERE name = ${squid}`
+}
+
+/**
+ * How far a squid's processor has indexed: its highest hot block, or its finalized height when it holds
+ * none. The state schema is a name read from `public.squids`, so it is checked before it goes in.
+ */
+export function getIndexedHeightQuery(stateSchema: string): SQLStatement {
+  if (!/^[a-z0-9_]{1,63}$/.test(stateSchema)) {
+    throw new Error(`Unexpected state schema name: ${stateSchema}`)
+  }
+  return SQL`SELECT GREATEST((SELECT height FROM `
+    .append(`"${stateSchema}"`)
+    .append(SQL`.status WHERE id = 0), (SELECT max(height) FROM `)
+    .append(`"${stateSchema}"`)
+    .append(SQL`.hot_block)) AS height`)
+}

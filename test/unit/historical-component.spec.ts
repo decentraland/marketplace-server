@@ -3,6 +3,7 @@ import {
   BlockTooRecentError,
   createHistoricalComponent,
   HistoricalBusyError,
+  HistoricalUnavailableError,
   IHistoricalComponent,
   MAX_RESULT_AGE_MS,
   MAX_RUNNING_READS,
@@ -22,6 +23,7 @@ const BOB = '0x0000000000000000000000000000000000000b0b'
 
 let pgQueryMock: jest.Mock
 let getBlockTimestamp: jest.Mock
+let getIndexedHeight: jest.Mock
 let dappsDatabase: IPgComponent
 let historical: IHistoricalComponent
 
@@ -35,8 +37,9 @@ const ownerQueries = () => pgQueryMock.mock.calls.filter(([query]) => !query.tex
 beforeEach(() => {
   pgQueryMock = jest.fn()
   getBlockTimestamp = jest.fn().mockResolvedValue(BLOCK_TIMESTAMP)
+  getIndexedHeight = jest.fn().mockResolvedValue(BLOCK + 1000)
   dappsDatabase = createTestPgComponent({ query: pgQueryMock })
-  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, now: () => NOW })
+  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => NOW })
 })
 
 afterEach(() => {
@@ -65,6 +68,7 @@ describe('when the block is younger than the minimum age', () => {
     historical = createHistoricalComponent({
       dappsDatabase,
       getBlockTimestamp,
+      getIndexedHeight,
       now: () => (BLOCK_TIMESTAMP + MIN_BLOCK_AGE_SECONDS - 1) * 1000
     })
   })
@@ -175,7 +179,7 @@ describe('when a result has been kept for long', () => {
 
   beforeEach(() => {
     clock = NOW
-    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, now: () => clock })
+    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => clock })
     pgQueryMock.mockResolvedValue({ rows: [] })
   })
 
@@ -271,7 +275,7 @@ describe('when getting the assets in the Rentals contract at a block', () => {
 
 describe('when the cached results hold more rows than are kept', () => {
   beforeEach(() => {
-    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, now: () => NOW, maxCachedRows: 2 })
+    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => NOW, maxCachedRows: 2 })
     pgQueryMock.mockResolvedValue({
       rows: [{ contract_address: LAND, token_id: '1', category: 'parcel', item_type: null, search_wearable_rarity: null, owner: ALICE }]
     })
@@ -343,5 +347,65 @@ describe('when more reads arrive than run at once', () => {
     await settle()
 
     await expect(historical.getNfts({ ...nftsFilters, contractAddresses: [contract(999)] })).rejects.toBeInstanceOf(HistoricalBusyError)
+  })
+})
+
+describe('when a squid has not indexed the block yet', () => {
+  beforeEach(() => {
+    getIndexedHeight.mockImplementation(async (squid: string) => (squid === 'registry' ? BLOCK - 1 : BLOCK + 1000))
+    pgQueryMock.mockResolvedValue({
+      rows: [{ contract_address: ESTATE, token_id: '7', category: 'estate', item_type: null, search_wearable_rarity: null, owner: ALICE }]
+    })
+  })
+
+  it('should not read the estates, whose sizes come from that squid', async () => {
+    await expect(historical.getEstates({ block: BLOCK, tokenIds: ['7'], first: 100, skip: 0 })).rejects.toThrow(
+      `the registry squid has indexed up to ${BLOCK - 1}`
+    )
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+
+  it('should not answer NFTs that are estates either', async () => {
+    await expect(historical.getNfts({ ...nftsFilters, category: 'estate' })).rejects.toBeInstanceOf(BlockTooRecentError)
+  })
+
+  it('should still answer what the other squid holds', async () => {
+    getIndexedHeight.mockImplementation(async (squid: string) => (squid === 'marketplace' ? BLOCK - 1 : BLOCK + 1000))
+    pgQueryMock.mockResolvedValue({ rows: [] })
+    await expect(historical.getRentalAssets({ block: BLOCK, lessors: [ALICE], first: 100, skip: 0 })).resolves.toEqual([])
+    await expect(historical.getNfts(nftsFilters)).rejects.toThrow(`the marketplace squid has indexed up to ${BLOCK - 1}`)
+  })
+})
+
+describe("when a squid's height cannot be read", () => {
+  beforeEach(() => {
+    getIndexedHeight.mockRejectedValue(new Error('permission denied for schema'))
+  })
+
+  it('should answer that past holdings are unavailable, without reading them', async () => {
+    await expect(historical.getNfts(nftsFilters)).rejects.toBeInstanceOf(HistoricalUnavailableError)
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('when the RPC fails', () => {
+  beforeEach(() => {
+    getBlockTimestamp.mockRejectedValueOnce(new Error('timeout')).mockResolvedValue(BLOCK_TIMESTAMP)
+    pgQueryMock.mockResolvedValue({ rows: [] })
+  })
+
+  it('should answer that past holdings are unavailable, and ask again next time', async () => {
+    await expect(historical.getNfts(nftsFilters)).rejects.toBeInstanceOf(HistoricalUnavailableError)
+    await expect(historical.getNfts(nftsFilters)).resolves.toEqual([])
+  })
+})
+
+describe('when the filters list nobody', () => {
+  it('should answer nothing without reading anything', async () => {
+    await expect(historical.getNfts({ ...nftsFilters, owners: [] })).resolves.toEqual([])
+    await expect(historical.getEstates({ block: BLOCK, tokenIds: [], first: 100, skip: 0 })).resolves.toEqual([])
+    await expect(historical.getRentalAssets({ block: BLOCK, lessors: [], first: 100, skip: 0 })).resolves.toEqual([])
+    expect(getBlockTimestamp).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 })

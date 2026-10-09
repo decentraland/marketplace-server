@@ -2,6 +2,7 @@ import { isErrorWithMessage } from '../../logic/errors'
 import {
   BlockTooRecentError,
   HistoricalBusyError,
+  HistoricalUnavailableError,
   HistoricalEstatesRequest,
   HistoricalNftsRequest,
   HistoricalRentalAssetsRequest,
@@ -12,19 +13,28 @@ import { HandlerContextWithPath, StatusCode } from '../../types'
 const DEFAULT_PAGE_SIZE = 100
 
 /** When to retry a read turned away: a block too recent is a few minutes from being readable. */
-const RETRY_AFTER_SECONDS = { tooRecent: 60, busy: 5 }
+const RETRY_AFTER_SECONDS = { tooRecent: 60, busy: 5, unavailable: 30 }
 
 type Context<Path extends string> = Pick<HandlerContextWithPath<'historical' | 'logs', Path>, 'components' | 'request'>
 
 /**
- * Answers a historical read. A block too recent, or too many reads at once, is worth retrying and says
- * when; anything else is logged and answered without its details, since this endpoint is public.
+ * Answers a historical read. A block too recent, too many reads at once, or an RPC or squid that does
+ * not answer, is worth retrying and says when. Anything else is logged and answered without its
+ * details: they stay in the logs.
  */
 async function answer<T>(context: Context<string>, read: () => Promise<T[]>, what: string) {
   try {
     return { status: StatusCode.OK, body: { ok: true, data: await read() } }
   } catch (e) {
-    // The code tells the two apart: a block too recent is not a server in trouble.
+    if (e instanceof HistoricalUnavailableError) {
+      context.components.logs.getLogger('Historical handler').error(e.message)
+      return {
+        status: StatusCode.SERVICE_UNAVAILABLE,
+        headers: { 'Retry-After': String(RETRY_AFTER_SECONDS.unavailable) },
+        body: { ok: false, code: 'unavailable', message: `Could not fetch the ${what} right now` }
+      }
+    }
+    // The code tells them apart: a block too recent is not a server in trouble.
     if (e instanceof BlockTooRecentError || e instanceof HistoricalBusyError) {
       const tooRecent = e instanceof BlockTooRecentError
       return {
