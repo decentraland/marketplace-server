@@ -76,6 +76,7 @@ export type BaseComponents = {
   fillManaUsdHistoryJob: IJobComponent
   rebuildItemNeighborsJob: IJobComponent
   refreshCreatorProfilesJob: IJobComponent
+  favoriteDiscountNotificationsJob: IJobComponent
   schemaValidator: ISchemaValidatorComponent<GlobalContext>
   lists: IListsComponents
   snapshot: ISnapshotComponent

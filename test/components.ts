@@ -185,6 +185,7 @@ async function initComponents(): Promise<TestComponents> {
   // The profiles refresh calls Catalyst; the search specs fill the table directly and drive the refresh with a stub.
   const manaUsdHistory = createManaUsdHistoryComponent({ dappsDatabase: dappsWriteDatabase, logs, reader: null })
   const fillManaUsdHistoryJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, { repeat: false })
+  const favoriteDiscountNotificationsJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, { repeat: false })
   const refreshCreatorProfilesJob = createJobComponent({ logs }, () => undefined, 60 * 60 * 1000, {
     repeat: false,
     startupDelay: 60 * 60 * 1000
@@ -238,6 +239,7 @@ async function initComponents(): Promise<TestComponents> {
     refreshCouponStateJob,
     rebuildItemNeighborsJob,
     refreshCreatorProfilesJob,
+    favoriteDiscountNotificationsJob,
     access,
     lists,
     picks,

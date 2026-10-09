@@ -1,6 +1,7 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
 import { Client as PgClient } from 'pg'
+import SQL from 'sql-template-strings'
 import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
 import { createServerComponent, createStatusCheckComponent, instrumentHttpServerWithPromClientRegistry } from '@dcl/http-server'
 import { createHttpTracerComponent } from '@dcl/http-tracer-component'
@@ -11,6 +12,7 @@ import { createSchemaValidatorComponent } from '@dcl/schema-validator-component'
 import { createSubgraphComponent } from '@dcl/thegraph-component'
 import { createTracerComponent } from '@dcl/tracer-component'
 import { createFetchComponent } from './adapters/fetch'
+import { FAVORITE_DISCOUNT_NOTIFICATIONS_INTERVAL_MS, runFavoriteDiscountNotifications } from './logic/favorite-discount-notifications'
 import { withRetries } from './logic/retry'
 import { NEIGHBORS_REBUILD_INTERVAL_MS, NEIGHBORS_REBUILD_STARTUP_DELAY_MS } from './logic/suggestions/constants'
 import { runNeighborsJob } from './logic/suggestions/run-neighbors-job'
@@ -293,6 +295,40 @@ export async function initComponents(): Promise<AppComponents> {
     }
   )
 
+  // Tells the people who favorited an item when a creator discount on it starts (in-app, via SNS). Off unless
+  // FAVORITE_DISCOUNT_NOTIFICATIONS_ENABLED is exactly "true": it messages users, so it ships dark.
+  const favoriteDiscountNotificationsLogger = logs.getLogger('favorite-discount-notifications-job')
+  const shopBaseUrl = (await config.getString('SHOP_BASE_URL')) || 'https://decentraland.org/shop'
+  const favoriteDiscountNotificationsJob =
+    (await config.getString('FAVORITE_DISCOUNT_NOTIFICATIONS_ENABLED')) === 'true'
+      ? createJobComponent(
+          { logs },
+          () =>
+            runFavoriteDiscountNotifications({
+              connect: () => dappsWriteDatabase.getPool().connect(),
+              getShopListings: filters => shopCatalog.getShopListings(filters),
+              getFavoriters: async itemKeys => {
+                const { rows } = await favoritesDatabase.query<{ user_address: string; item_id: string; favorited_at: Date }>(
+                  SQL`SELECT user_address, item_id, MAX(created_at) AS favorited_at FROM favorites.picks
+                      WHERE item_id = ANY(${itemKeys}) GROUP BY user_address, item_id`
+                )
+                return rows.map(row => ({ userAddress: row.user_address, itemKey: row.item_id, favoritedAt: new Date(row.favorited_at) }))
+              },
+              publish: event => eventPublisher.publishMessage(event),
+              logger: favoriteDiscountNotificationsLogger,
+              shopBaseUrl
+            }),
+          FAVORITE_DISCOUNT_NOTIFICATIONS_INTERVAL_MS,
+          {
+            startupDelay: thirtySeconds,
+            onError: error =>
+              favoriteDiscountNotificationsLogger.error(
+                `Failed to send favorite discount notifications: ${error instanceof Error ? error.message : String(error)}`
+              )
+          }
+        )
+      : createDisabledJobComponent(favoriteDiscountNotificationsLogger, 'favorite discount notifications')
+
   const bids = await createBidsComponents({ dappsDatabase: dappsReadDatabase })
   const nfts = await createNFTsComponent({ dappsDatabase: dappsReadDatabase, config, rentals })
   const orders = await createOrdersComponent({ dappsDatabase: dappsReadDatabase })
@@ -362,6 +398,7 @@ export async function initComponents(): Promise<AppComponents> {
     fillManaUsdHistoryJob,
     rebuildItemNeighborsJob,
     refreshCreatorProfilesJob,
+    favoriteDiscountNotificationsJob,
     schemaValidator,
     snapshot,
     items,
