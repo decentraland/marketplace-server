@@ -29,6 +29,7 @@ import { IAccessComponent, createAccessComponent } from '../src/ports/favorites/
 import { IListsComponents, createListsComponent } from '../src/ports/favorites/lists'
 import { IPicksComponent, createPicksComponent } from '../src/ports/favorites/picks'
 import { ISnapshotComponent, createSnapshotComponent } from '../src/ports/favorites/snapshot'
+import { createHistoricalComponent } from '../src/ports/historical'
 import { IItemsComponent, createItemsComponent } from '../src/ports/items'
 import { createJobComponent } from '../src/ports/job'
 import { createManaUsdRateComponent } from '../src/ports/mana-rate/component'
@@ -163,6 +164,7 @@ async function initComponents(): Promise<TestComponents> {
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
+  const historical = createHistoricalComponent({ dappsDatabase: dappsReadDatabase, getBlockTimestamp: async () => undefined })
   const sales = createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = createPricesComponents({ dappsDatabase: dappsReadDatabase })
   // Mock the start function to avoid connecting to a local database
@@ -253,6 +255,7 @@ async function initComponents(): Promise<TestComponents> {
     collections,
     accounts,
     owners,
+    historical,
     rentals,
     sales,
     prices,
