@@ -4,6 +4,7 @@ import { Events } from '@dcl/schemas'
 import {
   Candidate,
   FavoriteDiscountNotificationsDeps,
+  ITEM_COOLDOWN_MS,
   ITEM_DISCOUNTED_SUBTYPE,
   MAX_ANNOUNCE_AGE_MS,
   MAX_ATTEMPTS,
@@ -131,6 +132,8 @@ describe('when running the favorite discount notifications', () => {
   let getShopListings: jest.Mock
   let warn: jest.Mock
   let release: jest.Mock
+  let query: jest.Mock
+  let respond: (text: string, values?: unknown[]) => Promise<{ rows: unknown[] }>
   let lockAcquired: boolean
   let pending: object[]
   let sentToday: object[]
@@ -149,17 +152,19 @@ describe('when running the favorite discount notifications', () => {
     ]
     sentToday = []
     client = {
-      query: jest.fn(async (text: string, values?: unknown[]) => {
-        queries.push({ text, values })
-        if (text.includes('pg_try_advisory_lock')) return { rows: [{ acquired: lockAcquired }] }
-        if (text.includes('ORDER BY c.favorites_attempts')) return { rows: pending }
-        if (text.includes('COUNT(*)::int AS sent')) return { rows: sentToday }
-        if (text.includes('INSERT INTO marketplace.favorite_discount_notifications')) {
-          const rows = JSON.parse(values?.[0] as string)
-          return { rows }
-        }
-        return { rows: [] }
-      }),
+      query: (query = jest.fn(
+        (respond = async (text: string, values?: unknown[]) => {
+          queries.push({ text, values })
+          if (text.includes('pg_try_advisory_lock')) return { rows: [{ acquired: lockAcquired }] }
+          if (text.includes('ORDER BY c.favorites_attempts')) return { rows: pending }
+          if (text.includes('COUNT(*)::int AS sent')) return { rows: sentToday }
+          if (text.includes('INSERT INTO marketplace.favorite_discount_notifications')) {
+            const rows = JSON.parse(values?.[0] as string)
+            return { rows }
+          }
+          return { rows: [] }
+        })
+      )),
       release: (release = jest.fn())
     } as unknown as PoolClient
     publish = jest.fn().mockResolvedValue('message-id')
@@ -212,15 +217,49 @@ describe('when running the favorite discount notifications', () => {
       expect(publish.mock.calls[0][0]).toMatchObject({ subType: ITEM_DISCOUNTED_SUBTYPE, metadata: { address: '0xfan', itemId: '1' } })
     })
 
-    it('should record the notification before publishing it, and mark the coupon announced', async () => {
+    it('should record the notification before publishing it, and mark the coupon announced only after', async () => {
+      const order: string[] = []
+      query.mockImplementation(async (text: string, values?: unknown[]) => {
+        if (text.includes('INSERT INTO marketplace.favorite_discount_notifications')) order.push('insert')
+        if (text.includes(ANNOUNCED)) order.push('announce')
+        return respond(text, values)
+      })
+      publish.mockImplementation(async () => {
+        order.push('publish')
+        return 'message-id'
+      })
+
       await runFavoriteDiscountNotifications(deps)
 
-      const texts = queries.map(q => q.text)
-      const insert = texts.findIndex(t => t.includes('INSERT INTO marketplace.favorite_discount_notifications'))
-      const announced = texts.findIndex(t => t.includes('SET favorites_notified_at = now() WHERE id = $1'))
-      expect(insert).toBeGreaterThan(-1)
-      expect(announced).toBeGreaterThan(insert)
-      expect(texts.some(t => t.includes('pg_advisory_unlock'))).toBe(true)
+      expect(order).toEqual(['insert', 'publish', 'announce'])
+      expect(queries.some(q => q.text.includes('pg_advisory_unlock'))).toBe(true)
+    })
+  })
+
+  describe('and the fan heard about the same item under another coupon this week', () => {
+    it('should not announce it again', async () => {
+      query.mockImplementation(async (text: string, values?: unknown[]) => {
+        if (text.includes('sent_at > now() - $3')) {
+          queries.push({ text, values })
+          return { rows: [{ user_address: '0xfan', contract_address: CONTRACT, item_id: '1' }] }
+        }
+        return respond(text, values)
+      })
+
+      expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 1, sent: 0 })
+      const done = queries.find(q => q.text.includes('sent_at > now() - $3'))
+      expect(done?.values).toEqual([['0xfan'], COUPON_ID, ITEM_COOLDOWN_MS])
+    })
+  })
+
+  describe('and a coupon was signed with a start in the past', () => {
+    it('should date it from its creation for the grace period and the age cap', async () => {
+      await runFavoriteDiscountNotifications(deps)
+
+      const select = queries.find(q => q.text.includes('ORDER BY c.favorites_attempts'))?.text ?? ''
+      expect(select).toContain('GREATEST(c.effective_since, c.created_at) AS effective_since')
+      const close = queries.find(q => q.text.includes('c.favorites_attempts >= $3'))?.text ?? ''
+      expect(close).toContain('GREATEST(c.effective_since, c.created_at) <= now() - $2')
     })
   })
 
@@ -294,7 +333,7 @@ describe('when running the favorite discount notifications', () => {
       await runFavoriteDiscountNotifications(deps)
 
       const close = queries.find(q => q.text.includes('WHERE c.favorites_notified_at IS NULL') && q.text.includes('UPDATE'))
-      expect(close?.text).toContain('c.effective_since <= now() - $2')
+      expect(close?.text).toContain('GREATEST(c.effective_since, c.created_at) <= now() - $2')
       expect(close?.text).toContain('c.favorites_attempts >= $3')
       expect(close?.values).toEqual([MIN_TIME_LEFT_MS, MAX_ANNOUNCE_AGE_MS, MAX_ATTEMPTS])
     })

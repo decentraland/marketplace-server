@@ -25,6 +25,10 @@ const RETRY_BASE_MS = FAVORITE_DISCOUNT_NOTIFICATIONS_INTERVAL_MS
 export const MAX_ATTEMPTS = 6
 /** A discount that started longer ago than this is not news, whatever kept it from being announced. */
 export const MAX_ANNOUNCE_AGE_MS = 24 * 60 * 60 * 1000
+/** An item a user already heard about is not announced to them again for this long, whatever the coupon. */
+export const ITEM_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
+/** Ledger rows are written and published this many at a time, so a shutdown mid-run loses at most one batch. */
+const BATCH_SIZE = 100
 const ADDRESS_CHUNK = 5_000
 const PUBLISH_CONCURRENCY = 10
 
@@ -38,6 +42,7 @@ export type PendingCoupon = {
   id: string
   discountPpm: number
   collections: string[]
+  /** When it took effect, or when it was created if it was signed with a start in the past. */
   effectiveSince: Date
   expiresAt: Date
 }
@@ -153,7 +158,7 @@ async function discountedListings(
         }
       }
       // The total, not the page length: the mapper can drop a row it cannot parse and leave a full page short.
-      if (page.data.length === 0 || skip + SHOP_MAX_PAGE_SIZE >= page.total) break
+      if (skip + SHOP_MAX_PAGE_SIZE >= page.total) break
     }
   }
   return [...listings.values()]
@@ -164,7 +169,7 @@ const CLOSE_UNANNOUNCEABLE = `
   WHERE c.favorites_notified_at IS NULL
     AND (
       c.expires_at <= now() + $1 * interval '1 millisecond'
-      OR c.effective_since <= now() - $2 * interval '1 millisecond'
+      OR GREATEST(c.effective_since, c.created_at) <= now() - $2 * interval '1 millisecond'
       OR c.favorites_attempts >= $3
       OR EXISTS (
         SELECT 1 FROM marketplace.coupon_state s
@@ -180,7 +185,7 @@ const DEFER = `
   WHERE id = $1`
 
 const SELECT_PENDING = `
-  SELECT c.id, c.discount_ppm, c.collections, c.effective_since, c.expires_at
+  SELECT c.id, c.discount_ppm, c.collections, GREATEST(c.effective_since, c.created_at) AS effective_since, c.expires_at
   FROM marketplace.coupons c
   LEFT JOIN marketplace.coupon_state s ON s.coupon_id = c.id
   WHERE c.favorites_notified_at IS NULL
@@ -194,11 +199,12 @@ const SELECT_PENDING = `
 
 /**
  * Tells the people who favorited an item when a creator discount on it starts: in-app only, one notification
- * per item, at most {@link MAX_NOTIFICATIONS_PER_USER_PER_DAY} per user per day. A coupon is announced once,
+ * per item, at most {@link MAX_NOTIFICATIONS_PER_USER_PER_DAY} per user per day, and the same item to the same user at most once
+ * per {@link ITEM_COOLDOWN_MS}. A coupon is announced once,
  * on the first run after it takes effect; one that ends within {@link MIN_TIME_LEFT_MS} is never announced.
  *
- * At most once: the rows are written before the events go out, so a failed publish (or a crash between the two)
- * loses that notification, still counted against the user's day, rather than sending it twice. Items listed
+ * At most once: each batch's rows are written before its events go out, so a failed publish (or a crash between
+ * the two) loses that notification, still counted against the user's day, rather than sending it twice. Items listed
  * after a coupon was announced are not announced.
  */
 export async function runFavoriteDiscountNotifications(
@@ -257,10 +263,17 @@ export async function runFavoriteDiscountNotifications(
               )
               today.push(...rows)
             }
-            const { rows: done } = await client.query(
-              'SELECT user_address, contract_address, item_id FROM marketplace.favorite_discount_notifications WHERE coupon_id = $1',
-              [coupon.id]
-            )
+            // Not just this coupon: a creator can sign a fresh one every day, and the same item is not news again.
+            const done: { user_address: string; contract_address: string; item_id: string }[] = []
+            for (let i = 0; i < users.length; i += ADDRESS_CHUNK) {
+              const { rows } = await client.query(
+                `SELECT user_address, contract_address, item_id FROM marketplace.favorite_discount_notifications
+                 WHERE user_address = ANY($1)
+                   AND (coupon_id = $2 OR sent_at > now() - $3 * interval '1 millisecond')`,
+                [users.slice(i, i + ADDRESS_CHUNK), coupon.id, ITEM_COOLDOWN_MS]
+              )
+              done.push(...rows)
+            }
             selected = selectNotifications(
               candidates,
               new Set(done.map(row => `${row.user_address}:${itemKey(row.contract_address, row.item_id)}`)),
@@ -268,8 +281,11 @@ export async function runFavoriteDiscountNotifications(
             )
           }
 
-          let inserted: Candidate[] = []
-          if (selected.length > 0) {
+          // Recorded and published one batch at a time. The coupon is marked only once every batch is through, so a
+          // run cut short resumes on the next one, and the ledger keeps it from repeating what already went out.
+          let notified = 0
+          for (let i = 0; i < selected.length; i += BATCH_SIZE) {
+            const batch = selected.slice(i, i + BATCH_SIZE)
             const { rows: written } = await client.query(
               `INSERT INTO marketplace.favorite_discount_notifications (user_address, contract_address, item_id, coupon_id)
                SELECT r.user_address, r.contract_address, r.item_id, $2::uuid
@@ -278,7 +294,7 @@ export async function runFavoriteDiscountNotifications(
                RETURNING user_address, contract_address, item_id`,
               [
                 JSON.stringify(
-                  selected.map(({ userAddress, contractAddress, itemId }) => ({
+                  batch.map(({ userAddress, contractAddress, itemId }) => ({
                     user_address: userAddress,
                     contract_address: contractAddress,
                     item_id: itemId
@@ -288,27 +304,26 @@ export async function runFavoriteDiscountNotifications(
               ]
             )
             const writtenKeys = new Set(written.map(row => `${row.user_address}:${itemKey(row.contract_address, row.item_id)}`))
-            inserted = selected.filter(candidate =>
+            const inserted = batch.filter(candidate =>
               writtenKeys.has(`${candidate.userAddress}:${itemKey(candidate.contractAddress, candidate.itemId)}`)
             )
-          }
-          await client.query('UPDATE marketplace.coupons SET favorites_notified_at = now() WHERE id = $1', [coupon.id])
+            notified += inserted.length
 
-          const now = Date.now()
-          for (let i = 0; i < inserted.length; i += PUBLISH_CONCURRENCY) {
-            const results = await Promise.allSettled(
-              inserted
-                .slice(i, i + PUBLISH_CONCURRENCY)
-                .map(candidate => publish(toItemDiscountedEvent(candidate, coupon, shopBaseUrl, now)))
-            )
-            for (const result of results) {
-              if (result.status === 'fulfilled') sent += 1
-              else logger.warn(`Could not publish a favorite discount notification for coupon ${coupon.id}: ${String(result.reason)}`)
+            const now = Date.now()
+            for (let j = 0; j < inserted.length; j += PUBLISH_CONCURRENCY) {
+              const results = await Promise.allSettled(
+                inserted
+                  .slice(j, j + PUBLISH_CONCURRENCY)
+                  .map(candidate => publish(toItemDiscountedEvent(candidate, coupon, shopBaseUrl, now)))
+              )
+              for (const result of results) {
+                if (result.status === 'fulfilled') sent += 1
+                else logger.warn(`Could not publish a favorite discount notification for coupon ${coupon.id}: ${String(result.reason)}`)
+              }
             }
           }
-          logger.info(
-            `Coupon ${coupon.id}: ${listings.length} discounted items, ${candidates.length} favorites, ${inserted.length} notified`
-          )
+          await client.query('UPDATE marketplace.coupons SET favorites_notified_at = now() WHERE id = $1', [coupon.id])
+          logger.info(`Coupon ${coupon.id}: ${listings.length} discounted items, ${candidates.length} favorites, ${notified} notified`)
         } catch (error) {
           // One coupon the catalogue cannot answer for must not hold back the others; it is retried later.
           logger.error(`Could not announce coupon ${coupon.id}: ${error instanceof Error ? error.message : String(error)}`)
