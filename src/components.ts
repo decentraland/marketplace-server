@@ -37,6 +37,7 @@ import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
+import { createEthereumBlockTimestamps, createHistoricalComponent, createIndexedHeights } from './ports/historical'
 import { createItemsComponent } from './ports/items'
 import { createDisabledJobComponent, createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
@@ -300,6 +301,12 @@ export async function initComponents(): Promise<AppComponents> {
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
+  // Holdings at a past block, for the DAO's voting power. Block timestamps come from the Ethereum RPC.
+  const historical = createHistoricalComponent({
+    dappsDatabase: dappsReadDatabase,
+    getBlockTimestamp: createEthereumBlockTimestamps(await config.getString('RPC_ENDPOINT_ETHEREUM')),
+    getIndexedHeight: createIndexedHeights(dappsReadDatabase)
+  })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
   const trendings = await createTrendingsComponent({ dappsDatabase: dappsReadDatabase, items, picks })
@@ -376,6 +383,7 @@ export async function initComponents(): Promise<AppComponents> {
     collections,
     accounts,
     owners,
+    historical,
     rentals,
     sales,
     prices,

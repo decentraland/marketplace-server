@@ -92,6 +92,8 @@ tags:
     description: Query account statistics and marketplace activity
   - name: Collections
     description: View and search marketplace collections
+  - name: Historical
+    description: Holdings at a past Ethereum block, for the DAO voting power
 paths:
   /ping:
     get:
@@ -2123,6 +2125,375 @@ paths:
         '503':
           description: The creator holds too many NFTs to aggregate within the time limit.
 
+  /v1/historical/nfts:
+    post:
+      tags:
+        - Historical
+      summary: List the Ethereum NFTs some accounts held at a past block
+      operationId: getHistoricalNfts
+      security:
+        - HistoricalToken: []
+      description: |
+        Who owned each Ethereum NFT at the given block, read from its last transfer up to that block, for
+        the NFTs the given accounts held then. Estates come with their size at that block. This is what the
+        DAO's voting power strategies read at the block of each proposal.
+
+        Results are ordered by `<contractAddress>-<tokenId>`, the id the subgraphs give these NFTs, so they
+        can be paged with `idGt` as well as with `first` and `skip`. A `category` or some `contractAddresses`
+        are required: the owners at a block are read over every NFT they cover, and kept, so reading them
+        again for another batch of accounts is cheap. A block the chain has not reached, or one less than
+        three minutes old, gets a 503 with a Retry-After, and so does one the marketplace squid (and, for
+        estates, registry-squid) has not indexed yet, or reads when too many are already running.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [block, owners]
+              additionalProperties: false
+              properties:
+                block:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                  description: The Ethereum block to read the holdings at.
+                owners:
+                  type: array
+                  maxItems: 10000
+                  items:
+                    type: string
+                    pattern: '^0x[a-fA-F0-9]{40}$'
+                  description: The accounts whose NFTs to list (case insensitive).
+                category:
+                  type: string
+                  enum: [parcel, estate, wearable, ens, emote]
+                contractAddresses:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: string
+                    pattern: '^0x[a-fA-F0-9]{40}$'
+                itemTypes:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: string
+                    enum: [undefined, wearable_v1, wearable_v2, smart_wearable_v1, emote_v1]
+                  description: For wearables and emotes.
+                estateSizeGt:
+                  type: integer
+                  description: Only estates whose size at the block is above this.
+                idGt:
+                  type: string
+                  description: |
+                    Only NFTs whose `<contractAddress>-<tokenId>` sorts after this, in lowercase and without the
+                    category prefix the marketplace subgraph puts in its ids (`estate-<contractAddress>-<tokenId>`).
+                first:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 100
+                skip:
+                  type: integer
+                  minimum: 0
+                  default: 0
+      responses:
+        '200':
+          description: A page of the NFTs the accounts held at the block
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [contractAddress, tokenId, category, owner, itemType, searchWearableRarity, searchEstateSize]
+                      properties:
+                        contractAddress:
+                          type: string
+                        tokenId:
+                          type: string
+                        category:
+                          type: string
+                        owner:
+                          type: string
+                        itemType:
+                          type: string
+                          nullable: true
+                        searchWearableRarity:
+                          type: string
+                          nullable: true
+                        searchEstateSize:
+                          type: integer
+                          nullable: true
+                          description: For estates, the size at the block; null for anything else.
+        '400':
+          description: Invalid request body, or neither a category nor contracts to narrow it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The holdings could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy, unavailable]
+                  message:
+                    type: string
+  /v1/historical/estates:
+    post:
+      tags:
+        - Historical
+      summary: Get the size of some estates at a past block
+      operationId: getHistoricalEstates
+      security:
+        - HistoricalToken: []
+      description: |
+        The size of each given estate at the given block: the parcels added to it up to then, minus those
+        removed. Estates that had no parcel added or removed by the block are left out. Results are ordered
+        by token id as a string. A block the chain has not reached, one less than three minutes old, or one
+        registry-squid has not indexed yet, gets a 503 with a Retry-After.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [block, tokenIds]
+              additionalProperties: false
+              properties:
+                block:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                tokenIds:
+                  type: array
+                  maxItems: 10000
+                  items:
+                    type: string
+                    pattern: '^[0-9]{1,78}$'
+                sizeGt:
+                  type: integer
+                  description: Only estates whose size at the block is above this.
+                first:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 100
+                skip:
+                  type: integer
+                  minimum: 0
+                  default: 0
+      responses:
+        '200':
+          description: A page of the estates and their size at the block
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [tokenId, size]
+                      properties:
+                        tokenId:
+                          type: string
+                        size:
+                          type: integer
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The holdings could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy, unavailable]
+                  message:
+                    type: string
+  /v1/historical/rental-assets:
+    post:
+      tags:
+        - Historical
+      summary: List the LAND and estates some accounts had in the Rentals contract at a past block
+      operationId: getHistoricalRentalAssets
+      security:
+        - HistoricalToken: []
+      description: |
+        The assets the given lessors had put in the Rentals contract and not claimed back by the given
+        block. An asset claimed back by then has no lessor any more, as on the rentals subgraph, so it is
+        never listed for one, and `isClaimed: true` lists nothing. Results are ordered by
+        `<contractAddress>-<tokenId>`. A block the chain has not reached, one less than three minutes old,
+        or one registry-squid has not indexed yet, gets a 503 with a Retry-After.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [block, lessors]
+              additionalProperties: false
+              properties:
+                block:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                lessors:
+                  type: array
+                  maxItems: 10000
+                  items:
+                    type: string
+                    pattern: '^0x[a-fA-F0-9]{40}$'
+                contractAddresses:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: string
+                    pattern: '^0x[a-fA-F0-9]{40}$'
+                isClaimed:
+                  type: boolean
+                first:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 100
+                skip:
+                  type: integer
+                  minimum: 0
+                  default: 0
+      responses:
+        '200':
+          description: A page of the assets in the Rentals contract at the block
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [contractAddress, tokenId, lessor, isClaimed]
+                      properties:
+                        contractAddress:
+                          type: string
+                        tokenId:
+                          type: string
+                        lessor:
+                          type: string
+                          nullable: true
+                        isClaimed:
+                          type: boolean
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The holdings could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy, unavailable]
+                  message:
+                    type: string
   /v1/rates/mana-usd:
     get:
       tags:
@@ -3584,6 +3955,12 @@ paths:
                 $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
+    HistoricalToken:
+      type: http
+      scheme: bearer
+      description: |
+        The token of the subgraph worker, the only caller of the /v1/historical endpoints (HISTORICAL_API_TOKEN).
+        Without one configured, those endpoints are off.
     SignedFetch:
       type: http
       scheme: bearer
