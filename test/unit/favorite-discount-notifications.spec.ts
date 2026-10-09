@@ -360,5 +360,28 @@ describe('when running the favorite discount notifications', () => {
       expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 1, sent: 0 })
       expect(warn).toHaveBeenCalled()
     })
+
+    it('should take the rows back and defer the coupon when nothing in a batch went out', async () => {
+      await runFavoriteDiscountNotifications(deps)
+
+      const texts = queries.map(q => q.text)
+      expect(texts.some(t => t.includes('DELETE FROM marketplace.favorite_discount_notifications'))).toBe(true)
+      expect(queries.find(q => q.text.includes(DEFERRED))?.values?.[0]).toBe(COUPON_ID)
+      expect(texts.some(t => t.includes(ANNOUNCED))).toBe(false)
+    })
+  })
+
+  describe('and only some of a batch fails to publish', () => {
+    it('should keep what went out recorded and mark the coupon announced', async () => {
+      deps.getFavoriters = jest.fn().mockResolvedValue([
+        { userAddress: '0xa', itemKey: `${CONTRACT}-1`, favoritedAt: new Date(1) },
+        { userAddress: '0xb', itemKey: `${CONTRACT}-1`, favoritedAt: new Date(2) }
+      ])
+      publish.mockRejectedValueOnce(new Error('throttled'))
+
+      expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 1, sent: 1 })
+      expect(queries.some(q => q.text.includes('DELETE FROM'))).toBe(false)
+      expect(queries.some(q => q.text.includes(ANNOUNCED))).toBe(true)
+    })
   })
 })

@@ -298,7 +298,7 @@ export async function initComponents(): Promise<AppComponents> {
   // Tells the people who favorited an item when a creator discount on it starts (in-app, via SNS). Off unless
   // FAVORITE_DISCOUNT_NOTIFICATIONS_ENABLED is exactly "true": it messages users, so it ships dark.
   const favoriteDiscountNotificationsLogger = logs.getLogger('favorite-discount-notifications-job')
-  const shopBaseUrl = (await config.getString('SHOP_BASE_URL')) || 'https://decentraland.org/shop'
+  const shopBaseUrl = await config.requireString('SHOP_BASE_URL')
   const favoriteDiscountNotificationsJob =
     (await config.getString('FAVORITE_DISCOUNT_NOTIFICATIONS_ENABLED')) === 'true'
       ? createJobComponent(

@@ -33,10 +33,38 @@ const ADDRESS_CHUNK = 5_000
 const PUBLISH_CONCURRENCY = 10
 
 /**
- * `Events.SubType.Marketplace.ITEM_DISCOUNTED` and its event type are defined in @dcl/schemas 27.3+; this repo
- * still pins 19.x, so the event is built with the same subtype string and shape.
+ * `Events.SubType.Marketplace.ITEM_DISCOUNTED` and `ItemDiscountedEvent` are added to @dcl/schemas by
+ * decentraland/schemas#445, not released yet; this repo pins 19.x, so the event is built here to the same shape.
  */
 export const ITEM_DISCOUNTED_SUBTYPE = 'item-discounted'
+
+/** Mirrors `ItemDiscountedEvent` from decentraland/schemas#445, so a renamed field fails to compile here. */
+export type ItemDiscountedEventLike = {
+  type: Events.Type.MARKETPLACE
+  subType: typeof ITEM_DISCOUNTED_SUBTYPE
+  key: string
+  timestamp: number
+  metadata: {
+    address: string
+    image: string
+    category: string
+    rarity?: string
+    nftName?: string
+    contractAddress: string
+    itemId: string
+    link: string
+    /** Whole percent, 1 to 100. */
+    discountPct: number
+    /** Credits, as integer strings. */
+    listPrice: string
+    salePrice: string
+    /** Epoch milliseconds. */
+    endsAt: number
+    title: string
+    description: string
+    network: string
+  }
+}
 
 export type PendingCoupon = {
   id: string
@@ -105,7 +133,7 @@ export function toItemDiscountedEvent(candidate: Candidate, coupon: PendingCoupo
   const { listing } = candidate
   const pct = discountPct(coupon.discountPpm)
   const name = listing.name || null
-  return {
+  const event: ItemDiscountedEventLike = {
     type: Events.Type.MARKETPLACE,
     subType: ITEM_DISCOUNTED_SUBTYPE,
     key: `item-discounted-${coupon.id}-${itemKey(candidate.contractAddress, candidate.itemId)}-${candidate.userAddress}`,
@@ -127,7 +155,8 @@ export function toItemDiscountedEvent(candidate: Candidate, coupon: PendingCoupo
       description: name ? `${name} is ${pct}% off.` : `An item you saved is ${pct}% off.`,
       network: listing.network
     }
-  } as unknown as Event
+  }
+  return event as unknown as Event
 }
 
 /** The primary listings this coupon is the discount the catalogue applies to, and that it actually lowers. */
@@ -183,6 +212,20 @@ const DEFER = `
   SET favorites_attempts = favorites_attempts + 1,
       favorites_next_attempt_at = now() + $2 * power(2, favorites_attempts) * interval '1 millisecond'
   WHERE id = $1`
+
+const UNRECORD = `
+  DELETE FROM marketplace.favorite_discount_notifications n
+  USING jsonb_to_recordset($1::jsonb) AS r(user_address text, contract_address text, item_id text)
+  WHERE n.coupon_id = $2::uuid
+    AND n.user_address = r.user_address AND n.contract_address = r.contract_address AND n.item_id = r.item_id`
+
+function rowsOf(candidates: Candidate[]): { user_address: string; contract_address: string; item_id: string }[] {
+  return candidates.map(({ userAddress, contractAddress, itemId }) => ({
+    user_address: userAddress,
+    contract_address: contractAddress,
+    item_id: itemId
+  }))
+}
 
 const SELECT_PENDING = `
   SELECT c.id, c.discount_ppm, c.collections, GREATEST(c.effective_since, c.created_at) AS effective_since, c.expires_at
@@ -284,24 +327,17 @@ export async function runFavoriteDiscountNotifications(
           // Recorded and published one batch at a time. The coupon is marked only once every batch is through, so a
           // run cut short resumes on the next one, and the ledger keeps it from repeating what already went out.
           let notified = 0
+          let deferred = false
           for (let i = 0; i < selected.length; i += BATCH_SIZE) {
             const batch = selected.slice(i, i + BATCH_SIZE)
+            const sentBefore = sent
             const { rows: written } = await client.query(
               `INSERT INTO marketplace.favorite_discount_notifications (user_address, contract_address, item_id, coupon_id)
                SELECT r.user_address, r.contract_address, r.item_id, $2::uuid
                FROM jsonb_to_recordset($1::jsonb) AS r(user_address text, contract_address text, item_id text)
                ON CONFLICT DO NOTHING
                RETURNING user_address, contract_address, item_id`,
-              [
-                JSON.stringify(
-                  batch.map(({ userAddress, contractAddress, itemId }) => ({
-                    user_address: userAddress,
-                    contract_address: contractAddress,
-                    item_id: itemId
-                  }))
-                ),
-                coupon.id
-              ]
+              [JSON.stringify(rowsOf(batch)), coupon.id]
             )
             const writtenKeys = new Set(written.map(row => `${row.user_address}:${itemKey(row.contract_address, row.item_id)}`))
             const inserted = batch.filter(candidate =>
@@ -321,6 +357,19 @@ export async function runFavoriteDiscountNotifications(
                 else logger.warn(`Could not publish a favorite discount notification for coupon ${coupon.id}: ${String(result.reason)}`)
               }
             }
+            // A batch with nothing delivered is the transport failing, not one bad message: take its rows back so
+            // the users' budgets and cooldowns are not spent on it, and retry the coupon later.
+            if (inserted.length > 0 && sent === sentBefore) {
+              await client.query(UNRECORD, [JSON.stringify(rowsOf(inserted)), coupon.id])
+              notified -= inserted.length
+              deferred = true
+              break
+            }
+          }
+          if (deferred) {
+            logger.warn(`Could not publish any notification for coupon ${coupon.id}; deferring it`)
+            await client.query(DEFER, [coupon.id, RETRY_BASE_MS])
+            continue
           }
           await client.query('UPDATE marketplace.coupons SET favorites_notified_at = now() WHERE id = $1', [coupon.id])
           logger.info(`Coupon ${coupon.id}: ${listings.length} discounted items, ${candidates.length} favorites, ${notified} notified`)
