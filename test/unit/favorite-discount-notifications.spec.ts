@@ -5,6 +5,9 @@ import {
   Candidate,
   FavoriteDiscountNotificationsDeps,
   ITEM_DISCOUNTED_SUBTYPE,
+  MAX_ANNOUNCE_AGE_MS,
+  MAX_ATTEMPTS,
+  MIN_TIME_LEFT_MS,
   PendingCoupon,
   runFavoriteDiscountNotifications,
   selectNotifications,
@@ -15,6 +18,8 @@ import { ShopListing } from '../../src/ports/shop-catalog/types'
 const COUPON_ID = '7f1c0d1e-0000-4000-8000-000000000001'
 const CONTRACT = '0xcollection'
 const CREATOR = '0xcreator'
+const ANNOUNCED = 'SET favorites_notified_at = now() WHERE id = $1'
+const DEFERRED = 'favorites_attempts = favorites_attempts + 1'
 
 function listing(itemId: string, overrides: Partial<ShopListing> = {}): ShopListing {
   return {
@@ -147,7 +152,7 @@ describe('when running the favorite discount notifications', () => {
       query: jest.fn(async (text: string, values?: unknown[]) => {
         queries.push({ text, values })
         if (text.includes('pg_try_advisory_lock')) return { rows: [{ acquired: lockAcquired }] }
-        if (text.includes('ORDER BY c.discount_ppm')) return { rows: pending }
+        if (text.includes('ORDER BY c.favorites_attempts')) return { rows: pending }
         if (text.includes('COUNT(*)::int AS sent')) return { rows: sentToday }
         if (text.includes('INSERT INTO marketplace.favorite_discount_notifications')) {
           const rows = JSON.parse(values?.[0] as string)
@@ -227,7 +232,7 @@ describe('when running the favorite discount notifications', () => {
     it('should send nothing and still mark the coupon announced', async () => {
       expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 1, sent: 0 })
       expect(publish).not.toHaveBeenCalled()
-      expect(queries.some(q => q.text.includes('WHERE id = $1'))).toBe(true)
+      expect(queries.some(q => q.text.includes(ANNOUNCED))).toBe(true)
     })
   })
 
@@ -236,18 +241,19 @@ describe('when running the favorite discount notifications', () => {
       getShopListings.mockResolvedValue({ data: [], total: 0 })
     })
 
-    it('should leave a coupon that just started pending, so the next run tries again', async () => {
+    it('should leave a coupon that just started pending, deferred so it does not hold a slot meanwhile', async () => {
       pending = [{ ...pending[0], effective_since: new Date(Date.now() - 60_000) }]
 
       await runFavoriteDiscountNotifications(deps)
 
-      expect(queries.some(q => q.text.includes('WHERE id = $1'))).toBe(false)
+      expect(queries.some(q => q.text.includes(ANNOUNCED))).toBe(false)
+      expect(queries.find(q => q.text.includes(DEFERRED))?.values?.[0]).toBe(COUPON_ID)
     })
 
     it('should give up on it once the grace period is over', async () => {
       await runFavoriteDiscountNotifications(deps)
 
-      expect(queries.some(q => q.text.includes('WHERE id = $1'))).toBe(true)
+      expect(queries.some(q => q.text.includes(ANNOUNCED))).toBe(true)
     })
   })
 
@@ -260,8 +266,10 @@ describe('when running the favorite discount notifications', () => {
     it('should log it, leave that coupon pending and still announce the next one', async () => {
       expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 2, sent: 0 })
 
-      const announced = queries.filter(q => q.text.includes('WHERE id = $1')).map(q => q.values?.[0])
+      const announced = queries.filter(q => q.text.includes(ANNOUNCED)).map(q => q.values?.[0])
       expect(announced).toEqual(['second-coupon'])
+      const deferred = queries.filter(q => q.text.includes(DEFERRED)).map(q => q.values?.[0])
+      expect(deferred).toEqual([COUPON_ID])
     })
   })
 
@@ -269,10 +277,38 @@ describe('when running the favorite discount notifications', () => {
     it('should leave out exhausted, cancelled and revoked coupons', async () => {
       await runFavoriteDiscountNotifications(deps)
 
-      const select = queries.find(q => q.text.includes('ORDER BY c.discount_ppm'))?.text ?? ''
+      const select = queries.find(q => q.text.includes('ORDER BY c.favorites_attempts'))?.text ?? ''
       expect(select).toContain("COALESCE(s.uses, 0) < (c.checks->>'uses')::numeric")
       expect(select).toContain('NOT COALESCE(s.cancelled, false)')
       expect(select).toContain('NOT COALESCE(s.revoked, false)')
+    })
+
+    it('should skip deferred coupons and read the least-retried first, so failing ones cannot starve the rest', async () => {
+      await runFavoriteDiscountNotifications(deps)
+
+      const select = queries.find(q => q.text.includes('ORDER BY c.favorites_attempts ASC'))?.text ?? ''
+      expect(select).toContain('favorites_next_attempt_at <= now()')
+    })
+
+    it('should give up on coupons that started too long ago or were retried too often', async () => {
+      await runFavoriteDiscountNotifications(deps)
+
+      const close = queries.find(q => q.text.includes('WHERE c.favorites_notified_at IS NULL') && q.text.includes('UPDATE'))
+      expect(close?.text).toContain('c.effective_since <= now() - $2')
+      expect(close?.text).toContain('c.favorites_attempts >= $3')
+      expect(close?.values).toEqual([MIN_TIME_LEFT_MS, MAX_ANNOUNCE_AGE_MS, MAX_ATTEMPTS])
+    })
+  })
+
+  describe('and a collection has more discounted listings than one page', () => {
+    it('should page by the total and not announce a listing twice when pages overlap', async () => {
+      getShopListings
+        .mockResolvedValueOnce({ data: [listing('1')], total: 1500 })
+        .mockResolvedValueOnce({ data: [listing('1')], total: 1500 })
+
+      expect(await runFavoriteDiscountNotifications(deps)).toEqual({ outcome: 'ran', coupons: 1, sent: 1 })
+      expect(getShopListings).toHaveBeenCalledTimes(2)
+      expect(getShopListings.mock.calls[1][0]).toMatchObject({ skip: 1000, sortBy: 'discount' })
     })
   })
 

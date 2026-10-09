@@ -20,13 +20,20 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
   pgm.createIndex(TABLE, 'coupon_id')
 
   // Null until the job has announced the coupon (or decided there is nothing to announce).
-  pgm.addColumn({ schema: SCHEMA, name: 'coupons' }, { favorites_notified_at: { type: 'timestamptz(3)' } })
-  // Discounts already running when this ships are not news any more: only the ones that start from now on
-  // are announced.
-  pgm.sql(`UPDATE ${SCHEMA}.coupons SET favorites_notified_at = now()`)
+  pgm.addColumn(
+    { schema: SCHEMA, name: 'coupons' },
+    {
+      favorites_notified_at: { type: 'timestamptz(3)' },
+      // Retries of a coupon the job could not settle yet, and when it may try again.
+      favorites_attempts: { type: 'integer', notNull: true, default: 0 },
+      favorites_next_attempt_at: { type: 'timestamptz(3)' }
+    }
+  )
+  // Discounts already running when this ships are not news any more. Scheduled ones are announced when they start.
+  pgm.sql(`UPDATE ${SCHEMA}.coupons SET favorites_notified_at = now() WHERE effective_since <= now()`)
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
-  pgm.dropColumn({ schema: SCHEMA, name: 'coupons' }, 'favorites_notified_at')
+  pgm.dropColumns({ schema: SCHEMA, name: 'coupons' }, ['favorites_notified_at', 'favorites_attempts', 'favorites_next_attempt_at'])
   pgm.dropTable(TABLE)
 }

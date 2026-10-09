@@ -16,6 +16,15 @@ const COUPONS_PER_RUN = 20
  * a coupon whose items are not visible yet is retried for this long before it is given up on.
  */
 export const CATALOGUE_GRACE_MS = 30 * 60 * 1000
+/**
+ * A coupon the job could not settle (its items not visible yet, or the catalogue failing) is retried with a
+ * doubling delay from this one, and given up on after {@link MAX_ATTEMPTS}. Fresh coupons are read first, so
+ * a few that keep failing cannot hold back the rest.
+ */
+const RETRY_BASE_MS = FAVORITE_DISCOUNT_NOTIFICATIONS_INTERVAL_MS
+export const MAX_ATTEMPTS = 6
+/** A discount that started longer ago than this is not news, whatever kept it from being announced. */
+export const MAX_ANNOUNCE_AGE_MS = 24 * 60 * 60 * 1000
 const ADDRESS_CHUNK = 5_000
 const PUBLISH_CONCURRENCY = 10
 
@@ -121,30 +130,33 @@ async function discountedListings(
   coupon: PendingCoupon,
   getShopListings: FavoriteDiscountNotificationsDeps['getShopListings']
 ): Promise<ShopListing[]> {
-  const listings: ShopListing[] = []
+  const listings = new Map<string, ShopListing>()
   for (const contractAddress of coupon.collections) {
     for (let skip = 0; ; skip += SHOP_MAX_PAGE_SIZE) {
       const page = await getShopListings({
         contractAddress,
         discounted: true,
         listingType: 'primary',
+        sortBy: 'discount',
         first: SHOP_MAX_PAGE_SIZE,
         skip
       })
       for (const listing of page.data) {
         if (
+          !listings.has(listing.tradeId) &&
           listing.coupon?.id === coupon.id &&
           listing.itemId &&
           listing.compareAtCredits !== null &&
           listing.priceCredits < listing.compareAtCredits
         ) {
-          listings.push(listing)
+          listings.set(listing.tradeId, listing)
         }
       }
-      if (page.data.length < SHOP_MAX_PAGE_SIZE) break
+      // The total, not the page length: the mapper can drop a row it cannot parse and leave a full page short.
+      if (page.data.length === 0 || skip + SHOP_MAX_PAGE_SIZE >= page.total) break
     }
   }
-  return listings
+  return [...listings.values()]
 }
 
 const CLOSE_UNANNOUNCEABLE = `
@@ -152,11 +164,20 @@ const CLOSE_UNANNOUNCEABLE = `
   WHERE c.favorites_notified_at IS NULL
     AND (
       c.expires_at <= now() + $1 * interval '1 millisecond'
+      OR c.effective_since <= now() - $2 * interval '1 millisecond'
+      OR c.favorites_attempts >= $3
       OR EXISTS (
         SELECT 1 FROM marketplace.coupon_state s
         WHERE s.coupon_id = c.id AND (s.cancelled OR s.revoked OR s.uses >= (c.checks->>'uses')::numeric)
       )
     )`
+
+// Pushes a coupon that could not be settled back by a doubling delay; CLOSE_UNANNOUNCEABLE gives up on it.
+const DEFER = `
+  UPDATE marketplace.coupons
+  SET favorites_attempts = favorites_attempts + 1,
+      favorites_next_attempt_at = now() + $2 * power(2, favorites_attempts) * interval '1 millisecond'
+  WHERE id = $1`
 
 const SELECT_PENDING = `
   SELECT c.id, c.discount_ppm, c.collections, c.effective_since, c.expires_at
@@ -165,9 +186,10 @@ const SELECT_PENDING = `
   WHERE c.favorites_notified_at IS NULL
     AND c.effective_since <= now()
     AND c.expires_at > now() + $1 * interval '1 millisecond'
+    AND (c.favorites_next_attempt_at IS NULL OR c.favorites_next_attempt_at <= now())
     AND NOT COALESCE(s.cancelled, false) AND NOT COALESCE(s.revoked, false)
     AND COALESCE(s.uses, 0) < (c.checks->>'uses')::numeric
-  ORDER BY c.discount_ppm DESC, c.effective_since ASC
+  ORDER BY c.favorites_attempts ASC, c.discount_ppm DESC, c.effective_since ASC
   LIMIT $2`
 
 /**
@@ -189,7 +211,7 @@ export async function runFavoriteDiscountNotifications(
     const { rows: lock } = await client.query(`SELECT pg_try_advisory_lock(${ADVISORY_LOCK_KEY}) AS acquired`)
     if (!lock[0]?.acquired) return { outcome: 'skipped' }
     try {
-      await client.query(CLOSE_UNANNOUNCEABLE, [MIN_TIME_LEFT_MS])
+      await client.query(CLOSE_UNANNOUNCEABLE, [MIN_TIME_LEFT_MS, MAX_ANNOUNCE_AGE_MS, MAX_ATTEMPTS])
       const { rows } = await client.query(SELECT_PENDING, [MIN_TIME_LEFT_MS, COUPONS_PER_RUN])
       const coupons: PendingCoupon[] = rows.map(row => ({
         id: row.id,
@@ -203,7 +225,10 @@ export async function runFavoriteDiscountNotifications(
       for (const coupon of coupons) {
         try {
           const listings = await discountedListings(coupon, getShopListings)
-          if (listings.length === 0 && Date.now() - coupon.effectiveSince.getTime() < CATALOGUE_GRACE_MS) continue
+          if (listings.length === 0 && Date.now() - coupon.effectiveSince.getTime() < CATALOGUE_GRACE_MS) {
+            await client.query(DEFER, [coupon.id, RETRY_BASE_MS])
+            continue
+          }
           const byKey = new Map(listings.map(listing => [itemKey(listing.contractAddress, listing.itemId as string), listing]))
           const favoriters = byKey.size > 0 ? await getFavoriters([...byKey.keys()]) : []
           const candidates: Candidate[] = []
@@ -285,8 +310,9 @@ export async function runFavoriteDiscountNotifications(
             `Coupon ${coupon.id}: ${listings.length} discounted items, ${candidates.length} favorites, ${inserted.length} notified`
           )
         } catch (error) {
-          // One coupon the catalogue cannot answer for must not hold back the others; it is retried next run.
+          // One coupon the catalogue cannot answer for must not hold back the others; it is retried later.
           logger.error(`Could not announce coupon ${coupon.id}: ${error instanceof Error ? error.message : String(error)}`)
+          await client.query(DEFER, [coupon.id, RETRY_BASE_MS]).catch(() => undefined)
         }
       }
       return { outcome: 'ran', coupons: coupons.length, sent }
