@@ -2224,14 +2224,11 @@ paths:
                         owner:
                           type: string
                         itemType:
-                          type: string
-                          nullable: true
+                          type: [string, 'null']
                         searchWearableRarity:
-                          type: string
-                          nullable: true
+                          type: [string, 'null']
                         searchEstateSize:
-                          type: integer
-                          nullable: true
+                          type: [integer, 'null']
                           description: For estates, the size at the block; null for anything else.
         '400':
           description: Invalid request body, or neither a category nor contracts to narrow it
@@ -2450,8 +2447,7 @@ paths:
                         tokenId:
                           type: string
                         lessor:
-                          type: string
-                          nullable: true
+                          type: [string, 'null']
                         isClaimed:
                           type: boolean
         '400':
