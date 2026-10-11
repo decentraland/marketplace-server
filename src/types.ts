@@ -19,6 +19,7 @@ import { IAccessComponent } from './ports/favorites/access'
 import { IListsComponents } from './ports/favorites/lists'
 import { IPicksComponent } from './ports/favorites/picks'
 import { ISnapshotComponent } from './ports/favorites/snapshot'
+import { IHistoricalComponent } from './ports/historical'
 import { IItemsComponent } from './ports/items'
 import { IJobComponent } from './ports/job'
 import { IManaUsdRateComponent } from './ports/mana-rate/types'
@@ -89,6 +90,7 @@ export type BaseComponents = {
   nfts: INFTsComponent
   orders: IOrdersComponent
   owners: IOwnersComponent
+  historical: IHistoricalComponent
   rentals: IRentalsComponent
   sales: ISalesComponent
   trendings: ITrendingsComponent

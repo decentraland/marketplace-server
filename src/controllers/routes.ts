@@ -3,6 +3,7 @@ import { bearerTokenMiddleware } from '@dcl/http-commons'
 import { Router } from '@dcl/http-server'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { CouponCreationSchema } from '../ports/coupons/schemas'
+import { HistoricalEstatesSchema, HistoricalNftsSchema, HistoricalRentalAssetsSchema } from '../ports/historical'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
@@ -17,6 +18,7 @@ import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handler
 import { getCreatorRoyaltiesHandler } from './handlers/creator-royalties-handler'
 import { createCreatorSearchHandler } from './handlers/creator-search-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
+import { getHistoricalEstatesHandler, getHistoricalNftsHandler, getHistoricalRentalAssetsHandler } from './handlers/historical-handler'
 import { getItemsHandler } from './handlers/items-handler'
 import { getManaUsdRatesHandler } from './handlers/mana-usd-rates-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
@@ -173,6 +175,32 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
   )
 
   router.get('/v1/orders', getOrdersHandler)
+
+  // Holdings at a past Ethereum block, for the DAO's voting power. POST because the filters list addresses by the
+  // thousand. Each new block scans the transfers, so only the subgraph worker may call them, with its token; without
+  // one configured they are off.
+  const historicalApiToken = await config.getString('HISTORICAL_API_TOKEN')
+  if (historicalApiToken) {
+    const historicalAuth = bearerTokenMiddleware(historicalApiToken)
+    router.post(
+      '/v1/historical/nfts',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalNftsSchema),
+      getHistoricalNftsHandler
+    )
+    router.post(
+      '/v1/historical/estates',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalEstatesSchema),
+      getHistoricalEstatesHandler
+    )
+    router.post(
+      '/v1/historical/rental-assets',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalRentalAssetsSchema),
+      getHistoricalRentalAssetsHandler
+    )
+  }
   router.get('/v1/contracts', getContractsHandler)
   router.get('/v1/collections', getCollectionsHandler)
   router.get('/v1/accounts', getAccountsHandler)
