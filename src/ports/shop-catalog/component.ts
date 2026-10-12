@@ -1037,7 +1037,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       : sortBy === 'name'
       ? SQL` ORDER BY COALESCE(nft.name, w_p.name, e_p.name) ASC`
       : sortBy === 'discount'
-      ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC`
+      ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC, mv.id`
       : SQL` ORDER BY mv.created_at DESC`
     const query = searchCtes(filters.search)
       .append(filters.search ? applySearchLevel(core, 'total') : core)
