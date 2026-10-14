@@ -102,10 +102,14 @@ export function getTradeAssetsWithValuesByIdQuery(id: string) {
   return getTradeAssetsWithValuesQuery(SQL`t.id = ${id}`)
 }
 
-export function getTradesForTypeQuery(type: TradeType) {
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+// `scope` narrows the trades BEFORE the per-trade aggregation. A filter applied to the result instead runs
+// after every trade of the type has been joined and grouped, which is what made a single NFT's bids take 13 s.
+export function getTradesForTypeQuery(type: TradeType, scope?: SQLStatement): SQLStatement {
+  // Important! The text below is appended as raw SQL. If input values are later used in it, they must go
+  // through `scope` (or another SQLStatement), never be interpolated into the string.
+  return SQL``
+    .append(
+      `
     SELECT
       t.id,
       t.contract as trade_contract_address,
@@ -194,7 +198,9 @@ export function getTradesForTypeQuery(type: TradeType) {
       -- The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC; a raw equality
       -- never matches a Polygon trade. Same translation as ports/catalog/queries.ts.
       AND contract_signature_index.network = ${squidTradesNetwork('t')}
-    WHERE t.type = '${type}'
+    WHERE t.type = '${type}'`
+    )
+    .append(scope ?? SQL``).append(`
     /**
      * NOT grouped by trade_status.caller.
      *
@@ -217,7 +223,7 @@ export function getTradesForTypeQuery(type: TradeType) {
      * filtered query verbatim.
      */
     GROUP BY t.id, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
-  `
+  `)
 }
 
 export function getOpenItemOrderQuery(contractAddress: string, itemId: string, network: string): SQLStatement {

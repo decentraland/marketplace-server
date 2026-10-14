@@ -1,4 +1,4 @@
-import SQL from 'sql-template-strings'
+import SQL, { SQLStatement } from 'sql-template-strings'
 import { BidSortBy, GetBidsParameters, TradeType } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
@@ -44,10 +44,10 @@ export function getBidsSortByQuery(sortBy?: BidSortBy) {
   }
 }
 
-export function getBidTradesQuery(): string {
-  // Important! This is handled as a string. If input values are later used in this query,
-  // they should be sanitized, or the query should be rewritten as an SQLStatement
-  return `
+export function getBidTradesQuery(scope?: SQLStatement): SQLStatement {
+  return SQL``
+    .append(
+      `
     SELECT
       id::text as trade_id,
       NULL::text as legacy_bid_id,
@@ -68,7 +68,33 @@ export function getBidTradesQuery(): string {
       assets -> 'received' ->> 'extra' as fingerprint,
 	    COALESCE(assets -> 'received' ->> 'creator', assets -> 'received' ->> 'owner') as seller,
       status
-    FROM (${getTradesForTypeQuery(TradeType.BID)}) as trades`
+    FROM (`
+    )
+    .append(getTradesForTypeQuery(TradeType.BID, scope))
+    .append(') as trades')
+}
+
+/**
+ * Narrows the bid trades to the ones on the requested contract (and token) before their status is aggregated.
+ * ANY(ARRAY(...)) makes Postgres resolve the ids first; as an IN subquery it still aggregated every bid.
+ */
+function getBidTradesScope(options: GetBidsParameters): SQLStatement | undefined {
+  if (!options.contractAddress) {
+    return undefined
+  }
+
+  const scope = SQL` AND t.id = ANY(ARRAY(
+      SELECT scoped_asset.trade_id
+      FROM marketplace.trade_assets as scoped_asset
+      LEFT JOIN marketplace.trade_assets_erc721 as scoped_erc721 ON scoped_erc721.asset_id = scoped_asset.id
+      WHERE scoped_asset.direction = 'received'
+        AND scoped_asset.contract_address = ${options.contractAddress.toLowerCase()}`
+
+  if (options.tokenId) {
+    scope.append(SQL` AND LOWER(scoped_erc721.token_id) = LOWER(${options.tokenId})`)
+  }
+
+  return scope.append(SQL`)) `)
 }
 
 export function getLegacyBidsQuery(): string {
@@ -135,7 +161,7 @@ export function getBidsQuery(options: GetBidsParameters) {
   const { trades: tradesFilters, legacy: legacyFilters } = getBidsAndTradesFilters(options)
 
   const bidTradesQuery = SQL`SELECT * FROM (`
-    .append(getBidTradesQuery())
+    .append(getBidTradesQuery(getBidTradesScope(options)))
     .append(SQL`) as bid_trades`)
     .append(getWhereStatementFromFilters(tradesFilters))
 

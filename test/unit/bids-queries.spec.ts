@@ -38,7 +38,7 @@ function extractColumnAliases(sql: string): string[] {
 
 describe('when checking UNION ALL column alignment', () => {
   it('should have getBidTradesQuery and getLegacyBidsQuery output identical columns in BID_COLUMNS order', () => {
-    const tradeColumns = extractColumnAliases(getBidTradesQuery())
+    const tradeColumns = extractColumnAliases(getBidTradesQuery().text)
     const legacyColumns = extractColumnAliases(getLegacyBidsQuery())
 
     // Length check as a failsafe — catches parser regressions before the deep-equal
@@ -89,6 +89,45 @@ describe('when querying for bids', () => {
       const query = getBidsQuery({ contractAddress: '0x123', offset: 1, limit: 1 })
       expect(query.text).toContain('contract_address = $1')
       expect(query.values).toEqual(expect.arrayContaining(['0x123']))
+    })
+  })
+
+  describe('and the contract address and token id filters are defined', () => {
+    let query: ReturnType<typeof getBidsQuery>
+
+    beforeEach(() => {
+      query = getBidsQuery({ contractAddress: '0xABC', tokenId: 'a-token-id', offset: 1, limit: 1 })
+    })
+
+    it('should narrow the bid trades to that contract and token before aggregating them', () => {
+      const [tradesBranch] = query.text.split('UNION ALL')
+      const groupByIndex = tradesBranch.indexOf('GROUP BY t.id')
+      const scopeIndex = tradesBranch.indexOf('AND t.id = ANY(ARRAY(')
+
+      expect(scopeIndex).toBeGreaterThan(-1)
+      expect(scopeIndex).toBeLessThan(groupByIndex)
+      expect(tradesBranch).toContain("scoped_asset.direction = 'received'")
+      expect(tradesBranch).toContain('scoped_asset.contract_address = $1')
+      expect(tradesBranch).toContain('LOWER(scoped_erc721.token_id) = LOWER($2)')
+    })
+
+    it('should pass the lowercased contract address and the token id as values', () => {
+      expect(query.values.slice(0, 2)).toEqual(['0xabc', 'a-token-id'])
+    })
+  })
+
+  describe('and only the contract address filter is defined', () => {
+    it('should narrow the bid trades by contract without a token condition', () => {
+      const query = getBidsQuery({ contractAddress: '0xabc', offset: 1, limit: 1 })
+      expect(query.text).toContain('scoped_asset.contract_address = $1')
+      expect(query.text).not.toContain('scoped_erc721.token_id')
+    })
+  })
+
+  describe('and the contract address filter is not defined', () => {
+    it('should not narrow the bid trades before aggregating them', () => {
+      const query = getBidsQuery({ bidder: '0x1', tokenId: 'a-token-id', offset: 1, limit: 1 })
+      expect(query.text).not.toContain('scoped_asset')
     })
   })
 
