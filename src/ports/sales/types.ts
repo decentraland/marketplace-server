@@ -58,8 +58,8 @@ export type SalesSummary = {
 }
 
 /**
- * The public sales filters plus `creator`: the first sales of the items an address created, whoever they paid
- * out to, and the resales that address made itself. Not in @dcl/schemas, so only this server accepts it.
+ * The public sales filters plus `creator`: every sale an address made, plus the first sales of the items it is
+ * the creator of today. Not in @dcl/schemas, so only this server accepts it.
  */
 export type CreatorSaleFilters = SaleFilters & { creator?: string }
 

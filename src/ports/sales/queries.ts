@@ -27,17 +27,18 @@ function getSalesSortByStatement(sortBy?: SaleSortBy) {
 }
 
 /**
- * The sales that count as a creator's own: first sales of the items they created, whoever the sale paid out
- * to, and the resales they made themselves.
+ * The sales that count as a creator's own: every sale the address made, plus the first sales of the items it
+ * is the creator of today, whoever created them when they sold.
  *
- * A mint's `seller` is the item's beneficiary when it sold, not its creator, so a creator who routed proceeds
- * to another wallet has those first sales recorded under that wallet. Filtering mints by `seller` drops them.
+ * A mint's `seller` is the item's creator at sale time. A collection's creatorship can be transferred, which
+ * rewrites `item.creator` but not the sales already indexed, so a creator who moved their collections to a
+ * new wallet would otherwise lose every first sale made before the move. The old wallet keeps them too.
  */
 export function getCreatorSalesCondition(creator: string): SQLStatement {
   const address = creator.toLowerCase()
-  return SQL` ((type = 'mint' AND item_id IN (SELECT id FROM `
+  return SQL` (seller = ${address} OR (type = 'mint' AND item_id IN (SELECT id FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
-    .append(SQL`.item WHERE LOWER(creator) = ${address})) OR (type <> 'mint' AND seller = ${address})) `)
+    .append(SQL`.item WHERE LOWER(creator) = ${address}))) `)
 }
 
 function getLegacySalesQueryWhereStatement(filters: CreatorSaleFilters): SQLStatement {
