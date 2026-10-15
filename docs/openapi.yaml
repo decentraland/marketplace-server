@@ -2647,9 +2647,12 @@ paths:
       security: []
       description: |
         Returns unpaginated aggregates from the same sales source as /v1/sales.
+        The sales counted are those of /v1/sales?creator=seller: every sale seller made, plus the first sales
+        of the items seller is the creator of today, including those recorded under a previous creator before
+        a creatorship transfer to seller.
         All amounts are gross MANA wei encoded as decimal strings, including sales paid in Credits.
         The optional inclusive millisecond bounds apply to totals, collections and royalties.
-        byItem counts only the seller's lifetime mint sales, ignoring both bounds; resales are excluded
+        byItem counts only the lifetime mint sales in that set, ignoring both bounds; resales are excluded
         so the count can be subtracted from totalSupply to estimate copies minted without a sale.
         Items without mint sales are omitted. byItem may remain populated when the window has no sales.
         Royalties count order/bid sales of items whose creator is seller, regardless of who sold them.
@@ -2831,6 +2834,18 @@ paths:
           schema:
             type: string
             example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: creator
+          in: query
+          required: false
+          description: |
+            Filter to the sales that count as this creator's own: every sale the address made, plus the first
+            sales (mints) of the items it is the creator of today. A mint's seller is the item's creator at sale
+            time, so after a collection's creatorship is transferred, its earlier mints stay under the previous
+            creator; this filter also returns them for the current one. Combined with seller, both apply.
+            Rejected with 400 when it is not an address.
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
         - name: buyer
           in: query
           required: false

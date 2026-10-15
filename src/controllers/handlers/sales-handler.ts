@@ -1,4 +1,3 @@
-import { SaleFilters } from '@dcl/schemas'
 import { isErrorWithMessage } from '../../logic/errors'
 import { Params } from '../../logic/http/params'
 import { HandlerContextWithPath, StatusCode } from '../../types'
@@ -12,7 +11,7 @@ export async function getSalesHandler(context: Pick<HandlerContextWithPath<'sale
 
     const params = new Params(context.url.searchParams)
 
-    const filters: SaleFilters = getSalesParams(params)
+    const filters = getSalesParams(params)
 
     const { data, total } = await sales.getSales(filters)
 

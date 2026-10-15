@@ -3,7 +3,7 @@ import { SquidNetwork } from '../../types'
 
 export interface ISalesComponent {
   getSummary(filters: SalesSummaryFilters): Promise<SalesSummary>
-  getSales(filters: SaleFilters): Promise<GetSalesResponse>
+  getSales(filters: CreatorSaleFilters): Promise<GetSalesResponse>
   /**
    * A page of the resales of a creator's items with the royalty each paid.
    *
@@ -56,6 +56,12 @@ export type SalesSummary = {
   /** `royaltiesWei` is what those resales actually paid in royalties, from each trade's royalty cut. */
   royalties: { resales: number; volumeWei: string; royaltiesWei: string }
 }
+
+/**
+ * The public sales filters plus `creator`: every sale an address made, plus the first sales of the items it is
+ * the creator of today. Not in @dcl/schemas, so only this server accepts it.
+ */
+export type CreatorSaleFilters = SaleFilters & { creator?: string }
 
 export type CreatorRoyaltiesFilters = {
   creator: string
