@@ -1,10 +1,10 @@
-import { SaleFilters } from '@dcl/schemas'
 import { fromDBSaleToSale } from '../../adapters/sales'
 import { AppComponents } from '../../types'
 import { getCreatorRoyaltiesQuery, getSalesQuery, getSalesSummaryQuery } from './queries'
 import {
   CreatorRoyaltiesFilters,
   CreatorRoyaltiesPage,
+  CreatorSaleFilters,
   DBCreatorRoyalty,
   DBSale,
   ISalesComponent,
@@ -15,7 +15,7 @@ import {
 export function createSalesComponents(components: Pick<AppComponents, 'dappsDatabase'>): ISalesComponent {
   const { dappsDatabase: database } = components
 
-  async function getSales(filters: SaleFilters) {
+  async function getSales(filters: CreatorSaleFilters) {
     const salesQuery = getSalesQuery(filters)
     const sales = await database.query<DBSale>(salesQuery)
     return {

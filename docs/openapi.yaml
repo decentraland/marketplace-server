@@ -2647,6 +2647,9 @@ paths:
       security: []
       description: |
         Returns unpaginated aggregates from the same sales source as /v1/sales.
+        The sales counted are those of /v1/sales?creator=seller: the first sales of the items seller created,
+        whoever they paid out to, and the resales seller made. A mint paid out to seller for an item someone
+        else created is not counted.
         All amounts are gross MANA wei encoded as decimal strings, including sales paid in Credits.
         The optional inclusive millisecond bounds apply to totals, collections and royalties.
         byItem counts only the seller's lifetime mint sales, ignoring both bounds; resales are excluded
@@ -2831,6 +2834,17 @@ paths:
           schema:
             type: string
             example: '0x1234567890abcdef1234567890abcdef12345678'
+        - name: creator
+          in: query
+          required: false
+          description: |
+            Filter to the sales that count as this creator's own: the first sales (mints) of the items they
+            created, whoever they paid out to, and the resales they made themselves. A mint's seller is the
+            item's beneficiary at sale time, so filtering by seller misses mints paid out to another wallet.
+            Rejected with 400 when it is not an address.
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
         - name: buyer
           in: query
           required: false

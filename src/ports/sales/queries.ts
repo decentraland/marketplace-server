@@ -3,7 +3,7 @@ import { SaleFilters, SaleSortBy } from '@dcl/schemas'
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { getDBNetworks } from '../../utils'
 import { getWhereStatementFromFilters } from '../utils'
-import { CreatorRoyaltiesFilters, SalesSummaryFilters } from './types'
+import { CreatorRoyaltiesFilters, CreatorSaleFilters, SalesSummaryFilters } from './types'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 1000
@@ -26,10 +26,25 @@ function getSalesSortByStatement(sortBy?: SaleSortBy) {
   }
 }
 
-function getLegacySalesQueryWhereStatement(filters: SaleFilters): SQLStatement {
+/**
+ * The sales that count as a creator's own: first sales of the items they created, whoever the sale paid out
+ * to, and the resales they made themselves.
+ *
+ * A mint's `seller` is the item's beneficiary when it sold, not its creator, so a creator who routed proceeds
+ * to another wallet has those first sales recorded under that wallet. Filtering mints by `seller` drops them.
+ */
+export function getCreatorSalesCondition(creator: string): SQLStatement {
+  const address = creator.toLowerCase()
+  return SQL` ((type = 'mint' AND item_id IN (SELECT id FROM `
+    .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.item WHERE LOWER(creator) = ${address})) OR (type <> 'mint' AND seller = ${address})) `)
+}
+
+function getLegacySalesQueryWhereStatement(filters: CreatorSaleFilters): SQLStatement {
   const FILTER_BY_TYPE = filters.type ? SQL` type = ${filters.type} ` : null
   const FILTER_BY_BUYER = filters.buyer ? SQL` buyer = ${filters.buyer} ` : null
   const FILTER_BY_SELLER = filters.seller ? SQL` seller = ${filters.seller.toLowerCase()} ` : null
+  const FILTER_BY_CREATOR = filters.creator ? getCreatorSalesCondition(filters.creator) : null
   const FILTER_BY_CONTRACT_ADDRESS = filters.contractAddress
     ? SQL` search_contract_address = ${filters.contractAddress.toLowerCase()} `
     : null
@@ -46,6 +61,7 @@ function getLegacySalesQueryWhereStatement(filters: SaleFilters): SQLStatement {
     FILTER_BY_TYPE,
     FILTER_BY_BUYER,
     FILTER_BY_SELLER,
+    FILTER_BY_CREATOR,
     FILTER_BY_CONTRACT_ADDRESS,
     FILTER_BY_ITEM_ID,
     FILTER_BY_TOKEN_ID,
@@ -58,7 +74,7 @@ function getLegacySalesQueryWhereStatement(filters: SaleFilters): SQLStatement {
   ])
 }
 
-function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
+function getLegacySalesQuery(filters: CreatorSaleFilters): SQLStatement {
   return SQL`
     SELECT
       id,
@@ -81,7 +97,7 @@ function getLegacySalesQuery(filters: SaleFilters): SQLStatement {
     )
 }
 
-export function getSalesQuery(filters: SaleFilters = {}) {
+export function getSalesQuery(filters: CreatorSaleFilters = {}) {
   const LEGACY_SALES = SQL`(`.append(getLegacySalesQuery(filters)).append(SQL` ) as legacy_sales `)
 
   return SQL`SELECT *, COUNT(*) OVER() as sales_count`
@@ -105,8 +121,10 @@ export function getSalesSummaryQuery(filters: SalesSummaryFilters) {
     SELECT type, price, timestamp, search_contract_address, search_item_id
     FROM `
     .append(MARKETPLACE_SQUID_SCHEMA)
+    .append(SQL`.sale WHERE `)
+    .append(getCreatorSalesCondition(seller))
     .append(
-      SQL`.sale WHERE seller = ${seller}
+      SQL`
   ), window_sales AS (
     SELECT seller_sales.*, rate.usd
     FROM seller_sales

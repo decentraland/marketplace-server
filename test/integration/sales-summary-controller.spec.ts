@@ -73,20 +73,19 @@ test('sales summary', ({ components }) => {
     expect(await summary()).toEqual(empty)
   })
 
-  it('aggregates exact wei, separates seller and creator, and handles item zero across contracts', async () => {
+  it('attributes first sales to the item creator whoever they paid out to, and resales to the seller', async () => {
     await addSale('mint-before', 'mint', seller, 1)
     await addSale('mint-start', 'mint', seller, 2)
     await addSale('order-end', 'order', seller, 3)
     await addSale('bid-after', 'bid', seller, 4, secondContract)
+    // Paid out to the seller as the beneficiary of an item someone else created: not the seller's sale.
     await addSale('mint-second', 'mint', seller, 2, secondContract)
     await addSale('other-order', 'order', other, 2)
     await addSale('other-bid', 'bid', other, 3)
+    // A first sale of the seller's own item that paid out to another wallet: still the seller's sale.
     await addSale('other-mint', 'mint', other, 2)
     await addSale('unrelated-order', 'order', other, 2, secondContract)
-    const lifetimeItems = [
-      { contractAddress: contract, itemId: '0', soldLifetime: 2 },
-      { contractAddress: secondContract, itemId: '0', soldLifetime: 1 }
-    ]
+    const lifetimeItems = [{ contractAddress: contract, itemId: '0', soldLifetime: 3 }]
     expect(await summary(`seller=${seller.toUpperCase().replace('0X', '0x')}&from=2000&to=3000`)).toEqual({
       total: 3,
       mints: 2,
@@ -95,8 +94,7 @@ test('sales summary', ({ components }) => {
       earnedUsd: '0.000000',
       unpricedSales: 3,
       byCollection: [
-        { contractAddress: contract, sold: 2, earnedWei: (BigInt(price) * 2n).toString(), earnedUsd: '0.000000', unpricedSales: 2 },
-        { contractAddress: secondContract, sold: 1, earnedWei: price, earnedUsd: '0.000000', unpricedSales: 1 }
+        { contractAddress: contract, sold: 3, earnedWei: (BigInt(price) * 3n).toString(), earnedUsd: '0.000000', unpricedSales: 3 }
       ],
       byItem: lifetimeItems,
       royalties: { resales: 3, volumeWei: (BigInt(price) * 3n).toString(), royaltiesWei: '0' }
@@ -105,6 +103,33 @@ test('sales summary', ({ components }) => {
     expect(await summary(`seller=${seller}&from=5000`)).toEqual({ ...empty, byItem: lifetimeItems })
     expect(await summary(`seller=${seller}&to=0`)).toEqual({ ...empty, byItem: lifetimeItems })
     expect(await summary(`seller=${seller}&from=2001&to=2999`)).toEqual({ ...empty, byItem: lifetimeItems })
+  })
+
+  it('filters the sales feed by creator with the same attribution as the summary', async () => {
+    await addSale('mint', 'mint', seller, 1)
+    await addSale('order', 'order', seller, 3)
+    await addSale('other-mint', 'mint', other, 2)
+    await addSale('foreign-mint', 'mint', seller, 2, secondContract)
+    await addSale('other-order', 'order', other, 2)
+
+    async function ids(query: string) {
+      const response = await components.localFetch.fetch(`/v1/sales?${query}`)
+      expect(response.status).toBe(200)
+      const body: { data: { id: string }[]; total: number } = await response.json()
+      return { ids: body.data.map(sale => sale.id).sort(), total: body.total }
+    }
+
+    expect(await ids(`creator=${seller.toUpperCase().replace('0X', '0x')}`)).toEqual({
+      ids: ['summary-mint', 'summary-order', 'summary-other-mint'],
+      total: 3
+    })
+    expect(await ids(`creator=${seller}&type=mint&from=2000`)).toEqual({ ids: ['summary-other-mint'], total: 1 })
+    expect(await ids(`seller=${seller}&type=mint`)).toEqual({ ids: ['summary-foreign-mint', 'summary-mint'], total: 2 })
+  })
+
+  it.each(['creator=', 'creator=invalid'])('rejects an invalid creator on the sales feed: %s', async query => {
+    const response = await components.localFetch.fetch(`/v1/sales?${query}`)
+    expect(response.status).toBe(400)
   })
 
   it('prices each sale at the rate of its own UTC day, and counts the ones with no rate', async () => {

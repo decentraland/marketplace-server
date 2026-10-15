@@ -12,7 +12,6 @@ import {
   RentalStatus,
   WearableCategory,
   OrderSortBy,
-  SaleFilters,
   SaleSortBy,
   SaleType,
   EmoteOutcomeType
@@ -23,6 +22,7 @@ import { AccountFilters, AccountSortBy } from '../../ports/accounts/types'
 import { CollectionFilters, CollectionSortBy } from '../../ports/collections/types'
 import { ContractFilters, ContractSortBy } from '../../ports/contracts/types'
 import { AssetType, PriceFilterCategory, PriceFilters } from '../../ports/prices'
+import { CreatorSaleFilters } from '../../ports/sales/types'
 import { HTTPResponse, StatusCode } from '../../types'
 
 function parsePrice(value: string, paramName: string): string {
@@ -172,7 +172,12 @@ export const getAccountsParams = (params: Params): AccountFilters => {
   }
 }
 
-export const getSalesParams = (params: Params): SaleFilters => {
+export const getSalesParams = (params: Params): CreatorSaleFilters => {
+  const creator = params.getString('creator')
+  // Rejected rather than ignored: dropping an invalid creator would answer with every sale on the platform.
+  if (creator !== undefined && !params.getAddress('creator')) {
+    throw new Error('creator must be an address')
+  }
   return {
     first: params.getNumber('first'),
     skip: params.getNumber('skip'),
@@ -180,6 +185,7 @@ export const getSalesParams = (params: Params): SaleFilters => {
     type: params.getValue<SaleType>('type', SaleType),
     categories: params.getList<NFTCategory>('category', NFTCategory),
     seller: params.getAddress('seller') || undefined,
+    creator: params.getAddress('creator') || undefined,
     buyer: params.getAddress('buyer') || undefined,
     contractAddress: params.getAddress('contractAddress') || undefined,
     tokenId: params.getString('tokenId'),
