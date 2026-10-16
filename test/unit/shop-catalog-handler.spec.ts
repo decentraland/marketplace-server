@@ -375,6 +375,30 @@ describe('when handling the unified shop catalog endpoint', () => {
       expect(getShopItems.mock.calls[0][0].includeLegacySecondary).toBe(true)
     })
   })
+
+  // Coupons on classic MANA listings change what the buyer must send (the sale amount, through
+  // acceptWithCoupon), so a client whose MANA checkout still calls plain accept must never get them by default.
+  describe('and includeLegacyCoupons is provided', () => {
+    it('should stay off when absent, so the pre-existing response is unchanged', async () => {
+      await invoke('http://localhost/v3/catalog/unified')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacyCoupons).toBe(false)
+    })
+
+    it('should turn on only for the literal true', async () => {
+      await invoke('http://localhost/v3/catalog/unified?includeLegacyCoupons=true')
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacyCoupons).toBe(true)
+    })
+
+    it.each(['false', '1', 'TRUE'])('should stay off for %s', async value => {
+      await invoke(`http://localhost/v3/catalog/unified?includeLegacyCoupons=${value}`)
+      expect(getUnifiedListings.mock.calls[0][0].includeLegacyCoupons).toBe(false)
+    })
+
+    it('should reach the grouped item feed the browse grid reads', async () => {
+      await invoke('http://localhost/v3/catalog/unified?groupBy=item&includeLegacyCoupons=true')
+      expect(getShopItems.mock.calls[0][0].includeLegacyCoupons).toBe(true)
+    })
+  })
 })
 
 // The trending handler backs the Shop home's Trending row. What matters here is that the row's two
@@ -445,6 +469,15 @@ describe('when handling the trending items endpoint', () => {
     getTrendingItems.mockClear()
     await invoke('http://localhost/v3/catalog/trending')
     expect(getTrendingItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+  })
+
+  it('should forward includeLegacyCoupons only for the literal true', async () => {
+    await invoke('http://localhost/v3/catalog/trending?includeLegacyCoupons=true')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacyCoupons).toBe(true)
+
+    getTrendingItems.mockClear()
+    await invoke('http://localhost/v3/catalog/trending')
+    expect(getTrendingItems.mock.calls[0][0].includeLegacyCoupons).toBe(false)
   })
 
   it('should reject an unknown listingType rather than silently returning resales too', async () => {
@@ -540,6 +573,15 @@ describe('when handling the related items endpoint', () => {
       getRelatedItems.mockClear()
       await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
       expect(getRelatedItems.mock.calls[0][0].includeLegacySecondary).toBe(false)
+    })
+
+    it('should forward includeLegacyCoupons only for the literal true', async () => {
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3&includeLegacyCoupons=true`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacyCoupons).toBe(true)
+
+      getRelatedItems.mockClear()
+      await invoke(`http://localhost/v3/catalog/related?contractAddress=${CONTRACT}&itemId=3`)
+      expect(getRelatedItems.mock.calls[0][0].includeLegacyCoupons).toBe(false)
     })
   })
 

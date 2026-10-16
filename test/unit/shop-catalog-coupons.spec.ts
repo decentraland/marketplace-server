@@ -1,6 +1,6 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '../../src/ports/db/types'
-import { createShopCatalogComponent } from '../../src/ports/shop-catalog/component'
+import { createShopCatalogComponent, rateToNumericString } from '../../src/ports/shop-catalog/component'
 import { IShopCatalogComponent } from '../../src/ports/shop-catalog/types'
 
 // 1 credit = $0.10 = 1e17 USD wei.
@@ -199,10 +199,10 @@ describe('when the shop feed carries creator coupons', () => {
       await component.getShopListings({ sortBy: 'cheapest', minPriceCredits: 2, maxPriceCredits: 8 })
       const text = query.mock.calls[0][0].text
       expect(text).toContain(
-        'ORDER BY COALESCE((mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000)), mv.amount_received::numeric) ASC'
+        'ORDER BY COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric) ASC'
       )
       expect(text).toContain(
-        'AND COALESCE((mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000)), mv.amount_received::numeric) >='
+        'AND COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric) >='
       )
     })
 
@@ -346,5 +346,167 @@ describe('when the unified feed carries creator coupons', () => {
     })
     const { data } = await component.getUnifiedListings({}, 0.25)
     expect(data[0]).toMatchObject({ priceCredits: 1, compareAtCredits: null, saleEndsAt: null, coupon: null })
+  })
+})
+
+describe('when the unified feed is asked to discount classic MANA listings', () => {
+  let query: jest.Mock
+  let component: IShopCatalogComponent
+
+  const countOf = (text: string, needle: string) => text.split(needle).length - 1
+
+  beforeEach(() => {
+    query = jest.fn().mockResolvedValue({ rows: [] })
+    component = createShopCatalogComponent({ dappsDatabase: { query } as unknown as IPgComponent, logs })
+  })
+
+  // The opt-in is what keeps a client whose MANA checkout calls plain accept from being shown a sale it would
+  // then charge in full.
+  it('should leave the legacy branch coupon-free without the opt-in', async () => {
+    await component.getUnifiedListings({}, 0.25)
+    const text = query.mock.calls[0][0].text
+    expect(countOf(text, 'LEFT JOIN LATERAL')).toBe(1)
+    expect(text).toContain('mv.amount_received::text AS mana_wei')
+  })
+
+  describe('and the opt-in is set', () => {
+    it('should join creator coupons on the native and the legacy trade branches, never on the store', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      const text = query.mock.calls[0][0].text
+      expect(countOf(text, 'LEFT JOIN LATERAL')).toBe(2)
+      // The store branch, bought through CollectionStore.buy, still carries no coupon.
+      expect(text).toContain('NULL::jsonb AS coupon')
+    })
+
+    it('should price a discounted MANA listing at the sale amount converted at the rate', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      const { text, values } = query.mock.calls[0][0]
+      expect(text).toContain(
+        '((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric) * $'
+      )
+      expect(values).toContain(rateToNumericString(0.25))
+    })
+
+    it('should expose the MANA list price at the rate as the compare-at', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      expect(query.mock.calls[0][0].text).toMatch(
+        /CASE WHEN cp\.id IS NOT NULL THEN \(mv\.amount_received::numeric \* \$\d+::numeric\) END AS compare_at_usd_wei/
+      )
+    })
+
+    // What the checkout sizes the purchase from: acceptWithCoupon charges the sale amount, not the list price.
+    it('should hand the client the sale MANA amount as mana_wei', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      expect(query.mock.calls[0][0].text).toContain(
+        '(COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric))::text AS mana_wei'
+      )
+    })
+
+    it('should let discounted=true keep discounted MANA listings and empty only the store branch', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true, discounted: true }, 0.25)
+      const text = query.mock.calls[0][0].text
+      expect(countOf(text, 'AND cp.id IS NOT NULL')).toBe(2)
+      expect(countOf(text, 'AND FALSE')).toBe(1)
+    })
+
+    it('should carry the opt-in into the grouped item feed', async () => {
+      await component.getShopItems({ includeLegacyCoupons: true }, 0.25)
+      expect(countOf(query.mock.calls[0][0].text, 'LEFT JOIN LATERAL')).toBe(2)
+    })
+
+    it('should keep the default SQL free of the list MANA column', async () => {
+      await component.getUnifiedListings({}, 0.25)
+      expect(query.mock.calls[0][0].text).not.toContain('list_mana_wei')
+    })
+
+    it('should select the list MANA price on every branch so the UNION lines up', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      const text = query.mock.calls[0][0].text
+      expect(countOf(text, 'mv.amount_received::text AS list_mana_wei')).toBe(2)
+      expect(countOf(text, 'NULL::text AS list_mana_wei')).toBe(1)
+    })
+
+    it('should drop discounted MANA listings on discounted=false', async () => {
+      await component.getUnifiedListings({ includeLegacyCoupons: true, discounted: false }, 0.25)
+      expect(countOf(query.mock.calls[0][0].text, 'AND cp.id IS NULL')).toBe(2)
+    })
+
+    it('should discount MANA listings on the related and trending rails too', async () => {
+      query
+        .mockResolvedValueOnce({ rows: [{ category: 'wearable', wearable_category: 'hat', rarity: 'common' }] })
+        .mockResolvedValue({ rows: [] })
+      await component.getRelatedItems({ contractAddress: COLLECTION, itemId: '0', includeLegacyCoupons: true }, 0.25)
+      const relatedTexts = query.mock.calls.map(([q]) => q.text as string)
+      expect(relatedTexts.some(text => countOf(text, 'LEFT JOIN LATERAL') === 2)).toBe(true)
+
+      query.mockClear()
+      await component.getTrendingItems({ includeLegacyCoupons: true }, 0.25)
+      expect(countOf(query.mock.calls[0][0].text, 'LEFT JOIN LATERAL')).toBe(2)
+    })
+
+    // The rounding to whole credits can erase a small discount; then the sale is not shown, and the row has to
+    // be bought through plain accept at the list price, so manaWei must be the list price too.
+    it('should fall back to the list price in credits and MANA when the rounding erases the sale', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({
+            source: 'legacy',
+            price_credits: '9',
+            compare_at_credits: '9',
+            sale_ends_at: '1800000000',
+            coupon: couponRow(),
+            mana_wei: '9500000000000000000',
+            list_mana_wei: '10000000000000000000'
+          })
+        ]
+      })
+      const { data } = await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.09)
+      expect(data[0]).toMatchObject({ priceCredits: 9, compareAtCredits: null, coupon: null, manaWei: '10000000000000000000' })
+    })
+
+    it('should fall back to the list price when the coupon proof cannot be built', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({
+            source: 'legacy',
+            contract_address: OTHER_COLLECTION,
+            price_credits: '7',
+            compare_at_credits: '10',
+            sale_ends_at: '1800000000',
+            coupon: couponRow([COLLECTION]),
+            mana_wei: '7000000000000000000',
+            list_mana_wei: '10000000000000000000'
+          })
+        ]
+      })
+      const { data } = await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      expect(data[0]).toMatchObject({ priceCredits: 10, compareAtCredits: null, coupon: null, manaWei: '10000000000000000000' })
+    })
+
+    it('should map a discounted MANA listing with its sale price, compare-at, coupon and sale MANA amount', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({
+            source: 'legacy',
+            price_credits: '7',
+            compare_at_credits: '10',
+            sale_ends_at: '1800000000',
+            sale_units_left: '7',
+            coupon: couponRow(),
+            mana_wei: '7000000000000000000',
+            list_mana_wei: '10000000000000000000'
+          })
+        ]
+      })
+      const { data } = await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
+      expect(data[0]).toMatchObject({
+        source: 'legacy',
+        priceCredits: 7,
+        compareAtCredits: 10,
+        saleEndsAt: 1800000000,
+        manaWei: '7000000000000000000'
+      })
+      expect(data[0].coupon).toMatchObject({ id: 'coupon-1', proof: [] })
+    })
   })
 })

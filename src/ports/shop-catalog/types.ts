@@ -263,8 +263,9 @@ export type UnifiedListing = Omit<ShopListing, 'tradeId'> & {
   tradeId: string | null
   source: UnifiedListingSource
   acquisition: UnifiedAcquisition
-  // Raw MANA price (wei), present only for legacy items so the client can size the purchase at the live
-  // rate at checkout. `null` for native (USD-pegged) items.
+  // MANA price (wei), present only for legacy items so the client can size the purchase at the live rate at
+  // checkout. `null` for native (USD-pegged) items. Under `includeLegacyCoupons`, while `coupon` is set it is
+  // the SALE amount that `acceptWithCoupon` charges; otherwise it is always the list price.
   manaWei: string | null
 }
 
@@ -346,6 +347,19 @@ export type UnifiedCatalogFilters = ShopCatalogFilters & {
    * contribute resales at all. Asking for `listingType=secondary` without this yields native resales only.
    */
   includeLegacySecondary?: boolean
+  /**
+   * Whether creator coupons may discount the LEGACY trade branch: classic MANA-priced primary listings.
+   *
+   * The CollectionDiscountCoupon applies to ERC20 (MANA) received assets as well as USD-pegged ones, so a
+   * creator's sale can cover a MANA listing on-chain. Opt-in because the discounted row changes what a buyer
+   * must send: its `manaWei` becomes the sale price and the purchase only settles through `acceptWithCoupon`.
+   * A client whose MANA checkout still calls plain `accept` would show the sale and charge the list price,
+   * so only a client that passes the coupon on that path may ask for it.
+   *
+   * CollectionStore mints are never discounted: they are bought through `CollectionStore.buy`, which takes
+   * no coupon.
+   */
+  includeLegacyCoupons?: boolean
 }
 
 // The ITEM-unified feed row: one entry per item (not per listing). Same shape as a UnifiedListing (the
@@ -366,6 +380,8 @@ export type RelatedItemsFilters = {
   first?: number
   /** See UnifiedCatalogFilters. The rail is drawn from the same universe as the grid, so it takes the same opt-in. */
   includeLegacySecondary?: boolean
+  /** See UnifiedCatalogFilters. Same opt-in as the grid, so the rail prices an item the way the grid does. */
+  includeLegacyCoupons?: boolean
   /**
    * Restrict the rail to primary (mint) listings or to resales. Omitted = both.
    *
@@ -597,6 +613,9 @@ export type UnifiedListingRow = {
   coupon: ShopCouponRow | null
   coupon_discount_ppm: string | null
   mana_wei: string | null
+  // The MANA list price of a legacy row, selected only under `includeLegacyCoupons`, so the mapper can fall
+  // back to it when a coupon matched but the sale is not shown.
+  list_mana_wei?: string | null
   available: string | null
   network: string | null
   created_at: string
