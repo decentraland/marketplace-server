@@ -182,9 +182,11 @@ function couponJoin(): SQLStatement {
       ) cp ON true`
 }
 
-// What the buyer pays once `cp` applies: the coupon contract subtracts floor(price * ppm / 1e6) from the price.
-function saleWeiExpr(): SQLStatement {
-  return SQL`(mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000))`
+// What the buyer pays once `cp` applies: the coupon contract subtracts the integer quotient price * ppm / 1e6.
+// `div`, not FLOOR over `/`: numeric division picks its result scale from the operands and can round a
+// wei-sized quotient to an integer before FLOOR sees it, landing one wei off the contract.
+export function saleWeiExpr(): SQLStatement {
+  return SQL`(mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric))`
 }
 
 // The price a listing is filtered and sorted by: the sale price while a coupon applies, else the list price.
@@ -536,16 +538,22 @@ function unifiedBranch(opts: {
   applyRate: boolean
   rateNumericString: string
   filters: UnifiedCatalogFilters
-  /** Whether creator coupons can discount this branch. Only native primaries: the coupon contract mints collection items. */
+  /**
+   * Whether creator coupons can discount this branch. Trades only: the coupon contract discounts a minted
+   * collection item paid in ERC20 or USD-pegged MANA, and the couponJoin itself only matches primaries.
+   */
   withCoupons: boolean
 }): SQLStatement {
   const { source, acquisition, assetType, primaryOnly, applyRate, rateNumericString, filters, withCoupons } = opts
+  // Selected on every branch alike, so the UNION lines up, and only under the opt-in, so the default SQL is
+  // unchanged.
+  const exposeListMana = filters.includeLegacyCoupons === true
   const isStore = acquisition === 'store'
-  const usdWei = applyRate
-    ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)`
-    : withCoupons
-    ? effectiveWeiExpr()
-    : SQL`mv.amount_received::numeric`
+  // The coupon cuts the listing's own price, so on a MANA listing it applies to the MANA amount, and the
+  // dollar figures follow from that at the rate.
+  const priceWei = withCoupons ? effectiveWeiExpr() : SQL`mv.amount_received::numeric`
+  const usdWei = applyRate ? SQL`(`.append(priceWei).append(SQL` * ${rateNumericString}::numeric)`) : priceWei
+  const listUsdWei = applyRate ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)` : SQL`mv.amount_received::numeric`
 
   const query = SQL`
       SELECT
@@ -578,7 +586,7 @@ function unifiedBranch(opts: {
     .append(usdWei)
     .append(SQL` AS usd_wei, `)
     // The list price while a coupon applies, so the outer layers can expose it as compareAtCredits.
-    .append(withCoupons ? SQL`CASE WHEN cp.id IS NOT NULL THEN mv.amount_received::numeric END` : SQL`NULL::numeric`)
+    .append(withCoupons ? SQL`CASE WHEN cp.id IS NOT NULL THEN `.append(listUsdWei).append(SQL` END`) : SQL`NULL::numeric`)
     .append(
       SQL` AS compare_at_usd_wei,
         mv.available::text AS available,
@@ -587,8 +595,16 @@ function unifiedBranch(opts: {
         `
     )
     // Raw MANA price, exposed only for legacy (MANA-priced) items so the client can size the purchase
-    // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price.
-    .append(applyRate ? SQL`mv.amount_received::text AS mana_wei ` : SQL`NULL::text AS mana_wei `)
+    // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price. While a coupon applies it
+    // is the SALE amount, which is what `acceptWithCoupon` charges on-chain.
+    .append(
+      !applyRate
+        ? SQL`NULL::text AS mana_wei `
+        : withCoupons
+        ? SQL`TRUNC(`.append(priceWei).append(SQL`)::text AS mana_wei `)
+        : SQL`mv.amount_received::text AS mana_wei `
+    )
+    .append(exposeListMana ? (applyRate ? SQL`, mv.amount_received::text AS list_mana_wei ` : SQL`, NULL::text AS list_mana_wei `) : SQL``)
     .append(SQL`, `)
     .append(withCoupons ? couponColumns() : nullCouponColumns())
     .append(SQL`, `)
@@ -673,7 +689,10 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
         applyRate: true,
         rateNumericString,
         filters,
-        withCoupons: false
+        // Opt-in: see `includeLegacyCoupons`. A legacy resale never matches, because couponJoin is primaries only.
+        // Every marketplace version redeems through the same CollectionDiscountCoupon, which discounts ERC20
+        // received assets as well as USD-pegged ones, so the pairing rules are the native branch's.
+        withCoupons: filters.includeLegacyCoupons === true
       })
     )
     // CollectionStore mints. `source: 'legacy'` because they are MANA-priced and must inherit the legacy
@@ -712,7 +731,8 @@ function buildUnifiedInner(filters: UnifiedCatalogFilters, rateNumericString: st
 //         The ORDER BY makes the survivor: PRIMARY before secondary, then NATIVE (fixed USD) before
 //         LEGACY (rate-floating MANA), then cheapest usd_wei, then TRADE before STORE mint, then trade_id
 //         for determinism. That is precisely "primary price if present, else cheapest credit-buyable
-//         secondary", preferring a stable USD headline over a rate-floating one. price_credits is
+//         secondary", preferring a stable USD headline over a rate-floating one -- even over a discounted
+//         legacy primary, which the same creator coupon normally discounts on the native row as well. price_credits is
 //         CEIL(usd_wei / C) of the survivor (same "Model B" rounding as every other feed).
 // Callers wrap this as `d` and add their own filtering/ordering/pagination on top. sent_item_id is
 // populated for secondary rows too (mv_trades), so grouping needs no extra joins.
@@ -763,6 +783,21 @@ export function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumeric
  * The sale half of a unified row. The compare-at has to strictly beat the sale price once both are rounded up
  * to whole credits, or the card would advertise "−X%" for a discount the buyer cannot see.
  */
+/**
+ * A legacy row whose coupon matched but whose sale is not shown (the rounding erased it, or its proof could
+ * not be built) goes back to its list price, in credits and in MANA. Without this the buyer would be shown no
+ * sale while `manaWei` carried the sale amount, and the plain `accept` they then send charges the list price.
+ */
+function legacyListFallback(
+  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'mana_wei' | 'list_mana_wei'>,
+  onSale: boolean
+): Pick<UnifiedListing, 'priceCredits' | 'manaWei'> {
+  if (onSale || r.list_mana_wei == null || r.compare_at_credits == null) {
+    return { priceCredits: Number(r.price_credits), manaWei: r.mana_wei ?? null }
+  }
+  return { priceCredits: Number(r.compare_at_credits), manaWei: r.list_mana_wei }
+}
+
 function unifiedSaleFields(
   r: Pick<
     Omit<UnifiedListingRow, 'total'>,
@@ -779,6 +814,16 @@ function unifiedSaleFields(
     saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
     coupon: onSale ? coupon : null
   }
+}
+
+// Key order matches the response before legacy coupons existed: priceCredits, the sale fields, then manaWei.
+function priceAndSale(
+  r: Omit<UnifiedListingRow, 'total'>,
+  warn: (message: string) => void
+): Pick<UnifiedListing, 'priceCredits' | 'manaWei' | 'compareAtCredits' | 'saleEndsAt' | 'saleUnitsLeft' | 'coupon'> {
+  const sale = unifiedSaleFields(r, warn)
+  const { priceCredits, manaWei } = legacyListFallback(r, sale.coupon !== null)
+  return { priceCredits, ...sale, manaWei }
 }
 
 function mapUnifiedRow(
@@ -811,9 +856,7 @@ function mapUnifiedRow(
     // the right answer for a mint: nobody is reselling it and no token has been issued yet.
     seller: r.seller ?? null,
     issuedId: r.issued_id ?? null,
-    priceCredits: Number(r.price_credits),
-    ...unifiedSaleFields(r, warn),
-    manaWei: r.mana_wei ?? null,
+    ...priceAndSale(r, warn),
     available: r.available ? Number(r.available) : 1,
     network: isPolygon ? Network.MATIC : Network.ETHEREUM,
     chainId: isPolygon ? polygonChainId : ethereumChainId,
@@ -1463,6 +1506,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         category: reference.category,
         wearableCategories: reference.wearableCategory ? [reference.wearableCategory] : undefined,
         includeLegacySecondary: filters.includeLegacySecondary,
+        includeLegacyCoupons: filters.includeLegacyCoupons,
         listingType: filters.listingType
       },
       rateNumericString

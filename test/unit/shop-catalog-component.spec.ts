@@ -255,7 +255,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ sortBy: 'cheapest' })
       // Cheapest sorts by what the buyer would PAY: the coupon sale price when one applies, else the list price.
       expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY COALESCE((mv.amount_received::numeric - FLOOR(mv.amount_received::numeric * cp.discount_ppm / 1000000)), mv.amount_received::numeric) ASC'
+        'ORDER BY COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric) ASC'
       )
 
       query.mockClear()

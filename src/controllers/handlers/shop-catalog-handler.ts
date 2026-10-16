@@ -280,6 +280,9 @@ export function createShopUnifiedHandler(
      * response. (`includeSocialEmotes` compares against 'false' for the mirror-image reason.)
      */
     const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
+    // Opt-in for the same reason and read the same way: creator coupons on classic MANA listings change
+    // what the buyer must send, so only a client whose MANA checkout passes the coupon may ask for them.
+    const includeLegacyCoupons = params.getString('includeLegacyCoupons') === 'true'
     const discounted = discountedParam(params)
 
     const filters = {
@@ -303,6 +306,7 @@ export function createShopUnifiedHandler(
       listingType,
       includeSocialEmotes,
       includeLegacySecondary,
+      includeLegacyCoupons,
       discounted
     }
 
@@ -333,6 +337,7 @@ export function createShopRelatedHandler(
     // Same opt-in as the grid this rail is meant to mirror — see the unified handler for why it is read as
     // a literal 'true'. A rail that included a row the grid excludes would contradict the page around it.
     const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
+    const includeLegacyCoupons = params.getString('includeLegacyCoupons') === 'true'
     // And the same narrowing, for the same reason: the opt-in above covers the LEGACY branch only, while
     // native resales reach this rail unconditionally, so a caller that may not sell one has to say so.
     const listingType = params.getValue<ShopListingType>('listingType', LISTING_TYPE_VALUES)
@@ -349,7 +354,10 @@ export function createShopRelatedHandler(
       // straight out of `/item/:contractAddress/:itemId`, so a malformed deep link would 500 the rail.
       // Blockchain ids are non-negative integers, so a digit check is the whole constraint.
       if (!contractAddress || !itemId || !/^\d+$/.test(itemId)) return { data: [] }
-      return shopCatalog.getRelatedItems({ contractAddress, itemId, first, includeLegacySecondary, listingType }, manaUsdRate.getRate())
+      return shopCatalog.getRelatedItems(
+        { contractAddress, itemId, first, includeLegacySecondary, includeLegacyCoupons, listingType },
+        manaUsdRate.getRate()
+      )
     })
   }
 }
@@ -438,6 +446,7 @@ export function createShopTrendingHandler(
     // Same opt-in as the grid — see the unified handler. Without it a Marketplace-listed copy can never
     // rank into the row, however much it trades, because the row is drawn from the same universe.
     const includeLegacySecondary = params.getString('includeLegacySecondary') === 'true'
+    const includeLegacyCoupons = params.getString('includeLegacyCoupons') === 'true'
 
     return asJSON(
       async () =>
@@ -451,7 +460,8 @@ export function createShopTrendingHandler(
             listingType,
             source,
             includeSocialEmotes,
-            includeLegacySecondary
+            includeLegacySecondary,
+            includeLegacyCoupons
           },
           manaUsdRate.getRate()
         ),
