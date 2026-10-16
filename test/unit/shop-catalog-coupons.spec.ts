@@ -398,7 +398,7 @@ describe('when the unified feed is asked to discount classic MANA listings', () 
     it('should hand the client the sale MANA amount as mana_wei', async () => {
       await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.25)
       expect(query.mock.calls[0][0].text).toContain(
-        'TRUNC(COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric))::text AS mana_wei'
+        '(COALESCE((mv.amount_received::numeric - div(mv.amount_received::numeric * cp.discount_ppm, 1000000::numeric)), mv.amount_received::numeric))::text AS mana_wei'
       )
     })
 

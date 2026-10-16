@@ -31,3 +31,29 @@ test('when pricing a listing under a creator coupon', function ({ components }) 
     expect(rows[0].sale).toEqual((price - (price * BigInt(ppm)) / 1_000_000n).toString())
   })
 })
+
+/**
+ * The opt-in that lets creator coupons discount classic MANA listings, as SQL-VALIDITY against real Postgres.
+ *
+ * The unit specs assert the emitted text against a mocked `query`; what they cannot catch is a UNION whose
+ * branches disagree on the extra column the opt-in selects, which only a live server rejects.
+ */
+test('when the unified shop catalog is asked to discount MANA listings', function ({ components }) {
+  const get = async (query: string) => {
+    const response = await components.localFetch.fetch(`/v3/catalog/unified${query}`)
+    return { status: response.status, body: (await response.json()) as { data: unknown[]; total: number } }
+  }
+
+  it.each([
+    ['the listing feed', '?includeLegacyCoupons=true'],
+    ['the grouped item feed', '?groupBy=item&includeLegacyCoupons=true'],
+    ['only discounted items', '?groupBy=item&includeLegacyCoupons=true&discounted=true'],
+    ['the cheapest first', '?groupBy=item&includeLegacyCoupons=true&sortBy=cheapest'],
+    ['legacy resales too', '?includeLegacyCoupons=true&includeLegacySecondary=true']
+  ])('should answer for %s', async (_, query) => {
+    const { status, body } = await get(query)
+
+    expect(status).toEqual(200)
+    expect(Array.isArray(body.data)).toBe(true)
+  })
+})

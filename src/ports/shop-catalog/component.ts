@@ -601,7 +601,7 @@ function unifiedBranch(opts: {
       !applyRate
         ? SQL`NULL::text AS mana_wei `
         : withCoupons
-        ? SQL`TRUNC(`.append(priceWei).append(SQL`)::text AS mana_wei `)
+        ? SQL`(`.append(priceWei).append(SQL`)::text AS mana_wei `)
         : SQL`mv.amount_received::text AS mana_wei `
     )
     .append(exposeListMana ? (applyRate ? SQL`, mv.amount_received::text AS list_mana_wei ` : SQL`, NULL::text AS list_mana_wei `) : SQL``)
@@ -783,21 +783,6 @@ export function buildItemUnifiedCore(filters: UnifiedCatalogFilters, rateNumeric
  * The sale half of a unified row. The compare-at has to strictly beat the sale price once both are rounded up
  * to whole credits, or the card would advertise "−X%" for a discount the buyer cannot see.
  */
-/**
- * A legacy row whose coupon matched but whose sale is not shown (the rounding erased it, or its proof could
- * not be built) goes back to its list price, in credits and in MANA. Without this the buyer would be shown no
- * sale while `manaWei` carried the sale amount, and the plain `accept` they then send charges the list price.
- */
-function legacyListFallback(
-  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'mana_wei' | 'list_mana_wei'>,
-  onSale: boolean
-): Pick<UnifiedListing, 'priceCredits' | 'manaWei'> {
-  if (onSale || r.list_mana_wei == null || r.compare_at_credits == null) {
-    return { priceCredits: Number(r.price_credits), manaWei: r.mana_wei ?? null }
-  }
-  return { priceCredits: Number(r.compare_at_credits), manaWei: r.list_mana_wei }
-}
-
 function unifiedSaleFields(
   r: Pick<
     Omit<UnifiedListingRow, 'total'>,
@@ -814,6 +799,21 @@ function unifiedSaleFields(
     saleUnitsLeft: onSale && r.sale_units_left != null ? Number(r.sale_units_left) : null,
     coupon: onSale ? coupon : null
   }
+}
+
+/**
+ * A legacy row whose coupon matched but whose sale is not shown (the rounding erased it, or its proof could
+ * not be built) goes back to its list price, in credits and in MANA. Without this the buyer would be shown no
+ * sale while `manaWei` carried the sale amount, and the plain `accept` they then send charges the list price.
+ */
+function legacyListFallback(
+  r: Pick<Omit<UnifiedListingRow, 'total'>, 'price_credits' | 'compare_at_credits' | 'mana_wei' | 'list_mana_wei'>,
+  onSale: boolean
+): Pick<UnifiedListing, 'priceCredits' | 'manaWei'> {
+  if (onSale || r.list_mana_wei == null || r.compare_at_credits == null) {
+    return { priceCredits: Number(r.price_credits), manaWei: r.mana_wei ?? null }
+  }
+  return { priceCredits: Number(r.compare_at_credits), manaWei: r.list_mana_wei }
 }
 
 // Key order matches the response before legacy coupons existed: priceCredits, the sale fields, then manaWei.
