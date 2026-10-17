@@ -44,3 +44,16 @@ export function getNumberParameter(parameterName: string, params: URLSearchParam
 
   return valueAsNumber
 }
+
+/**
+ * Reads an optional non-negative integer query parameter, rejecting partial or fractional input.
+ * @throws InvalidParameterError if the value is not a non-negative safe integer.
+ */
+export function getNonNegativeIntegerParameter(parameterName: string, params: URLSearchParams): number | undefined {
+  const value = params.get(parameterName)
+  if (value === null) return undefined
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new InvalidParameterError(parameterName, value)
+  }
+  return Number(value)
+}
