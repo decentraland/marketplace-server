@@ -820,10 +820,12 @@ function legacyListFallback(
 function priceAndSale(
   r: Omit<UnifiedListingRow, 'total'>,
   warn: (message: string) => void
-): Pick<UnifiedListing, 'priceCredits' | 'manaWei' | 'compareAtCredits' | 'saleEndsAt' | 'saleUnitsLeft' | 'coupon'> {
+): Pick<UnifiedListing, 'priceCredits' | 'manaWei' | 'listManaWei' | 'compareAtCredits' | 'saleEndsAt' | 'saleUnitsLeft' | 'coupon'> {
   const sale = unifiedSaleFields(r, warn)
   const { priceCredits, manaWei } = legacyListFallback(r, sale.coupon !== null)
-  return { priceCredits, ...sale, manaWei }
+  // Only beside a shown sale on a legacy row, so every other response keeps its exact shape.
+  const listManaWei = sale.coupon !== null && r.list_mana_wei != null ? { listManaWei: r.list_mana_wei } : {}
+  return { priceCredits, ...sale, manaWei, ...listManaWei }
 }
 
 function mapUnifiedRow(

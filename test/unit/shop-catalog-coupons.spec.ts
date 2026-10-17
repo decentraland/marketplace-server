@@ -507,6 +507,30 @@ describe('when the unified feed is asked to discount classic MANA listings', () 
         manaWei: '7000000000000000000'
       })
       expect(data[0].coupon).toMatchObject({ id: 'coupon-1', proof: [] })
+      expect(data[0].listManaWei).toBe('10000000000000000000')
+    })
+
+    it('should not expose a list amount once the sale is not shown', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          unifiedRow({
+            source: 'legacy',
+            price_credits: '9',
+            compare_at_credits: '9',
+            coupon: couponRow(),
+            mana_wei: '9500000000000000000',
+            list_mana_wei: '10000000000000000000'
+          })
+        ]
+      })
+      const { data } = await component.getUnifiedListings({ includeLegacyCoupons: true }, 0.09)
+      expect(data[0]).not.toHaveProperty('listManaWei')
+    })
+
+    it('should leave a row without a list column exactly as before', async () => {
+      query.mockResolvedValueOnce({ rows: [unifiedRow()] })
+      const { data } = await component.getUnifiedListings({}, 0.25)
+      expect(data[0]).not.toHaveProperty('listManaWei')
     })
   })
 })

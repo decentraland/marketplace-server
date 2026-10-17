@@ -267,6 +267,9 @@ export type UnifiedListing = Omit<ShopListing, 'tradeId'> & {
   // checkout. `null` for native (USD-pegged) items. Under `includeLegacyCoupons`, while `coupon` is set it is
   // the SALE amount that `acceptWithCoupon` charges; otherwise it is always the list price.
   manaWei: string | null
+  // The exact MANA list price (wei) next to a sale `manaWei`: present only under `includeLegacyCoupons` while a
+  // coupon is set. A sale amount comes from more than one list amount, so a client cannot recover this itself.
+  listManaWei?: string
 }
 
 // Filters for the unified feed: the full ShopCatalogFilters (price-range works across BOTH sources now
