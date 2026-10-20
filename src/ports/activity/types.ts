@@ -1,4 +1,5 @@
 import { Bid, Network, Order, Sale, Trade } from '@dcl/schemas'
+import { Transfer } from '../transfers/types'
 
 export enum ActivityEventType {
   SALE_BUYER = 'sale_buyer',
@@ -7,7 +8,9 @@ export enum ActivityEventType {
   BID_RECEIVED = 'bid_received',
   ORDER_CREATED = 'order_created',
   ORDER_FILLED = 'order_filled',
-  TRADE_CREATED = 'trade_created'
+  TRADE_CREATED = 'trade_created',
+  TRANSFER_SENT = 'transfer_sent',
+  TRANSFER_RECEIVED = 'transfer_received'
 }
 
 export type ActivityEventBase = {
@@ -57,6 +60,16 @@ export type TradeCreatedEvent = ActivityEventBase & {
   details: { trade: Trade }
 }
 
+export type TransferSentEvent = ActivityEventBase & {
+  type: ActivityEventType.TRANSFER_SENT
+  details: { transfer: Transfer }
+}
+
+export type TransferReceivedEvent = ActivityEventBase & {
+  type: ActivityEventType.TRANSFER_RECEIVED
+  details: { transfer: Transfer }
+}
+
 export type ActivityEvent =
   | SaleBuyerEvent
   | SaleSellerEvent
@@ -65,6 +78,8 @@ export type ActivityEvent =
   | OrderCreatedEvent
   | OrderFilledEvent
   | TradeCreatedEvent
+  | TransferSentEvent
+  | TransferReceivedEvent
 
 export type GetUserActivityResponse = {
   data: ActivityEvent[]

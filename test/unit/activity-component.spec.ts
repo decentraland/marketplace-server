@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import {
   LegacyBid,
+  NFTCategory,
   ListingStatus,
   Network,
   Order,
@@ -17,6 +18,7 @@ import { IBidsComponent } from '../../src/ports/bids'
 import { IOrdersComponent } from '../../src/ports/orders/types'
 import { ISalesComponent } from '../../src/ports/sales'
 import { ITradesComponent } from '../../src/ports/trades/types'
+import { ITransfersComponent, Transfer } from '../../src/ports/transfers/types'
 
 const makeLogs = (logger: { warn: jest.Mock; error?: jest.Mock; info?: jest.Mock; debug?: jest.Mock; log?: jest.Mock }) => ({
   getLogger: jest.fn().mockReturnValue({
@@ -98,11 +100,27 @@ const makeTrade = (overrides: Partial<Trade> = {}): Trade => ({
   ...overrides
 })
 
+const makeTransfer = (overrides: Partial<Transfer> = {}): Transfer => ({
+  id: 'x1',
+  from: '0xuser',
+  to: '0xfriend',
+  contractAddress: '0xnft',
+  tokenId: '762',
+  itemId: '0',
+  category: NFTCategory.WEARABLE,
+  txHash: '0xtransferhash',
+  timestamp: 9000,
+  network: Network.MATIC,
+  chainId: 137 as any,
+  ...overrides
+})
+
 describe('createActivityComponent', () => {
   let sales: jest.Mocked<ISalesComponent>
   let bids: jest.Mocked<IBidsComponent>
   let orders: jest.Mocked<IOrdersComponent>
   let trades: jest.Mocked<Pick<ITradesComponent, 'getTradesByAddress'>>
+  let transfers: jest.Mocked<ITransfersComponent>
   let activity: IActivityComponent
   let logWarn: jest.Mock
 
@@ -111,9 +129,10 @@ describe('createActivityComponent', () => {
     bids = { getBids: jest.fn().mockResolvedValue({ data: [], count: 0 }) }
     orders = { getOrders: jest.fn().mockResolvedValue({ data: [], total: 0 }) }
     trades = { getTradesByAddress: jest.fn().mockResolvedValue({ data: [] }) }
+    transfers = { getTransfers: jest.fn().mockResolvedValue([]) }
     logWarn = jest.fn()
     const logs = makeLogs({ warn: logWarn })
-    activity = createActivityComponent({ sales, bids, orders, trades: trades as unknown as ITradesComponent, logs })
+    activity = createActivityComponent({ sales, bids, orders, trades: trades as unknown as ITradesComponent, transfers, logs })
   })
 
   describe('when called with an address', () => {
@@ -127,6 +146,7 @@ describe('createActivityComponent', () => {
       expect(orders.getOrders).toHaveBeenCalledWith({ owner: '0xuser', first: 500 })
       expect(orders.getOrders).toHaveBeenCalledWith({ buyer: '0xuser', first: 500 })
       expect(trades.getTradesByAddress).toHaveBeenCalledWith('0xuser', { limit: 500 })
+      expect(transfers.getTransfers).toHaveBeenCalledWith({ address: '0xuser', first: 500 })
     })
   })
 
@@ -211,6 +231,10 @@ describe('createActivityComponent', () => {
           : Promise.resolve({ data: [makeBid({ id: 'br', createdAt: 8000, bidder: '0xother' })], count: 1 })
       )
       trades.getTradesByAddress.mockResolvedValue({ data: [makeTrade({ id: 'tt', createdAt: 4000 })] })
+      transfers.getTransfers.mockResolvedValue([
+        makeTransfer({ id: 'xs', timestamp: 9000, txHash: '0xc' }),
+        makeTransfer({ id: 'xr', from: '0xfriend', to: '0xuser', timestamp: 1000, txHash: '0xd' })
+      ])
     })
 
     it('should return events sorted by timestamp DESC', async () => {
@@ -229,6 +253,8 @@ describe('createActivityComponent', () => {
       expect(types).toContain(ActivityEventType.ORDER_CREATED)
       expect(types).toContain(ActivityEventType.ORDER_FILLED)
       expect(types).toContain(ActivityEventType.TRADE_CREATED)
+      expect(types).toContain(ActivityEventType.TRANSFER_SENT)
+      expect(types).toContain(ActivityEventType.TRANSFER_RECEIVED)
     })
 
     it('should encode the user perspective in each event id', async () => {
@@ -241,6 +267,51 @@ describe('createActivityComponent', () => {
       expect(ids).toContain('order_created:oo')
       expect(ids).toContain('order_filled:ob')
       expect(ids).toContain('trade_created:tt')
+      expect(ids).toContain('transfer_sent:xs')
+      expect(ids).toContain('transfer_received:xr')
+    })
+  })
+
+  describe('and one transaction moved several NFTs to the user', () => {
+    beforeEach(() => {
+      transfers.getTransfers.mockResolvedValue([
+        makeTransfer({ id: 'batch-1', from: '0xfriend', to: '0xuser', tokenId: '1', txHash: '0xbatch' }),
+        makeTransfer({ id: 'batch-2', from: '0xfriend', to: '0xuser', tokenId: '2', txHash: '0xBATCH' })
+      ])
+    })
+
+    it('should keep one transfer_received event per NFT', async () => {
+      const { data, total } = await activity.getUserActivity('0xuser')
+      expect(data.map(e => e.id)).toEqual(['transfer_received:batch-1', 'transfer_received:batch-2'])
+      expect(total).toBe(2)
+    })
+  })
+
+  describe('and the user sent and received transfers', () => {
+    beforeEach(() => {
+      transfers.getTransfers.mockResolvedValue([
+        makeTransfer({ id: 'out', from: '0xUSER', to: '0xfriend', timestamp: 2000, txHash: '0xout' }),
+        makeTransfer({ id: 'in', from: '0xfriend', to: '0xuser', timestamp: 1000, txHash: '0xin', itemId: null })
+      ])
+    })
+
+    it('should report a transfer the user sent as transfer_sent with the recipient as counterparty', async () => {
+      const { data } = await activity.getUserActivity('0xuser')
+      expect(data[0]).toMatchObject({
+        id: 'transfer_sent:out',
+        type: ActivityEventType.TRANSFER_SENT,
+        counterparty: '0xfriend',
+        txHash: '0xout',
+        contractAddress: '0xnft',
+        tokenId: '762',
+        itemId: '0'
+      })
+    })
+
+    it('should report a transfer the user received as transfer_received with the sender as counterparty', async () => {
+      const { data } = await activity.getUserActivity('0xuser')
+      expect(data[1]).toMatchObject({ id: 'transfer_received:in', type: ActivityEventType.TRANSFER_RECEIVED, counterparty: '0xfriend' })
+      expect(data[1].itemId).toBeUndefined()
     })
   })
 

@@ -8,8 +8,11 @@ import {
   OrderFilledEvent,
   SaleBuyerEvent,
   SaleSellerEvent,
-  TradeCreatedEvent
+  TradeCreatedEvent,
+  TransferReceivedEvent,
+  TransferSentEvent
 } from '../../ports/activity/types'
+import { Transfer } from '../../ports/transfers/types'
 
 const nullToUndefined = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v)
 
@@ -114,6 +117,31 @@ export function toTradeCreatedEvent(trade: Trade): TradeCreatedEvent {
   }
 }
 
+function toTransferEvent<T extends ActivityEventType.TRANSFER_SENT | ActivityEventType.TRANSFER_RECEIVED>(
+  transfer: Transfer,
+  type: T,
+  counterparty: string
+): T extends ActivityEventType.TRANSFER_SENT ? TransferSentEvent : TransferReceivedEvent {
+  // See `toSaleEvent` for the rationale on `as never` with a conditional return type.
+  return {
+    id: `${type}:${transfer.id}`,
+    type,
+    timestamp: transfer.timestamp,
+    network: transfer.network,
+    txHash: transfer.txHash,
+    contractAddress: transfer.contractAddress,
+    tokenId: transfer.tokenId,
+    itemId: nullToUndefined(transfer.itemId),
+    counterparty,
+    details: { transfer }
+  } as never
+}
+
+export const toTransferSentEvent = (transfer: Transfer): TransferSentEvent =>
+  toTransferEvent(transfer, ActivityEventType.TRANSFER_SENT, transfer.to)
+export const toTransferReceivedEvent = (transfer: Transfer): TransferReceivedEvent =>
+  toTransferEvent(transfer, ActivityEventType.TRANSFER_RECEIVED, transfer.from)
+
 export const isOrderFilled = (order: Order): boolean => order.status === ListingStatus.SOLD && !!order.buyer
 
 export const sortByTimestampDesc = (events: ActivityEvent[]): ActivityEvent[] => [...events].sort((a, b) => b.timestamp - a.timestamp)
@@ -123,11 +151,17 @@ export const sortByTimestampDesc = (events: ActivityEvent[]): ActivityEvent[] =>
 // distinct semantic events for the same user — e.g. `sale_seller` AND `order_filled` both
 // describe "someone bought your listing" from different model angles, with different
 // counterparty fields, so both must survive.
+const isTransfer = (ev: ActivityEvent): boolean =>
+  ev.type === ActivityEventType.TRANSFER_SENT || ev.type === ActivityEventType.TRANSFER_RECEIVED
+
 export function dedupeEvents(events: ActivityEvent[]): ActivityEvent[] {
   const seen = new Set<string>()
   const out: ActivityEvent[] = []
   for (const ev of events) {
-    const key = ev.txHash
+    // One transaction can move several NFTs, and each move is its own transfer, so transfers are keyed by id.
+    const key = isTransfer(ev)
+      ? `id:${ev.id}`
+      : ev.txHash
       ? `tx:${ev.txHash.toLowerCase()}:${ev.type}`
       : `${ev.contractAddress ?? '-'}|${ev.tokenId ?? ev.itemId ?? '-'}|${ev.timestamp}|${ev.type}`
     if (seen.has(key)) continue
