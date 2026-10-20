@@ -48,6 +48,7 @@ import { createStatsComponent } from '../src/ports/stats/component'
 import { createSuggestionsComponent } from '../src/ports/suggestions'
 import { createTradesComponent } from '../src/ports/trades'
 import { createTransakComponent } from '../src/ports/transak/component'
+import { createTransfersComponent } from '../src/ports/transfers'
 import { createTrendingsComponent } from '../src/ports/trendings/component'
 import { createUserAssetsComponent } from '../src/ports/user-assets/component'
 import { createVolumeComponent } from '../src/ports/volume/component'
@@ -213,7 +214,8 @@ async function initComponents(): Promise<TestComponents> {
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
-  const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const transfers = createTransfersComponent({ dappsDatabase: dappsReadDatabase })
+  const activity = createActivityComponent({ sales, bids, orders, trades, transfers, logs })
   const cancelledTrades = createCancelledTradesComponent({ dappsDatabase: dappsReadDatabase })
 
   return {
@@ -254,6 +256,7 @@ async function initComponents(): Promise<TestComponents> {
     schemaValidator,
     bids,
     trades,
+    transfers,
     eventPublisher,
     nfts,
     orders,

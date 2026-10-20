@@ -8,13 +8,15 @@ import {
   toOrderFilledEvent,
   toSaleBuyerEvent,
   toSaleSellerEvent,
-  toTradeCreatedEvent
+  toTradeCreatedEvent,
+  toTransferReceivedEvent,
+  toTransferSentEvent
 } from '../../adapters/activity'
 import { isErrorWithMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { ActivityEvent, IActivityComponent } from './types'
 
-// Every request refetches all 7 sources, sorts and dedupes them. `INTERNAL_FETCH_CAP` is
+// Every request refetches all 8 sources, sorts and dedupes them. `INTERNAL_FETCH_CAP` is
 // how many rows we pull from each source — bounds the worst-case work per request.
 // `MAX_PAGE_SIZE` is both the default and the hard cap for the response slice; a client
 // that doesn't pass `limit` gets the largest meaningful page (no surprise paging by us).
@@ -22,9 +24,9 @@ const INTERNAL_FETCH_CAP = 500
 const MAX_PAGE_SIZE = 500
 
 export function createActivityComponent(
-  components: Pick<AppComponents, 'sales' | 'bids' | 'orders' | 'trades' | 'logs'>
+  components: Pick<AppComponents, 'sales' | 'bids' | 'orders' | 'trades' | 'transfers' | 'logs'>
 ): IActivityComponent {
-  const { sales, bids, orders, trades, logs } = components
+  const { sales, bids, orders, trades, transfers, logs } = components
   const logger = logs.getLogger('Activity component')
 
   type SourceFetcher<T> = () => Promise<T>
@@ -44,15 +46,17 @@ export function createActivityComponent(
     const per = INTERNAL_FETCH_CAP
     const lower = address.toLowerCase()
 
-    const [salesAsBuyer, salesAsSeller, bidsAsBidder, bidsAsSeller, ordersAsOwner, ordersAsBuyer, userTrades] = await Promise.all([
-      safeFetch('sales:buyer', { data: [], total: 0 }, () => sales.getSales({ buyer: lower, first: per })),
-      safeFetch('sales:seller', { data: [], total: 0 }, () => sales.getSales({ seller: lower, first: per })),
-      safeFetch('bids:bidder', { data: [], count: 0 }, () => bids.getBids({ bidder: lower, limit: per, offset: 0 })),
-      safeFetch('bids:seller', { data: [], count: 0 }, () => bids.getBids({ seller: lower, limit: per, offset: 0 })),
-      safeFetch('orders:owner', { data: [], total: 0 }, () => orders.getOrders({ owner: lower, first: per })),
-      safeFetch('orders:buyer', { data: [], total: 0 }, () => orders.getOrders({ buyer: lower, first: per })),
-      safeFetch('trades:address', { data: [] }, () => trades.getTradesByAddress(lower, { limit: per }))
-    ])
+    const [salesAsBuyer, salesAsSeller, bidsAsBidder, bidsAsSeller, ordersAsOwner, ordersAsBuyer, userTrades, userTransfers] =
+      await Promise.all([
+        safeFetch('sales:buyer', { data: [], total: 0 }, () => sales.getSales({ buyer: lower, first: per })),
+        safeFetch('sales:seller', { data: [], total: 0 }, () => sales.getSales({ seller: lower, first: per })),
+        safeFetch('bids:bidder', { data: [], count: 0 }, () => bids.getBids({ bidder: lower, limit: per, offset: 0 })),
+        safeFetch('bids:seller', { data: [], count: 0 }, () => bids.getBids({ seller: lower, limit: per, offset: 0 })),
+        safeFetch('orders:owner', { data: [], total: 0 }, () => orders.getOrders({ owner: lower, first: per })),
+        safeFetch('orders:buyer', { data: [], total: 0 }, () => orders.getOrders({ buyer: lower, first: per })),
+        safeFetch('trades:address', { data: [] }, () => trades.getTradesByAddress(lower, { limit: per })),
+        safeFetch('transfers:address', [], () => transfers.getTransfers({ address: lower, first: per }))
+      ])
 
     const events: ActivityEvent[] = [
       ...salesAsBuyer.data.map(toSaleBuyerEvent),
@@ -61,7 +65,8 @@ export function createActivityComponent(
       ...bidsAsSeller.data.filter(b => b.bidder.toLowerCase() !== lower).map(toBidReceivedEvent),
       ...ordersAsOwner.data.map(toOrderCreatedEvent),
       ...ordersAsBuyer.data.filter(isOrderFilled).map(toOrderFilledEvent),
-      ...userTrades.data.map(toTradeCreatedEvent)
+      ...userTrades.data.map(toTradeCreatedEvent),
+      ...userTransfers.map(t => (t.from.toLowerCase() === lower ? toTransferSentEvent(t) : toTransferReceivedEvent(t)))
     ]
 
     const sorted = sortByTimestampDesc(events)

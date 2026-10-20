@@ -38,6 +38,7 @@ import { IStatsComponent } from './ports/stats/types'
 import { ISuggestionsComponent } from './ports/suggestions/types'
 import { ITradesComponent } from './ports/trades/types'
 import { ITransakComponent } from './ports/transak/types'
+import { ITransfersComponent } from './ports/transfers/types'
 import { ITrendingsComponent } from './ports/trendings/types'
 import { IUserAssetsComponent } from './ports/user-assets/types'
 import { IVolumeComponent } from './ports/volume/types'
@@ -85,6 +86,7 @@ export type BaseComponents = {
   access: IAccessComponent
   items: IItemsComponent
   trades: ITradesComponent
+  transfers: ITransfersComponent
   coupons: ICouponsComponent
   bids: IBidsComponent
   eventPublisher: IEventPublisherComponent

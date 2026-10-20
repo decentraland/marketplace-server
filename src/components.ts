@@ -58,6 +58,7 @@ import { createStatsComponent } from './ports/stats/component'
 import { createSuggestionsComponent } from './ports/suggestions'
 import { createTradesComponent } from './ports/trades'
 import { createTransakComponent } from './ports/transak/component'
+import { createTransfersComponent } from './ports/transfers'
 import { createTrendingsComponent } from './ports/trendings/component'
 import { createUserAssetsComponent } from './ports/user-assets/component'
 import { createVolumeComponent } from './ports/volume/component'
@@ -351,7 +352,8 @@ export async function initComponents(): Promise<AppComponents> {
   const analyticsData = await createAnalyticsDayDataComponent({ dappsDatabase: dappsReadDatabase })
   const volumes = await createVolumeComponent({ analyticsData })
   const userAssets = await createUserAssetsComponent({ logs, dappsDatabase: dappsReadDatabase })
-  const activity = createActivityComponent({ sales, bids, orders, trades, logs })
+  const transfers = createTransfersComponent({ dappsDatabase: dappsReadDatabase })
+  const activity = createActivityComponent({ sales, bids, orders, trades, transfers, logs })
   const cancelledTrades = createCancelledTradesComponent({ dappsDatabase: dappsReadDatabase })
 
   const transak = await createTransakComponent(
@@ -411,6 +413,7 @@ export async function initComponents(): Promise<AppComponents> {
     items,
     lists,
     trades,
+    transfers,
     access,
     picks,
     eventPublisher,
