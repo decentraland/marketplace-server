@@ -5,7 +5,7 @@ export interface ITransfersComponent {
   /**
    * The most recent transfers an address sent or received, newest first.
    *
-   * Mints, transfers to oneself and the transfers that settled a sale or a trade are left out: those already show up
+   * Mints, transfers to oneself and the transfers that settled a sale (executed trades included) are left out: those already show up
    * as purchases. The squid keeps one transfer per NFT per block, so a hop through the address within one block is not
    * seen.
    *

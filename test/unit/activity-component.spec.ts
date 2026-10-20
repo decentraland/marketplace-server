@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import {
   LegacyBid,
-  NFTCategory,
   ListingStatus,
+  NFTCategory,
   Network,
   Order,
   Sale,
@@ -12,6 +12,7 @@ import {
   TradeAssetType,
   TradeType
 } from '@dcl/schemas'
+import { getPolygonChainId } from '../../src/logic/chainIds'
 import { createActivityComponent } from '../../src/ports/activity'
 import { ActivityEventType, IActivityComponent } from '../../src/ports/activity/types'
 import { IBidsComponent } from '../../src/ports/bids'
@@ -111,7 +112,7 @@ const makeTransfer = (overrides: Partial<Transfer> = {}): Transfer => ({
   txHash: '0xtransferhash',
   timestamp: 9000,
   network: Network.MATIC,
-  chainId: 137 as any,
+  chainId: getPolygonChainId(),
   ...overrides
 })
 

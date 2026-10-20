@@ -27,9 +27,13 @@ describe('when building the transfers query', () => {
     expect(values).toContain('0x0000000000000000000000000000000000000000')
   })
 
-  it('should leave out the transfers that settled a sale or a trade', () => {
-    expect(text).toContain('squid_marketplace.sale s WHERE s.nft_id = tf.nft_id AND s.tx_hash = tf.tx_hash')
-    expect(text).toContain('squid_trades.trade tr WHERE tr.tx_hash = tf.tx_hash')
+  it('should leave out the transfers that settled a sale', () => {
+    expect(text).toMatch(/squid_marketplace\.sale s WHERE s\.nft_id = \(CASE .* END\) AND s\.tx_hash = tf\.tx_hash/)
+  })
+
+  it('should match an Ethereum wearable transfer to its nft by the id without the category prefix', () => {
+    expect(text).toContain("(CASE WHEN tf.nft_id LIKE 'wearable-%' THEN substr(tf.nft_id, 10) ELSE tf.nft_id END) AS nft_key")
+    expect(text).toContain('JOIN squid_marketplace.nft n ON n.id = t.nft_key')
   })
 
   it('should return the newest transfers first, capped at the requested amount', () => {

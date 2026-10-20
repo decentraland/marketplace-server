@@ -154,16 +154,18 @@ export const sortByTimestampDesc = (events: ActivityEvent[]): ActivityEvent[] =>
 const isTransfer = (ev: ActivityEvent): boolean =>
   ev.type === ActivityEventType.TRANSFER_SENT || ev.type === ActivityEventType.TRANSFER_RECEIVED
 
+function eventKey(ev: ActivityEvent): string {
+  if (isTransfer(ev)) return `id:${ev.id}`
+  if (ev.txHash) return `tx:${ev.txHash.toLowerCase()}:${ev.type}`
+  return `${ev.contractAddress ?? '-'}|${ev.tokenId ?? ev.itemId ?? '-'}|${ev.timestamp}|${ev.type}`
+}
+
 export function dedupeEvents(events: ActivityEvent[]): ActivityEvent[] {
   const seen = new Set<string>()
   const out: ActivityEvent[] = []
   for (const ev of events) {
     // One transaction can move several NFTs, and each move is its own transfer, so transfers are keyed by id.
-    const key = isTransfer(ev)
-      ? `id:${ev.id}`
-      : ev.txHash
-      ? `tx:${ev.txHash.toLowerCase()}:${ev.type}`
-      : `${ev.contractAddress ?? '-'}|${ev.tokenId ?? ev.itemId ?? '-'}|${ev.timestamp}|${ev.type}`
+    const key = eventKey(ev)
     if (seen.has(key)) continue
     seen.add(key)
     out.push(ev)
