@@ -2490,6 +2490,114 @@ paths:
                     enum: [block-too-recent, busy, unavailable]
                   message:
                     type: string
+  /v1/historical/third-parties:
+    post:
+      tags:
+        - Historical
+      summary: List third parties as they were at a past Polygon block
+      operationId: getHistoricalThirdParties
+      security:
+        - HistoricalToken: []
+      description: |
+        Each third party asked for, with the merkle root and approval its last review up to the given
+        Polygon block left it. A third party is approved only by a review, so one never reviewed by the
+        block is not listed. Content servers read the root of an approved third party at the block a
+        wearable was deployed at. Results are ordered by id. A block the chain has not reached, one less
+        than three minutes old, or one registry-squid has not indexed yet, gets a 503 with a Retry-After.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [block, ids]
+              additionalProperties: false
+              properties:
+                block:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                ids:
+                  type: array
+                  maxItems: 10000
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 256
+                isApproved:
+                  type: boolean
+                first:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 100
+                skip:
+                  type: integer
+                  minimum: 0
+                  default: 0
+      responses:
+        '200':
+          description: A page of the third parties at the block
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, root, isApproved]
+                      properties:
+                        id:
+                          type: string
+                        root:
+                          type: string
+                        isApproved:
+                          type: boolean
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The third parties could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: |
+            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
+            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
+            (`code` is `unavailable`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [block-too-recent, busy, unavailable]
+                  message:
+                    type: string
   /v1/rates/mana-usd:
     get:
       tags:

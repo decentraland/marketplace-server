@@ -23,6 +23,7 @@ const BOB = '0x0000000000000000000000000000000000000b0b'
 
 let pgQueryMock: jest.Mock
 let getBlockTimestamp: jest.Mock
+let getPolygonBlockTimestamp: jest.Mock
 let getIndexedHeight: jest.Mock
 let dappsDatabase: IPgComponent
 let historical: IHistoricalComponent
@@ -37,9 +38,10 @@ const ownerQueries = () => pgQueryMock.mock.calls.filter(([query]) => !query.tex
 beforeEach(() => {
   pgQueryMock = jest.fn()
   getBlockTimestamp = jest.fn().mockResolvedValue(BLOCK_TIMESTAMP)
+  getPolygonBlockTimestamp = jest.fn().mockResolvedValue(BLOCK_TIMESTAMP)
   getIndexedHeight = jest.fn().mockResolvedValue(BLOCK + 1000)
   dappsDatabase = createTestPgComponent({ query: pgQueryMock })
-  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => NOW })
+  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getPolygonBlockTimestamp, getIndexedHeight, now: () => NOW })
 })
 
 afterEach(() => {
@@ -406,6 +408,72 @@ describe('when the filters list nobody', () => {
     await expect(historical.getEstates({ block: BLOCK, tokenIds: [], first: 100, skip: 0 })).resolves.toEqual([])
     await expect(historical.getRentalAssets({ block: BLOCK, lessors: [], first: 100, skip: 0 })).resolves.toEqual([])
     expect(getBlockTimestamp).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('when getting the third parties at a Polygon block', () => {
+  const thirdPartiesFilters = { block: BLOCK, ids: ['urn:tp:b', 'urn:tp:a', 'urn:tp:c'], first: 100, skip: 0 }
+
+  beforeEach(() => {
+    pgQueryMock.mockResolvedValue({
+      rows: [
+        { third_party_id: 'urn:tp:b', root: '0xb', is_approved: true },
+        { third_party_id: 'urn:tp:a', root: '0xa', is_approved: true },
+        { third_party_id: 'urn:tp:c', root: '0xc', is_approved: false },
+        { third_party_id: 'urn:tp:d', root: '0xd', is_approved: true }
+      ]
+    })
+  })
+
+  it('should return the ones asked for, ordered by id, as their last review left them', async () => {
+    await expect(historical.getThirdParties(thirdPartiesFilters)).resolves.toEqual([
+      { id: 'urn:tp:a', root: '0xa', isApproved: true },
+      { id: 'urn:tp:b', root: '0xb', isApproved: true },
+      { id: 'urn:tp:c', root: '0xc', isApproved: false }
+    ])
+  })
+
+  it('should leave out the ones not in the approval asked for', async () => {
+    const thirdParties = await historical.getThirdParties({ ...thirdPartiesFilters, isApproved: true, first: 1 })
+
+    expect(thirdParties).toEqual([{ id: 'urn:tp:a', root: '0xa', isApproved: true }])
+  })
+
+  it("should check the block on Polygon, against registry-squid's Polygon processor", async () => {
+    await historical.getThirdParties(thirdPartiesFilters)
+
+    expect(getPolygonBlockTimestamp).toHaveBeenCalledWith(BLOCK)
+    expect(getBlockTimestamp).not.toHaveBeenCalled()
+    expect(getIndexedHeight).toHaveBeenCalledWith('registry', 'polygon')
+  })
+
+  it('should not take a Polygon block for the Ethereum block of the same number', async () => {
+    getBlockTimestamp.mockResolvedValue(undefined)
+    await historical.getThirdParties(thirdPartiesFilters)
+
+    await expect(historical.getEstates({ block: BLOCK, tokenIds: ['7'], first: 100, skip: 0 })).rejects.toBeInstanceOf(BlockTooRecentError)
+  })
+
+  it('should not read them at a block registry-squid has not indexed on Polygon', async () => {
+    getIndexedHeight.mockImplementation(async (_squid: string, chain?: string) => (chain === 'polygon' ? BLOCK - 1 : BLOCK + 1000))
+
+    await expect(historical.getThirdParties(thirdPartiesFilters)).rejects.toThrow(
+      `the registry squid has indexed Polygon up to ${BLOCK - 1}`
+    )
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('when no Polygon RPC is configured', () => {
+  beforeEach(() => {
+    historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => NOW })
+  })
+
+  it('should answer that the third parties are unavailable, without reading them', async () => {
+    await expect(historical.getThirdParties({ block: BLOCK, ids: ['urn:tp:a'], first: 100, skip: 0 })).rejects.toBeInstanceOf(
+      HistoricalUnavailableError
+    )
     expect(pgQueryMock).not.toHaveBeenCalled()
   })
 })

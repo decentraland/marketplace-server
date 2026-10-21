@@ -1,10 +1,16 @@
 import { ethers } from 'ethers'
 import { ChainId } from '@dcl/schemas'
-import { getEthereumChainId } from '../../logic/chainIds'
+import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
 import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError } from './errors'
-import { Squid } from './heights'
-import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, NftTarget } from './queries'
+import { Chain, Squid } from './heights'
+import {
+  getEstateSizesAtBlockQuery,
+  getOwnersAtBlockQuery,
+  getRentalsAtBlockQuery,
+  getThirdPartyRootsAtBlockQuery,
+  NftTarget
+} from './queries'
 import {
   EstateSizeDBRow,
   HistoricalEstate,
@@ -13,9 +19,12 @@ import {
   HistoricalNftsFilters,
   HistoricalRentalAsset,
   HistoricalRentalAssetsFilters,
+  HistoricalThirdParty,
+  HistoricalThirdPartiesFilters,
   IHistoricalComponent,
   OwnerAtBlockDBRow,
-  RentalAtBlockDBRow
+  RentalAtBlockDBRow,
+  ThirdPartyRootDBRow
 } from './types'
 
 /**
@@ -54,9 +63,24 @@ const HEAD_TTL_MS = 12000
 /** The Ethereum RPC of the environment, for block timestamps. */
 export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
   const chainId = getEthereumChainId()
-  const request = new ethers.FetchRequest(
+  return createBlockTimestamps(
+    chainId,
     rpcUrl || (chainId === ChainId.ETHEREUM_MAINNET ? 'https://rpc.decentraland.org/mainnet' : 'https://rpc.decentraland.org/sepolia')
   )
+}
+
+/** The Polygon RPC of the environment, for block timestamps. */
+export function createPolygonBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
+  const chainId = getPolygonChainId()
+  return createBlockTimestamps(
+    chainId,
+    rpcUrl || (chainId === ChainId.MATIC_MAINNET ? 'https://rpc.decentraland.org/polygon' : 'https://rpc.decentraland.org/amoy')
+  )
+}
+
+/** A block's timestamp, or undefined if the chain has not reached it. */
+function createBlockTimestamps(chainId: ChainId, rpcUrl: string): (block: number) => Promise<number | undefined> {
+  const request = new ethers.FetchRequest(rpcUrl)
   request.timeout = RPC_TIMEOUT_MS
   // The network is known: without it, ethers would keep detecting it whenever the RPC is down.
   const provider = new ethers.JsonRpcProvider(request, chainId, { staticNetwork: true })
@@ -93,12 +117,14 @@ export function createHistoricalComponent(options: {
   dappsDatabase: Pick<AppComponents, 'dappsDatabase'>['dappsDatabase']
   /** The timestamp of an Ethereum block, or undefined if the chain has not reached it. */
   getBlockTimestamp: (block: number) => Promise<number | undefined>
-  /** How far a squid has indexed Ethereum, see `createIndexedHeights`. */
-  getIndexedHeight: (squid: Squid) => Promise<number>
+  /** The same for a Polygon block. Without it, nothing is read at a Polygon block. */
+  getPolygonBlockTimestamp?: (block: number) => Promise<number | undefined>
+  /** How far a squid has indexed a chain, see `createIndexedHeights`. */
+  getIndexedHeight: (squid: Squid, chain?: Chain) => Promise<number>
   now?: () => number
   maxCachedRows?: number
 }): IHistoricalComponent {
-  const { dappsDatabase, getBlockTimestamp, getIndexedHeight } = options
+  const { dappsDatabase, getBlockTimestamp, getPolygonBlockTimestamp, getIndexedHeight } = options
   const now = options.now ?? Date.now
   const maxCachedRows = options.maxCachedRows ?? MAX_CACHED_ROWS
 
@@ -176,11 +202,12 @@ export function createHistoricalComponent(options: {
   }
 
   /** The block's timestamp, once the block is old enough to read holdings at. */
-  function blockTimestamp(block: number): Promise<number> {
-    const key = String(block)
+  function blockTimestamp(block: number, chain: Chain = 'ethereum'): Promise<number> {
+    const key = `${chain}:${block}`
     let timestamp = timestamps.get(key)
     if (!timestamp) {
-      timestamp = getBlockTimestamp(block).then(
+      const getTimestamp = chain === 'polygon' ? getPolygonBlockTimestamp : getBlockTimestamp
+      timestamp = (getTimestamp ? getTimestamp(block) : Promise.reject(new Error(`no ${chain} RPC is configured`))).then(
         found => {
           if (found === undefined || now() / 1000 - found < MIN_BLOCK_AGE_SECONDS) throw new BlockTooRecentError(block)
           return found
@@ -203,14 +230,15 @@ export function createHistoricalComponent(options: {
   }
 
   /** Holdings at a block a squid has not indexed yet would miss its transfers: they are not read. */
-  async function requireIndexed(squid: Squid, block: number): Promise<void> {
+  async function requireIndexed(squid: Squid, block: number, chain: Chain = 'ethereum'): Promise<void> {
     let height: number
     try {
-      height = await getIndexedHeight(squid)
+      height = await getIndexedHeight(squid, chain)
     } catch (error) {
       throw new HistoricalUnavailableError(`the ${squid} squid's height: ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (height < block) throw new BlockTooRecentError(block, `the ${squid} squid has indexed up to ${height}`)
+    if (height < block)
+      throw new BlockTooRecentError(block, `the ${squid} squid has indexed ${chain === 'polygon' ? 'Polygon ' : ''}up to ${height}`)
   }
 
   function ownersAt(block: number, target: NftTarget): Promise<OwnerAtBlockDBRow[]> {
@@ -230,6 +258,13 @@ export function createHistoricalComponent(options: {
   function rentalsAt(block: number): Promise<RentalAtBlockDBRow[]> {
     return cached(`rentals:${block}`, async () => {
       const { rows } = await read(() => dappsDatabase.query<RentalAtBlockDBRow>(getRentalsAtBlockQuery(block)))
+      return { value: rows, rows: rows.length }
+    })
+  }
+
+  function thirdPartyRootsAt(block: number): Promise<ThirdPartyRootDBRow[]> {
+    return cached(`third-party-roots:${block}`, async () => {
+      const { rows } = await read(() => dappsDatabase.query<ThirdPartyRootDBRow>(getThirdPartyRootsAtBlockQuery(block)))
       return { value: rows, rows: rows.length }
     })
   }
@@ -303,5 +338,18 @@ export function createHistoricalComponent(options: {
       .slice(filters.skip, filters.skip + filters.first)
   }
 
-  return { getNfts, getEstates, getRentalAssets }
+  async function getThirdParties(filters: HistoricalThirdPartiesFilters): Promise<HistoricalThirdParty[]> {
+    if (!filters.ids.length) return []
+    await blockTimestamp(filters.block, 'polygon')
+    await requireIndexed('registry', filters.block, 'polygon')
+    const ids = new Set(filters.ids)
+    return (await thirdPartyRootsAt(filters.block))
+      .filter(row => ids.has(row.third_party_id))
+      .map(row => ({ id: row.third_party_id, root: row.root, isApproved: row.is_approved }))
+      .filter(thirdParty => filters.isApproved === undefined || thirdParty.isApproved === filters.isApproved)
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(filters.skip, filters.skip + filters.first)
+  }
+
+  return { getNfts, getEstates, getRentalAssets, getThirdParties }
 }

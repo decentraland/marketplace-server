@@ -75,6 +75,23 @@ export function getRentalsAtBlockQuery(block: number): SQLStatement {
     )
 }
 
+/**
+ * Every third party's root and approval as its last review up to `block` left them. A third party is
+ * approved only by a review (`ThirdPartyReviewed` or `ThirdPartyReviewedWithRoot`), and registry-squid
+ * records the outcome of each one, so one never reviewed by the block is not approved at it.
+ */
+export function getThirdPartyRootsAtBlockQuery(block: number): SQLStatement {
+  return SQL`
+    SELECT DISTINCT ON (third_party_id) third_party_id, root, is_approved
+    FROM `
+    .append(REGISTRY_SQUID_SCHEMA)
+    .append(
+      SQL`.third_party_root_history
+    WHERE block_number <= ${block}
+    ORDER BY third_party_id, block_number DESC, log_index DESC`
+    )
+}
+
 /** The schema of a squid's live deployment, which the squid management server keeps in `public.squids`. */
 export function getLiveSchemaQuery(squid: string): SQLStatement {
   return SQL`SELECT schema FROM public.squids WHERE name = ${squid}`

@@ -2,7 +2,8 @@
 import {
   getHistoricalEstatesHandler,
   getHistoricalNftsHandler,
-  getHistoricalRentalAssetsHandler
+  getHistoricalRentalAssetsHandler,
+  getHistoricalThirdPartiesHandler
 } from '../../src/controllers/handlers/historical-handler'
 import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError, IHistoricalComponent } from '../../src/ports/historical'
 import { StatusCode } from '../../src/types'
@@ -21,7 +22,7 @@ const context = <C>(body: unknown) =>
   } as unknown as C)
 
 beforeEach(() => {
-  historical = { getNfts: jest.fn(), getEstates: jest.fn(), getRentalAssets: jest.fn() }
+  historical = { getNfts: jest.fn(), getEstates: jest.fn(), getRentalAssets: jest.fn(), getThirdParties: jest.fn() }
   logError = jest.fn()
 })
 
@@ -144,5 +145,20 @@ describe('when reading the holdings fails', () => {
       first: 1000,
       skip: 5
     })
+  })
+})
+
+describe('when getting the third parties at a block', () => {
+  beforeEach(() => {
+    historical.getThirdParties.mockResolvedValue([{ id: 'urn:tp', root: '0xabc', isApproved: true }])
+  })
+
+  it('should pass the filters with the default page', async () => {
+    const result = await getHistoricalThirdPartiesHandler(
+      context<Parameters<typeof getHistoricalThirdPartiesHandler>[0]>({ block: 100, ids: ['urn:tp'], isApproved: true, first: 1 })
+    )
+
+    expect(result).toEqual({ status: StatusCode.OK, body: { ok: true, data: [{ id: 'urn:tp', root: '0xabc', isApproved: true }] } })
+    expect(historical.getThirdParties).toHaveBeenCalledWith({ block: 100, ids: ['urn:tp'], isApproved: true, first: 1, skip: 0 })
   })
 })

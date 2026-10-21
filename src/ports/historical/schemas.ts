@@ -47,6 +47,14 @@ export type HistoricalRentalAssetsRequest = {
   skip?: number
 }
 
+export type HistoricalThirdPartiesRequest = {
+  block: number
+  ids: string[]
+  isApproved?: boolean
+  first?: number
+  skip?: number
+}
+
 export const HistoricalNftsSchema: JSONSchema<HistoricalNftsRequest> = {
   type: 'object',
   properties: {
@@ -92,5 +100,18 @@ export const HistoricalRentalAssetsSchema: JSONSchema<HistoricalRentalAssetsRequ
     skip
   },
   required: ['block', 'lessors'],
+  additionalProperties: false
+}
+
+export const HistoricalThirdPartiesSchema: JSONSchema<HistoricalThirdPartiesRequest> = {
+  type: 'object',
+  properties: {
+    block,
+    ids: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 256 }, maxItems: MAX_FILTER_VALUES },
+    isApproved: { type: 'boolean', nullable: true },
+    first,
+    skip
+  },
+  required: ['block', 'ids'],
   additionalProperties: false
 }
