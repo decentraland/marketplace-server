@@ -1,7 +1,8 @@
 /**
  * Holdings on Ethereum as they were at a past block: who owned an NFT, an estate's size, which LAND
  * and estates were in the Rentals contract. The DAO's Snapshot strategies read these at the block of
- * each proposal.
+ * each proposal. And third parties on Polygon as they were at a past block, which content servers read
+ * to validate a third party wearable at the block it was deployed at.
  */
 
 export type HistoricalNftsFilters = {
@@ -61,10 +62,28 @@ export type HistoricalRentalAsset = {
   isClaimed: boolean
 }
 
+export type HistoricalThirdPartiesFilters = {
+  /** The Polygon block the third parties are read at. */
+  block: number
+  ids: string[]
+  isApproved?: boolean
+  first: number
+  skip: number
+}
+
+/** A third party as its last review up to the block left it; one never reviewed by then is left out. */
+export type HistoricalThirdParty = {
+  id: string
+  /** The merkle root of its items. */
+  root: string
+  isApproved: boolean
+}
+
 export interface IHistoricalComponent {
   getNfts(filters: HistoricalNftsFilters): Promise<HistoricalNft[]>
   getEstates(filters: HistoricalEstatesFilters): Promise<HistoricalEstate[]>
   getRentalAssets(filters: HistoricalRentalAssetsFilters): Promise<HistoricalRentalAsset[]>
+  getThirdParties(filters: HistoricalThirdPartiesFilters): Promise<HistoricalThirdParty[]>
 }
 
 export type OwnerAtBlockDBRow = {
@@ -86,4 +105,12 @@ export type RentalAtBlockDBRow = {
   token_id: string
   lessor: string
   claimed_at: string | null
+}
+
+export type ThirdPartyReviewDBRow = {
+  third_party_id: string
+  root: string
+  is_approved: boolean
+  block_number: number
+  log_index: number
 }

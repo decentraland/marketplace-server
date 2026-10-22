@@ -3,7 +3,12 @@ import { bearerTokenMiddleware } from '@dcl/http-commons'
 import { Router } from '@dcl/http-server'
 import { createTradesViewAuthMiddleware } from '../logic/http/auth'
 import { CouponCreationSchema } from '../ports/coupons/schemas'
-import { HistoricalEstatesSchema, HistoricalNftsSchema, HistoricalRentalAssetsSchema } from '../ports/historical'
+import {
+  HistoricalEstatesSchema,
+  HistoricalNftsSchema,
+  HistoricalRentalAssetsSchema,
+  HistoricalThirdPartiesSchema
+} from '../ports/historical'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
 import { GlobalContext } from '../types'
@@ -18,7 +23,12 @@ import { addCouponHandler, getCouponHandler, getCouponsHandler } from './handler
 import { getCreatorRoyaltiesHandler } from './handlers/creator-royalties-handler'
 import { createCreatorSearchHandler } from './handlers/creator-search-handler'
 import { setupFavoritesRouter } from './handlers/favorites/routes'
-import { getHistoricalEstatesHandler, getHistoricalNftsHandler, getHistoricalRentalAssetsHandler } from './handlers/historical-handler'
+import {
+  getHistoricalEstatesHandler,
+  getHistoricalNftsHandler,
+  getHistoricalRentalAssetsHandler,
+  getHistoricalThirdPartiesHandler
+} from './handlers/historical-handler'
 import { getItemsHandler } from './handlers/items-handler'
 import { getManaUsdRatesHandler } from './handlers/mana-usd-rates-handler'
 import { getNFTsHandler } from './handlers/nfts-handler'
@@ -176,9 +186,9 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
 
   router.get('/v1/orders', getOrdersHandler)
 
-  // Holdings at a past Ethereum block, for the DAO's voting power. POST because the filters list addresses by the
-  // thousand. Each new block scans the transfers, so only the subgraph worker may call them, with its token; without
-  // one configured they are off.
+  // Holdings at a past Ethereum block, for the DAO's voting power, and third parties at a past Polygon block, for
+  // content servers. POST because the filters list addresses by the thousand. Each new block scans the transfers, so
+  // only the subgraph worker may call them, with its token; without one configured they are off.
   const historicalApiToken = await config.getString('HISTORICAL_API_TOKEN')
   if (historicalApiToken) {
     const historicalAuth = bearerTokenMiddleware(historicalApiToken)
@@ -199,6 +209,12 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       historicalAuth,
       components.schemaValidator.withSchemaValidatorMiddleware(HistoricalRentalAssetsSchema),
       getHistoricalRentalAssetsHandler
+    )
+    router.post(
+      '/v1/historical/third-parties',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalThirdPartiesSchema),
+      getHistoricalThirdPartiesHandler
     )
   }
   router.get('/v1/contracts', getContractsHandler)

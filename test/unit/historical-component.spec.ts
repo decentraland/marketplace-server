@@ -8,7 +8,8 @@ import {
   MAX_RESULT_AGE_MS,
   MAX_RUNNING_READS,
   MAX_WAITING_READS,
-  MIN_BLOCK_AGE_SECONDS
+  MIN_BLOCK_AGE_SECONDS,
+  THIRD_PARTY_REVIEWS_TTL_MS
 } from '../../src/ports/historical'
 import { createTestPgComponent } from '../components'
 
@@ -26,6 +27,7 @@ let getBlockTimestamp: jest.Mock
 let getIndexedHeight: jest.Mock
 let dappsDatabase: IPgComponent
 let historical: IHistoricalComponent
+let clock: number
 
 const nftsFilters = { block: BLOCK, owners: [ALICE], first: 100, skip: 0 }
 
@@ -39,7 +41,8 @@ beforeEach(() => {
   getBlockTimestamp = jest.fn().mockResolvedValue(BLOCK_TIMESTAMP)
   getIndexedHeight = jest.fn().mockResolvedValue(BLOCK + 1000)
   dappsDatabase = createTestPgComponent({ query: pgQueryMock })
-  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => NOW })
+  clock = NOW
+  historical = createHistoricalComponent({ dappsDatabase, getBlockTimestamp, getIndexedHeight, now: () => clock })
 })
 
 afterEach(() => {
@@ -407,5 +410,129 @@ describe('when the filters list nobody', () => {
     await expect(historical.getRentalAssets({ block: BLOCK, lessors: [], first: 100, skip: 0 })).resolves.toEqual([])
     expect(getBlockTimestamp).not.toHaveBeenCalled()
     expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('when getting the third parties at a Polygon block', () => {
+  const POLYGON_BLOCK = 60000000
+  const review = (id: string, block: number, root: string, isApproved: boolean, logIndex = 0) => ({
+    third_party_id: id,
+    root,
+    is_approved: isApproved,
+    block_number: block,
+    log_index: logIndex
+  })
+  const filters = { block: POLYGON_BLOCK, ids: ['urn:tp:b', 'urn:tp:a', 'urn:tp:c', 'urn:tp:never'], first: 100, skip: 0 }
+
+  beforeEach(() => {
+    getIndexedHeight.mockResolvedValue(POLYGON_BLOCK + 100)
+    // Ordered by third party, block and log index, as the query reads them.
+    pgQueryMock.mockResolvedValue({
+      rows: [
+        review('urn:tp:a', POLYGON_BLOCK - 10, '0xa1', true),
+        review('urn:tp:a', POLYGON_BLOCK, '0xa2', true, 3),
+        review('urn:tp:a', POLYGON_BLOCK + 1, '0xa3', true),
+        review('urn:tp:b', POLYGON_BLOCK - 5, '0xb1', true),
+        review('urn:tp:b', POLYGON_BLOCK - 5, '0xb1', false, 7),
+        review('urn:tp:c', POLYGON_BLOCK + 50, '0xc1', true)
+      ]
+    })
+  })
+
+  it('should answer each as its last review up to the block left it, ordered by id, leaving out the ones not reviewed by then', async () => {
+    await expect(historical.getThirdParties(filters)).resolves.toEqual([
+      { id: 'urn:tp:a', root: '0xa2', isApproved: true },
+      { id: 'urn:tp:b', root: '0xb1', isApproved: false }
+    ])
+  })
+
+  it('should leave out the ones not in the approval asked for, and page the rest', async () => {
+    await expect(historical.getThirdParties({ ...filters, isApproved: false })).resolves.toEqual([
+      { id: 'urn:tp:b', root: '0xb1', isApproved: false }
+    ])
+    await expect(historical.getThirdParties({ ...filters, skip: 1, first: 1 })).resolves.toEqual([
+      { id: 'urn:tp:b', root: '0xb1', isApproved: false }
+    ])
+  })
+
+  it("should check the block against registry-squid's finalized Polygon height, without the RPC", async () => {
+    await historical.getThirdParties(filters)
+
+    expect(getIndexedHeight).toHaveBeenCalledWith('registry', 'polygon', true)
+    expect(getBlockTimestamp).not.toHaveBeenCalled()
+  })
+
+  it('should read the reviews once for any block and ids, until they are old', async () => {
+    await historical.getThirdParties(filters)
+    await historical.getThirdParties({ ...filters, block: POLYGON_BLOCK - 7, ids: ['urn:tp:b'] })
+    clock += THIRD_PARTY_REVIEWS_TTL_MS - 1
+    await historical.getThirdParties({ ...filters, block: POLYGON_BLOCK - 1 })
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
+
+    clock += 1
+    await historical.getThirdParties(filters)
+    expect(pgQueryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('should share one read among concurrent requests', async () => {
+    await Promise.all([historical.getThirdParties(filters), historical.getThirdParties({ ...filters, block: POLYGON_BLOCK - 1 })])
+
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should read the reviews again for a block past the height they were read at', async () => {
+    await historical.getThirdParties(filters)
+    getIndexedHeight.mockResolvedValue(POLYGON_BLOCK + 500)
+    await historical.getThirdParties({ ...filters, block: POLYGON_BLOCK + 200 })
+
+    expect(pgQueryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('should not take the holdings read slots, nor be turned away by them', async () => {
+    let release: () => void = () => undefined
+    const blocked = new Promise<{ rows: unknown[] }>(resolve => {
+      release = () => resolve({ rows: [] })
+    })
+    pgQueryMock.mockImplementation(async (query: { text: string }) =>
+      query.text.includes('v1_third_party_root_history') ? { rows: [review('urn:tp:a', POLYGON_BLOCK, '0xa', true)] } : blocked
+    )
+    const holdings = Array.from({ length: MAX_RUNNING_READS + MAX_WAITING_READS }, (_, i) =>
+      historical.getEstates({ block: BLOCK + i, tokenIds: ['7'], first: 100, skip: 0 })
+    )
+    await settle()
+
+    await expect(historical.getThirdParties(filters)).resolves.toEqual([{ id: 'urn:tp:a', root: '0xa', isApproved: true }])
+    release()
+    await Promise.all(holdings)
+  })
+
+  it('should answer a block registry-squid has not finalized as too recent', async () => {
+    getIndexedHeight.mockResolvedValue(POLYGON_BLOCK - 1)
+
+    await expect(historical.getThirdParties(filters)).rejects.toThrow(`the registry squid has finalized Polygon up to ${POLYGON_BLOCK - 1}`)
+  })
+
+  it('should answer nothing for no ids, without reading anything', async () => {
+    await expect(historical.getThirdParties({ ...filters, ids: [] })).resolves.toEqual([])
+    expect(getIndexedHeight).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('when the third parties cannot be read', () => {
+  const filters = { block: 60000000, ids: ['urn:tp:a'], first: 100, skip: 0 }
+
+  it("should answer that they are unavailable when registry-squid's height does not answer", async () => {
+    getIndexedHeight.mockRejectedValue(new Error('permission denied for schema'))
+
+    await expect(historical.getThirdParties(filters)).rejects.toBeInstanceOf(HistoricalUnavailableError)
+  })
+
+  it('should answer that they are unavailable when the reviews cannot be read, and read them again next time', async () => {
+    getIndexedHeight.mockResolvedValue(60000100)
+    pgQueryMock.mockRejectedValueOnce(new Error('relation does not exist')).mockResolvedValue({ rows: [] })
+
+    await expect(historical.getThirdParties(filters)).rejects.toBeInstanceOf(HistoricalUnavailableError)
+    await expect(historical.getThirdParties(filters)).resolves.toEqual([])
   })
 })

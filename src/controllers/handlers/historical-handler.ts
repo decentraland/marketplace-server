@@ -6,6 +6,7 @@ import {
   HistoricalEstatesRequest,
   HistoricalNftsRequest,
   HistoricalRentalAssetsRequest,
+  HistoricalThirdPartiesRequest,
   MAX_PAGE_SIZE
 } from '../../ports/historical'
 import { HandlerContextWithPath, StatusCode } from '../../types'
@@ -106,5 +107,20 @@ export async function getHistoricalRentalAssetsHandler(context: Context<'/v1/his
         ...page(body)
       }),
     'rental assets'
+  )
+}
+
+export async function getHistoricalThirdPartiesHandler(context: Context<'/v1/historical/third-parties'>) {
+  const body: HistoricalThirdPartiesRequest = await context.request.json()
+  return answer(
+    context,
+    () =>
+      context.components.historical.getThirdParties({
+        block: body.block,
+        ids: body.ids,
+        isApproved: body.isApproved ?? undefined,
+        ...page(body)
+      }),
+    'third parties'
   )
 }

@@ -38,6 +38,32 @@ describe('when reading how far a squid has indexed', () => {
     expect(pgQueryMock.mock.calls[1][0].text).toContain('"ethereum_processor_marketplace_squid_20260101_000000".status')
   })
 
+  it("should read registry-squid's Polygon processor for Polygon", async () => {
+    await getIndexedHeight('registry', 'polygon')
+
+    expect(pgQueryMock.mock.calls[1][0].text).toContain('"polygon_processor_marketplace_squid_20260101_000000".status')
+  })
+
+  it('should read only the finalized height when asked, from the status alone', async () => {
+    await getIndexedHeight('registry', 'polygon', true)
+
+    expect(pgQueryMock.mock.calls[1][0].text).toContain('"polygon_processor_marketplace_squid_20260101_000000".status')
+    expect(pgQueryMock.mock.calls[1][0].text).not.toContain('hot_block')
+  })
+
+  it('should keep each chain, and the finalized height, apart', async () => {
+    await getIndexedHeight('registry')
+    await getIndexedHeight('registry', 'polygon')
+    await getIndexedHeight('registry', 'polygon', true)
+
+    expect(pgQueryMock).toHaveBeenCalledTimes(6)
+  })
+
+  it('should fail for a chain the squid does not index, without reading anything', async () => {
+    await expect(getIndexedHeight('marketplace', 'polygon')).rejects.toThrow('the marketplace squid does not index polygon')
+    expect(pgQueryMock).not.toHaveBeenCalled()
+  })
+
   it('should keep the height for a few seconds', async () => {
     await getIndexedHeight('marketplace')
     clock += INDEXED_HEIGHT_TTL_MS - 1

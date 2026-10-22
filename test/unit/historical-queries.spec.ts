@@ -1,5 +1,10 @@
 import { MARKETPLACE_SQUID_SCHEMA, REGISTRY_SQUID_SCHEMA } from '../../src/constants'
-import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery } from '../../src/ports/historical/queries'
+import {
+  getEstateSizesAtBlockQuery,
+  getOwnersAtBlockQuery,
+  getRentalsAtBlockQuery,
+  getThirdPartyReviewsQuery
+} from '../../src/ports/historical/queries'
 
 const BLOCK = 20000000
 
@@ -53,5 +58,15 @@ describe('getRentalsAtBlockQuery', () => {
     expect(query.text).toContain('DISTINCT ON (contract_address, token_id)')
     expect(query.text).toContain('ORDER BY contract_address, token_id, block_number DESC, log_index DESC')
     expect(query.values).toEqual([BLOCK])
+  })
+})
+
+describe('getThirdPartyReviewsQuery', () => {
+  it("should read every review from registry-squid's versioned view, in order", () => {
+    const query = getThirdPartyReviewsQuery()
+
+    expect(query.text).toContain(`${REGISTRY_SQUID_SCHEMA}.v1_third_party_root_history`)
+    expect(query.text).toContain('ORDER BY third_party_id, block_number, log_index')
+    expect(query.values).toEqual([])
   })
 })

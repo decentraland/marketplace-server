@@ -75,6 +75,23 @@ export function getRentalsAtBlockQuery(block: number): SQLStatement {
     )
 }
 
+/**
+ * Every review of every third party, in order: the root and approval each one left. A third party is
+ * approved only by a review (`ThirdPartyReviewed` or `ThirdPartyReviewedWithRoot`), and registry-squid
+ * records the outcome of each one in its versioned view, so one never reviewed by a block is not
+ * approved at it. Reviews are few and only ever added, so the whole history is read at once.
+ */
+export function getThirdPartyReviewsQuery(): SQLStatement {
+  return SQL`
+    SELECT third_party_id, root, is_approved, block_number, log_index
+    FROM `
+    .append(REGISTRY_SQUID_SCHEMA)
+    .append(
+      SQL`.v1_third_party_root_history
+    ORDER BY third_party_id, block_number, log_index`
+    )
+}
+
 /** The schema of a squid's live deployment, which the squid management server keeps in `public.squids`. */
 export function getLiveSchemaQuery(squid: string): SQLStatement {
   return SQL`SELECT schema FROM public.squids WHERE name = ${squid}`
@@ -82,11 +99,15 @@ export function getLiveSchemaQuery(squid: string): SQLStatement {
 
 /**
  * How far a squid's processor has indexed: its highest hot block, or its finalized height when it holds
- * none. The state schema is a name read from `public.squids`, so it is checked before it goes in.
+ * none; or only its finalized height, which no reorg can undo. The state schema is a name read from
+ * `public.squids`, so it is checked before it goes in.
  */
-export function getIndexedHeightQuery(stateSchema: string): SQLStatement {
+export function getIndexedHeightQuery(stateSchema: string, finalized = false): SQLStatement {
   if (!/^[a-z0-9_]{1,63}$/.test(stateSchema)) {
     throw new Error(`Unexpected state schema name: ${stateSchema}`)
+  }
+  if (finalized) {
+    return SQL`SELECT height FROM `.append(`"${stateSchema}"`).append(SQL`.status WHERE id = 0`)
   }
   return SQL`SELECT GREATEST((SELECT height FROM `
     .append(`"${stateSchema}"`)
