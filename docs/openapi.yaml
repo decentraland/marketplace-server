@@ -2502,8 +2502,8 @@ paths:
         Each third party asked for, with the merkle root and approval its last review up to the given
         Polygon block left it. A third party is approved only by a review, so one never reviewed by the
         block is not listed. Content servers read the root of an approved third party at the block a
-        wearable was deployed at. Results are ordered by id. A block the chain has not reached, one less
-        than three minutes old, or one registry-squid has not indexed yet, gets a 503 with a Retry-After.
+        wearable was deployed at. Results are ordered by id. A block registry-squid has not finalized yet,
+        usually a few seconds old, gets a 503 with a Retry-After.
       requestBody:
         required: true
         content:
@@ -2522,8 +2522,7 @@ paths:
                   maxItems: 10000
                   items:
                     type: string
-                    minLength: 1
-                    maxLength: 256
+                    pattern: '^[!-~]{1,256}$'
                 isApproved:
                   type: boolean
                 first:
@@ -2578,9 +2577,8 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: |
-            The block is too recent, or a squid has not indexed it yet (`code` is `block-too-recent`); too
-            many reads are running (`code` is `busy`); or the RPC or a squid's indexed height did not answer
-            (`code` is `unavailable`).
+            registry-squid has not finalized the block yet (`code` is `block-too-recent`); or its height or
+            the third parties' reviews could not be read (`code` is `unavailable`).
           headers:
             Retry-After:
               description: Seconds to wait before retrying

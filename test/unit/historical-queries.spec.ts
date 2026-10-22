@@ -3,7 +3,7 @@ import {
   getEstateSizesAtBlockQuery,
   getOwnersAtBlockQuery,
   getRentalsAtBlockQuery,
-  getThirdPartyRootsAtBlockQuery
+  getThirdPartyReviewsQuery
 } from '../../src/ports/historical/queries'
 
 const BLOCK = 20000000
@@ -61,13 +61,12 @@ describe('getRentalsAtBlockQuery', () => {
   })
 })
 
-describe('getThirdPartyRootsAtBlockQuery', () => {
-  it("should read each third party's last review up to the block", () => {
-    const query = getThirdPartyRootsAtBlockQuery(BLOCK)
+describe('getThirdPartyReviewsQuery', () => {
+  it("should read every review from registry-squid's versioned view, in order", () => {
+    const query = getThirdPartyReviewsQuery()
 
-    expect(query.text).toContain(`${REGISTRY_SQUID_SCHEMA}.third_party_root_history`)
-    expect(query.text).toContain('block_number <= $1')
-    expect(query.text).toContain('ORDER BY third_party_id, block_number DESC, log_index DESC')
-    expect(query.values).toEqual([BLOCK])
+    expect(query.text).toContain(`${REGISTRY_SQUID_SCHEMA}.v1_third_party_root_history`)
+    expect(query.text).toContain('ORDER BY third_party_id, block_number, log_index')
+    expect(query.values).toEqual([])
   })
 })

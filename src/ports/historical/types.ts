@@ -107,8 +107,10 @@ export type RentalAtBlockDBRow = {
   claimed_at: string | null
 }
 
-export type ThirdPartyRootDBRow = {
+export type ThirdPartyReviewDBRow = {
   third_party_id: string
   root: string
   is_approved: boolean
+  block_number: number
+  log_index: number
 }

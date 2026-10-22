@@ -1,16 +1,10 @@
 import { ethers } from 'ethers'
 import { ChainId } from '@dcl/schemas'
-import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
+import { getEthereumChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
 import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError } from './errors'
 import { Chain, Squid } from './heights'
-import {
-  getEstateSizesAtBlockQuery,
-  getOwnersAtBlockQuery,
-  getRentalsAtBlockQuery,
-  getThirdPartyRootsAtBlockQuery,
-  NftTarget
-} from './queries'
+import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, getThirdPartyReviewsQuery, NftTarget } from './queries'
 import {
   EstateSizeDBRow,
   HistoricalEstate,
@@ -24,7 +18,7 @@ import {
   IHistoricalComponent,
   OwnerAtBlockDBRow,
   RentalAtBlockDBRow,
-  ThirdPartyRootDBRow
+  ThirdPartyReviewDBRow
 } from './types'
 
 /**
@@ -46,6 +40,13 @@ export const MAX_CACHED_RESULTS = 256
 /** And none for longer than this, so that a correction in a squid reaches the answers within minutes. */
 export const MAX_RESULT_AGE_MS = 15 * 60 * 1000
 
+/**
+ * The third parties' review history is read again after this. It is small and only ever added to, so it
+ * is kept whole, apart from the holdings' cache and read slots, and any Polygon block is answered from
+ * it: a few reads an hour, however many blocks content servers ask about.
+ */
+export const THIRD_PARTY_REVIEWS_TTL_MS = 60 * 1000
+
 /** Block timestamps are a few bytes each; keep enough for every block being voted on. */
 const CACHED_TIMESTAMPS = 1000
 
@@ -63,24 +64,9 @@ const HEAD_TTL_MS = 12000
 /** The Ethereum RPC of the environment, for block timestamps. */
 export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
   const chainId = getEthereumChainId()
-  return createBlockTimestamps(
-    chainId,
+  const request = new ethers.FetchRequest(
     rpcUrl || (chainId === ChainId.ETHEREUM_MAINNET ? 'https://rpc.decentraland.org/mainnet' : 'https://rpc.decentraland.org/sepolia')
   )
-}
-
-/** The Polygon RPC of the environment, for block timestamps. */
-export function createPolygonBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
-  const chainId = getPolygonChainId()
-  return createBlockTimestamps(
-    chainId,
-    rpcUrl || (chainId === ChainId.MATIC_MAINNET ? 'https://rpc.decentraland.org/polygon' : 'https://rpc.decentraland.org/amoy')
-  )
-}
-
-/** A block's timestamp, or undefined if the chain has not reached it. */
-function createBlockTimestamps(chainId: ChainId, rpcUrl: string): (block: number) => Promise<number | undefined> {
-  const request = new ethers.FetchRequest(rpcUrl)
   request.timeout = RPC_TIMEOUT_MS
   // The network is known: without it, ethers would keep detecting it whenever the RPC is down.
   const provider = new ethers.JsonRpcProvider(request, chainId, { staticNetwork: true })
@@ -117,14 +103,12 @@ export function createHistoricalComponent(options: {
   dappsDatabase: Pick<AppComponents, 'dappsDatabase'>['dappsDatabase']
   /** The timestamp of an Ethereum block, or undefined if the chain has not reached it. */
   getBlockTimestamp: (block: number) => Promise<number | undefined>
-  /** The same for a Polygon block. Without it, nothing is read at a Polygon block. */
-  getPolygonBlockTimestamp?: (block: number) => Promise<number | undefined>
-  /** How far a squid has indexed a chain, see `createIndexedHeights`. */
-  getIndexedHeight: (squid: Squid, chain?: Chain) => Promise<number>
+  /** How far a squid has indexed a chain, or finalized it, see `createIndexedHeights`. */
+  getIndexedHeight: (squid: Squid, chain?: Chain, finalized?: boolean) => Promise<number>
   now?: () => number
   maxCachedRows?: number
 }): IHistoricalComponent {
-  const { dappsDatabase, getBlockTimestamp, getPolygonBlockTimestamp, getIndexedHeight } = options
+  const { dappsDatabase, getBlockTimestamp, getIndexedHeight } = options
   const now = options.now ?? Date.now
   const maxCachedRows = options.maxCachedRows ?? MAX_CACHED_ROWS
 
@@ -202,12 +186,11 @@ export function createHistoricalComponent(options: {
   }
 
   /** The block's timestamp, once the block is old enough to read holdings at. */
-  function blockTimestamp(block: number, chain: Chain = 'ethereum'): Promise<number> {
-    const key = `${chain}:${block}`
+  function blockTimestamp(block: number): Promise<number> {
+    const key = String(block)
     let timestamp = timestamps.get(key)
     if (!timestamp) {
-      const getTimestamp = chain === 'polygon' ? getPolygonBlockTimestamp : getBlockTimestamp
-      timestamp = (getTimestamp ? getTimestamp(block) : Promise.reject(new Error(`no ${chain} RPC is configured`))).then(
+      timestamp = getBlockTimestamp(block).then(
         found => {
           if (found === undefined || now() / 1000 - found < MIN_BLOCK_AGE_SECONDS) throw new BlockTooRecentError(block)
           return found
@@ -230,15 +213,14 @@ export function createHistoricalComponent(options: {
   }
 
   /** Holdings at a block a squid has not indexed yet would miss its transfers: they are not read. */
-  async function requireIndexed(squid: Squid, block: number, chain: Chain = 'ethereum'): Promise<void> {
+  async function requireIndexed(squid: Squid, block: number): Promise<void> {
     let height: number
     try {
-      height = await getIndexedHeight(squid, chain)
+      height = await getIndexedHeight(squid)
     } catch (error) {
       throw new HistoricalUnavailableError(`the ${squid} squid's height: ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (height < block)
-      throw new BlockTooRecentError(block, `the ${squid} squid has indexed ${chain === 'polygon' ? 'Polygon ' : ''}up to ${height}`)
+    if (height < block) throw new BlockTooRecentError(block, `the ${squid} squid has indexed up to ${height}`)
   }
 
   function ownersAt(block: number, target: NftTarget): Promise<OwnerAtBlockDBRow[]> {
@@ -262,11 +244,48 @@ export function createHistoricalComponent(options: {
     })
   }
 
-  function thirdPartyRootsAt(block: number): Promise<ThirdPartyRootDBRow[]> {
-    return cached(`third-party-roots:${block}`, async () => {
-      const { rows } = await read(() => dappsDatabase.query<ThirdPartyRootDBRow>(getThirdPartyRootsAtBlockQuery(block)))
-      return { value: rows, rows: rows.length }
-    })
+  type Reviews = { height: number; readAt: number; byId: Map<string, ThirdPartyReviewDBRow[]> }
+  let reviews: Reviews | undefined
+  let readingReviews: Promise<Reviews> | undefined
+
+  /**
+   * Every third party's reviews, up to the Polygon height registry-squid had finalized when they were
+   * read: no reorg can undo them. The height is read first, so the reviews hold every one up to it.
+   */
+  async function readReviews(): Promise<Reviews> {
+    let height: number
+    try {
+      height = await getIndexedHeight('registry', 'polygon', true)
+    } catch (error) {
+      throw new HistoricalUnavailableError(`the registry squid's height: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    let rows: ThirdPartyReviewDBRow[]
+    try {
+      rows = (await dappsDatabase.query<ThirdPartyReviewDBRow>(getThirdPartyReviewsQuery())).rows
+    } catch (error) {
+      throw new HistoricalUnavailableError(`the third parties' reviews: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    const byId = new Map<string, ThirdPartyReviewDBRow[]>()
+    for (const row of rows) {
+      const list = byId.get(row.third_party_id)
+      if (list) list.push(row)
+      else byId.set(row.third_party_id, [row])
+    }
+    return { height, readAt: now(), byId }
+  }
+
+  /** The reviews, read again once old or short of the block; concurrent requests share one read. */
+  async function reviewsUpTo(block: number): Promise<Reviews> {
+    if (!reviews || now() - reviews.readAt >= THIRD_PARTY_REVIEWS_TTL_MS || reviews.height < block) {
+      readingReviews ??= readReviews().finally(() => {
+        readingReviews = undefined
+      })
+      reviews = await readingReviews
+    }
+    if (reviews.height < block) {
+      throw new BlockTooRecentError(block, `the registry squid has finalized Polygon up to ${reviews.height}`)
+    }
+    return reviews
   }
 
   async function getNfts(filters: HistoricalNftsFilters): Promise<HistoricalNft[]> {
@@ -340,12 +359,16 @@ export function createHistoricalComponent(options: {
 
   async function getThirdParties(filters: HistoricalThirdPartiesFilters): Promise<HistoricalThirdParty[]> {
     if (!filters.ids.length) return []
-    await blockTimestamp(filters.block, 'polygon')
-    await requireIndexed('registry', filters.block, 'polygon')
-    const ids = new Set(filters.ids)
-    return (await thirdPartyRootsAt(filters.block))
-      .filter(row => ids.has(row.third_party_id))
-      .map(row => ({ id: row.third_party_id, root: row.root, isApproved: row.is_approved }))
+    const { byId } = await reviewsUpTo(filters.block)
+    return Array.from(new Set(filters.ids))
+      .flatMap(id => {
+        // The last review up to the block, in a list ordered by block and log index.
+        const last = byId
+          .get(id)
+          ?.filter(review => review.block_number <= filters.block)
+          .pop()
+        return last ? [{ id, root: last.root, isApproved: last.is_approved }] : []
+      })
       .filter(thirdParty => filters.isApproved === undefined || thirdParty.isApproved === filters.isApproved)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .slice(filters.skip, filters.skip + filters.first)

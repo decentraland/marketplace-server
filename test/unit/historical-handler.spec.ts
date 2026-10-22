@@ -161,4 +161,12 @@ describe('when getting the third parties at a block', () => {
     expect(result).toEqual({ status: StatusCode.OK, body: { ok: true, data: [{ id: 'urn:tp', root: '0xabc', isApproved: true }] } })
     expect(historical.getThirdParties).toHaveBeenCalledWith({ block: 100, ids: ['urn:tp'], isApproved: true, first: 1, skip: 0 })
   })
+
+  it('should read a null approval as no approval filter', async () => {
+    await getHistoricalThirdPartiesHandler(
+      context<Parameters<typeof getHistoricalThirdPartiesHandler>[0]>({ block: 100, ids: ['urn:tp'], isApproved: null })
+    )
+
+    expect(historical.getThirdParties).toHaveBeenCalledWith({ block: 100, ids: ['urn:tp'], isApproved: undefined, first: 100, skip: 0 })
+  })
 })

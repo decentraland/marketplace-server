@@ -107,7 +107,8 @@ export const HistoricalThirdPartiesSchema: JSONSchema<HistoricalThirdPartiesRequ
   type: 'object',
   properties: {
     block,
-    ids: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 256 }, maxItems: MAX_FILTER_VALUES },
+    // Third party ids are URNs, plain ASCII, so they sort byte by byte as on the subgraph.
+    ids: { type: 'array', items: { type: 'string', pattern: '^[!-~]{1,256}$' }, maxItems: MAX_FILTER_VALUES },
     isApproved: { type: 'boolean', nullable: true },
     first,
     skip
