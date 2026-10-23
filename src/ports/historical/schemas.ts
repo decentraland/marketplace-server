@@ -34,6 +34,7 @@ export type HistoricalEstatesRequest = {
   block: number
   tokenIds: string[]
   sizeGt?: number
+  withParcels?: boolean
   first?: number
   skip?: number
 }
@@ -82,6 +83,7 @@ export const HistoricalEstatesSchema: JSONSchema<HistoricalEstatesRequest> = {
     block,
     tokenIds: { type: 'array', items: { type: 'string', pattern: '^[0-9]{1,78}$' }, maxItems: MAX_FILTER_VALUES },
     sizeGt: { type: 'integer', nullable: true },
+    withParcels: { type: 'boolean', nullable: true },
     first,
     skip
   },
