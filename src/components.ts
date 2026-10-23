@@ -39,7 +39,13 @@ import { createAccessComponent } from './ports/favorites/access'
 import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
-import { createEthereumBlockTimestamps, createHistoricalComponent, createIndexedHeights } from './ports/historical'
+import {
+  createBlockTimestamps,
+  createEthereumBlockTimestamps,
+  createHistoricalComponent,
+  createIndexedHeads,
+  createIndexedHeights
+} from './ports/historical'
 import { createItemsComponent } from './ports/items'
 import { createDisabledJobComponent, createJobComponent } from './ports/job'
 import { createManaUsdRateComponent } from './ports/mana-rate/component'
@@ -338,11 +344,18 @@ export async function initComponents(): Promise<AppComponents> {
   const collections = createCollectionsComponent({ dappsDatabase: dappsReadDatabase })
   const accounts = createAccountsComponent({ dappsDatabase: dappsReadDatabase })
   const owners = createOwnersComponent({ dappsDatabase: dappsReadDatabase, logs, cache })
-  // Holdings at a past block, for the DAO's voting power. Block timestamps come from the Ethereum RPC.
+  // Holdings at a past block, for the DAO's voting power, and the squids' heads, for the subgraphs'
+  // `_meta`. Block timestamps come from each chain's RPC.
+  const ethereumRpc = await config.getString('RPC_ENDPOINT_ETHEREUM')
+  const blockTimestamps = {
+    ethereum: createEthereumBlockTimestamps(ethereumRpc),
+    polygon: createBlockTimestamps('polygon', await config.getString('RPC_ENDPOINT_POLYGON'))
+  }
   const historical = createHistoricalComponent({
     dappsDatabase: dappsReadDatabase,
-    getBlockTimestamp: createEthereumBlockTimestamps(await config.getString('RPC_ENDPOINT_ETHEREUM')),
-    getIndexedHeight: createIndexedHeights(dappsReadDatabase)
+    getBlockTimestamp: blockTimestamps.ethereum,
+    getIndexedHeight: createIndexedHeights(dappsReadDatabase),
+    getIndexedHead: createIndexedHeads(dappsReadDatabase, (chain, block) => blockTimestamps[chain](block))
   })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })
