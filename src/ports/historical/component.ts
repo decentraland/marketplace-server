@@ -4,10 +4,19 @@ import { getEthereumChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
 import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError } from './errors'
 import { Chain, Squid } from './heights'
-import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, getThirdPartyReviewsQuery, NftTarget } from './queries'
 import {
+  getEstateParcelsAtBlockQuery,
+  getEstateSizesAtBlockQuery,
+  getOwnersAtBlockQuery,
+  getRentalsAtBlockQuery,
+  getThirdPartyReviewsQuery,
+  NftTarget
+} from './queries'
+import {
+  EstateParcelDBRow,
   EstateSizeDBRow,
   HistoricalEstate,
+  HistoricalParcel,
   HistoricalEstatesFilters,
   HistoricalNft,
   HistoricalNftsFilters,
@@ -329,7 +338,7 @@ export function createHistoricalComponent(options: {
     await blockTimestamp(filters.block)
     await requireIndexed('registry', filters.block)
     const sizes = await estateSizesAt(filters.block)
-    return Array.from(new Set(filters.tokenIds))
+    const estates: HistoricalEstate[] = Array.from(new Set(filters.tokenIds))
       .flatMap(tokenId => {
         const size = sizes.get(tokenId)
         return size === undefined ? [] : [{ tokenId, size }]
@@ -337,6 +346,29 @@ export function createHistoricalComponent(options: {
       .filter(estate => filters.sizeGt === undefined || estate.size > filters.sizeGt)
       .sort((a, b) => (a.tokenId < b.tokenId ? -1 : a.tokenId > b.tokenId ? 1 : 0))
       .slice(filters.skip, filters.skip + filters.first)
+    if (!filters.withParcels || !estates.length) return estates
+    const parcels = await estateParcelsAt(
+      filters.block,
+      estates.map(estate => estate.tokenId)
+    )
+    return estates.map(estate => ({ ...estate, parcels: parcels.get(estate.tokenId) ?? [] }))
+  }
+
+  /** The parcels each estate held at the block, by estate token id. */
+  function estateParcelsAt(block: number, tokenIds: string[]): Promise<Map<string, HistoricalParcel[]>> {
+    const sorted = Array.from(new Set(tokenIds)).sort()
+    return cached(`estate-parcels:${block}:${sorted.join(',')}`, async () => {
+      const { rows } = await read(() => dappsDatabase.query<EstateParcelDBRow>(getEstateParcelsAtBlockQuery(block, sorted)))
+      const byEstate = new Map<string, HistoricalParcel[]>()
+      for (const row of rows) {
+        const parcel = { tokenId: BigInt(row.parcel_id).toString(), x: Number(row.x), y: Number(row.y) }
+        byEstate.set(row.estate_token_id, [...(byEstate.get(row.estate_token_id) ?? []), parcel])
+      }
+      for (const parcels of byEstate.values()) {
+        parcels.sort((a, b) => (a.tokenId < b.tokenId ? -1 : a.tokenId > b.tokenId ? 1 : 0))
+      }
+      return { value: byEstate, rows: rows.length }
+    })
   }
 
   async function getRentalAssets(filters: HistoricalRentalAssetsFilters): Promise<HistoricalRentalAsset[]> {
