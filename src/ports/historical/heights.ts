@@ -1,4 +1,5 @@
 import { AppComponents } from '../../types'
+import { SquidStateNotFoundError } from './errors'
 import { getIndexedHeadQuery, getIndexedHeightQuery, getLiveSchemaQuery } from './queries'
 
 /** The squids past holdings are read from. */
@@ -30,7 +31,7 @@ export function createIndexedHeights(
 
   async function read(squid: Squid, chain: Chain, finalized: boolean): Promise<number> {
     const prefix = STATE_SCHEMA_PREFIX[squid][chain]
-    if (!prefix) throw new Error(`the ${squid} squid does not index ${chain}`)
+    if (!prefix) throw new SquidStateNotFoundError(`the ${squid} squid does not index ${chain}`)
     const live = await dappsDatabase.query<{ schema: string }>(getLiveSchemaQuery(squid))
     if (!live.rows.length) throw new Error(`there is no live ${squid} squid`)
     const { rows } = await dappsDatabase.query<{ height: number | string | null }>(
@@ -75,14 +76,15 @@ export function createIndexedHeads(
 
   async function read(squid: Squid, chain: Chain): Promise<Head> {
     const prefix = STATE_SCHEMA_PREFIX[squid][chain]
-    if (!prefix) throw new Error(`the ${squid} squid does not index ${chain}`)
+    if (!prefix) throw new SquidStateNotFoundError(`the ${squid} squid does not index ${chain}`)
     const live = await dappsDatabase.query<{ schema: string }>(getLiveSchemaQuery(squid))
     if (!live.rows.length) throw new Error(`there is no live ${squid} squid`)
     const { rows } = await dappsDatabase.query<{ height: number | string; hash: string }>(
       getIndexedHeadQuery(`${prefix}${live.rows[0].schema}`)
     )
-    if (!rows.length) throw new Error(`the ${squid} squid has not indexed any block yet on ${chain}`)
-    const number = Number(rows[0].height)
+    const number = rows.length ? Number(rows[0].height) : -1
+    // A processor that has not committed its first batch yet holds the status it starts with, height -1.
+    if (number < 0) throw new Error(`the ${squid} squid has not indexed any block yet on ${chain}`)
     const timestamp = await getBlockTimestamp(chain, number).catch(() => undefined)
     return { number, hash: rows[0].hash, timestamp: timestamp ?? null }
   }
@@ -93,7 +95,9 @@ export function createIndexedHeads(
     if (known && now() - known.readAt < INDEXED_HEIGHT_TTL_MS) return known.head
     const head = read(squid, chain)
     heads.set(key, { readAt: now(), head })
-    head.catch(() => heads.get(key)?.head === head && heads.delete(key))
+    // A failure, or a head the RPC gave no timestamp for, is not kept: the next request tries again.
+    const forget = () => heads.get(key)?.head === head && heads.delete(key)
+    head.then(({ timestamp }) => timestamp === null && forget(), forget)
     return head
   }
 }

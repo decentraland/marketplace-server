@@ -40,9 +40,9 @@ import { createListsComponent } from './ports/favorites/lists'
 import { createPicksComponent } from './ports/favorites/picks'
 import { createSnapshotComponent } from './ports/favorites/snapshot'
 import {
-  createBlockTimestamps,
   createEthereumBlockTimestamps,
   createHistoricalComponent,
+  createIndexedBlockTimestamps,
   createIndexedHeads,
   createIndexedHeights
 } from './ports/historical'
@@ -347,15 +347,15 @@ export async function initComponents(): Promise<AppComponents> {
   // Holdings at a past block, for the DAO's voting power, and the squids' heads, for the subgraphs'
   // `_meta`. Block timestamps come from each chain's RPC.
   const ethereumRpc = await config.getString('RPC_ENDPOINT_ETHEREUM')
-  const blockTimestamps = {
-    ethereum: createEthereumBlockTimestamps(ethereumRpc),
-    polygon: createBlockTimestamps('polygon', await config.getString('RPC_ENDPOINT_POLYGON'))
+  const indexedBlockTimestamps = {
+    ethereum: createIndexedBlockTimestamps('ethereum', ethereumRpc),
+    polygon: createIndexedBlockTimestamps('polygon', await config.getString('RPC_ENDPOINT_POLYGON'))
   }
   const historical = createHistoricalComponent({
     dappsDatabase: dappsReadDatabase,
-    getBlockTimestamp: blockTimestamps.ethereum,
+    getBlockTimestamp: createEthereumBlockTimestamps(ethereumRpc),
     getIndexedHeight: createIndexedHeights(dappsReadDatabase),
-    getIndexedHead: createIndexedHeads(dappsReadDatabase, (chain, block) => blockTimestamps[chain](block))
+    getIndexedHead: createIndexedHeads(dappsReadDatabase, (chain, block) => indexedBlockTimestamps[chain](block))
   })
   const sales = await createSalesComponents({ dappsDatabase: dappsReadDatabase })
   const prices = await createPricesComponents({ dappsDatabase: dappsReadDatabase })

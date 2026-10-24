@@ -18,3 +18,6 @@ export class HistoricalUnavailableError extends Error {
     super(`Past holdings cannot be read right now: ${reason}`)
   }
 }
+
+/** A squid's processor state is not where it should be: asking again will not find it. */
+export class SquidStateNotFoundError extends Error {}

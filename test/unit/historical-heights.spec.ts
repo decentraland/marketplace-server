@@ -153,6 +153,14 @@ describe("when reading a squid's indexed head", () => {
     it('should answer the head without its timestamp', async () => {
       await expect(getIndexedHead('registry', 'ethereum')).resolves.toEqual({ number: 75000000, hash: '0xabc', timestamp: null })
     })
+
+    it('should not keep that head, so that the next request reads it again', async () => {
+      await getIndexedHead('registry', 'ethereum')
+      getBlockTimestamp.mockResolvedValueOnce(1700000000)
+
+      await expect(getIndexedHead('registry', 'ethereum')).resolves.toEqual({ number: 75000000, hash: '0xabc', timestamp: 1700000000 })
+      expect(pgQueryMock).toHaveBeenCalledTimes(4)
+    })
   })
 
   describe('and the processor has not indexed any block', () => {
@@ -164,6 +172,21 @@ describe("when reading a squid's indexed head", () => {
 
     it('should fail', async () => {
       await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow('has not indexed any block yet on ethereum')
+    })
+  })
+
+  describe('and the processor holds only the status it starts with, before its first batch', () => {
+    beforeEach(() => {
+      pgQueryMock.mockImplementation(async (query: { text: string }) =>
+        query.text.includes('public.squids')
+          ? { rows: [{ schema: 'registry_squid_20260101_000000' }] }
+          : { rows: [{ height: '-1', hash: '0x' }] }
+      )
+    })
+
+    it('should fail as not indexed, without asking for the block', async () => {
+      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow('has not indexed any block yet on ethereum')
+      expect(getBlockTimestamp).not.toHaveBeenCalled()
     })
   })
 })
