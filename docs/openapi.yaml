@@ -2596,6 +2596,94 @@ paths:
                     enum: [block-too-recent, busy, unavailable]
                   message:
                     type: string
+  /v1/historical/head:
+    post:
+      tags:
+        - Historical
+      summary: Get the block a squid has indexed up to on a chain
+      operationId: getHistoricalHead
+      security:
+        - HistoricalToken: []
+      description: |
+        The highest block the live deployment of a squid has indexed on a chain, hot or finalized, with
+        its hash and timestamp. The subgraph gateway answers a subgraph's `_meta { block }` with it. It is
+        read again every few seconds. The timestamp comes from the chain's RPC and is null when the RPC
+        does not answer for the block. A squid that has not indexed any block yet, or whose state cannot
+        be read for now, gets a 503 with a Retry-After.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [squid, chain]
+              additionalProperties: false
+              properties:
+                squid:
+                  type: string
+                  enum: [marketplace, registry]
+                chain:
+                  type: string
+                  enum: [ethereum, polygon]
+      responses:
+        '200':
+          description: The block the squid has indexed up to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    required: [number, hash, timestamp]
+                    properties:
+                      number:
+                        type: integer
+                      hash:
+                        type: string
+                      timestamp:
+                        type: [integer, 'null']
+                        description: Seconds
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: The token is missing or wrong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The squid's state is not where it should be
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The squid has not indexed any block yet, or its state could not be read (`code` is `unavailable`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  code:
+                    type: string
+                    enum: [unavailable]
+                  message:
+                    type: string
   /v1/rates/mana-usd:
     get:
       tags:
