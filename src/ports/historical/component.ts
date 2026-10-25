@@ -1,9 +1,9 @@
 import { ethers } from 'ethers'
 import { ChainId } from '@dcl/schemas'
-import { getEthereumChainId } from '../../logic/chainIds'
+import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
-import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError } from './errors'
-import { Chain, Squid } from './heights'
+import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError, SquidStateNotFoundError } from './errors'
+import { Chain, Head, Squid } from './heights'
 import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, getThirdPartyReviewsQuery, NftTarget } from './queries'
 import {
   EstateSizeDBRow,
@@ -58,21 +58,46 @@ export const MAX_WAITING_READS = 16
 
 const RPC_TIMEOUT_MS = 10000
 
+/** PostgreSQL's codes for a table, or a schema, that does not exist. */
+const MISSING_STATE_CODES = new Set(['42P01', '3F000'])
+
 /** The chain's head is asked again after this: a block number above it is not looked up at all. */
 const HEAD_TTL_MS = 12000
 
 /** The Ethereum RPC of the environment, for block timestamps. */
 export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) => Promise<number | undefined> {
-  const chainId = getEthereumChainId()
-  const request = new ethers.FetchRequest(
-    rpcUrl || (chainId === ChainId.ETHEREUM_MAINNET ? 'https://rpc.decentraland.org/mainnet' : 'https://rpc.decentraland.org/sepolia')
-  )
+  return createBlockTimestamps('ethereum', rpcUrl)
+}
+
+/** The default RPC of each chain the environment reads, mainnet or testnet. */
+function defaultRpcUrl(chain: Chain): string {
+  if (chain === 'polygon') {
+    return getPolygonChainId() === ChainId.MATIC_MAINNET ? 'https://rpc.decentraland.org/polygon' : 'https://rpc.decentraland.org/amoy'
+  }
+  return getEthereumChainId() === ChainId.ETHEREUM_MAINNET ? 'https://rpc.decentraland.org/mainnet' : 'https://rpc.decentraland.org/sepolia'
+}
+
+type BlockReader = Pick<ethers.JsonRpcProvider, 'getBlock' | 'getBlockNumber'>
+
+function createChainProvider(chain: Chain, rpcUrl?: string): ethers.JsonRpcProvider {
+  const chainId = chain === 'polygon' ? getPolygonChainId() : getEthereumChainId()
+  const request = new ethers.FetchRequest(rpcUrl || defaultRpcUrl(chain))
   request.timeout = RPC_TIMEOUT_MS
   // The network is known: without it, ethers would keep detecting it whenever the RPC is down.
-  const provider = new ethers.JsonRpcProvider(request, chainId, { staticNetwork: true })
+  return new ethers.JsonRpcProvider(request, chainId, { staticNetwork: true })
+}
+
+/** A chain's RPC in the environment, for block timestamps; undefined for a block the chain has not reached. */
+export function createBlockTimestamps(
+  chain: Chain,
+  rpcUrl?: string,
+  provider: BlockReader = createChainProvider(chain, rpcUrl)
+): (block: number) => Promise<number | undefined> {
   let head = 0
   let headReadAt = 0
   return async block => {
+    // ethers reads a negative block number as counted back from the latest one.
+    if (block < 0) return undefined
     if (block > head && Date.now() - headReadAt > HEAD_TTL_MS) {
       head = await provider.getBlockNumber()
       headReadAt = Date.now()
@@ -80,6 +105,19 @@ export function createEthereumBlockTimestamps(rpcUrl?: string): (block: number) 
     if (block > head) return undefined
     return (await provider.getBlock(block))?.timestamp
   }
+}
+
+/**
+ * A chain's RPC in the environment, for the timestamps of blocks a squid has indexed. Those exist, and
+ * sit at the chain's tip, often past the head the RPC reported a few seconds earlier: each is read
+ * straight, not checked against that head.
+ */
+export function createIndexedBlockTimestamps(
+  chain: Chain,
+  rpcUrl?: string,
+  provider: Pick<BlockReader, 'getBlock'> = createChainProvider(chain, rpcUrl)
+): (block: number) => Promise<number | undefined> {
+  return async block => (block < 0 ? undefined : (await provider.getBlock(block))?.timestamp)
 }
 
 /** Orders NFTs and assets the way the subgraphs order their ids, `<contractAddress>-<tokenId>` as a string. */
@@ -105,6 +143,8 @@ export function createHistoricalComponent(options: {
   getBlockTimestamp: (block: number) => Promise<number | undefined>
   /** How far a squid has indexed a chain, or finalized it, see `createIndexedHeights`. */
   getIndexedHeight: (squid: Squid, chain?: Chain, finalized?: boolean) => Promise<number>
+  /** The block a squid has indexed up to on a chain, see `createIndexedHeads`. */
+  getIndexedHead?: (squid: Squid, chain: Chain) => Promise<Head>
   now?: () => number
   maxCachedRows?: number
 }): IHistoricalComponent {
@@ -374,5 +414,20 @@ export function createHistoricalComponent(options: {
       .slice(filters.skip, filters.skip + filters.first)
   }
 
-  return { getNfts, getEstates, getRentalAssets, getThirdParties }
+  /** The block a squid has indexed up to on a chain, for a subgraph's `_meta`. */
+  async function getHead(squid: Squid, chain: Chain): Promise<Head> {
+    if (!options.getIndexedHead) throw new HistoricalUnavailableError('The indexed heads are not configured')
+    try {
+      return await options.getIndexedHead(squid, chain)
+    } catch (e) {
+      // A state schema or table that is not there stays so however often it is asked: that is answered as
+      // a failure, not as worth retrying. Anything else, a permission included, may clear.
+      if (e instanceof SquidStateNotFoundError || MISSING_STATE_CODES.has((e as { code?: string })?.code ?? '')) throw e
+      throw new HistoricalUnavailableError(
+        `Could not read the ${squid} squid's head on ${chain}: ${e instanceof Error ? e.message : String(e)}`
+      )
+    }
+  }
+
+  return { getNfts, getEstates, getRentalAssets, getThirdParties, getHead }
 }
