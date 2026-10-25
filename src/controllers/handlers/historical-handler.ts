@@ -129,5 +129,5 @@ export async function getHistoricalThirdPartiesHandler(context: Context<'/v1/his
 /** The block a squid has indexed up to on a chain, which the gateway answers a subgraph's `_meta` with. */
 export async function getHistoricalHeadHandler(context: Context<'/v1/historical/head'>) {
   const body: HistoricalHeadRequest = await context.request.json()
-  return answer(context, () => context.components.historical.getHead(body.squid, body.chain), 'indexed head')
+  return answer(context, () => context.components.historical.getHead(body.squid, body.chain, body.processor ?? undefined), 'indexed head')
 }

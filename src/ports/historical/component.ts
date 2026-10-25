@@ -2,8 +2,14 @@ import { ethers } from 'ethers'
 import { ChainId } from '@dcl/schemas'
 import { getEthereumChainId, getPolygonChainId } from '../../logic/chainIds'
 import { AppComponents } from '../../types'
-import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError, SquidStateNotFoundError } from './errors'
-import { Chain, Head, Squid } from './heights'
+import {
+  BlockTooRecentError,
+  HistoricalBusyError,
+  HistoricalUnavailableError,
+  IndexedHeadUnavailableError,
+  SquidStateNotFoundError
+} from './errors'
+import { Chain, Head, Processor, Squid } from './heights'
 import { getEstateSizesAtBlockQuery, getOwnersAtBlockQuery, getRentalsAtBlockQuery, getThirdPartyReviewsQuery, NftTarget } from './queries'
 import {
   EstateSizeDBRow,
@@ -108,16 +114,16 @@ export function createBlockTimestamps(
 }
 
 /**
- * A chain's RPC in the environment, for the timestamps of blocks a squid has indexed. Those exist, and
- * sit at the chain's tip, often past the head the RPC reported a few seconds earlier: each is read
- * straight, not checked against that head.
+ * A chain's RPC in the environment, for the timestamps of blocks a squid has indexed, by hash. Those
+ * exist, and sit at the chain's tip, often past the head the RPC reported a few seconds earlier: each
+ * is read straight, not checked against that head.
  */
 export function createIndexedBlockTimestamps(
   chain: Chain,
   rpcUrl?: string,
   provider: Pick<BlockReader, 'getBlock'> = createChainProvider(chain, rpcUrl)
-): (block: number) => Promise<number | undefined> {
-  return async block => (block < 0 ? undefined : (await provider.getBlock(block))?.timestamp)
+): (blockHash: string) => Promise<number | undefined> {
+  return async blockHash => (await provider.getBlock(blockHash))?.timestamp
 }
 
 /** Orders NFTs and assets the way the subgraphs order their ids, `<contractAddress>-<tokenId>` as a string. */
@@ -144,7 +150,7 @@ export function createHistoricalComponent(options: {
   /** How far a squid has indexed a chain, or finalized it, see `createIndexedHeights`. */
   getIndexedHeight: (squid: Squid, chain?: Chain, finalized?: boolean) => Promise<number>
   /** The block a squid has indexed up to on a chain, see `createIndexedHeads`. */
-  getIndexedHead?: (squid: Squid, chain: Chain) => Promise<Head>
+  getIndexedHead?: (squid: Squid, chain: Chain, processor?: Processor) => Promise<Head>
   now?: () => number
   maxCachedRows?: number
 }): IHistoricalComponent {
@@ -414,17 +420,17 @@ export function createHistoricalComponent(options: {
       .slice(filters.skip, filters.skip + filters.first)
   }
 
-  /** The block a squid has indexed up to on a chain, for a subgraph's `_meta`. */
-  async function getHead(squid: Squid, chain: Chain): Promise<Head> {
-    if (!options.getIndexedHead) throw new HistoricalUnavailableError('The indexed heads are not configured')
+  /** The block a squid's processor has indexed up to, the chain's unless said otherwise, for a subgraph's `_meta`. */
+  async function getHead(squid: Squid, chain: Chain, processor?: Processor): Promise<Head> {
+    if (!options.getIndexedHead) throw new IndexedHeadUnavailableError('the indexed heads are not configured')
     try {
-      return await options.getIndexedHead(squid, chain)
+      return await options.getIndexedHead(squid, chain, processor)
     } catch (e) {
       // A state schema or table that is not there stays so however often it is asked: that is answered as
       // a failure, not as worth retrying. Anything else, a permission included, may clear.
       if (e instanceof SquidStateNotFoundError || MISSING_STATE_CODES.has((e as { code?: string })?.code ?? '')) throw e
-      throw new HistoricalUnavailableError(
-        `Could not read the ${squid} squid's head on ${chain}: ${e instanceof Error ? e.message : String(e)}`
+      throw new IndexedHeadUnavailableError(
+        `the ${squid} squid's ${processor ?? chain} processor: ${e instanceof Error ? e.message : String(e)}`
       )
     }
   }

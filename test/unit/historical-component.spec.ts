@@ -618,15 +618,16 @@ describe('when reading block timestamps from a chain', () => {
       expect(provider.getBlock).not.toHaveBeenCalledWith(101)
     })
 
-    it("should read it for a squid's head, which the chain has", async () => {
-      await expect(createIndexedBlockTimestamps('ethereum', undefined, provider)(101)).resolves.toBe(BLOCK_TIMESTAMP + 101)
+    it("should read it for a squid's head, which the chain has, by its hash", async () => {
+      provider.getBlock.mockResolvedValueOnce({ timestamp: BLOCK_TIMESTAMP + 101 })
+      await expect(createIndexedBlockTimestamps('ethereum', undefined, provider)('0xabc')).resolves.toBe(BLOCK_TIMESTAMP + 101)
+      expect(provider.getBlock).toHaveBeenLastCalledWith('0xabc')
     })
   })
 
   describe('and the block is negative, as a processor that has indexed nothing reports', () => {
     it('should answer none without asking, as the RPC would count it back from the latest block', async () => {
       await expect(createBlockTimestamps('ethereum', undefined, provider)(-1)).resolves.toBeUndefined()
-      await expect(createIndexedBlockTimestamps('ethereum', undefined, provider)(-1)).resolves.toBeUndefined()
       expect(provider.getBlock).not.toHaveBeenCalled()
     })
   })
