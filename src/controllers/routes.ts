@@ -7,7 +7,8 @@ import {
   HistoricalEstatesSchema,
   HistoricalNftsSchema,
   HistoricalRentalAssetsSchema,
-  HistoricalThirdPartiesSchema
+  HistoricalThirdPartiesSchema,
+  HistoricalHeadSchema
 } from '../ports/historical'
 import { TradeCreationSchema } from '../ports/trades/schemas'
 import { WidgetOptionsSchema } from '../ports/transak'
@@ -27,7 +28,8 @@ import {
   getHistoricalEstatesHandler,
   getHistoricalNftsHandler,
   getHistoricalRentalAssetsHandler,
-  getHistoricalThirdPartiesHandler
+  getHistoricalThirdPartiesHandler,
+  getHistoricalHeadHandler
 } from './handlers/historical-handler'
 import { getItemsHandler } from './handlers/items-handler'
 import { getManaUsdRatesHandler } from './handlers/mana-usd-rates-handler'
@@ -215,6 +217,12 @@ export async function setupRouter(globalContext: GlobalContext): Promise<Router<
       historicalAuth,
       components.schemaValidator.withSchemaValidatorMiddleware(HistoricalThirdPartiesSchema),
       getHistoricalThirdPartiesHandler
+    )
+    router.post(
+      '/v1/historical/head',
+      historicalAuth,
+      components.schemaValidator.withSchemaValidatorMiddleware(HistoricalHeadSchema),
+      getHistoricalHeadHandler
     )
   }
   router.get('/v1/contracts', getContractsHandler)

@@ -1,11 +1,19 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import {
   getHistoricalEstatesHandler,
+  getHistoricalHeadHandler,
   getHistoricalNftsHandler,
   getHistoricalRentalAssetsHandler,
   getHistoricalThirdPartiesHandler
 } from '../../src/controllers/handlers/historical-handler'
-import { BlockTooRecentError, HistoricalBusyError, HistoricalUnavailableError, IHistoricalComponent } from '../../src/ports/historical'
+import {
+  BlockTooRecentError,
+  HistoricalBusyError,
+  HistoricalUnavailableError,
+  IHistoricalComponent,
+  IndexedHeadUnavailableError,
+  SquidStateNotFoundError
+} from '../../src/ports/historical'
 import { StatusCode } from '../../src/types'
 import { createLoggerMockedComponent } from '../mocks/logger-mock'
 
@@ -22,7 +30,13 @@ const context = <C>(body: unknown) =>
   } as unknown as C)
 
 beforeEach(() => {
-  historical = { getNfts: jest.fn(), getEstates: jest.fn(), getRentalAssets: jest.fn(), getThirdParties: jest.fn() }
+  historical = {
+    getNfts: jest.fn(),
+    getEstates: jest.fn(),
+    getRentalAssets: jest.fn(),
+    getThirdParties: jest.fn(),
+    getHead: jest.fn()
+  }
   logError = jest.fn()
 })
 
@@ -168,5 +182,68 @@ describe('when getting the third parties at a block', () => {
     )
 
     expect(historical.getThirdParties).toHaveBeenCalledWith({ block: 100, ids: ['urn:tp'], isApproved: undefined, first: 100, skip: 0 })
+  })
+})
+
+describe("when getting a squid's indexed head", () => {
+  describe('and it can be read', () => {
+    beforeEach(() => {
+      historical.getHead.mockResolvedValueOnce({ number: 20000123, hash: '0xabc', timestamp: 1700000000 })
+    })
+
+    it('should answer with the block', async () => {
+      const result = await getHistoricalHeadHandler(
+        context<Parameters<typeof getHistoricalHeadHandler>[0]>({ squid: 'registry', chain: 'polygon' })
+      )
+
+      expect(result).toEqual({
+        status: StatusCode.OK,
+        body: { ok: true, data: { number: 20000123, hash: '0xabc', timestamp: 1700000000 } }
+      })
+      expect(historical.getHead).toHaveBeenCalledWith('registry', 'polygon', undefined)
+    })
+  })
+
+  describe("and it is a processor's other than the chain's", () => {
+    beforeEach(() => {
+      historical.getHead.mockResolvedValueOnce({ number: 20000123, hash: '0xabc', timestamp: 1700000000 })
+    })
+
+    it('should read that processor', async () => {
+      await getHistoricalHeadHandler(
+        context<Parameters<typeof getHistoricalHeadHandler>[0]>({ squid: 'registry', chain: 'ethereum', processor: 'vesting' })
+      )
+
+      expect(historical.getHead).toHaveBeenCalledWith('registry', 'ethereum', 'vesting')
+    })
+  })
+
+  describe("and the squid's state is not where it should be", () => {
+    beforeEach(() => {
+      historical.getHead.mockRejectedValueOnce(new SquidStateNotFoundError('the registry squid has no vesting processor on polygon'))
+    })
+
+    it('should answer that it failed, not that it is worth retrying', async () => {
+      const result = await getHistoricalHeadHandler(
+        context<Parameters<typeof getHistoricalHeadHandler>[0]>({ squid: 'registry', chain: 'polygon', processor: 'vesting' })
+      )
+
+      expect(result.status).toBe(StatusCode.INTERNAL_SERVER_ERROR)
+    })
+  })
+
+  describe('and it cannot be read right now', () => {
+    beforeEach(() => {
+      historical.getHead.mockRejectedValueOnce(new IndexedHeadUnavailableError('permission denied'))
+    })
+
+    it('should answer that it is unavailable, and when to retry', async () => {
+      const result = await getHistoricalHeadHandler(
+        context<Parameters<typeof getHistoricalHeadHandler>[0]>({ squid: 'marketplace', chain: 'ethereum' })
+      )
+
+      expect(result.status).toBe(StatusCode.SERVICE_UNAVAILABLE)
+      expect(result.body).toEqual(expect.objectContaining({ ok: false, code: 'unavailable' }))
+    })
   })
 })

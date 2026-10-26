@@ -4,6 +4,7 @@ import {
   HistoricalBusyError,
   HistoricalUnavailableError,
   HistoricalEstatesRequest,
+  HistoricalHeadRequest,
   HistoricalNftsRequest,
   HistoricalRentalAssetsRequest,
   HistoricalThirdPartiesRequest,
@@ -23,7 +24,7 @@ type Context<Path extends string> = Pick<HandlerContextWithPath<'historical' | '
  * not answer, is worth retrying and says when. Anything else is logged and answered without its
  * details: they stay in the logs.
  */
-async function answer<T>(context: Context<string>, read: () => Promise<T[]>, what: string) {
+async function answer<T>(context: Context<string>, read: () => Promise<T>, what: string) {
   try {
     return { status: StatusCode.OK, body: { ok: true, data: await read() } }
   } catch (e) {
@@ -124,4 +125,10 @@ export async function getHistoricalThirdPartiesHandler(context: Context<'/v1/his
       }),
     'third parties'
   )
+}
+
+/** The block a squid has indexed up to on a chain, which the gateway answers a subgraph's `_meta` with. */
+export async function getHistoricalHeadHandler(context: Context<'/v1/historical/head'>) {
+  const body: HistoricalHeadRequest = await context.request.json()
+  return answer(context, () => context.components.historical.getHead(body.squid, body.chain, body.processor ?? undefined), 'indexed head')
 }

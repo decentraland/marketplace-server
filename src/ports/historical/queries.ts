@@ -1,5 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { MARKETPLACE_SQUID_SCHEMA, REGISTRY_SQUID_SCHEMA } from '../../constants'
+import { SquidStateNotFoundError } from './errors'
 
 export type NftTarget = {
   category?: string
@@ -104,7 +105,7 @@ export function getLiveSchemaQuery(squid: string): SQLStatement {
  */
 export function getIndexedHeightQuery(stateSchema: string, finalized = false): SQLStatement {
   if (!/^[a-z0-9_]{1,63}$/.test(stateSchema)) {
-    throw new Error(`Unexpected state schema name: ${stateSchema}`)
+    throw new SquidStateNotFoundError(`Unexpected state schema name: ${stateSchema}`)
   }
   if (finalized) {
     return SQL`SELECT height FROM `.append(`"${stateSchema}"`).append(SQL`.status WHERE id = 0`)
@@ -139,4 +140,20 @@ export function getEstateParcelsAtBlockQuery(block: number, estateTokenIds: stri
     ) last
     WHERE event_name = 'AddLand' AND estate_token_id = ANY(${estateTokenIds})`
     )
+}
+
+/**
+ * The block a squid's processor has indexed up to, with its hash: its highest hot block, or its
+ * finalized block when it holds none. The state schema is a name read from `public.squids`, so it is
+ * checked before it goes in.
+ */
+export function getIndexedHeadQuery(stateSchema: string): SQLStatement {
+  if (!/^[a-z0-9_]{1,63}$/.test(stateSchema)) {
+    throw new SquidStateNotFoundError(`Unexpected state schema name: ${stateSchema}`)
+  }
+  return SQL`SELECT height, hash FROM (SELECT height, hash FROM `
+    .append(`"${stateSchema}"`)
+    .append(SQL`.hot_block UNION ALL SELECT height, hash FROM `)
+    .append(`"${stateSchema}"`)
+    .append(SQL`.status WHERE id = 0) AS blocks ORDER BY height DESC LIMIT 1`)
 }

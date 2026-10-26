@@ -1,3 +1,5 @@
+import type { Chain, Head, Processor, Squid } from './heights'
+
 /**
  * Holdings on Ethereum as they were at a past block: who owned an NFT, an estate's size, which LAND
  * and estates were in the Rentals contract. The DAO's Snapshot strategies read these at the block of
@@ -102,6 +104,7 @@ export interface IHistoricalComponent {
   getEstates(filters: HistoricalEstatesFilters): Promise<HistoricalEstate[]>
   getRentalAssets(filters: HistoricalRentalAssetsFilters): Promise<HistoricalRentalAsset[]>
   getThirdParties(filters: HistoricalThirdPartiesFilters): Promise<HistoricalThirdParty[]>
+  getHead(squid: Squid, chain: Chain, processor?: Processor): Promise<Head>
 }
 
 export type OwnerAtBlockDBRow = {

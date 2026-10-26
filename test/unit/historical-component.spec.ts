@@ -1,7 +1,9 @@
 import { IPgComponent } from '../../src/ports/db/types'
 import {
   BlockTooRecentError,
+  createBlockTimestamps,
   createHistoricalComponent,
+  createIndexedBlockTimestamps,
   HistoricalBusyError,
   HistoricalUnavailableError,
   IHistoricalComponent,
@@ -9,6 +11,7 @@ import {
   MAX_RUNNING_READS,
   MAX_WAITING_READS,
   MIN_BLOCK_AGE_SECONDS,
+  SquidStateNotFoundError,
   THIRD_PARTY_REVIEWS_TTL_MS
 } from '../../src/ports/historical'
 import { createTestPgComponent } from '../components'
@@ -583,5 +586,98 @@ describe('when the third parties cannot be read', () => {
 
     await expect(historical.getThirdParties(filters)).rejects.toBeInstanceOf(HistoricalUnavailableError)
     await expect(historical.getThirdParties(filters)).resolves.toEqual([])
+  })
+})
+
+describe("when reading a squid's indexed head", () => {
+  let getIndexedHead: jest.Mock
+  let component: IHistoricalComponent
+
+  beforeEach(() => {
+    getIndexedHead = jest.fn()
+    component = createHistoricalComponent({
+      dappsDatabase: createTestPgComponent({ query: jest.fn() }),
+      getBlockTimestamp: jest.fn(),
+      getIndexedHeight: jest.fn(),
+      getIndexedHead
+    })
+  })
+
+  describe('and the squid answers it', () => {
+    beforeEach(() => {
+      getIndexedHead.mockResolvedValueOnce({ number: BLOCK, hash: '0xabc', timestamp: BLOCK_TIMESTAMP })
+    })
+
+    it('should answer it', async () => {
+      await expect(component.getHead('registry', 'polygon')).resolves.toEqual({ number: BLOCK, hash: '0xabc', timestamp: BLOCK_TIMESTAMP })
+    })
+  })
+
+  describe('and its state cannot be read for now', () => {
+    beforeEach(() => {
+      getIndexedHead.mockRejectedValueOnce(Object.assign(new Error('permission denied for schema'), { code: '42501' }))
+    })
+
+    it('should fail as worth retrying', async () => {
+      await expect(component.getHead('marketplace', 'ethereum')).rejects.toBeInstanceOf(HistoricalUnavailableError)
+    })
+  })
+
+  describe('and its state table does not exist', () => {
+    beforeEach(() => {
+      getIndexedHead.mockRejectedValueOnce(Object.assign(new Error('relation does not exist'), { code: '42P01' }))
+    })
+
+    it('should fail as not worth retrying', async () => {
+      await expect(component.getHead('marketplace', 'ethereum')).rejects.not.toBeInstanceOf(HistoricalUnavailableError)
+    })
+  })
+
+  describe("and its state schema's name is not one", () => {
+    beforeEach(() => {
+      getIndexedHead.mockRejectedValueOnce(new SquidStateNotFoundError('Unexpected state schema name'))
+    })
+
+    it('should fail as not worth retrying', async () => {
+      await expect(component.getHead('marketplace', 'ethereum')).rejects.toBeInstanceOf(SquidStateNotFoundError)
+    })
+  })
+})
+
+describe('when reading block timestamps from a chain', () => {
+  let provider: { getBlock: jest.Mock; getBlockNumber: jest.Mock }
+
+  beforeEach(() => {
+    provider = {
+      getBlock: jest.fn(async (block: number) => ({ timestamp: BLOCK_TIMESTAMP + block })),
+      getBlockNumber: jest.fn().mockResolvedValue(100)
+    }
+  })
+
+  describe('and the block is past the head the chain reported a moment ago', () => {
+    let getBlockTimestamp: (block: number) => Promise<number | undefined>
+
+    beforeEach(async () => {
+      getBlockTimestamp = createBlockTimestamps('ethereum', undefined, provider)
+      await getBlockTimestamp(100)
+    })
+
+    it('should answer none for holdings, without asking for it', async () => {
+      await expect(getBlockTimestamp(101)).resolves.toBeUndefined()
+      expect(provider.getBlock).not.toHaveBeenCalledWith(101)
+    })
+
+    it("should read it for a squid's head, which the chain has, by its hash", async () => {
+      provider.getBlock.mockResolvedValueOnce({ timestamp: BLOCK_TIMESTAMP + 101 })
+      await expect(createIndexedBlockTimestamps('ethereum', undefined, provider)('0xabc')).resolves.toBe(BLOCK_TIMESTAMP + 101)
+      expect(provider.getBlock).toHaveBeenLastCalledWith('0xabc')
+    })
+  })
+
+  describe('and the block is negative, as a processor that has indexed nothing reports', () => {
+    it('should answer none without asking, as the RPC would count it back from the latest block', async () => {
+      await expect(createBlockTimestamps('ethereum', undefined, provider)(-1)).resolves.toBeUndefined()
+      expect(provider.getBlock).not.toHaveBeenCalled()
+    })
   })
 })
