@@ -2607,8 +2607,9 @@ paths:
       description: |
         The highest block the live deployment of a squid has indexed on a chain, hot or finalized, with
         its hash and timestamp. The subgraph gateway answers a subgraph's `_meta { block }` with it. It is
-        read again every few seconds. The timestamp comes from the chain's RPC and is null when the RPC
-        does not answer for the block. A squid that has not indexed any block yet, or whose state cannot
+        read again every few seconds. It is the chain's processor's head, or with `processor: vesting`
+        that of registry-squid's vesting processor, which reads Ethereum apart. The timestamp comes from
+        the chain's RPC, read by the block's hash, and is null when the RPC does not answer for it. A squid that has not indexed any block yet, or whose state cannot
         be read for now, gets a 503 with a Retry-After.
       requestBody:
         required: true
@@ -2625,6 +2626,10 @@ paths:
                 chain:
                   type: string
                   enum: [ethereum, polygon]
+                processor:
+                  type: [string, 'null']
+                  enum: [vesting, null]
+                  description: A processor other than the chain's; `vesting` is registry-squid's, on Ethereum
       responses:
         '200':
           description: The block the squid has indexed up to
@@ -2660,7 +2665,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          description: The squid's state is not where it should be
+          description: The squid's state is not where it should be, or it has no such processor on the chain
           content:
             application/json:
               schema:

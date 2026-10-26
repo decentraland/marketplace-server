@@ -1,5 +1,5 @@
 import { IPgComponent } from '../../src/ports/db/types'
-import { createIndexedHeads, createIndexedHeights, INDEXED_HEIGHT_TTL_MS } from '../../src/ports/historical'
+import { createIndexedHeads, createIndexedHeights, INDEXED_HEIGHT_TTL_MS, SquidStateNotFoundError } from '../../src/ports/historical'
 import { getIndexedHeightQuery } from '../../src/ports/historical/queries'
 import { createTestPgComponent } from '../components'
 
@@ -133,7 +133,7 @@ describe("when reading a squid's indexed head", () => {
       })
       expect(pgQueryMock.mock.calls[1][0].text).toContain('"polygon_processor_registry_squid_20260101_000000".hot_block')
       expect(pgQueryMock.mock.calls[1][0].text).toContain('"polygon_processor_registry_squid_20260101_000000".status')
-      expect(getBlockTimestamp).toHaveBeenCalledWith('polygon', 75000000)
+      expect(getBlockTimestamp).toHaveBeenCalledWith('polygon', '0xabc')
     })
 
     it('should keep the head for a few seconds', async () => {
@@ -163,6 +163,40 @@ describe("when reading a squid's indexed head", () => {
     })
   })
 
+  describe('and it is the head of the vesting processor', () => {
+    beforeEach(() => {
+      getBlockTimestamp.mockResolvedValue(1700000000)
+    })
+
+    it("should read the vesting processor's state, apart from the Ethereum one, and keep it apart", async () => {
+      await getIndexedHead('registry', 'ethereum', 'vesting')
+      await getIndexedHead('registry', 'ethereum')
+
+      expect(pgQueryMock.mock.calls[1][0].text).toContain('"vesting_processor_registry_squid_20260101_000000".hot_block')
+      expect(pgQueryMock.mock.calls[3][0].text).toContain('"ethereum_processor_registry_squid_20260101_000000".hot_block')
+      expect(getBlockTimestamp).toHaveBeenCalledWith('ethereum', '0xabc')
+    })
+
+    it('should fail on a chain the processor does not read, or a squid without it, before any query', async () => {
+      await expect(getIndexedHead('registry', 'polygon', 'vesting')).rejects.toThrow(SquidStateNotFoundError)
+      await expect(getIndexedHead('marketplace', 'ethereum', 'vesting')).rejects.toThrow(SquidStateNotFoundError)
+      expect(pgQueryMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('and the database fails', () => {
+    beforeEach(() => {
+      pgQueryMock.mockRejectedValueOnce(new Error('connection terminated'))
+    })
+
+    it('should not keep the failure, so that the next request reads the head again', async () => {
+      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow('connection terminated')
+      getBlockTimestamp.mockResolvedValueOnce(1700000000)
+
+      await expect(getIndexedHead('registry', 'ethereum')).resolves.toEqual({ number: 75000000, hash: '0xabc', timestamp: 1700000000 })
+    })
+  })
+
   describe('and the processor has not indexed any block', () => {
     beforeEach(() => {
       pgQueryMock.mockImplementation(async (query: { text: string }) =>
@@ -171,7 +205,9 @@ describe("when reading a squid's indexed head", () => {
     })
 
     it('should fail', async () => {
-      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow('has not indexed any block yet on ethereum')
+      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow(
+        "the registry squid's ethereum processor has not indexed any block yet"
+      )
     })
   })
 
@@ -185,7 +221,9 @@ describe("when reading a squid's indexed head", () => {
     })
 
     it('should fail as not indexed, without asking for the block', async () => {
-      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow('has not indexed any block yet on ethereum')
+      await expect(getIndexedHead('registry', 'ethereum')).rejects.toThrow(
+        "the registry squid's ethereum processor has not indexed any block yet"
+      )
       expect(getBlockTimestamp).not.toHaveBeenCalled()
     })
   })

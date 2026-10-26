@@ -19,5 +19,13 @@ export class HistoricalUnavailableError extends Error {
   }
 }
 
+/** A squid's head cannot be read now; answered as `HistoricalUnavailableError` is, with its own message. */
+export class IndexedHeadUnavailableError extends HistoricalUnavailableError {
+  constructor(reason: string) {
+    super(reason)
+    this.message = `The indexed head cannot be read right now: ${reason}`
+  }
+}
+
 /** A squid's processor state is not where it should be: asking again will not find it. */
 export class SquidStateNotFoundError extends Error {}

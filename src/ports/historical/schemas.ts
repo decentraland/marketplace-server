@@ -120,13 +120,15 @@ export const HistoricalThirdPartiesSchema: JSONSchema<HistoricalThirdPartiesRequ
 export type HistoricalHeadRequest = {
   squid: 'marketplace' | 'registry'
   chain: 'ethereum' | 'polygon'
+  processor?: 'vesting' | null
 }
 
 export const HistoricalHeadSchema: JSONSchema<HistoricalHeadRequest> = {
   type: 'object',
   properties: {
     squid: { type: 'string', enum: ['marketplace', 'registry'] },
-    chain: { type: 'string', enum: ['ethereum', 'polygon'] }
+    chain: { type: 'string', enum: ['ethereum', 'polygon'] },
+    processor: { type: 'string', enum: ['vesting'], nullable: true }
   },
   required: ['squid', 'chain'],
   additionalProperties: false

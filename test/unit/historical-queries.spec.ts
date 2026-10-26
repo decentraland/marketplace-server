@@ -1,6 +1,8 @@
 import { MARKETPLACE_SQUID_SCHEMA, REGISTRY_SQUID_SCHEMA } from '../../src/constants'
+import { SquidStateNotFoundError } from '../../src/ports/historical/errors'
 import {
   getEstateSizesAtBlockQuery,
+  getIndexedHeadQuery,
   getOwnersAtBlockQuery,
   getRentalsAtBlockQuery,
   getThirdPartyReviewsQuery
@@ -68,5 +70,21 @@ describe('getThirdPartyReviewsQuery', () => {
     expect(query.text).toContain(`${REGISTRY_SQUID_SCHEMA}.v1_third_party_root_history`)
     expect(query.text).toContain('ORDER BY third_party_id, block_number, log_index')
     expect(query.values).toEqual([])
+  })
+})
+
+describe('getIndexedHeadQuery', () => {
+  describe('when the state schema is a plain name', () => {
+    it("should read the processor's hot blocks and status in it", () => {
+      const query = getIndexedHeadQuery('vesting_processor_registry_squid_20260101_000000')
+      expect(query.text).toContain('"vesting_processor_registry_squid_20260101_000000".hot_block')
+      expect(query.text).toContain('"vesting_processor_registry_squid_20260101_000000".status')
+    })
+  })
+
+  describe('when the state schema is not a plain name', () => {
+    it('should refuse it before it reaches the query', () => {
+      expect(() => getIndexedHeadQuery('x".status; DROP TABLE nft; --')).toThrow(SquidStateNotFoundError)
+    })
   })
 })
