@@ -38,13 +38,31 @@ export type HistoricalEstatesFilters = {
   tokenIds: string[]
   /** Only estates whose size at the block is above this. */
   sizeGt?: number
+  /** Whether to answer each estate's parcels at the block. */
+  withParcels?: boolean
   first: number
   skip: number
+}
+
+/** A LAND parcel, by its token id (decimal) and coordinates. */
+export type HistoricalParcel = {
+  tokenId: string
+  x: number
+  y: number
 }
 
 export type HistoricalEstate = {
   tokenId: string
   size: number
+  /** Only when asked for, sorted by token id as text, as the subgraph sorts its parcel ids. */
+  parcels?: HistoricalParcel[]
+}
+
+export type EstateParcelDBRow = {
+  estate_token_id: string
+  parcel_id: string
+  x: number | string
+  y: number | string
 }
 
 export type HistoricalRentalAssetsFilters = {

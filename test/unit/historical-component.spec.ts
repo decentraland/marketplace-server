@@ -238,6 +238,55 @@ describe('when getting the estates at a block', () => {
 
     expect(estates).toEqual([{ tokenId: '9', size: 5 }])
   })
+
+  describe('and their parcels are asked for', () => {
+    // Parcel ids are LAND token ids, as registry-squid stores them: hex.
+    const PARCEL_A = '0x0000000000000000000000000000000a00000000000000000000000000000002'
+    const PARCEL_B = '0x0000000000000000000000000000000100000000000000000000000000000003'
+
+    beforeEach(() => {
+      pgQueryMock.mockReset()
+      pgQueryMock.mockImplementation(async (query: { text: string }) =>
+        query.text.includes('AddLand') && query.text.includes('DISTINCT ON')
+          ? {
+              rows: [
+                { estate_token_id: '7', parcel_id: PARCEL_A, x: '10', y: 2 },
+                { estate_token_id: '7', parcel_id: PARCEL_B, x: 1, y: '3' }
+              ]
+            }
+          : {
+              rows: [
+                { estate_token_id: '7', size: 2 },
+                { estate_token_id: '9', size: 0 }
+              ]
+            }
+      )
+    })
+
+    it("should answer each estate's parcels at the block, by decimal token id, sorted as text", async () => {
+      const estates = await historical.getEstates({ block: BLOCK, tokenIds: ['7', '9'], withParcels: true, first: 100, skip: 0 })
+
+      expect(estates).toEqual([
+        {
+          tokenId: '7',
+          size: 2,
+          parcels: [
+            { tokenId: BigInt(PARCEL_B).toString(), x: 1, y: 3 },
+            { tokenId: BigInt(PARCEL_A).toString(), x: 10, y: 2 }
+          ].sort((a, b) => (a.tokenId < b.tokenId ? -1 : 1))
+        },
+        { tokenId: '9', size: 0, parcels: [] }
+      ])
+    })
+
+    it('should read the parcels only of the estates in the page', async () => {
+      await historical.getEstates({ block: BLOCK, tokenIds: ['7', '9'], withParcels: true, first: 1, skip: 0 })
+
+      const parcelsQuery = pgQueryMock.mock.calls.map(([query]) => query).find(query => query.text.includes('DISTINCT ON'))
+      expect(parcelsQuery.values).toContain(BLOCK)
+      expect(parcelsQuery.values).toContainEqual(['7'])
+    })
+  })
 })
 
 describe('when getting the assets in the Rentals contract at a block', () => {

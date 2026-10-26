@@ -118,6 +118,31 @@ export function getIndexedHeightQuery(stateSchema: string, finalized = false): S
 }
 
 /**
+ * The parcels each of the estates held at `block`: those whose last move by then, in or out of an
+ * estate, was into it. Only parcels that were ever in one of the estates are read.
+ */
+export function getEstateParcelsAtBlockQuery(block: number, estateTokenIds: string[]): SQLStatement {
+  return SQL`
+    SELECT estate_token_id, parcel_id, x, y FROM (
+      SELECT DISTINCT ON (h.parcel_id) h.parcel_id, h.estate_token_id, h.event_name, p.x, p.y
+      FROM `
+    .append(REGISTRY_SQUID_SCHEMA)
+    .append(SQL`.estate_history h JOIN `)
+    .append(REGISTRY_SQUID_SCHEMA)
+    .append(
+      SQL`.parcel p ON p.id = h.parcel_id
+      WHERE h.block_number <= ${block} AND h.parcel_id IN (SELECT parcel_id FROM `
+    )
+    .append(REGISTRY_SQUID_SCHEMA)
+    .append(
+      SQL`.estate_history WHERE estate_token_id = ANY(${estateTokenIds}))
+      ORDER BY h.parcel_id, h.block_number DESC, h.log_index DESC
+    ) last
+    WHERE event_name = 'AddLand' AND estate_token_id = ANY(${estateTokenIds})`
+    )
+}
+
+/**
  * The block a squid's processor has indexed up to, with its hash: its highest hot block, or its
  * finalized block when it holds none. The state schema is a name read from `public.squids`, so it is
  * checked before it goes in.

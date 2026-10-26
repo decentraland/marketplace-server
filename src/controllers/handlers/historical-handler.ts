@@ -89,6 +89,7 @@ export async function getHistoricalEstatesHandler(context: Context<'/v1/historic
         block: body.block,
         tokenIds: body.tokenIds,
         sizeGt: body.sizeGt ?? undefined,
+        withParcels: body.withParcels ?? undefined,
         ...page(body)
       }),
     'estates'
