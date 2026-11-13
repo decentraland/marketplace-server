@@ -4,6 +4,96 @@ import { TradeAsset, ListingStatus, TradeAssetType, TradeAssetWithBeneficiary, T
 import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
 import { TRADES_MV_NAME } from '../../logic/trades/materialized-view'
 import { squidTradesNetwork } from '../../logic/trades/squid'
+import { getWhereStatementFromFilters } from '../utils'
+import { TradeListFilters } from './types'
+
+/**
+ * Joins each trade aliased `t` to what its status is computed from: its signer's and its marketplace's
+ * signature index rows (at most one each) and one aggregate of the indexer's actions on it.
+ */
+const TRADE_STATUS_JOINS = `
+  LEFT JOIN squid_trades.signature_index AS signer_signature_index
+    ON signer_signature_index.address = LOWER(t.signer)
+    AND signer_signature_index.contract = LOWER(t.contract)
+    AND signer_signature_index.network = ${squidTradesNetwork('t')}
+  LEFT JOIN squid_trades.signature_index AS contract_signature_index
+    ON contract_signature_index.address = LOWER(t.contract)
+    AND contract_signature_index.contract = LOWER(t.contract)
+    AND contract_signature_index.network = ${squidTradesNetwork('t')}
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) AS cancellations,
+      COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') AS executions
+    FROM squid_trades.trade AS trade_status
+    WHERE trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
+  ) AS trade_actions ON true`
+
+/** The status CASE of getTradesForTypeQuery, over TRADE_STATUS_JOINS instead of a GROUP BY. */
+const TRADE_STATUS_STATEMENT = `
+  CASE
+    WHEN trade_actions.cancellations > 0 THEN '${ListingStatus.CANCELLED}'
+    WHEN (
+      (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
+      OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
+    ) THEN '${ListingStatus.CANCELLED}'
+    WHEN t.expires_at < now()::timestamptz(3) THEN '${ListingStatus.CANCELLED}'
+    WHEN (
+      (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
+      OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
+    ) THEN '${ListingStatus.CANCELLED}'
+    WHEN trade_actions.executions >= (t.checks ->> 'uses')::int THEN '${ListingStatus.SOLD}'
+    ELSE '${ListingStatus.OPEN}'
+  END`
+
+/** FROM and WHERE of the trade list; the status filter brings the status joins along. */
+function getTradeListFromStatement(filters: Omit<TradeListFilters, 'limit' | 'offset'>): SQLStatement {
+  const statuses = filters.statuses ?? []
+  const hasStatuses = statuses.length > 0
+  // The status CASE makes every expired trade cancelled, so only unexpired trades can be open or sold.
+  const onlyUnexpiredStatuses = hasStatuses && statuses.every(status => status === ListingStatus.OPEN || status === ListingStatus.SOLD)
+  return SQL` FROM marketplace.trades AS t`.append(hasStatuses ? TRADE_STATUS_JOINS : '').append(
+    getWhereStatementFromFilters([
+      // signer and contract are stored lowercased.
+      SQL`t.signer = ${filters.signer.toLowerCase()}`,
+      filters.marketplaceAddresses?.length
+        ? SQL`t.contract = ANY(${filters.marketplaceAddresses.map(address => address.toLowerCase())})`
+        : null,
+      onlyUnexpiredStatuses ? SQL`t.expires_at >= now()::timestamptz(3)` : null,
+      hasStatuses ? SQL`(`.append(TRADE_STATUS_STATEMENT).append(SQL`) = ANY(${statuses})`) : null
+    ])
+  )
+}
+
+/**
+ * Selects a page of trades with their status. The page is cut in a subquery so the status is only
+ * projected for the returned rows, not for the ones skipped by the offset.
+ */
+export function getTradeListQuery(filters: TradeListFilters): SQLStatement {
+  return SQL`SELECT t.*, `
+    .append(TRADE_STATUS_STATEMENT)
+    .append(SQL` AS status FROM (SELECT t.*`)
+    .append(getTradeListFromStatement(filters))
+    .append(SQL` ORDER BY t.created_at DESC, t.id ASC LIMIT ${filters.limit} OFFSET ${filters.offset}) AS t`)
+    .append(TRADE_STATUS_JOINS)
+    .append(SQL` ORDER BY t.created_at DESC, t.id ASC`)
+}
+
+export function getTradeListCountQuery(filters: Omit<TradeListFilters, 'limit' | 'offset'>): SQLStatement {
+  return SQL`SELECT COUNT(*)::int AS count`.append(getTradeListFromStatement(filters))
+}
+
+/** Selects the assets, with their values, of the given trades. */
+export function getTradeAssetsWithValuesByTradeIdsQuery(tradeIds: string[]): SQLStatement {
+  return SQL`
+    SELECT ta.id, ta.trade_id, ta.created_at, ta.direction, ta.asset_type, ta.contract_address, ta.beneficiary, ta.extra,
+      erc721.token_id, erc20.amount, item.item_id
+    FROM marketplace.trade_assets AS ta
+    LEFT JOIN marketplace.trade_assets_erc721 AS erc721 ON ta.id = erc721.asset_id
+    LEFT JOIN marketplace.trade_assets_erc20 AS erc20 ON ta.id = erc20.asset_id
+    LEFT JOIN marketplace.trade_assets_item AS item ON ta.id = item.asset_id
+    WHERE ta.trade_id = ANY(${tradeIds})
+    ORDER BY ta.created_at ASC, ta.id ASC`
+}
 
 export function getTradeAssetsWithValuesQuery(customWhere?: SQLStatement) {
   // NOTE: select the trade asset's columns EXPLICITLY (never `ta.*`). `marketplace.trades` and
@@ -44,7 +134,7 @@ export function getInsertTradeQuery(trade: TradeCreation & { contract: string; t
    ${trade.tradeDigest},
    ${signer.toLowerCase()},
    ${trade.type},
-   ${trade.contract}
+   ${trade.contract.toLowerCase()}
    ) RETURNING *;`
 }
 
