@@ -235,12 +235,40 @@ function toShopCoupon(coupon: ShopCouponRow | null, contractAddress: string, war
   }
 }
 
-function appendDiscountedFilter(query: SQLStatement, filters: { discounted?: boolean }, withCoupons: boolean): void {
+/** A listing's sale and list price under `cp`, each in whole credits rounded the way its feed's row mapper rounds them. */
+type DiscountCredits = { sale: SQLStatement; list: SQLStatement }
+
+// What the unified feeds select as price_credits and compare_at_credits.
+function unifiedCreditsExpr(usdWei: SQLStatement): SQLStatement {
+  return SQL`CEIL((`.append(usdWei).append(SQL`) / ${USD_WEI_PER_CREDIT.toString()}::numeric)`)
+}
+
+// What toCredits computes for the native shop feed: integer ceiling division, exact to the wei.
+export function shopCreditsExpr(usdWei: SQLStatement): SQLStatement {
+  return SQL`div((`
+    .append(usdWei)
+    .append(SQL`) + ${(USD_WEI_PER_CREDIT - 1n).toString()}::numeric, ${USD_WEI_PER_CREDIT.toString()}::numeric)`)
+}
+
+/**
+ * Whether `cp` lowers the price the buyer sees. The row mappers drop a coupon whose discount the rounding to whole
+ * credits erases, so checking the join alone kept listings that are shown at their list price: a 20% coupon on a
+ * 4 credit item still costs 4 credits.
+ */
+export function visibleDiscountExpr(credits: DiscountCredits): SQLStatement {
+  return SQL`(cp.id IS NOT NULL AND `
+    .append(credits.sale)
+    .append(SQL` < `)
+    .append(credits.list)
+    .append(SQL`)`)
+}
+
+// `credits` is null on a branch that cannot carry a coupon.
+function appendDiscountedFilter(query: SQLStatement, filters: { discounted?: boolean }, credits: DiscountCredits | null): void {
   if (filters.discounted === true) {
-    // A branch that cannot carry a coupon has nothing on sale.
-    query.append(withCoupons ? SQL` AND cp.id IS NOT NULL` : SQL` AND FALSE`)
-  } else if (filters.discounted === false && withCoupons) {
-    query.append(SQL` AND cp.id IS NULL`)
+    query.append(credits ? SQL` AND `.append(visibleDiscountExpr(credits)) : SQL` AND FALSE`)
+  } else if (filters.discounted === false && credits) {
+    query.append(SQL` AND NOT `).append(visibleDiscountExpr(credits))
   }
 }
 
@@ -554,6 +582,8 @@ function unifiedBranch(opts: {
   const priceWei = withCoupons ? effectiveWeiExpr() : SQL`mv.amount_received::numeric`
   const usdWei = applyRate ? SQL`(`.append(priceWei).append(SQL` * ${rateNumericString}::numeric)`) : priceWei
   const listUsdWei = applyRate ? SQL`(mv.amount_received::numeric * ${rateNumericString}::numeric)` : SQL`mv.amount_received::numeric`
+  // The very expressions the outer layers round into price_credits and compare_at_credits.
+  const discountCredits = withCoupons ? { sale: unifiedCreditsExpr(usdWei), list: unifiedCreditsExpr(listUsdWei) } : null
 
   const query = SQL`
       SELECT
@@ -628,7 +658,7 @@ function unifiedBranch(opts: {
     // which is the worst failure shape — it works until someone picks a rarity.
     query.append(SQL` WHERE TRUE`)
     appendUnifiedFilters(query, filters)
-    appendDiscountedFilter(query, filters, withCoupons)
+    appendDiscountedFilter(query, filters, discountCredits)
     return query
   }
 
@@ -646,7 +676,7 @@ function unifiedBranch(opts: {
         )`)
 
   appendUnifiedFilters(query, filters)
-  appendDiscountedFilter(query, filters, withCoupons)
+  appendDiscountedFilter(query, filters, discountCredits)
   return query
 }
 
@@ -1030,7 +1060,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     } else if (filters.listingType === 'secondary') {
       core.append(SQL` AND mv.type <> 'public_item_order'`)
     }
-    appendDiscountedFilter(core, filters, true)
+    appendDiscountedFilter(core, filters, {
+      sale: shopCreditsExpr(saleWeiExpr()),
+      list: shopCreditsExpr(SQL`mv.amount_received::numeric`)
+    })
     // Price bounds apply to what the buyer would PAY, so a discounted listing lands in the slider range of its sale price.
     if (filters.minPriceCredits != null) {
       const minWei = creditsToWei(filters.minPriceCredits)
