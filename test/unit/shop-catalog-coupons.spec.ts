@@ -208,8 +208,8 @@ describe('when the shop feed carries creator coupons', () => {
 
     it('should order the deals rail by biggest discount, then soonest ending', async () => {
       await component.getShopListings({ sortBy: 'discount' })
-      expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC'
+      expect(query.mock.calls[0][0].text.replace(/\s+/g, ' ')).toContain(
+        'ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, COALESCE( COALESCE(item_p.first_listed_at, item_s.first_listed_at, item_p.created_at, item_s.created_at)::bigint * 1000, EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 ) DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC'
       )
     })
   })

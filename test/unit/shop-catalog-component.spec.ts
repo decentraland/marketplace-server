@@ -13,6 +13,10 @@ import { getDateXDaysAgo } from '../../src/ports/trendings/utils'
 
 // 1 credit = $0.10 = 1e17 USD wei.
 const WEI_PER_CREDIT = 100000000000000000n
+// The `newest` key over the source relation, with the SQL's whitespace collapsed (see `flat`).
+const FIRST_LISTED_AT =
+  'COALESCE( COALESCE(item_p.first_listed_at, item_s.first_listed_at, item_p.created_at, item_s.created_at)::bigint * 1000, EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 )'
+const flat = (text: string): string => text.replace(/\s+/g, ' ')
 
 function shopRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -260,7 +264,9 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getShopListings({})
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.created_at DESC')
+      expect(flat(query.mock.calls[0][0].text)).toContain(
+        `ORDER BY ${FIRST_LISTED_AT} DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`
+      )
     })
 
     it('should bind a name search as a parameterized word match', async () => {
@@ -288,11 +294,11 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getShopListings({ search: 'Cool', sortBy: 'discount' })
 
       expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.first_listed_at DESC, f.contract_address, f.item_id, f.created_at DESC, f.trade_id'
       )
       expect(query.mock.calls[1][0].text).toContain('ORDER BY COALESCE(f.sale_price, f.price)::numeric ASC, f.trade_id')
       expect(query.mock.calls[2][0].text).toContain(
-        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.created_at DESC, f.trade_id'
+        'ORDER BY f.coupon_discount_ppm DESC NULLS LAST, f.sale_ends_at ASC NULLS LAST, f.first_listed_at DESC, f.contract_address, f.item_id, f.created_at DESC, f.trade_id'
       )
     })
 
@@ -302,7 +308,9 @@ describe('Shop Catalog Component', () => {
       const sql = query.mock.calls[0][0]
       expect(sql.text).not.toContain('search_matches')
       expect(sql.text).toContain('COUNT(*) OVER() AS total')
-      expect(sql.text).toContain('ORDER BY mv.created_at DESC')
+      expect(flat(sql.text)).toContain(
+        `ORDER BY ${FIRST_LISTED_AT} DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`
+      )
     })
 
     it('should lowercase rarities and bind them as an array', async () => {
@@ -459,7 +467,9 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getLegacyListings({})
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY mv.created_at DESC')
+      expect(flat(query.mock.calls[0][0].text)).toContain(
+        `ORDER BY ${FIRST_LISTED_AT} DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`
+      )
     })
 
     it('should bind a name search as a parameterized word match', async () => {
@@ -476,7 +486,7 @@ describe('Shop Catalog Component', () => {
 
       expect(query.mock.calls[0][0].text).toContain('WHERE f.search_matched IS NULL OR f.search_matched >= f.search_required')
       expect(query.mock.calls[0][0].text).toContain(
-        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.created_at DESC, f.trade_id'
+        'ORDER BY f.search_matched DESC NULLS LAST, f.search_score DESC NULLS LAST, f.first_listed_at DESC, f.contract_address, f.item_id, f.created_at DESC, f.trade_id'
       )
       expect(query.mock.calls[1][0].text).toContain('ORDER BY f.mana_wei::numeric ASC, f.trade_id')
     })
@@ -1123,7 +1133,30 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getUnifiedListings({}, RATE)
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.created_at DESC, sub.trade_id')
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY sub.first_listed_at DESC, sub.contract_address, sub.item_id, sub.created_at DESC, sub.trade_id'
+      )
+    })
+
+    describe('and the feed is sorted by newest', () => {
+      let text: string
+
+      beforeEach(async () => {
+        await shopCatalog.getUnifiedListings({ sortBy: 'newest' }, RATE)
+        text = flat(query.mock.calls[0][0].text)
+      })
+
+      it('should sort on when the item first went on sale, so relisting an item does not move it up', () => {
+        expect(text).toContain('ORDER BY sub.first_listed_at DESC, sub.contract_address, sub.item_id, sub.created_at DESC, sub.trade_id')
+      })
+
+      it('should select that date on every branch of the union, the store mint included', () => {
+        expect(text.split(`${FIRST_LISTED_AT} AS first_listed_at`).length - 1).toBe(3)
+      })
+
+      it('should keep reporting the listing creation date as the row creation date', () => {
+        expect(text).toContain('EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at')
+      })
     })
 
     it('should restrict to the legacy source only when source=legacy (no native branch)', async () => {
@@ -1159,7 +1192,9 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getUnifiedListings({}, RATE)
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY sub.created_at DESC')
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY sub.first_listed_at DESC, sub.contract_address, sub.item_id, sub.created_at DESC, sub.trade_id'
+      )
     })
 
     it('should drop free items via a usd_wei guard on the merged set', async () => {
@@ -1545,7 +1580,9 @@ describe('Shop Catalog Component', () => {
 
       query.mockClear()
       await shopCatalog.getShopItems({}, RATE)
-      expect(query.mock.calls[0][0].text).toContain('ORDER BY d.created_at DESC, d.trade_id')
+      expect(query.mock.calls[0][0].text).toContain(
+        'ORDER BY d.first_listed_at DESC, d.contract_address, d.item_id, d.created_at DESC, d.trade_id'
+      )
     })
 
     it('should clamp pagination and bind LIMIT/OFFSET as params', async () => {
@@ -1730,7 +1767,7 @@ describe('Shop Catalog Component', () => {
 
       const sql = query.mock.calls[1][0]
       expect(sql.text).toContain('ORDER BY CASE lower(d.rarity)')
-      expect(sql.text).toContain('d.created_at DESC, d.trade_id')
+      expect(sql.text).toContain('d.first_listed_at DESC, d.contract_address, d.item_id, d.created_at DESC, d.trade_id')
       // The CASE binds a precomputed distance per tier: the anchor's own rarity is 0 (so exact matches
       // lead), its neighbours 1, and so on outwards along the scarcity scale.
       const distances = sql.values.slice(sql.values.indexOf('unique'))
@@ -1754,7 +1791,7 @@ describe('Shop Catalog Component', () => {
       await shopCatalog.getRelatedItems(ANCHOR, RATE)
 
       const sql = query.mock.calls[1][0]
-      expect(sql.text).toContain('ORDER BY 0, d.created_at DESC')
+      expect(sql.text).toContain('ORDER BY 0, d.first_listed_at DESC, d.contract_address, d.item_id, d.created_at DESC')
       expect(sql.text).not.toContain('CASE lower(d.rarity)')
     })
 

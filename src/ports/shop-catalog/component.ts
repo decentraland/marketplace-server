@@ -139,6 +139,24 @@ function metadataJoins() {
 }
 
 /**
+ * When the listed item first went on sale, in epoch ms: the key `newest` sorts on. The squid stamps
+ * `first_listed_at` once, the first time the store or an offchain marketplace becomes the item's minter, and
+ * never moves it. The listing's own `created_at` cannot serve: a signed listing cannot be edited, so changing
+ * its price cancels it and signs a new one, which would put an old item back at the top for free. The item's
+ * creation covers an item the squid has not stamped, and the listing's date a row with no item behind it.
+ *
+ * Every sort on it breaks ties on the item (contract, item id) BEFORE the listing's date: a collection put on
+ * sale in one transaction stamps all its items with the same second, and a relist must not reorder that batch
+ * either. The listing's date then only orders several listings of the same item.
+ */
+function firstListedAtExpr(): SQLStatement {
+  return SQL`COALESCE(
+          COALESCE(item_p.first_listed_at, item_s.first_listed_at, item_p.created_at, item_s.created_at)::bigint * 1000,
+          EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000
+        )`
+}
+
+/**
  * The best live creator coupon for the listing aliased `mv`, exposed as `cp`: the creator's own coupon covering
  * the listed collection, inside its window, neither cancelled nor revoked and with uses left as of the last
  * on-chain read. Biggest discount wins; ties go to the one ending soonest. Primaries only: the coupon contract
@@ -594,6 +612,8 @@ function unifiedBranch(opts: {
         EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
         `
     )
+    .append(firstListedAtExpr())
+    .append(SQL` AS first_listed_at, `)
     // Raw MANA price, exposed only for legacy (MANA-priced) items so the client can size the purchase
     // at the LIVE rate at checkout; native (USD-pegged) items carry no MANA price. While a coupon applies it
     // is the SALE amount, which is what `acceptWithCoupon` charges on-chain.
@@ -906,9 +926,9 @@ function rarityDistanceExpr(referenceRarity: string | null): SQLStatement {
 }
 
 /**
- * ORDER BY for the two unified feeds, over the merged set's output columns (`usd_wei`, `name`, `created_at`,
- * the coupon columns, `trade_id`), which is what lets one list serve the plain relation and the
- * level-filtered one alike. `alias` and every key are fixed SQL, never user input; `sortBy` has already
+ * ORDER BY for the two unified feeds, over the merged set's output columns (`usd_wei`, `name`,
+ * `first_listed_at`, `created_at`, the coupon columns, `trade_id`), which is what lets one list serve the
+ * plain relation and the level-filtered one alike. `alias` and every key are fixed SQL, never user input; `sortBy` has already
  * been validated by the handler and resolved by resolveShopSortBy.
  */
 function unifiedOrderBy(sortBy: ShopSortBy, alias: string): SQLStatement {
@@ -923,10 +943,10 @@ function unifiedOrderBy(sortBy: ShopSortBy, alias: string): SQLStatement {
     case 'discount':
       return SQL``.append(` ORDER BY ${a}.coupon_discount_ppm DESC NULLS LAST, ${a}.sale_ends_at ASC NULLS LAST, ${a}.trade_id`)
     case 'relevance':
-      return getRelevanceOrderBy(a, `${a}.created_at DESC, ${a}.trade_id`)
+      return getRelevanceOrderBy(a, `${a}.first_listed_at DESC, ${a}.contract_address, ${a}.item_id, ${a}.created_at DESC, ${a}.trade_id`)
     case 'newest':
     default:
-      return SQL``.append(` ORDER BY ${a}.created_at DESC, ${a}.trade_id`)
+      return SQL``.append(` ORDER BY ${a}.first_listed_at DESC, ${a}.contract_address, ${a}.item_id, ${a}.created_at DESC, ${a}.trade_id`)
   }
 }
 
@@ -967,9 +987,11 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         SQL`::text END AS sale_price,
         mv.available::text AS available,
         mv.network AS network,
-        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at
-      `
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
+        `
       )
+      .append(firstListedAtExpr())
+      .append(SQL` AS first_listed_at`)
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
@@ -1070,11 +1092,11 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         ? SQL``.append(` ORDER BY ${f}.name ASC, ${f}.trade_id`)
         : sortBy === 'discount'
         ? SQL``.append(
-            ` ORDER BY ${f}.coupon_discount_ppm DESC NULLS LAST, ${f}.sale_ends_at ASC NULLS LAST, ${f}.created_at DESC, ${f}.trade_id`
+            ` ORDER BY ${f}.coupon_discount_ppm DESC NULLS LAST, ${f}.sale_ends_at ASC NULLS LAST, ${f}.first_listed_at DESC, ${f}.contract_address, ${f}.item_id, ${f}.created_at DESC, ${f}.trade_id`
           )
         : sortBy === 'relevance'
-        ? getRelevanceOrderBy(f, `${f}.created_at DESC, ${f}.trade_id`)
-        : SQL``.append(` ORDER BY ${f}.created_at DESC, ${f}.trade_id`)
+        ? getRelevanceOrderBy(f, `${f}.first_listed_at DESC, ${f}.contract_address, ${f}.item_id, ${f}.created_at DESC, ${f}.trade_id`)
+        : SQL``.append(` ORDER BY ${f}.first_listed_at DESC, ${f}.contract_address, ${f}.item_id, ${f}.created_at DESC, ${f}.trade_id`)
       : sortBy === 'cheapest'
       ? SQL` ORDER BY `.append(effectiveWeiExpr()).append(SQL` ASC`)
       : sortBy === 'most_expensive'
@@ -1082,8 +1104,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
       : sortBy === 'name'
       ? SQL` ORDER BY COALESCE(nft.name, w_p.name, e_p.name) ASC`
       : sortBy === 'discount'
-      ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, mv.created_at DESC, mv.id`
-      : SQL` ORDER BY mv.created_at DESC`
+      ? SQL` ORDER BY cp.discount_ppm DESC NULLS LAST, cp.expires_at ASC NULLS LAST, `
+          .append(firstListedAtExpr())
+          .append(SQL` DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`)
+      : SQL` ORDER BY `.append(firstListedAtExpr()).append(SQL` DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`)
     const query = searchCtes(filters.search)
       .append(filters.search ? applySearchLevel(core, 'total') : core)
       .append(order)
@@ -1225,8 +1249,10 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         mv.amount_received::text AS mana_wei,
         mv.available::text AS available,
         mv.network AS network,
-        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at
-      `
+        EXTRACT(EPOCH FROM mv.created_at)::bigint * 1000 AS created_at,
+        `
+      .append(firstListedAtExpr())
+      .append(SQL` AS first_listed_at`)
       .append(filters.search ? SQL`` : SQL`, COUNT(*) OVER() AS total`)
       .append(SQL`, `)
       .append(genderExpr())
@@ -1279,15 +1305,15 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
         : sortBy === 'name'
         ? SQL``.append(` ORDER BY ${f}.name ASC, ${f}.trade_id`)
         : sortBy === 'relevance'
-        ? getRelevanceOrderBy(f, `${f}.created_at DESC, ${f}.trade_id`)
-        : SQL``.append(` ORDER BY ${f}.created_at DESC, ${f}.trade_id`)
+        ? getRelevanceOrderBy(f, `${f}.first_listed_at DESC, ${f}.contract_address, ${f}.item_id, ${f}.created_at DESC, ${f}.trade_id`)
+        : SQL``.append(` ORDER BY ${f}.first_listed_at DESC, ${f}.contract_address, ${f}.item_id, ${f}.created_at DESC, ${f}.trade_id`)
       : sortBy === 'cheapest'
       ? SQL` ORDER BY mv.amount_received ASC`
       : sortBy === 'most_expensive'
       ? SQL` ORDER BY mv.amount_received DESC`
       : sortBy === 'name'
       ? SQL` ORDER BY COALESCE(w_p.name, e_p.name) ASC`
-      : SQL` ORDER BY mv.created_at DESC`
+      : SQL` ORDER BY `.append(firstListedAtExpr()).append(SQL` DESC, mv.sent_contract_address, mv.sent_item_id, mv.created_at DESC, mv.id`)
     const query = searchCtes(filters.search)
       .append(filters.search ? applySearchLevel(core, 'total') : core)
       .append(order)
@@ -1529,7 +1555,7 @@ export function createShopCatalogComponent(components: Pick<AppComponents, 'dapp
     query
       .append(SQL` ORDER BY `)
       .append(rarityDistanceExpr(reference.rarity))
-      .append(SQL`, d.created_at DESC, d.trade_id LIMIT ${first}`)
+      .append(SQL`, d.first_listed_at DESC, d.contract_address, d.item_id, d.created_at DESC, d.trade_id LIMIT ${first}`)
 
     const result = await pg.query<RelatedItemRow>(query)
     const polygonChainId = getPolygonChainId()
