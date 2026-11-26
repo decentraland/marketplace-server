@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { EmotePlayMode, GenderFilterOption, ItemFilters, ListingStatus, TradeAssetType, TradeType, WearableGender } from '@dcl/schemas'
-import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { MARKETPLACE_SQUID_SCHEMA, MAX_USD_WEI, NO_PRICE_SENTINEL } from '../../constants'
 import {
   applySearchLevel,
   getRelevanceOrderBy,
@@ -324,6 +324,8 @@ const USD_WEI_PER_CREDIT = '100000000000000000'
 //     multiplied by the MANA/USD rate to reach USD wei;
 //   - anything not currently for sale (available = 0, no open minter) -> 0.
 // The trade branch mirrors fromDBItemToItem's precedence (open v3 trade wins over the store minter).
+// A store item priced at the no-price sentinel, or any price above MAX_USD_WEI, is 0 as well: the feed is
+// cast to bigint, and one such row would otherwise abort the whole query with `bigint out of range`.
 // Returned as a bare expression (not the aliased column) because WHERE and ORDER BY cannot reference a
 // SELECT alias inside an expression, so the credit range filter and the credit sorts re-derive it.
 function priceCreditsExpr(rateNumericString: string): SQLStatement {
@@ -337,13 +339,33 @@ function priceCreditsExpr(rateNumericString: string): SQLStatement {
                 AND ta.direction = 'received'
                 AND ta.asset_type = ${TradeAssetType.USD_PEGGED_MANA}
             )
-            THEN CEIL((unified_trades.assets -> 'received' ->> 'amount')::numeric / ${USD_WEI_PER_CREDIT}::numeric)
-            ELSE CEIL((unified_trades.assets -> 'received' ->> 'amount')::numeric * ${rateNumericString}::numeric / ${USD_WEI_PER_CREDIT}::numeric)
+            THEN `
+    .append(usdWeiToCredits(SQL`(unified_trades.assets -> 'received' ->> 'amount')::numeric`))
+    .append(
+      SQL`
+            ELSE `
+    )
+    .append(usdWeiToCredits(SQL`(unified_trades.assets -> 'received' ->> 'amount')::numeric * ${rateNumericString}::numeric`))
+    .append(
+      SQL`
           END
-        WHEN item.available > 0 AND item.search_is_store_minter = true THEN
-          CEIL(item.price::numeric * ${rateNumericString}::numeric / ${USD_WEI_PER_CREDIT}::numeric)
+        WHEN item.available > 0 AND item.search_is_store_minter = true AND item.price IS DISTINCT FROM ${NO_PRICE_SENTINEL}::numeric THEN `
+    )
+    .append(usdWeiToCredits(SQL`item.price::numeric * ${rateNumericString}::numeric`))
+    .append(
+      SQL`
         ELSE 0
       END`
+    )
+}
+
+// Whole credits for a USD-wei amount, or 0 when the amount is above MAX_USD_WEI (see priceCreditsExpr).
+function usdWeiToCredits(usdWei: SQLStatement): SQLStatement {
+  return SQL`CASE WHEN `
+    .append(usdWei)
+    .append(SQL` <= ${MAX_USD_WEI}::numeric THEN CEIL(`)
+    .append(usdWei)
+    .append(SQL` / ${USD_WEI_PER_CREDIT}::numeric) ELSE 0 END`)
 }
 
 function getPriceCreditsSelect(rateNumericString: string): SQLStatement {

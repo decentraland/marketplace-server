@@ -1,6 +1,6 @@
 import SQL, { SQLStatement } from 'sql-template-strings'
 import { GenderFilterOption, Network, Rarity, TradeAssetType } from '@dcl/schemas'
-import { MARKETPLACE_SQUID_SCHEMA } from '../../constants'
+import { MARKETPLACE_SQUID_SCHEMA, MAX_USD_WEI, NO_PRICE_SENTINEL } from '../../constants'
 import {
   applySearchLevel,
   getRelevanceOrderBy,
@@ -73,24 +73,6 @@ import {
 const USD_PEGGED_ASSET_TYPE = TradeAssetType.USD_PEGGED_MANA
 // A classic MANA-priced received asset: a listing that predates the Shop and can be imported.
 const ERC20_ASSET_TYPE = TradeAssetType.ERC20
-
-// uint256 max, which the squid writes into `item.price` to mean "no price set" rather than leaving it NULL.
-// A `price > 0` guard does NOT exclude it, so a store item carrying the sentinel would be advertised at
-// ~1.16e42 credits. ports/catalog guards the same value the same way (`getMinPriceWhere`); kept as a string
-// because the column is `numeric` and the value exceeds every JS number.
-const NO_PRICE_SENTINEL = '115792089237316195423570985008687907853269984665640564039457584007913129639935'
-
-/**
- * Upper bound on a row's USD-wei price, applied before `price_credits` is cast to bigint.
- *
- * Without it an absurd price does not merely render badly — `CEIL(usd_wei / C)::bigint` raises
- * `bigint out of range` and the ENTIRE query aborts, so one bad item 500s the catalogue for every user. The
- * sentinel guard above does not cover this: `sentinel - 1` clears it and still overflows.
- *
- * 1e30 USD wei is $1e12, or 10 trillion credits — orders of magnitude above any real item, and ~1e6 below
- * the bigint ceiling, so the cast has room. Rows above it are dropped rather than fatal.
- */
-const MAX_USD_WEI = '1000000000000000000000000000000'
 
 // The metadata joins, keyed off whatever relation is aliased `mv`. Split out from `metadataJoins` so the
 // CollectionStore branch can reuse them verbatim over its own base relation (see `storeBaseRelation`):
