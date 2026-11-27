@@ -186,13 +186,28 @@ describe('when the shop feed carries creator coupons', () => {
       })
     })
 
-    it('should keep only discounted listings on discounted=true and only the rest on discounted=false', async () => {
+    it('should keep on discounted=true only the listings whose sale still costs less in whole credits', async () => {
       await component.getShopListings({ discounted: true })
-      expect(query.mock.calls[0][0].text).toContain('AND cp.id IS NOT NULL')
+      const text = query.mock.calls[0][0].text
+      expect(text).toContain('AND (cp.id IS NOT NULL AND div(((mv.amount_received::numeric - div(')
+      expect(text).toContain(') < div((mv.amount_received::numeric) + $')
+    })
+
+    it('should keep on discounted=false every listing a sale does not visibly lower', async () => {
       await component.getShopListings({ discounted: false })
-      expect(query.mock.calls[1][0].text).toContain('AND cp.id IS NULL')
+      expect(query.mock.calls[0][0].text).toContain('AND NOT (cp.id IS NOT NULL AND div((')
+    })
+
+    it('should round both prices up to whole credits as the row mapper does', async () => {
+      await component.getShopListings({ discounted: true })
+      const values: unknown[] = query.mock.calls[0][0].values
+      expect(values).toContain((WEI_PER_CREDIT - 1n).toString())
+      expect(values).toContain(WEI_PER_CREDIT.toString())
+    })
+
+    it('should not filter on the coupon when discounted is not set', async () => {
       await component.getShopListings({})
-      expect(query.mock.calls[2][0].text).not.toContain('cp.id IS NULL')
+      expect(query.mock.calls[0][0].text).not.toContain('cp.id IS NOT NULL AND')
     })
 
     it('should sort and bound prices by what the buyer would pay', async () => {
@@ -304,10 +319,11 @@ describe('when the unified feed carries creator coupons', () => {
     expect(text).toContain('AS compare_at_credits')
   })
 
-  it('should turn discounted=true into a coupon requirement on the native branch and an empty legacy branch', async () => {
+  it('should turn discounted=true into a visible discount requirement on the native branch and an empty legacy branch', async () => {
     await component.getUnifiedListings({ discounted: true }, 0.25)
     const text = query.mock.calls[0][0].text
-    expect(text).toContain('AND cp.id IS NOT NULL')
+    expect(text).toContain('AND (cp.id IS NOT NULL AND CEIL((COALESCE(')
+    expect(text).toContain(') < CEIL((mv.amount_received::numeric) / $')
     expect(text).toContain('AND FALSE')
   })
 
@@ -405,7 +421,8 @@ describe('when the unified feed is asked to discount classic MANA listings', () 
     it('should let discounted=true keep discounted MANA listings and empty only the store branch', async () => {
       await component.getUnifiedListings({ includeLegacyCoupons: true, discounted: true }, 0.25)
       const text = query.mock.calls[0][0].text
-      expect(countOf(text, 'AND cp.id IS NOT NULL')).toBe(2)
+      expect(countOf(text, 'AND (cp.id IS NOT NULL AND CEIL((')).toBe(2)
+      expect(text).toContain(') < CEIL(((mv.amount_received::numeric * $')
       expect(countOf(text, 'AND FALSE')).toBe(1)
     })
 
@@ -426,9 +443,9 @@ describe('when the unified feed is asked to discount classic MANA listings', () 
       expect(countOf(text, 'NULL::text AS list_mana_wei')).toBe(1)
     })
 
-    it('should drop discounted MANA listings on discounted=false', async () => {
+    it('should drop visibly discounted MANA listings on discounted=false', async () => {
       await component.getUnifiedListings({ includeLegacyCoupons: true, discounted: false }, 0.25)
-      expect(countOf(query.mock.calls[0][0].text, 'AND cp.id IS NULL')).toBe(2)
+      expect(countOf(query.mock.calls[0][0].text, 'AND NOT (cp.id IS NOT NULL AND CEIL((')).toBe(2)
     })
 
     it('should discount MANA listings on the related and trending rails too', async () => {

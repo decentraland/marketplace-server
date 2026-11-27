@@ -1,5 +1,5 @@
 import SQL from 'sql-template-strings'
-import { saleWeiExpr } from '../../src/ports/shop-catalog/component'
+import { saleWeiExpr, shopCreditsExpr, visibleDiscountExpr } from '../../src/ports/shop-catalog/component'
 import { test } from '../components'
 
 /**
@@ -29,6 +29,40 @@ test('when pricing a listing under a creator coupon', function ({ components }) 
     const { rows } = await components.dappsDatabase.query<{ sale: string }>(query)
 
     expect(rows[0].sale).toEqual((price - (price * BigInt(ppm)) / 1_000_000n).toString())
+  })
+})
+
+/**
+ * Whether a coupon visibly lowers a shop listing, decided by REAL Postgres and compared with the row mapper's rule:
+ * both prices rounded up to whole credits, on sale only while the sale is still the cheaper one. The Deals filter
+ * runs this predicate, so a disagreement lists an item the grid then shows at its list price.
+ */
+test('when deciding whether a coupon visibly discounts a shop listing', function ({ components }) {
+  const WEI_PER_CREDIT = 100000000000000000n
+  const wholeCredits = (wei: bigint) => (wei + WEI_PER_CREDIT - 1n) / WEI_PER_CREDIT
+  const cases: Array<[bigint, number]> = [
+    [4n * WEI_PER_CREDIT, 200_000],
+    [5n * WEI_PER_CREDIT, 200_000],
+    [3n * WEI_PER_CREDIT, 200_000],
+    [20n * WEI_PER_CREDIT, 500_000],
+    [3n * WEI_PER_CREDIT + 1n, 1],
+    [10000000000000000002n, 300_000],
+    [123456789012345678901n, 700_000]
+  ]
+
+  it.each(cases)('should show the sale on %s wei at %s ppm exactly when the row mapper does', async (price, ppm) => {
+    const query = SQL`SELECT `
+      .append(visibleDiscountExpr({ sale: shopCreditsExpr(saleWeiExpr()), list: shopCreditsExpr(SQL`mv.amount_received::numeric`) }))
+      .append(
+        SQL` AS visible
+      FROM (VALUES (${price.toString()}::numeric(78,0))) AS mv(amount_received),
+           (VALUES ('coupon-1'::text, ${ppm}::integer)) AS cp(id, discount_ppm)`
+      )
+
+    const { rows } = await components.dappsDatabase.query<{ visible: boolean }>(query)
+
+    const sale = price - (price * BigInt(ppm)) / 1_000_000n
+    expect(rows[0].visible).toBe(wholeCredits(sale) < wholeCredits(price))
   })
 })
 
